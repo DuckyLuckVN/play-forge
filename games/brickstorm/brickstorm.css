@@ -17,6 +17,38 @@
 .bs-side {
   display: none;
 }
+/* Tablet / narrow window: board plus one side column (Shop and Guide are in the top bar). */
+@media (min-width: 640px) and (max-width: 899px) {
+  .bs-stage {
+    grid-template-columns: minmax(0, 1fr) minmax(200px, 250px);
+    grid-template-rows: auto minmax(0, 1fr);
+    width: 100%;
+  }
+  .bs-center {
+    grid-column: 1;
+    grid-row: 1 / 3;
+  }
+  .bs-side {
+    display: grid;
+    align-content: start;
+    gap: 12px;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+  .bs-side.left {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .bs-side.right {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .bs-side .bs-side-nav,
+  .bs-drawer-btn {
+    display: none;
+  }
+}
 @media (min-width: 900px) {
   .bs-stage {
     grid-template-columns: minmax(190px, 250px) minmax(0, 1fr) minmax(210px, 290px);
@@ -175,6 +207,48 @@
 }
 .bs-controls[hidden] {
   display: none;
+}
+/* Phones: the three controls share the row instead of overflowing it. */
+@media (max-width: 480px) {
+  .bs-controls .pf-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-inline: 8px;
+    font-size: 15px;
+    white-space: normal;
+    line-height: 1.1;
+  }
+  /* Pick cards as compact rows so all three fit on a phone. */
+  .bs-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .bs-card.pf-btn {
+    grid-template-columns: 48px minmax(0, 1fr);
+    gap: 2px 12px;
+    min-height: 0;
+    padding: 10px 12px;
+  }
+  .bs-card.pf-btn > .bs-card-icon {
+    grid-row: 1 / 4;
+    align-self: center;
+    width: 48px;
+    height: 48px;
+  }
+  .bs-card-icon svg {
+    width: 48px;
+    height: 48px;
+  }
+  .pf-overlay .pf-heading {
+    font-size: 28px;
+  }
+}
+/* Tall screens (pick, shop, guide) scroll instead of losing their top under the bar. */
+.pf-overlay {
+  align-items: flex-start;
+  padding-top: 76px;
+}
+.pf-overlay > * {
+  margin-block: auto;
 }
 .bs-controls .pf-btn[aria-pressed='true'] {
   background: var(--pf-yolk);

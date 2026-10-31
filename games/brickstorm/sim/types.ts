@@ -32,6 +32,13 @@ export interface Ball {
   vx: number
   vy: number
   status: 'queued' | 'flying' | 'landed'
+  kind: 'normal' | 'fire' | 'bomb'
+  /** Radius (Big Balls grows it). */
+  r: number
+  /** Already split by Twin Shot (or is the twin). */
+  split: boolean
+  /** Bricks a fire ball is passing through right now, so each is burned once per pass. */
+  inside: number[]
   /** Remaining pass-through hits (Piercing boost). */
   pierceLeft: number
   /** Extra damage from wall bounces this volley (Rubber Walls boost). */
@@ -40,7 +47,20 @@ export interface Ball {
   lastBrick: number
 }
 
-export type BoostId = 'damage' | 'balls' | 'coins' | 'speed' | 'pierce' | 'crit' | 'bouncy' | 'double'
+export type BoostId =
+  | 'damage'
+  | 'balls'
+  | 'coins'
+  | 'speed'
+  | 'pierce'
+  | 'crit'
+  | 'bouncy'
+  | 'double'
+  | 'fireball'
+  | 'bombball'
+  | 'twin'
+  | 'big'
+  | 'lightning'
 
 export type SimEvent =
   | { type: 'fire' }
@@ -58,6 +78,8 @@ export type SimEvent =
   | { type: 'turn'; turn: number }
   | { type: 'over' }
   | { type: 'revive' }
+  | { type: 'explode'; x: number; y: number; depth: number }
+  | { type: 'zap'; x1: number; y1: number; x2: number; y2: number; depth: number }
 
 export interface RunState {
   rng: RngState
@@ -91,6 +113,8 @@ export interface RunState {
   secondWindUsed: boolean
   boosts: Partial<Record<BoostId, number>>
   doubleVolleys: number
+  /** Next volley's first balls that will be fireballs. */
+  fireCharges: number
   nextId: number
   events: SimEvent[]
 }

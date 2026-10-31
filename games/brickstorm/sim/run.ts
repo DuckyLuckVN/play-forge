@@ -7,7 +7,6 @@ import {
   BOARD_W,
   CELL,
   COMBO_GAP,
-  COMBO_TIERS,
   DANGER_ROW,
   FEVER_AT,
   FIRE_GAP,
@@ -18,10 +17,12 @@ import {
   TICK,
 } from './config'
 import { random } from '@forge/core/rng'
-import { modsOf, rollChoices, xpToNext, type Mods } from './boosts'
+import { modsOf, rollChoices, type Mods } from './boosts'
+import { damageBrick, explode, zap } from './damage'
+export { comboMultiplier } from './damage'
 import { antiStall, bounceWalls, circleRect, deepestContact, reflect } from './physics'
 import { brickRect, cellCenter, spawnRow } from './rows'
-import type { Ball, RunState, SimEvent } from './types'
+import type { Ball, Brick, RunState, SimEvent } from './types'
 
 const COIN_PICKUP = 5
 
@@ -55,6 +56,7 @@ export function createRun(seed: number): RunState {
     secondWindUsed: false,
     boosts: {},
     doubleVolleys: 0,
+    fireCharges: 0,
     nextId: 1,
     events: [],
   }
@@ -76,12 +78,23 @@ export function fire(s: RunState, angle: number): void {
   const speed = BALL_SPEED * mods.speedMult
   const [vx, vy] = antiStall(Math.cos(a) * speed, -Math.sin(a) * speed)
   const n = s.doubleVolleys > 0 ? s.ballCount * 2 : s.ballCount
-  s.balls = Array.from({ length: n }, (): Ball => ({
+  const charges = Math.min(n, s.fireCharges)
+  s.fireCharges -= charges
+  const kindOf = (i: number): Ball['kind'] => {
+    if (i < charges || (mods.fireEvery && (i + 1) % mods.fireEvery === 0)) return 'fire'
+    if (mods.bombEvery && (i + 1) % mods.bombEvery === 0) return 'bomb'
+    return 'normal'
+  }
+  s.balls = Array.from({ length: n }, (_, i): Ball => ({
     x: s.launchX,
-    y: FLOOR_Y - BALL_R,
+    y: FLOOR_Y - mods.radius,
     vx,
     vy,
     status: 'queued',
+    kind: kindOf(i),
+    r: mods.radius,
+    split: false,
+    inside: [],
     pierceLeft: mods.pierce,
     bounceBonus: 0,
     lastBrick: -1,
@@ -122,42 +135,27 @@ export function step(s: RunState): void {
 }
 
 function moveBall(s: RunState, ball: Ball, mods: Mods): void {
+  const r = ball.r
   const dist = Math.hypot(ball.vx, ball.vy) * TICK
-  const n = Math.max(1, Math.ceil(dist / (BALL_R / 2)))
+  const n = Math.max(1, Math.ceil(dist / (r / 2)))
   const dt = TICK / n
   for (let i = 0; i < n; i++) {
     ball.x += ball.vx * dt
     ball.y += ball.vy * dt
 
-    if (bounceWalls(ball)) {
+    if (bounceWalls(ball, r)) {
       ;[ball.vx, ball.vy] = antiStall(ball.vx, ball.vy)
       if (mods.bouncy) ball.bounceBonus += 1
       s.events.push({ type: 'wall' })
     }
 
-    // A pierced brick is ignored until the ball has fully left it, so a
-    // bounce off the next brick can't push the ball back into it for a re-hit.
-    const pierced = s.bricks.find((b) => b.id === ball.lastBrick)
-    if (!pierced || !circleRect(ball.x, ball.y, BALL_R, brickRect(pierced))) ball.lastBrick = -1
-    const solid = s.bricks.filter((b) => b.id !== ball.lastBrick)
-    const contact = deepestContact(ball.x, ball.y, solid.map(brickRect))
-    if (contact) {
-      const brick = solid[contact.index]
-      hitBrick(s, ball, s.bricks.indexOf(brick), mods)
-      if (ball.pierceLeft > 0) {
-        ball.pierceLeft--
-        ball.lastBrick = brick.id
-      } else {
-        ball.x += contact.nx * contact.depth
-        ball.y += contact.ny * contact.depth
-        ;[ball.vx, ball.vy] = antiStall(...reflect(ball.vx, ball.vy, contact.nx, contact.ny))
-      }
-    }
+    if (ball.kind === 'fire') burnThrough(s, ball, mods)
+    else bounceOffBricks(s, ball, mods)
 
     collectPickups(s, ball, mods)
 
-    if (ball.y >= FLOOR_Y - BALL_R && ball.vy > 0) {
-      ball.y = FLOOR_Y - BALL_R
+    if (ball.y >= FLOOR_Y - r && ball.vy > 0) {
+      ball.y = FLOOR_Y - r
       ball.status = 'landed'
       if (s.nextLaunchX === null) s.nextLaunchX = Math.max(BALL_R, Math.min(BOARD_W - BALL_R, ball.x))
       s.events.push({ type: 'land' })
@@ -166,8 +164,48 @@ function moveBall(s: RunState, ball: Ball, mods: Mods): void {
   }
 }
 
-function hitBrick(s: RunState, ball: Ball, index: number, mods: Mods): void {
-  const brick = s.bricks[index]
+/** A fire ball never bounces off bricks: it burns each one it passes through, once per pass. */
+function burnThrough(s: RunState, ball: Ball, mods: Mods): void {
+  const touching = s.bricks.filter((b) => circleRect(ball.x, ball.y, ball.r, brickRect(b)))
+  ball.inside = ball.inside.filter((id) => touching.some((b) => b.id === id))
+  for (const brick of touching) {
+    if (ball.inside.includes(brick.id)) continue
+    ball.inside.push(brick.id)
+    hitBrick(s, ball, brick, mods, 2)
+  }
+}
+
+function bounceOffBricks(s: RunState, ball: Ball, mods: Mods): void {
+  // A pierced brick is ignored until the ball has fully left it, so a
+  // bounce off the next brick can't push the ball back into it for a re-hit.
+  const pierced = s.bricks.find((b) => b.id === ball.lastBrick)
+  if (!pierced || !circleRect(ball.x, ball.y, ball.r, brickRect(pierced))) ball.lastBrick = -1
+  const solid = s.bricks.filter((b) => b.id !== ball.lastBrick)
+  const contact = deepestContact(ball.x, ball.y, solid.map(brickRect), ball.r)
+  if (!contact) return
+  const brick = solid[contact.index]
+  const { col, row } = brick
+  hitBrick(s, ball, brick, mods, 1)
+  if (ball.pierceLeft > 0) {
+    ball.pierceLeft--
+    ball.lastBrick = brick.id
+  } else {
+    ball.x += contact.nx * contact.depth
+    ball.y += contact.ny * contact.depth
+    ;[ball.vx, ball.vy] = antiStall(...reflect(ball.vx, ball.vy, contact.nx, contact.ny))
+  }
+  if (ball.kind === 'bomb') {
+    ball.kind = 'normal'
+    explode(s, col, row, s.turn, 0, 'bomb')
+  }
+  if (mods.twin && !ball.split) {
+    ball.split = true
+    s.balls.push({ ...ball, vx: -ball.vx, inside: [] })
+  }
+}
+
+/** A ball hitting a brick: combo, fever, crit, damage, and chain lightning. */
+function hitBrick(s: RunState, ball: Ball, brick: Brick, mods: Mods, power: number): void {
   s.combo++
   s.sinceHit = 0
   s.bestCombo = Math.max(s.bestCombo, s.combo)
@@ -176,28 +214,19 @@ function hitBrick(s: RunState, ball: Ball, index: number, mods: Mods): void {
     s.events.push({ type: 'fever' })
   }
   const crit = mods.critChance > 0 && random(s.rng) < mods.critChance
-  const damage = (1 * mods.damageMult + ball.bounceBonus) * (s.fever ? 2 : 1) * (crit ? 3 : 1)
-  brick.hp -= damage
+  const damage = (power * mods.damageMult + ball.bounceBonus) * (s.fever ? 2 : 1) * (crit ? 3 : 1)
   const { x, y } = cellCenter(brick.col, brick.row)
   s.events.push({ type: 'hit', x, y, combo: s.combo, crit })
-  if (brick.hp > 0) return
-  s.bricks.splice(index, 1)
-  s.coins += Math.max(1, Math.round(comboMultiplier(s.combo) * mods.coinMult))
-  s.xp += 1
-  while (s.xp >= xpToNext(s.level)) {
-    s.xp -= xpToNext(s.level)
-    s.level++
-    s.pendingPicks++
-    s.events.push({ type: 'levelUp' })
-  }
-  s.events.push({ type: 'kill', x, y, maxHp: brick.maxHp })
+  const from = { col: brick.col, row: brick.row }
+  damageBrick(s, brick, damage, ball.kind === 'fire' ? 'fire' : 'ball')
+  if (mods.zapChance > 0 && random(s.rng) < mods.zapChance) zap(s, from, 2, 1 * mods.damageMult, 0)
 }
 
 function collectPickups(s: RunState, ball: Ball, mods: Mods): void {
   for (let i = s.pickups.length - 1; i >= 0; i--) {
     const p = s.pickups[i]
     const { x, y } = cellCenter(p.col, p.row)
-    if (Math.hypot(ball.x - x, ball.y - y) >= PICKUP_R + BALL_R) continue
+    if (Math.hypot(ball.x - x, ball.y - y) >= PICKUP_R + ball.r) continue
     s.pickups.splice(i, 1)
     if (p.kind === 'ball') s.pendingBalls++
     else s.coins += Math.round(COIN_PICKUP * mods.coinMult)
@@ -246,10 +275,6 @@ export function startNextTurn(s: RunState): void {
 function bonus(s: RunState, e: SimEvent & { coins: number }): void {
   s.coins += e.coins
   s.events.push(e)
-}
-
-export function comboMultiplier(combo: number): number {
-  return COMBO_TIERS.find(([min]) => combo >= min)![1]
 }
 
 /** One brick left, low on hp, with a ball closing in: play it in slow motion. */

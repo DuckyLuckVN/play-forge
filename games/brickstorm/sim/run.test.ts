@@ -130,7 +130,7 @@ describe('turn loop', () => {
     for (const angle of [Math.PI / 2 - 0.6, Math.PI / 2, Math.PI / 2 + 0.6]) {
       const s = empty()
       s.ballCount = 20
-      s.boosts = { speed: 5 } // 1.75× ball speed
+      s.boosts = { speed: 5, big: 3 } // 1.75× ball speed, 1.6× ball size
       for (let c = 0; c < COLS; c++) brick(s, c, 4, 1e9)
       const rects = s.bricks.map(brickRect)
       fire(s, angle)

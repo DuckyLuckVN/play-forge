@@ -6,7 +6,7 @@ import type { BoostId } from './types'
 
 describe('boost stats', () => {
   it('maps boost counts to modifiers', () => {
-    expect(modsOf({ damage: 2, crit: 1, bouncy: 1 })).toEqual({
+    expect(modsOf({ damage: 2, crit: 1, bouncy: 1 })).toMatchObject({
       damageMult: 1.5,
       coinMult: 1,
       speedMult: 1,

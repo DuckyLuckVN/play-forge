@@ -53,7 +53,7 @@ export class BoardRenderer {
       this.drawPickups(ctx, s, time)
       this.drawBricks(ctx, s)
       if (s.phase === 'aim' && aim !== null) this.drawGuide(ctx, s, aim)
-      this.drawBalls(ctx, s, time)
+      this.drawBalls(ctx, s, time, juice.zaps)
     }
     this.particles.draw(ctx)
     ctx.restore()
@@ -148,7 +148,7 @@ export class BoardRenderer {
     ctx.setLineDash([])
   }
 
-  private drawBalls(ctx: CanvasRenderingContext2D, s: RunState, time: number): void {
+  private drawBalls(ctx: CanvasRenderingContext2D, s: RunState, time: number, zaps: Juice['zaps']): void {
     const flying = s.balls.filter((b) => b.status === 'flying')
     const style = TRAIL_STYLE[this.trail] ?? TRAIL_STYLE['trail:none']
     const len = s.fever ? Math.max(style.len, TRAIL) : style.len
@@ -184,7 +184,39 @@ export class BoardRenderer {
         ctx.fill()
         ctx.globalAlpha = 1
       }
-      drawBall(ctx, this.ball, b.x, b.y, BALL_R, time, b.vx, b.vy)
+      if (b.kind === 'fire') {
+        ctx.fillStyle = '#ff9f43'
+        ctx.globalAlpha = 0.45 + 0.2 * Math.sin(time * 40)
+        ctx.beginPath()
+        ctx.arc(b.x, b.y, b.r * 2, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.globalAlpha = 1
+        drawBall(ctx, 'ball:flame', b.x, b.y, b.r * 1.2, time, b.vx, b.vy)
+      } else if (b.kind === 'bomb') {
+        ctx.fillStyle = '#2b1d00'
+        ctx.beginPath()
+        ctx.arc(b.x, b.y, b.r * 1.15, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = Math.sin(time * 30) > 0 ? theme.coral : theme.yolk
+        ctx.beginPath()
+        ctx.arc(b.x + b.r * 0.6, b.y - b.r * 0.6, b.r * 0.4, 0, Math.PI * 2)
+        ctx.fill()
+      } else {
+        drawBall(ctx, this.ball, b.x, b.y, b.r, time, b.vx, b.vy)
+      }
+    }
+    for (const z of zaps) {
+      ctx.strokeStyle = '#bfe4ff'
+      ctx.lineWidth = 3
+      ctx.globalAlpha = Math.max(0, z.life / 0.18)
+      ctx.beginPath()
+      ctx.moveTo(z.x1, z.y1)
+      const mx = (z.x1 + z.x2) / 2 + Math.sin(time * 90) * 10
+      const my = (z.y1 + z.y2) / 2 + Math.cos(time * 70) * 10
+      ctx.lineTo(mx, my)
+      ctx.lineTo(z.x2, z.y2)
+      ctx.stroke()
+      ctx.globalAlpha = 1
     }
 
     // Balls waiting at the launch point, and balls that already landed.

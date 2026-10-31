@@ -5,6 +5,7 @@ import type { Canvas2D } from '@forge/render2d/canvas'
 import { FONT, theme } from '@forge/ui/theme'
 import { ArenaPainter, type ArenaId } from './arenas'
 import { drawBall, TRAIL_STYLE } from './cosmetics'
+import { t } from './i18n'
 import { COIN_FLY, hpColor, type Juice } from './juice'
 import { modsOf } from './sim/boosts'
 import { BALL_R, boardSize, CELL, COLS, COMBO_TIERS, PICKUP_R, ROWS, TOP } from './sim/config'
@@ -344,7 +345,7 @@ export class BoardRenderer {
     ctx.font = `700 20px ${FONT}`
     ctx.fillStyle = theme.chalk
     ctx.textAlign = 'left'
-    ctx.fillText(`Turn ${s.turn}`, 12, TOP / 2 - 4)
+    ctx.fillText(t('Turn {n}', { n: s.turn }), 12, TOP / 2 - 4)
     ctx.textAlign = 'right'
     ctx.fillStyle = theme.yolk
     ctx.fillText(`● ${Math.floor(juice.shownCoins)}`, this.d.boardW - 12, TOP / 2 - 4)

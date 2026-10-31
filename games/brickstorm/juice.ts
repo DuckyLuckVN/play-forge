@@ -6,6 +6,7 @@ import { prefersReducedMotion } from '@forge/fx/tween'
 import { theme } from '@forge/ui/theme'
 import type { SimEvent } from './sim/types'
 import { IMPACT_STYLE } from './cosmetics'
+import { t } from './i18n'
 import { BRICK_SOUNDS } from './sounds'
 
 const PENTA = [0, 2, 4, 7, 9]
@@ -43,14 +44,19 @@ export function hpColor(hp: number, turn: number): string {
   return '#' + ((mix(16) << 16) | (mix(8) << 8) | mix(0)).toString(16).padStart(6, '0')
 }
 
-const MYSTERY_TEXT = { balls: '+3 BALLS', pick: 'FREE BOOST', coins: '+50 COINS', fire: 'FIREBALLS!' }
+const MYSTERY_TEXT = {
+  balls: t('+3 BALLS'),
+  pick: t('FREE BOOST'),
+  coins: t('+50 COINS'),
+  fire: t('FIREBALLS!'),
+}
 
 /** Combo announcer: [combo, text, stinger]. */
 const ANNOUNCER = [
-  [25, 'NICE!', 'stinger1'],
-  [50, 'GREAT!', 'stinger2'],
-  [100, 'AMAZING!', 'stinger3'],
-  [200, 'INSANE!', 'stinger4'],
+  [25, t('NICE!'), 'stinger1'],
+  [50, t('GREAT!'), 'stinger2'],
+  [100, t('AMAZING!'), 'stinger3'],
+  [200, t('INSANE!'), 'stinger4'],
 ] as const
 
 /** A sound with every tone's pitch scaled, for rising chain reactions. */
@@ -65,11 +71,11 @@ const HITSTOP = 0.04
 export const COIN_FLY = 0.5
 
 const HELPER_TEXT = {
-  pushBack: 'PUSH BACK!',
-  rowBomb: 'ROW BOMB!',
-  freeze: 'FROZEN!',
-  firePack: 'FIRE PACK!',
-  surge: 'BALL SURGE!',
+  pushBack: t('PUSH BACK!'),
+  rowBomb: t('ROW BOMB!'),
+  freeze: t('FROZEN!'),
+  firePack: t('FIRE PACK!'),
+  surge: t('BALL SURGE!'),
 }
 
 const BANNER_LIFE = 1.4
@@ -144,7 +150,7 @@ export class Juice {
         return this.play('launch', BRICK_SOUNDS.launch)
       case 'hit': {
         this.play('hit', hitSound(e.combo))
-        if (e.crit) this.particles.text(e.x, e.y, 'CRIT', { color: theme.yolk, size: 16 })
+        if (e.crit) this.particles.text(e.x, e.y, t('CRIT'), { color: theme.yolk, size: 16 })
         const level = ANNOUNCER.filter(([at]) => e.combo >= at).length
         if (level > this.announced) {
           this.announced = level
@@ -178,14 +184,14 @@ export class Juice {
       case 'wall':
         return this.play('wall', BRICK_SOUNDS.wall)
       case 'fever':
-        this.show('FEVER!', 0.6)
+        this.show(t('FEVER!'), 0.6)
         return playSound(BRICK_SOUNDS.fever)
       case 'allClear':
-        this.show('ALL CLEAR!', 1)
+        this.show(t('ALL CLEAR!'), 1)
         celebrate()
         return playSound(BRICK_SOUNDS.allClear)
       case 'closeOne':
-        this.show('CLOSE ONE!', 0)
+        this.show(t('CLOSE ONE!'), 0)
         return playSound(BRICK_SOUNDS.closeOne)
       case 'danger':
         return playSound(BRICK_SOUNDS.danger)
@@ -204,17 +210,17 @@ export class Juice {
         this.queue.push({ e, at: e.depth * RIPPLE })
         return
       case 'milestone':
-        this.show(`TURN ${e.turn}! +${e.coins}`, 0.5)
+        this.show(t('TURN {turn}! +{coins}', { turn: e.turn, coins: e.coins }), 0.5)
         return playSound(BRICK_SOUNDS.jackpot)
       case 'helper':
         this.show(HELPER_TEXT[e.id], 0.5)
         if (e.id === 'rowBomb' || e.id === 'pushBack') this.shake.add(0.35)
         return playSound(e.id === 'rowBomb' ? BRICK_SOUNDS.explode : BRICK_SOUNDS.secondWind)
       case 'grow':
-        this.show(e.axis === 'col' ? 'WIDER!' : 'TALLER!', 0.6)
+        this.show(e.axis === 'col' ? t('WIDER!') : t('TALLER!'), 0.6)
         return playSound(BRICK_SOUNDS.secondWind)
       case 'jackpot':
-        this.show('JACKPOT ROW!', 0.4)
+        this.show(t('JACKPOT ROW!'), 0.4)
         return playSound(BRICK_SOUNDS.jackpot)
       case 'laser':
         this.lasers.push({ y: e.y, life: 0.3 })
@@ -225,11 +231,11 @@ export class Juice {
         this.particles.text(e.x, e.y, MYSTERY_TEXT[e.reward], { color: theme.yolk, size: 18, rise: 40 })
         return playSound(BRICK_SOUNDS.mystery)
       case 'secondWind':
-        this.show('SECOND WIND!', 1)
+        this.show(t('SECOND WIND!'), 1)
         this.shake.add(0.4)
         return playSound(BRICK_SOUNDS.secondWind)
       case 'revive':
-        this.show('REVIVED!', 0.8)
+        this.show(t('REVIVED!'), 0.8)
         return playSound(BRICK_SOUNDS.revive)
       case 'land':
         return
@@ -258,7 +264,7 @@ export class Juice {
   /** Starts the level-up celebration that plays before the pick screen. */
   startLevelUp(): void {
     this.levelUp = { age: 0 }
-    this.show(this.leveled || !this.freePick ? 'LEVEL UP!' : 'FREE BOOST!', 0.6)
+    this.show(this.leveled || !this.freePick ? t('LEVEL UP!') : t('FREE BOOST!'), 0.6)
     this.banner!.big = true
     this.leveled = this.freePick = false
     this.xpFlash = 1

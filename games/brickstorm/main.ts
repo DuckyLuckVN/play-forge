@@ -12,6 +12,7 @@ import { audioMenu } from '@forge/ui/audio-menu'
 import { h, icon, toast } from '@forge/ui/dom'
 import { icons } from '@forge/ui/icons'
 import { applyTheme } from '@forge/ui/theme'
+import { rarityName, t } from './i18n'
 import { toBoard } from './input'
 import { Juice } from './juice'
 import { BoardRenderer } from './render'
@@ -30,7 +31,7 @@ import { aimFromPointer } from './sim/physics'
 import { canRecall, createRun, drainEvents, fire, recall, speedMultiplier, step } from './sim/run'
 import type { ActiveHelper, BoostId, RunState } from './sim/types'
 
-const CONTROLS = 'Drag to aim and release to launch. Keys: ←/→ aim, Space launch, F fast, Esc pause.'
+const CONTROLS = () => t('Drag to aim and release to launch. Keys: ←/→ aim, Space launch, F fast, Esc pause.')
 const AIM_STEP = (1.5 * Math.PI) / 180
 /** Never simulate more than this many ticks in one frame. */
 const MAX_STEPS = 1200
@@ -46,20 +47,20 @@ const button = (text: string, onclick: () => void, variant = '') =>
 
 const pauseBtn = button('', () => pause(), 'icon')
 pauseBtn.append(icon(icons.pause))
-pauseBtn.title = 'Pause'
-pauseBtn.setAttribute('aria-label', 'Pause')
-const home = h('a', { class: 'pf-btn icon', href: '../../index.html', title: 'All games' })
-home.setAttribute('aria-label', 'All games')
+pauseBtn.title = t('Pause')
+pauseBtn.setAttribute('aria-label', t('Pause'))
+const home = h('a', { class: 'pf-btn icon', href: '../../index.html', title: t('All games') })
+home.setAttribute('aria-label', t('All games'))
 home.append(icon(icons.home))
 const BAG_ICON =
   '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1 12H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>'
 const shopBarBtn = button('', () => openShopFromBar(), 'icon')
 shopBarBtn.append(icon(BAG_ICON))
-shopBarBtn.title = 'Shop'
-shopBarBtn.setAttribute('aria-label', 'Shop')
+shopBarBtn.title = t('Shop')
+shopBarBtn.setAttribute('aria-label', t('Shop'))
 const guideBtn = button('?', () => openGuideFromBar(), 'icon bs-guide-btn')
-guideBtn.title = 'Guide'
-guideBtn.setAttribute('aria-label', 'Guide: what bricks and pickups do')
+guideBtn.title = t('Guide')
+guideBtn.setAttribute('aria-label', t('Guide: what bricks and pickups do'))
 const bar = h(
   'header',
   { class: 'pf-bar' },
@@ -70,18 +71,18 @@ const bar = h(
 
 const boardEl = h('div', { class: 'bs-board' })
 // Blur after a click so Space launches instead of pressing the button again.
-const fastBtn = button('⏩ Fast', () => {
+const fastBtn = button(t('⏩ Fast'), () => {
   setFast(!fast)
   fastBtn.blur()
 })
-const recallBtn = button('Recall', () => {
+const recallBtn = button(t('Recall'), () => {
   if (run) {
     recall(run)
     checkpoint()
   }
   recallBtn.blur()
 })
-const drawerBtn = button('Boosts & helpers', () => openDrawer())
+const drawerBtn = button(t('Boosts & helpers'), () => openDrawer())
 drawerBtn.classList.add('bs-drawer-btn')
 const controls = h('div', { class: 'bs-controls' }, fastBtn, recallBtn, drawerBtn)
 // First-seen hints: a card over the middle of the board. Tap to dismiss.
@@ -121,8 +122,8 @@ const renderer = new BoardRenderer(view, particles, shake)
 const params = new URLSearchParams(location.search)
 const loaded = loadSave()
 let save = loaded.save
-if (loaded.corrupted) toast('Saved progress could not be read. A backup was kept.')
-if (loaded.droppedRun) toast('Your last run could not be resumed. Your coins are safe.')
+if (loaded.corrupted) toast(t('Saved progress could not be read. A backup was kept.'))
+if (loaded.droppedRun) toast(t('Your last run could not be resumed. Your coins are safe.'))
 
 let run: RunState | null = null
 let paused = false
@@ -210,12 +211,13 @@ function showHome() {
         h('h2', { class: 'pf-heading', textContent: 'Brickstorm' }),
         wallet(),
       ),
-      h('p', { class: 'pf-lede', textContent: 'Aim, launch, and break the storm.' }),
-      save.bestTurn > 0 && h('p', { class: 'bs-best', textContent: `Best turn ${save.bestTurn}` }),
-      saved && primary(`Continue · Turn ${saved.state.turn}`, resumeRun),
-      saved ? button('New run', confirmNewRun, 'wide') : primary('Play', showHelpers),
-      button('Shop', () => showShop(showHome), 'wide'),
-      h('p', { class: 'pf-note', textContent: CONTROLS }),
+      h('p', { class: 'pf-lede', textContent: t('Aim, launch, and break the storm.') }),
+      save.bestTurn > 0 &&
+        h('p', { class: 'bs-best', textContent: t('Best turn {n}', { n: save.bestTurn }) }),
+      saved && primary(t('Continue · Turn {n}', { n: saved.state.turn }), resumeRun),
+      saved ? button(t('New run'), confirmNewRun, 'wide') : primary(t('Play'), showHelpers),
+      button(t('Shop'), () => showShop(showHome), 'wide'),
+      h('p', { class: 'pf-note', textContent: CONTROLS() }),
     ),
     'home',
   )
@@ -226,17 +228,19 @@ function confirmNewRun() {
     h(
       'div',
       { class: 'pf-panel' },
-      h('h2', { class: 'pf-heading', textContent: 'Start over?' }),
+      h('h2', { class: 'pf-heading', textContent: t('Start over?') }),
       h('p', {
         class: 'pf-lede',
-        textContent: `Your run at turn ${save.run?.state.turn} will be lost. Coins you earned are kept.`,
+        textContent: t('Your run at turn {n} will be lost. Coins you earned are kept.', {
+          n: save.run?.state.turn ?? 0,
+        }),
       }),
-      primary('Start a new run', () => {
+      primary(t('Start a new run'), () => {
         save = clearRun(save)
         persist()
         showHelpers()
       }),
-      button('Back', showHome, 'quiet'),
+      button(t('Back'), showHome, 'quiet'),
     ),
     'confirm',
   )
@@ -313,7 +317,7 @@ function showDetail(title: string, body: string, extra: string, back: () => void
       ),
       h('p', { class: 'pf-lede', textContent: body }),
       extra && h('p', { class: 'bs-side-empty', textContent: extra }),
-      primary('Got it', back),
+      primary(t('Got it'), back),
     ),
     `detail-${title}`,
   )
@@ -323,9 +327,9 @@ function boostInfo(id: BoostId, back = holdRun()) {
   if (!run) return
   const b = BOOSTS[id]
   showDetail(
-    `${b.name} ×${run.boosts[id] ?? 0}`,
+    `${t(b.name)} ×${run.boosts[id] ?? 0}`,
     boostDetail(id, run.boosts[id] ?? 1),
-    `${b.rarity} boost`,
+    t('{rarity} boost', { rarity: rarityName(b.rarity) }),
     back,
     BOOST_ICONS[id],
   )
@@ -334,9 +338,9 @@ function boostInfo(id: BoostId, back = holdRun()) {
 function helperInfo(id: ActiveHelper, back = holdRun()) {
   const a = ACTIVE_HELPERS.find((x) => x.id === id)!
   showDetail(
-    `${a.name} ×${save.helpers[id]}`,
-    `${a.text}.`,
-    'Use it while aiming, from the Helpers panel.',
+    `${t(a.name)} ×${save.helpers[id]}`,
+    `${t(a.text)}.`,
+    t('Use it while aiming, from the Helpers panel.'),
     back,
   )
 }
@@ -348,17 +352,20 @@ function confirmHelper(id: ActiveHelper, back = holdRun(), onCancel = back) {
     h(
       'div',
       { class: 'pf-panel bs-detail' },
-      h('h2', { class: 'pf-heading', textContent: `Use ${a.name}?` }),
-      h('p', { class: 'pf-lede', textContent: `${a.text}.` }),
+      h('h2', { class: 'pf-heading', textContent: t('Use {name}?', { name: t(a.name) }) }),
+      h('p', { class: 'pf-lede', textContent: `${t(a.text)}.` }),
       h('p', {
         class: 'bs-side-empty',
-        textContent: `You have ${save.helpers[id]}. Using one leaves ${save.helpers[id] - 1}.`,
+        textContent: t('You have {n}. Using one leaves {left}.', {
+          n: save.helpers[id],
+          left: save.helpers[id] - 1,
+        }),
       }),
-      primary('Use it', () => {
+      primary(t('Use it'), () => {
         back()
         useActiveHelper(id)
       }),
-      button('Cancel', onCancel, 'quiet'),
+      button(t('Cancel'), onCancel, 'quiet'),
     ),
     `confirm-${id}`,
   )
@@ -385,7 +392,7 @@ function openDrawer() {
         (id) => confirmHelper(id, close, reopen),
         (id) => helperInfo(id, reopen),
       ),
-      primary('Close', close),
+      primary(t('Close'), close),
     ),
     'drawer',
   )
@@ -443,7 +450,7 @@ function announceNewKinds(s: RunState) {
   if (!fresh.length) return
   for (const id of fresh) {
     const g = GUIDE.find((e) => e.id === id)
-    if (g) notices.push({ id, title: `New: ${g.name}`, text: g.text })
+    if (g) notices.push({ id, title: t('New: {name}', { name: t(g.name) }), text: t(g.text) })
   }
   save = { ...save, seen: [...save.seen, ...fresh] }
   persist()
@@ -463,7 +470,7 @@ function updateNotice(dt: number) {
         h('span', {}, h('strong', { textContent: n.title }), h('span', { textContent: n.text })),
         h('i', { class: 'bs-notice-time' }),
       )
-      noticeEl.setAttribute('aria-label', `${n.title}. ${n.text} Tap to close.`)
+      noticeEl.setAttribute('aria-label', `${n.title}. ${n.text} ${t('Tap to close.')}`)
     }
   }
   if (n) noticeEl.style.setProperty('--left', String(1 - notices.progress))
@@ -474,23 +481,23 @@ function showHelpers() {
   const owned = (['headStart', 'luckyStart'] as const).filter((k) => save.helpers[k] > 0)
   if (!owned.length) return startRun({ headStart: false, luckyStart: false })
   const use = { headStart: false, luckyStart: false }
-  const LABEL = { headStart: 'Head Start: +5 balls', luckyStart: 'Lucky Start: a free boost' }
+  const LABEL = { headStart: t('Head Start: +5 balls'), luckyStart: t('Lucky Start: a free boost') }
   show(
     h(
       'div',
       { class: 'pf-panel' },
-      h('h2', { class: 'pf-heading', textContent: 'Use helpers?' }),
+      h('h2', { class: 'pf-heading', textContent: t('Use helpers?') }),
       ...owned.map((k) => {
         const box = h('input', { type: 'checkbox', onchange: () => (use[k] = box.checked) })
         return h(
           'label',
           { class: 'bs-toggle' },
           box,
-          h('span', { textContent: `${LABEL[k]} (you have ${save.helpers[k]})` }),
+          h('span', { textContent: t('{label} (you have {n})', { label: LABEL[k], n: save.helpers[k] }) }),
         )
       }),
-      primary('Start', () => startRun(use)),
-      button('Back', showHome, 'quiet'),
+      primary(t('Start'), () => startRun(use)),
+      button(t('Back'), showHome, 'quiet'),
     ),
     'helpers',
   )
@@ -556,24 +563,24 @@ function showPick() {
           else show(null)
         },
       },
-      synergy && h('em', { class: 'bs-ribbon', textContent: 'SYNERGY' }),
+      synergy && h('em', { class: 'bs-ribbon', textContent: t('SYNERGY') }),
       art,
-      h('small', { textContent: b.rarity }),
-      h('strong', { textContent: b.name }),
-      h('span', { textContent: b.text }),
+      h('small', { textContent: rarityName(b.rarity) }),
+      h('strong', { textContent: t(b.name) }),
+      h('span', { textContent: t(b.text) }),
     )
     return card
   })
   const heading = h('h2', {
     class: 'pf-heading',
-    textContent: 'Level up! Pick a boost',
+    textContent: t('Level up! Pick a boost'),
     tabIndex: -1,
     autofocus: true,
   })
   const token = save.helpers.reroll > 0
   const cost = rerollCost(s)
   const rerollBtn = button(
-    token ? `Reroll (use 1 of ${save.helpers.reroll} tokens)` : `Reroll (● ${cost})`,
+    token ? t('Reroll (use 1 of {n} tokens)', { n: save.helpers.reroll }) : t('Reroll (● {cost})', { cost }),
     () => {
       if (!settled()) return
       checkpoint() // bank this run's coins so they can be spent
@@ -615,19 +622,29 @@ function showGrow() {
     checkpoint()
     if (s.phase !== 'pick') show(null)
   }
-  const col = button(`+1 column (${s.cols} → ${s.cols + 1})`, () => choose('col'), 'primary wide')
+  const col = button(
+    t('+1 column ({from} → {to})', { from: s.cols, to: s.cols + 1 }),
+    () => choose('col'),
+    'primary wide',
+  )
   col.autofocus = true
   col.disabled = s.cols >= MAX_COLS
-  const row = button(`+1 row (${s.rows} → ${s.rows + 1})`, () => choose('row'), 'wide')
+  const row = button(
+    t('+1 row ({from} → {to})', { from: s.rows, to: s.rows + 1 }),
+    () => choose('row'),
+    'wide',
+  )
   row.disabled = s.rows >= MAX_ROWS
   show(
     h(
       'div',
       { class: 'pf-panel' },
-      h('h2', { class: 'pf-heading', textContent: 'The storm grows!' }),
+      h('h2', { class: 'pf-heading', textContent: t('The storm grows!') }),
       h('p', {
         class: 'pf-lede',
-        textContent: 'Make the board bigger. A column gives your balls more room; a row gives you more time.',
+        textContent: t(
+          'Make the board bigger. A column gives your balls more room; a row gives you more time.',
+        ),
       }),
       col,
       row,
@@ -650,12 +667,12 @@ function showPaused() {
     h(
       'div',
       { class: 'pf-panel' },
-      h('h2', { class: 'pf-heading', textContent: 'Paused' }),
-      h('p', { class: 'pf-lede', textContent: CONTROLS }),
-      primary('Resume', resume),
-      button('Shop', () => showShop(showPaused), 'wide'),
-      button('Guide', () => showGuide(showPaused), 'wide'),
-      button('Quit (your run is saved)', showHome, 'quiet'),
+      h('h2', { class: 'pf-heading', textContent: t('Paused') }),
+      h('p', { class: 'pf-lede', textContent: CONTROLS() }),
+      primary(t('Resume'), resume),
+      button(t('Shop'), () => showShop(showPaused), 'wide'),
+      button(t('Guide'), () => showGuide(showPaused), 'wide'),
+      button(t('Quit (your run is saved)'), showHome, 'quiet'),
     ),
     'paused',
   )
@@ -678,25 +695,30 @@ function finish(s: RunState) {
     h(
       'div',
       { class: 'pf-panel' },
-      h('h2', { class: 'pf-heading', textContent: 'Continue?' }),
-      h('p', { class: 'pf-lede', textContent: 'Clear the 3 lowest rows and keep going.' }),
-      h('div', { class: 'bs-shop-head' }, h('span', { textContent: `Turn ${s.turn}` }), wallet()),
-      primary(token ? `Revive (use 1 of ${save.helpers.revive} tokens)` : `Revive (● ${cost})`, () => {
-        if (save.helpers.revive > 0) save.helpers = { ...save.helpers, revive: save.helpers.revive - 1 }
-        else {
-          const paid = spend(save, cost)
-          if (!paid) return showResults(s)
-          save = paid
-        }
-        revive(s)
-        overShown = false
-        controls.hidden = false
-        pauseBtn.hidden = false
-        playMusic(ARCADE)
-        checkpoint()
-        show(null)
-      }),
-      button('No thanks', () => showResults(s), 'quiet'),
+      h('h2', { class: 'pf-heading', textContent: t('Continue?') }),
+      h('p', { class: 'pf-lede', textContent: t('Clear the 3 lowest rows and keep going.') }),
+      h('div', { class: 'bs-shop-head' }, h('span', { textContent: t('Turn {n}', { n: s.turn }) }), wallet()),
+      primary(
+        token
+          ? t('Revive (use 1 of {n} tokens)', { n: save.helpers.revive })
+          : t('Revive (● {cost})', { cost }),
+        () => {
+          if (save.helpers.revive > 0) save.helpers = { ...save.helpers, revive: save.helpers.revive - 1 }
+          else {
+            const paid = spend(save, cost)
+            if (!paid) return showResults(s)
+            save = paid
+          }
+          revive(s)
+          overShown = false
+          controls.hidden = false
+          pauseBtn.hidden = false
+          playMusic(ARCADE)
+          checkpoint()
+          show(null)
+        },
+      ),
+      button(t('No thanks'), () => showResults(s), 'quiet'),
     ),
     'revive',
   )
@@ -713,18 +735,20 @@ function showResults(s: RunState) {
     h(
       'div',
       { class: 'pf-panel' },
-      h('h2', { class: 'pf-heading', textContent: `Turn ${s.turn}` }),
-      s.turn > before && h('p', { class: 'bs-best', textContent: 'NEW BEST!' }),
+      h('h2', { class: 'pf-heading', textContent: t('Turn {n}', { n: s.turn }) }),
+      s.turn > before && h('p', { class: 'bs-best', textContent: t('NEW BEST!') }),
       h(
         'div',
         { class: 'bs-stats' },
-        h('span', { textContent: `Best turn ${save.bestTurn}` }),
-        h('span', { textContent: `Best combo ${save.bestCombo}` }),
-        h('span', { textContent: `Coins earned ${s.coins} · wallet ● ${save.coins}` }),
+        h('span', { textContent: t('Best turn {n}', { n: save.bestTurn }) }),
+        h('span', { textContent: t('Best combo {n}', { n: save.bestCombo }) }),
+        h('span', {
+          textContent: t('Coins earned {n} · wallet ● {wallet}', { n: s.coins, wallet: save.coins }),
+        }),
       ),
-      primary('Play again', showHelpers),
-      button('Shop', () => showShop(showHome), 'wide'),
-      button('Home', showHome, 'quiet'),
+      primary(t('Play again'), showHelpers),
+      button(t('Shop'), () => showShop(showHome), 'wide'),
+      button(t('Home'), showHome, 'quiet'),
     ),
     'over',
   )

@@ -1,5 +1,6 @@
 // What every brick, pickup and special ball does, for the Guide screen, the
 // first-seen hints and the run stats side panel.
+import { t } from './i18n'
 import { BOOSTS, modsOf, xpToNext } from './sim/boosts'
 import type { BoostId, RunState } from './sim/types'
 
@@ -61,14 +62,14 @@ const num = (n: number) => String(Math.round(n * 10) / 10)
 export function runStats(s: RunState, bestTurn: number): Array<[string, string]> {
   const mods = modsOf(s.boosts)
   return [
-    ['Turn', String(s.turn)],
-    ['Best turn', String(Math.max(bestTurn, s.turn))],
-    ['Balls', String(s.ballCount)],
-    ['Damage per hit', num(mods.damageMult)],
-    ['Crit chance', `${Math.round(mods.critChance * 100)}%`],
-    ['Combo', `${s.combo} (best ${s.bestCombo})`],
-    ['Level', `${s.level + 1} · ${Math.floor(s.xp)}/${xpToNext(s.level)} XP`],
-    ['Coins this run', String(s.coins)],
+    [t('Turn'), String(s.turn)],
+    [t('Best turn'), String(Math.max(bestTurn, s.turn))],
+    [t('Balls'), String(s.ballCount)],
+    [t('Damage per hit'), num(mods.damageMult)],
+    [t('Crit chance'), `${Math.round(mods.critChance * 100)}%`],
+    [t('Combo'), t('{n} (best {best})', { n: s.combo, best: s.bestCombo })],
+    [t('Level'), `${s.level + 1} · ${Math.floor(s.xp)}/${xpToNext(s.level)} XP`],
+    [t('Coins this run'), String(s.coins)],
   ]
 }
 
@@ -78,28 +79,31 @@ const pct = (n: number) => `${Math.round(n * 100)}%`
 export function boostDetail(id: BoostId, n: number): string {
   const m = modsOf({ [id]: n })
   const now: Record<BoostId, string> = {
-    damage: `Balls deal +${pct(0.25 * n)} damage (×${m.damageMult} per hit).`,
-    balls: `You got +${2 * n} balls in total from this boost.`,
-    coins: `Coins from bricks and pickups are worth +${pct(0.3 * n)}.`,
-    speed: `Balls fly +${pct(0.15 * n)} faster.`,
-    pierce: 'Each ball passes straight through the first brick it hits (still damaging it).',
-    crit: `${pct(m.critChance)} of hits are critical and deal 3× damage.`,
-    bouncy: 'Each wall bounce adds +1 damage to that ball for the rest of the volley.',
-    double: 'Your volley is doubled for 3 turns each time you pick this.',
-    fireball: `Every ${m.fireEvery}th ball is a fireball that burns through bricks for 2× damage.`,
-    bombball: `Every ${m.bombEvery}th ball explodes on its first hit, damaging a 3×3 area.`,
-    twin: 'Each ball splits in two on its first brick hit.',
-    big: `Balls are +${pct(0.2 * n)} bigger, so they hit more.`,
-    lightning: `${pct(m.zapChance)} of hits arc to the 2 nearest bricks.`,
-    aftershock: 'When a brick breaks, its 4 neighbours take a hit too.',
-    magnet: 'Pickups up to a whole cell away fly to your balls.',
-    midas: `Every brick you break pays +${n} coin${n > 1 ? 's' : ''}.`,
-    keeper: `Your combo survives ${1.5 + n} s without a hit (normally 1.5 s).`,
-    brain: `You earn +${pct(0.3 * n)} XP, so you level up faster.`,
-    glass: 'All damage ×2, but bricks drop an extra row every 10th turn.',
-    eagle: `Your aim guide is +${pct(0.5 * n)} longer, so you can plan more bounces.`,
-    secondWind: 'Once per run, a brick reaching the bottom wipes its row instead of ending the run.',
+    damage: t('Balls deal +{p} damage (×{m} per hit).', { p: pct(0.25 * n), m: m.damageMult }),
+    balls: t('You got +{n} balls in total from this boost.', { n: 2 * n }),
+    coins: t('Coins from bricks and pickups are worth +{p}.', { p: pct(0.3 * n) }),
+    speed: t('Balls fly +{p} faster.', { p: pct(0.15 * n) }),
+    pierce: t('Each ball passes straight through the first brick it hits (still damaging it).'),
+    crit: t('{p} of hits are critical and deal 3× damage.', { p: pct(m.critChance) }),
+    bouncy: t('Each wall bounce adds +1 damage to that ball for the rest of the volley.'),
+    double: t('Your volley is doubled for 3 turns each time you pick this.'),
+    fireball: t('Every {n}th ball is a fireball that burns through bricks for 2× damage.', {
+      n: m.fireEvery,
+    }),
+    bombball: t('Every {n}th ball explodes on its first hit, damaging a 3×3 area.', { n: m.bombEvery }),
+    twin: t('Each ball splits in two on its first brick hit.'),
+    big: t('Balls are +{p} bigger, so they hit more.', { p: pct(0.2 * n) }),
+    lightning: t('{p} of hits arc to the 2 nearest bricks.', { p: pct(m.zapChance) }),
+    aftershock: t('When a brick breaks, its 4 neighbours take a hit too.'),
+    magnet: t('Pickups up to a whole cell away fly to your balls.'),
+    midas:
+      n > 1 ? t('Every brick you break pays +{n} coins.', { n }) : t('Every brick you break pays +1 coin.'),
+    keeper: t('Your combo survives {s} s without a hit (normally 1.5 s).', { s: 1.5 + n }),
+    brain: t('You earn +{p} XP, so you level up faster.', { p: pct(0.3 * n) }),
+    glass: t('All damage ×2, but bricks drop an extra row every 10th turn.'),
+    eagle: t('Your aim guide is +{p} longer, so you can plan more bounces.', { p: pct(0.5 * n) }),
+    secondWind: t('Once per run, a brick reaching the bottom wipes its row instead of ending the run.'),
   }
   const max = BOOSTS[id].max
-  return now[id] + (max < 99 ? ` (level ${n} of ${max})` : '')
+  return now[id] + (max < 99 ? t(' (level {n} of {max})', { n, max }) : '')
 }

@@ -4,17 +4,18 @@ import { h } from '@forge/ui/dom'
 import { FONT, theme } from '@forge/ui/theme'
 import { ArenaPainter, type ArenaId } from './arenas'
 import { drawBall, IMPACT_STYLE, TRAIL_STYLE } from './cosmetics'
+import { t } from './i18n'
 import type { Save } from './save'
 import { buy, CATALOG, equip, type ItemKind, type ShopItem } from './shop'
 import { BOARD_W } from './sim/config'
 import { BRICK_SOUNDS } from './sounds'
 
 const TABS: Array<[ItemKind, string]> = [
-  ['ball', 'Balls'],
-  ['trail', 'Trails'],
-  ['arena', 'Arenas'],
-  ['impact', 'Impacts'],
-  ['helper', 'Helpers'],
+  ['ball', t('Balls')],
+  ['trail', t('Trails')],
+  ['arena', t('Arenas')],
+  ['impact', t('Impacts')],
+  ['helper', t('Helpers')],
 ]
 
 const PREVIEW = 72
@@ -130,14 +131,14 @@ export function shopPanel(getSave: () => Save, setSave: (s: Save) => void, onBac
         action = h('button', {
           class: 'pf-btn quiet',
           type: 'button',
-          textContent: 'Equipped',
+          textContent: t('Equipped'),
           disabled: true,
         })
       } else if (owned) {
         action = h('button', {
           class: 'pf-btn',
           type: 'button',
-          textContent: 'Equip',
+          textContent: t('Equip'),
           onclick: () => {
             setSave(equip(getSave(), it.id))
             render()
@@ -159,15 +160,19 @@ export function shopPanel(getSave: () => Save, setSave: (s: Save) => void, onBac
             render()
           },
         })
-        action.setAttribute('aria-label', `Buy ${it.name} for ${it.price} coins`)
+        action.setAttribute(
+          'aria-label',
+          t('Buy {name} for {price} coins', { name: t(it.name), price: it.price }),
+        )
       }
       return h(
         'div',
         { class: 'bs-item' },
         preview(it),
-        h('strong', { textContent: it.name }),
-        it.text && h('span', { class: 'bs-item-text', textContent: it.text }),
-        it.helper && h('span', { class: 'bs-item-text', textContent: `Owned: ${save.helpers[it.helper]}` }),
+        h('strong', { textContent: t(it.name) }),
+        it.text && h('span', { class: 'bs-item-text', textContent: t(it.text) }),
+        it.helper &&
+          h('span', { class: 'bs-item-text', textContent: t('Owned: {n}', { n: save.helpers[it.helper] }) }),
         action,
       )
     })
@@ -175,12 +180,12 @@ export function shopPanel(getSave: () => Save, setSave: (s: Save) => void, onBac
       h(
         'div',
         { class: 'bs-shop-head' },
-        h('h2', { class: 'pf-heading', textContent: 'Shop' }),
+        h('h2', { class: 'pf-heading', textContent: t('Shop') }),
         h('span', { class: 'bs-wallet', textContent: `● ${save.coins}` }),
       ),
       tabs,
       h('div', { class: 'bs-items' }, ...items),
-      h('button', { class: 'pf-btn quiet', type: 'button', textContent: 'Back', onclick: onBack }),
+      h('button', { class: 'pf-btn quiet', type: 'button', textContent: t('Back'), onclick: onBack }),
     )
   }
   render()

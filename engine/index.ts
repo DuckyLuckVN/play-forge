@@ -16,6 +16,17 @@ export {
 } from './audio/sound'
 export { ARCADE, LOUNGE } from './audio/tracks'
 export { Emitter } from './core/emitter'
+export {
+  detectLang,
+  format,
+  getLang,
+  LANGS,
+  setLang,
+  translator,
+  type Dictionary,
+  type Lang,
+  type Params,
+} from './core/i18n'
 export { bindInput, type Direction, type InputBindings } from './core/input'
 export { startRenderLoop, startTicker } from './core/loop'
 export { random, randomInt, randomSeed, type RngState } from './core/rng'

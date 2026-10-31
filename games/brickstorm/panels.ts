@@ -3,6 +3,7 @@ import { h } from '@forge/ui/dom'
 import { theme } from '@forge/ui/theme'
 import { drawBall } from './cosmetics'
 import { GUIDE, runStats } from './guide'
+import { t } from './i18n'
 import { BOOST_ICONS } from './icons'
 import { drawKindGlyph, drawPickupGlyph } from './render'
 import type { Helpers } from './save'
@@ -21,7 +22,7 @@ export function statsPanel(s: RunState, bestTurn: number): HTMLElement {
   return h(
     'div',
     { class: 'bs-side-block' },
-    h('h3', { textContent: 'Run' }),
+    h('h3', { textContent: t('Run') }),
     h(
       'dl',
       { class: 'bs-stats-list' },
@@ -38,8 +39,8 @@ export function navPanel(onShop: () => void, onGuide: () => void): HTMLElement {
   return h(
     'div',
     { class: 'bs-side-nav' },
-    h('button', { class: 'pf-btn primary', type: 'button', textContent: 'Shop', onclick: onShop }),
-    h('button', { class: 'pf-btn', type: 'button', textContent: '? Guide', onclick: onGuide }),
+    h('button', { class: 'pf-btn primary', type: 'button', textContent: t('Shop'), onclick: onShop }),
+    h('button', { class: 'pf-btn', type: 'button', textContent: t('? Guide'), onclick: onGuide }),
   )
 }
 
@@ -53,7 +54,7 @@ function infoButton(label: string, onInfo: () => void): HTMLButtonElement {
       onInfo()
     },
   })
-  b.setAttribute('aria-label', `About ${label}`)
+  b.setAttribute('aria-label', t('About {name}', { name: label }))
   return b
 }
 
@@ -63,28 +64,32 @@ export function boostsPanel(s: RunState, onInfo: (id: BoostId) => void): HTMLEle
   return h(
     'div',
     { class: 'bs-side-block' },
-    h('h3', { textContent: `Boosts${owned.length ? ` · ${owned.length}` : ''}` }),
+    h('h3', { textContent: owned.length ? t('Boosts · {n}', { n: owned.length }) : t('Boosts') }),
     owned.length
       ? h(
           'div',
           { class: 'bs-tiles' },
           ...owned.map((id) => {
             const b = BOOSTS[id]
+            const name = t(b.name)
             const art = h('span', { class: 'bs-tile-icon' })
             art.innerHTML = BOOST_ICONS[id]
             const tile = h(
               'button',
               { class: `bs-tile ${b.rarity}`, type: 'button', onclick: () => onInfo(id) },
               art,
-              h('span', { class: 'bs-tile-name', textContent: b.name }),
+              h('span', { class: 'bs-tile-name', textContent: name }),
               h('span', { class: 'bs-badge', textContent: `×${s.boosts[id]}` }),
-              infoButton(b.name, () => onInfo(id)),
+              infoButton(name, () => onInfo(id)),
             )
-            tile.setAttribute('aria-label', `${b.name} level ${s.boosts[id]}. Show details`)
+            tile.setAttribute(
+              'aria-label',
+              t('{name} level {n}. Show details', { name, n: s.boosts[id] ?? 0 }),
+            )
             return tile
           }),
         )
-      : h('p', { class: 'bs-side-empty', textContent: 'Level up to pick boosts.' }),
+      : h('p', { class: 'bs-side-empty', textContent: t('Level up to pick boosts.') }),
   )
 }
 
@@ -99,7 +104,7 @@ export function helpersPanel(
   return h(
     'div',
     { class: 'bs-side-block' },
-    h('h3', { textContent: 'Helpers' }),
+    h('h3', { textContent: t('Helpers') }),
     owned.length
       ? h(
           'div',
@@ -113,25 +118,33 @@ export function helpersPanel(
                 onclick: () => (canUse ? onTap(a.id) : onInfo(a.id)),
               },
               h('span', { class: 'bs-tile-icon glyph', textContent: a.glyph }),
-              h('span', { class: 'bs-tile-name', textContent: a.name }),
+              h('span', { class: 'bs-tile-name', textContent: t(a.name) }),
               h('span', { class: 'bs-badge', textContent: `×${helpers[a.id]}` }),
-              infoButton(a.name, () => onInfo(a.id)),
+              infoButton(t(a.name), () => onInfo(a.id)),
             )
-            tile.setAttribute('aria-label', `${canUse ? 'Use' : 'About'} ${a.name} (${helpers[a.id]} left)`)
+            tile.setAttribute(
+              'aria-label',
+              canUse
+                ? t('Use {name} ({n} left)', { name: t(a.name), n: helpers[a.id] })
+                : t('About {name} ({n} left)', { name: t(a.name), n: helpers[a.id] }),
+            )
             return tile
           }),
         )
       : h('p', {
           class: 'bs-side-empty',
-          textContent: 'Buy helpers in the shop, then use them here while aiming.',
+          textContent: t('Buy helpers in the shop, then use them here while aiming.'),
         }),
     owned.length > 0 &&
       !canUse &&
-      h('p', { class: 'bs-side-empty', textContent: 'Helpers can be used while aiming.' }),
+      h('p', { class: 'bs-side-empty', textContent: t('Helpers can be used while aiming.') }),
     (helpers.reroll > 0 || helpers.revive > 0) &&
       h('p', {
         class: 'bs-side-empty',
-        textContent: `Tokens: ${helpers.reroll} reroll · ${helpers.revive} revive (used automatically)`,
+        textContent: t('Tokens: {reroll} reroll · {revive} revive (used automatically)', {
+          reroll: helpers.reroll,
+          revive: helpers.revive,
+        }),
       }),
   )
 }
@@ -181,14 +194,14 @@ export function guidePanel(onBack: () => void): HTMLElement {
   const back = h('button', {
     class: 'pf-btn primary wide',
     type: 'button',
-    textContent: 'Got it',
+    textContent: t('Got it'),
     onclick: onBack,
   })
   back.autofocus = true
   return h(
     'div',
     { class: 'pf-panel wide bs-shop' },
-    h('h2', { class: 'pf-heading', textContent: 'Guide' }),
+    h('h2', { class: 'pf-heading', textContent: t('Guide') }),
     h(
       'ul',
       { class: 'bs-guide' },
@@ -197,7 +210,7 @@ export function guidePanel(onBack: () => void): HTMLElement {
           'li',
           {},
           sample(g.id),
-          h('div', {}, h('strong', { textContent: g.name }), h('span', { textContent: g.text })),
+          h('div', {}, h('strong', { textContent: t(g.name) }), h('span', { textContent: t(g.text) })),
         ),
       ),
     ),

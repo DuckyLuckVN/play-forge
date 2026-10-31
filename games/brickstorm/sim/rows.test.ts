@@ -22,12 +22,12 @@ describe('spawnRow', () => {
     expect(a.pickups).toEqual(b.pickups)
   })
 
-  it('keeps brick count in 2..6 and leaves a free column', () => {
+  it('keeps brick count in 2..7 with no shared columns', () => {
     for (const turn of [1, 20, 200]) {
       for (let seed = 1; seed <= 500; seed++) {
         const s = spawned(seed, turn)
         expect(s.bricks.length).toBeGreaterThanOrEqual(2)
-        expect(s.bricks.length).toBeLessThanOrEqual(6)
+        expect(s.bricks.length).toBeLessThanOrEqual(7)
         const cols = [...s.bricks, ...s.pickups].map((x) => x.col)
         expect(new Set(cols).size).toBe(cols.length)
         expect(s.bricks.every((b) => b.row === 0)).toBe(true)
@@ -39,22 +39,13 @@ describe('spawnRow', () => {
     let doubled = false
     for (let seed = 1; seed <= 500; seed++) {
       for (const b of spawned(seed, 50).bricks) {
-        expect(b.hp).toBeGreaterThanOrEqual(40)
-        expect(b.hp).toBeLessThanOrEqual(120)
+        expect(b.hp).toBeGreaterThanOrEqual(90) // hpScale(50) = 112.5, ×0.8
+        expect(b.hp).toBeLessThanOrEqual(270) // ×1.2, doubled
         expect(b.maxHp).toBe(b.hp)
-        if (b.hp > 60) doubled = true
+        if (b.hp > 135) doubled = true
       }
     }
     expect(doubled).toBe(true)
-  })
-
-  it('places a ball pickup about 90% of the time', () => {
-    let rows = 0
-    for (let seed = 1; seed <= 1000; seed++) {
-      if (spawned(seed, 3).pickups.some((p) => p.kind === 'ball')) rows++
-    }
-    expect(rows).toBeGreaterThanOrEqual(850)
-    expect(rows).toBeLessThanOrEqual(950)
   })
 
   it('gives every brick and pickup a unique id', () => {

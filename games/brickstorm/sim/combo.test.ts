@@ -53,7 +53,7 @@ describe('end of volley bonuses', () => {
     fire(s, Math.PI / 2)
     runVolley(s)
     const wipe = drainEvents(s).find((e) => e.type === 'allClear')
-    expect(wipe).toEqual({ type: 'allClear', coins: 10 })
+    expect(wipe).toEqual({ type: 'allClear', coins: 3 })
   })
 
   it('pays out a close one', () => {

@@ -33,10 +33,13 @@ describe('magnet', () => {
 
 describe('midas', () => {
   it('adds coins per kill', () => {
-    const s = empty()
-    s.boosts = { midas: 2 }
-    killBrick(s, brick(s, 0, 0, 1), 0)
-    expect(s.coins).toBe(3)
+    const coinsFor = (midas: number) => {
+      const s = empty(4)
+      if (midas) s.boosts = { midas }
+      killBrick(s, brick(s, 0, 0, 1), 0)
+      return s.coins
+    }
+    expect(coinsFor(2) - coinsFor(0)).toBe(2)
   })
 })
 

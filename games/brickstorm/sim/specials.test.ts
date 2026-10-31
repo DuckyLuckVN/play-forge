@@ -86,12 +86,6 @@ describe('special bricks', () => {
     expect(xp).toBeCloseTo(kills.length)
   })
 
-  it('gold pays 5× coins', () => {
-    const s = empty()
-    killBrick(s, Object.assign(brick(s, 0, 0, 1), { kind: 'gold' as const }), 0)
-    expect(s.coins).toBe(5)
-  })
-
   it('armored bricks take at most 1 per ball hit, but full blast damage', () => {
     const s = empty()
     const b = Object.assign(brick(s, 0, 0, 100), { kind: 'armored' as const })

@@ -101,7 +101,7 @@ npm run build        # dist/ (or: npm run build -- snake)
 
 First time running browser tests: `npx playwright install chromium`.
 
-The end-to-end tests drive real pages: menus, the home button, saved volume, a solo game from start to game over, the single file opened straight from disk, and multiplayer (ready-up, guest input, reloads, leaving). Multiplayer tests use `?net=local`, so they need no internet and give the same result every run. CI runs them on every push and pull request, and the site only deploys when they pass.
+The end-to-end tests drive real pages: menus, the home button, saved volume, a solo game from start to game over, the single file opened straight from disk, and multiplayer (ready-up, guest input, reloads, leaving). Multiplayer tests use `?net=local`, so they need no internet and give the same result every run. They are not run in CI; run them locally before a release.
 
 To test multiplayer locally without the internet, open the game in two tabs with `?net=local`, e.g. `http://localhost:5173/games/snake/?net=local`.
 

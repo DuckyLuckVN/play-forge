@@ -203,7 +203,7 @@ function showHome() {
       save.bestTurn > 0 && h('p', { class: 'bs-best', textContent: `Best turn ${save.bestTurn}` }),
       saved && primary(`Continue · Turn ${saved.state.turn}`, resumeRun),
       saved ? button('New run', confirmNewRun, 'wide') : primary('Play', showHelpers),
-      button('Shop', showShop, 'wide'),
+      button('Shop', () => showShop(showHome), 'wide'),
       h('p', { class: 'pf-note', textContent: CONTROLS }),
     ),
     'home',
@@ -231,7 +231,7 @@ function confirmNewRun() {
   )
 }
 
-function showShop(onBack: () => void = showHome) {
+function showShop(onBack: () => void) {
   show(
     shopPanel(
       () => save,
@@ -691,7 +691,7 @@ function showResults(s: RunState) {
         h('span', { textContent: `Coins earned ${s.coins} · wallet ● ${save.coins}` }),
       ),
       primary('Play again', showHelpers),
-      button('Shop', showShop, 'wide'),
+      button('Shop', () => showShop(showHome), 'wide'),
       button('Home', showHome, 'quiet'),
     ),
     'over',

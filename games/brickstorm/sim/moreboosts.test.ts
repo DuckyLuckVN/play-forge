@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { modsOf, SYNERGIES } from './boosts'
-import { DANGER_ROW, TICK } from './config'
+import { BOOSTS, modsOf, SYNERGIES } from './boosts'
+import { DANGER_ROW, GUIDE_LENGTH, TICK } from './config'
 import { killBrick } from './damage'
 import { drainEvents, fire, step } from './run'
 import { brick, empty, runVolley } from './testing'
@@ -107,5 +107,14 @@ describe('synergies', () => {
     for (const [a, partners] of Object.entries(SYNERGIES)) {
       for (const b of partners ?? []) expect(SYNERGIES[b as keyof typeof SYNERGIES], `${b}→${a}`).toContain(a)
     }
+  })
+})
+
+describe('Eagle Eye', () => {
+  it('makes the aim guide 50% longer per level, up to 3 levels', () => {
+    expect(modsOf({}).guideLength).toBe(GUIDE_LENGTH)
+    expect(modsOf({ eagle: 1 }).guideLength).toBe(GUIDE_LENGTH * 1.5)
+    expect(modsOf({ eagle: 3 }).guideLength).toBe(GUIDE_LENGTH * 2.5)
+    expect(BOOSTS.eagle).toMatchObject({ rarity: 'rare', max: 3 })
   })
 })

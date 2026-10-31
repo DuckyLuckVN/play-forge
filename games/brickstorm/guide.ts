@@ -97,6 +97,7 @@ export function boostDetail(id: BoostId, n: number): string {
     keeper: `Your combo survives ${1.5 + n} s without a hit (normally 1.5 s).`,
     brain: `You earn +${pct(0.3 * n)} XP, so you level up faster.`,
     glass: 'All damage ×2, but bricks drop an extra row every 10th turn.',
+    eagle: `Your aim guide is +${pct(0.5 * n)} longer, so you can plan more bounces.`,
     secondWind: 'Once per run, a brick reaching the bottom wipes its row instead of ending the run.',
   }
   const max = BOOSTS[id].max

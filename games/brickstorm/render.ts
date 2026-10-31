@@ -6,14 +6,13 @@ import { FONT, theme } from '@forge/ui/theme'
 import { ArenaPainter, type ArenaId } from './arenas'
 import { drawBall, TRAIL_STYLE } from './cosmetics'
 import { COIN_FLY, hpColor, type Juice } from './juice'
-import { xpToNext } from './sim/boosts'
+import { modsOf, xpToNext } from './sim/boosts'
 import { BALL_R, boardSize, CELL, COLS, COMBO_TIERS, PICKUP_R, ROWS, TOP } from './sim/config'
 import { traceGuide } from './sim/physics'
 import { dims, type Dims } from './sim/dims'
 import { brickRect, cellCenter } from './sim/rows'
 import type { BrickKind, PickupKind, Rect, RunState } from './sim/types'
 
-const GUIDE_LENGTH = 260
 const TRAIL = 4
 
 /** A glyph in the corner (or frame) that tells special bricks apart. */
@@ -235,7 +234,7 @@ export class BoardRenderer {
       s.launchX,
       this.d.floorY - BALL_R,
       aim,
-      GUIDE_LENGTH,
+      modsOf(s.boosts).guideLength,
       s.bricks.map(brickRect),
       this.d.boardW,
       this.d.floorY,

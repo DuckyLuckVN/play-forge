@@ -46,5 +46,8 @@ export const BOOST_ICONS: Record<BoostId, string> = {
   glass: svg(
     '<path d="M18 6h20l-4 20a6 6 0 0 1-12 0z"/><path d="M28 32v14M18 48h20"/><path d="M24 14l6 6"/>',
   ),
+  eagle: svg(
+    '<path d="M4 28c8-10 16-14 24-14s16 4 24 14c-8 10-16 14-24 14S12 38 4 28z"/><circle cx="28" cy="28" r="6"/><path d="M28 6v4M28 46v4"/>',
+  ),
   secondWind: svg('<path d="M6 20h26a6 6 0 1 0-6-6"/><path d="M6 30h36a6 6 0 1 1-6 6"/><path d="M6 40h18"/>'),
 }

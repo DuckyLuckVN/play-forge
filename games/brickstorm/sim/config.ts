@@ -21,6 +21,8 @@ export const BRICK_INSET = 2
 export const BALL_R = 7
 export const PICKUP_R = 12
 /** Units per second at 1× speed. */
+/** Path length of the dotted aim guide, before Eagle Eye. */
+export const GUIDE_LENGTH = 260
 export const BALL_SPEED = 620
 export const TICK = 1 / 120
 /** Seconds between balls in a volley. */

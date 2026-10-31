@@ -76,6 +76,7 @@ export type BoostId =
   | 'brain'
   | 'glass'
   | 'secondWind'
+  | 'eagle'
 
 export type SimEvent =
   | { type: 'fire' }

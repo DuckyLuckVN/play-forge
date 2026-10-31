@@ -1,7 +1,7 @@
 import '@forge/ui/base.css'
 import './brickstorm.css'
 import { playMusic } from '@forge/audio/music'
-import { playSound, UI_SOUNDS } from '@forge/audio/sound'
+import { playSound, setMusicDuck, UI_SOUNDS } from '@forge/audio/sound'
 import { ARCADE, LOUNGE } from '@forge/audio/tracks'
 import { startRenderLoop } from '@forge/core/loop'
 import { randomSeed } from '@forge/core/rng'
@@ -274,6 +274,7 @@ startRenderLoop((dt, time) => {
     if (s.phase === 'over' && panel !== 'over') finish(s)
   }
   recallBtn.disabled = !(s && canRecall(s))
+  setMusicDuck(s && s.phase === 'volley' && !paused ? 0.6 : 1)
   particles.update(dt)
   shake.update(dt)
   juice.update(dt)

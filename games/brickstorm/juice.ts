@@ -1,4 +1,4 @@
-import { playSound, type Sound } from '@forge/audio/sound'
+import { playSound, type Sound, type Tone } from '@forge/audio/sound'
 import { celebrate } from '@forge/fx/confetti'
 import type { Particles } from '@forge/fx/particles'
 import type { Shake } from '@forge/fx/shake'
@@ -14,6 +14,15 @@ export function comboPitch(combo: number): number {
   const i = Math.max(0, combo - 1)
   const semis = PENTA[i % 5] + 12 * Math.floor((i % 15) / 5)
   return 523.25 * 2 ** (semis / 12)
+}
+
+/** A ball-brick hit: the combo note plus a soft thump an octave down. */
+export function hitSound(combo: number): Tone[] {
+  const f = comboPitch(combo)
+  return [
+    { freq: f, dur: 0.06, wave: 'square', vol: 0.45 },
+    { freq: f / 2, dur: 0.05, wave: 'triangle', vol: 0.3 },
+  ]
 }
 
 const HEAT = ['#5ab8ff', '#b48cff', '#ff9f43', theme.coral.toLowerCase()]
@@ -55,15 +64,17 @@ export class Juice {
     switch (e.type) {
       case 'fire':
         return playSound(BRICK_SOUNDS.fire)
+      case 'launch':
+        return this.play('launch', BRICK_SOUNDS.launch)
       case 'hit': {
-        this.play('hit', { freq: comboPitch(e.combo), dur: 0.06, wave: 'square', vol: 0.25 })
+        this.play('hit', hitSound(e.combo))
         if (e.crit) this.particles.text(e.x, e.y, 'CRIT', { color: theme.yolk, size: 16 })
         return
       }
       case 'kill':
         this.particles.burst(e.x, e.y, { count: 10, color: hpColor(e.maxHp, this.turn), speed: 160 })
         this.shake.add(0.08)
-        return this.play('kill', BRICK_SOUNDS.kill, 0.6)
+        return this.play('kill', BRICK_SOUNDS.kill, 0.8)
       case 'pickup':
         this.particles.burst(e.x, e.y, { count: 8, color: e.kind === 'ball' ? theme.chalk : theme.yolk })
         return this.play(e.kind, e.kind === 'ball' ? BRICK_SOUNDS.pickupBall : BRICK_SOUNDS.pickupCoin)

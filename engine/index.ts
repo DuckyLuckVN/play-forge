@@ -7,6 +7,7 @@ export {
   onAudioSettingsChange,
   playSound,
   setAudioSettings,
+  setMusicDuck,
   setMuted,
   UI_SOUNDS,
   type AudioSettings,

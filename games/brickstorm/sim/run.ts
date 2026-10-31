@@ -108,6 +108,7 @@ export function step(s: RunState): void {
     const queued = s.balls.find((b) => b.status === 'queued')
     if (!queued) break
     queued.status = 'flying'
+    s.events.push({ type: 'launch' })
     s.fireTimer += FIRE_GAP
   }
 

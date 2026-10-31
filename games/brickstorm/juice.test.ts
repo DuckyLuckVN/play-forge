@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { playSound } from '@forge/audio/sound'
 import { theme } from '@forge/ui/theme'
-import { comboPitch, hpColor, Juice } from './juice'
+import { comboPitch, hitSound, hpColor, Juice } from './juice'
 
 vi.mock('@forge/audio/sound', () => ({ playSound: vi.fn() }))
 vi.mock('@forge/fx/confetti', () => ({ celebrate: vi.fn() }))
@@ -16,6 +16,16 @@ describe('comboPitch', () => {
     expect(comboPitch(2)).toBeGreaterThan(comboPitch(1))
     expect(comboPitch(6)).toBeCloseTo(1046.5)
     expect(comboPitch(16)).toBeCloseTo(comboPitch(1))
+  })
+})
+
+describe('hitSound', () => {
+  it('layers a note with a thump an octave down', () => {
+    const s = hitSound(7)
+    expect(s).toHaveLength(2)
+    expect(s[0].freq).toBeCloseTo(comboPitch(7))
+    expect(s[0].vol).toBe(0.45)
+    expect(s[1].freq).toBeCloseTo(comboPitch(7) / 2)
   })
 })
 
@@ -58,5 +68,12 @@ describe('Juice', () => {
       j.handle({ type: 'pickup', kind: 'coin', x: 0, y: 0 })
     }
     expect(playSound).toHaveBeenCalledTimes(3)
+  })
+
+  it('plays a launch sound when a volley fires', () => {
+    const j = juice()
+    vi.mocked(playSound).mockClear()
+    j.handle({ type: 'fire' })
+    expect(playSound).toHaveBeenCalledTimes(1)
   })
 })

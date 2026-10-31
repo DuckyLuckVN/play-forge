@@ -38,9 +38,7 @@ export function updateReadme() {
     '',
     '| Game | Players | Description |',
     '| --- | --- | --- |',
-    ...games.map(
-      (g) => `| ${link(`games/${g.id}/`, g.title)} | ${g.players} | ${g.description} |`,
-    ),
+    ...games.map((g) => `| ${link(`games/${g.id}/`, g.title)} | ${g.players} | ${g.description} |`),
     END,
   ].join('\n')
 

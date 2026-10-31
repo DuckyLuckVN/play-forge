@@ -15,7 +15,11 @@ interface GameEntry {
   players: string
 }
 
-const covers = import.meta.glob<string>('../games/*/cover.svg', { eager: true, query: '?raw', import: 'default' })
+const covers = import.meta.glob<string>('../games/*/cover.svg', {
+  eager: true,
+  query: '?raw',
+  import: 'default',
+})
 
 applyTheme()
 // Music starts with the first click or key press (browsers block autoplay).
@@ -67,7 +71,9 @@ document.body.append(
     h(
       'ol',
       { class: 'lc-steps' },
-      ...steps.map(([title, text]) => h('li', {}, h('strong', { textContent: title }), h('span', { textContent: text }))),
+      ...steps.map(([title, text]) =>
+        h('li', {}, h('strong', { textContent: title }), h('span', { textContent: text })),
+      ),
     ),
   ),
 )

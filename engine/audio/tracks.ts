@@ -23,12 +23,7 @@ export const LOUNGE: Track = {
     {
       instrument: 'bass',
       vol: 0.8,
-      steps: bars(
-        'F2 - . F2 . . C3 .',
-        'E2 - . E2 . . B2 .',
-        'D2 - . D2 . . A2 .',
-        'C2 - . C2 . . G2 .',
-      ),
+      steps: bars('F2 - . F2 . . C3 .', 'E2 - . E2 . . B2 .', 'D2 - . D2 . . A2 .', 'C2 - . C2 . . G2 .'),
     },
     {
       instrument: 'pluck',

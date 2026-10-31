@@ -53,13 +53,24 @@ export class SnakeRenderer {
         const [x, y] = center(snake.body[0])
         this.ateAt.set(snake.id, this.time)
         this.fx.burst(x, y, { count: 14, color: [FOOD, color, '#fff'], speed: 150, life: 0.5, size: 5 })
-        this.fx.text(x, y - CELL * 0.6, '+1', { color: mine ? theme.chalk : color, size: mine ? 18 : 14, rise: 26 })
+        this.fx.text(x, y - CELL * 0.6, '+1', {
+          color: mine ? theme.chalk : color,
+          size: mine ? 18 : 14,
+          rise: 26,
+        })
       } else {
         this.corpses.push({ body: snake.body.map((p) => [...p] as Point), slot: snake.slot, at: this.time })
         snake.body.forEach((p, i) => {
           if (i % 2) return
           const [x, y] = center(p)
-          this.fx.burst(x, y, { count: 4, color: [color, '#fff'], speed: 110, life: 0.7, size: 6, shape: 'square' })
+          this.fx.burst(x, y, {
+            count: 4,
+            color: [color, '#fff'],
+            speed: 110,
+            life: 0.7,
+            size: 6,
+            shape: 'square',
+          })
         })
         this.shake.add(mine ? 0.65 : 0.25)
       }

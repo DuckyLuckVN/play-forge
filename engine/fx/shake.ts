@@ -8,7 +8,10 @@ export class Shake {
   private trauma = 0
   private time = 0
   /** Max offset in drawing units at full trauma. */
-  constructor(private maxOffset = 10, private decay = 1.6) {}
+  constructor(
+    private maxOffset = 10,
+    private decay = 1.6,
+  ) {}
 
   /** 0..1; small hits ≈ 0.2, big hits ≈ 0.6. */
   add(amount: number): void {

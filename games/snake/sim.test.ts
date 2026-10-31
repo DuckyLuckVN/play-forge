@@ -76,9 +76,17 @@ describe('snake simulation', () => {
     const state = createState(players(2), 1)
     state.food = []
     const y = 5
-    state.snakes[0].body = [[10, y], [9, y], [8, y]]
+    state.snakes[0].body = [
+      [10, y],
+      [9, y],
+      [8, y],
+    ]
     state.snakes[0].dir = 'right'
-    state.snakes[1].body = [[12, y], [13, y], [14, y]]
+    state.snakes[1].body = [
+      [12, y],
+      [13, y],
+      [14, y],
+    ]
     state.snakes[1].dir = 'left'
     step(state, [])
     expect(state.snakes.every((s) => !s.alive)).toBe(true)

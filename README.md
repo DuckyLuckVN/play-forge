@@ -82,7 +82,8 @@ Every page uses the same tokens and components, so a new game looks and behaves 
 | 2D | Canvas 2D (`engine/render2d`) | Zero dependencies, enough for grid/arcade games. Add **PixiJS** later for sprite-heavy games |
 | 3D | **three.js** (add when the first 3D game arrives, as `engine/render3d`) | Most mature WebGL/WebGPU library. The session/netcode layer is renderer-agnostic, so nothing else changes |
 | P2P | Trystero (Nostr strategy) | Serverless signalling, bundles into the single file |
-| Tests | Vitest | Game rules are pure functions, so they are easy to unit-test |
+| Tests | Vitest + Playwright | Game rules are pure functions (unit tests); Playwright drives real browsers through whole flows |
+| Code quality | ESLint + Prettier | Consistent style and early bug catching, checked in CI |
 
 ## Develop
 
@@ -90,9 +91,16 @@ Every page uses the same tokens and components, so a new game looks and behaves 
 npm install
 npm run dev          # http://localhost:5173 (launcher), /games/snake/
 npm test             # unit tests (rules, session, networked game over BroadcastChannel)
-npm run typecheck
+npm run test:e2e     # browser tests (Playwright) against the production build
+npm run lint         # ESLint
+npm run format       # Prettier (format:check in CI)
+npm run check        # typecheck + lint + format check + unit tests
 npm run build        # dist/ (or: npm run build -- snake)
 ```
+
+First time running browser tests: `npx playwright install chromium`.
+
+The end-to-end tests drive real pages: menus, the home button, saved volume, a solo game from start to game over, the single file opened straight from disk, and multiplayer (ready-up, guest input, reloads, leaving). Multiplayer tests use `?net=local`, so they need no internet and give the same result every run. CI runs them on every push and pull request, and the site only deploys when they pass.
 
 To test multiplayer locally without the internet, open the game in two tabs with `?net=local`, e.g. `http://localhost:5173/games/snake/?net=local`.
 

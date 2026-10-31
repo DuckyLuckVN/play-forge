@@ -97,7 +97,7 @@ interface SessionEvents<S> {
 }
 
 // Channel names are kept short: they are sent with every message.
-const CH = { hello: 'hello', ready: 'ready', lobby: 'lobby', input: 'in', state: 'st' } as const
+const CH = { hello: 'hello', bye: 'bye', ready: 'ready', lobby: 'lobby', input: 'in', state: 'st' } as const
 
 interface Hello {
   id: string
@@ -171,6 +171,15 @@ export class Session<S, I> {
           if (id) this.queueInput(id, input)
         }),
         t.onPeerLeave((peer) => this.onPeerLeave(peer)),
+        // Left on purpose: free the seat now instead of holding it.
+        t.on(CH.bye, (_: unknown, peer) => {
+          const id = this.playerOfPeer.get(peer)
+          this.playerOfPeer.delete(peer)
+          if (!id) return
+          clearTimeout(this.dropTimers.get(id))
+          this.dropTimers.delete(id)
+          this.removePlayer(id)
+        }),
       )
     } else {
       const hostWaitMs = opts.hostWaitMs ?? 30000
@@ -200,6 +209,14 @@ export class Session<S, I> {
           this.hostConnected = false
           this.events.emit('hostLost')
           this.hostGoneTimer = setTimeout(() => this.events.emit('hostGone'), hostWaitMs)
+        }),
+        // The host closed the room on purpose: no point waiting for it.
+        t.on(CH.bye, (_: unknown, peer) => {
+          if (peer !== this.hostPeer) return
+          this.hostConnected = false
+          if (this.hostGoneTimer) clearTimeout(this.hostGoneTimer)
+          this.hostGoneTimer = null
+          this.events.emit('hostGone')
         }),
       )
     }
@@ -289,14 +306,31 @@ export class Session<S, I> {
     this.broadcastLobby()
   }
 
+  /**
+   * Leave on purpose: tell the others (the host frees our seat at once;
+   * guests of a leaving host stop waiting), then disconnect.
+   */
+  leave(): void {
+    if (this.offline) return this.dispose()
+    this.transport.send(CH.bye, true)
+    // Give the goodbye a moment to go out before closing connections.
+    this.teardown()
+    setTimeout(() => this.transport.leave(), 250)
+  }
+
+  /** Disconnect without saying goodbye (like a closed tab or lost network). */
   dispose(): void {
+    this.teardown()
+    this.transport.leave()
+  }
+
+  private teardown() {
     this.stopSimulation()
     if (this.countdownTimer) clearTimeout(this.countdownTimer)
     if (this.hostGoneTimer) clearTimeout(this.hostGoneTimer)
     this.dropTimers.forEach(clearTimeout)
     this.unsubs.forEach((u) => u())
     this.events.clear()
-    this.transport.leave()
   }
 
   // ---------- Host ----------
@@ -312,7 +346,10 @@ export class Session<S, I> {
 
   private onHello(peer: string, msg: Hello) {
     const id = String(msg?.id ?? '').slice(0, 40)
-    const name = String(msg?.name ?? '').trim().slice(0, 16) || 'Player'
+    const name =
+      String(msg?.name ?? '')
+        .trim()
+        .slice(0, 16) || 'Player'
     if (!id || id === this.selfId) return
     const { players } = this.lobby
     const existing = players.find((p) => p.id === id)

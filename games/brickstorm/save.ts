@@ -183,6 +183,11 @@ export function bankRun(save: Save, s: RunState, banked: number): { save: Save; 
   }
 }
 
+/** Runs are saved only at turn boundaries, never mid-volley or after game over. */
+export function canBank(phase: RunState['phase']): boolean {
+  return phase === 'aim' || phase === 'pick' || phase === 'grow'
+}
+
 export function clearRun(save: Save): Save {
   return { ...save, run: null }
 }

@@ -1,0 +1,201 @@
+:root {
+  --pf-bg: #0e1116;
+  --pf-panel: #171b22;
+  --pf-line: #2a303b;
+  --pf-text: #e8ebf0;
+  --pf-muted: #8b93a1;
+  --pf-accent: #7ee081;
+  --pf-accent-ink: #0b1f0c;
+  --pf-danger: #ff7a7a;
+  color-scheme: dark;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--pf-bg);
+  color: var(--pf-text);
+  font: 15px/1.4 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  overflow: hidden;
+}
+
+.pf-stage {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+.pf-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgb(8 10 14 / 0.72);
+  backdrop-filter: blur(3px);
+  z-index: 10;
+}
+.pf-overlay[hidden] {
+  display: none;
+}
+
+.pf-panel {
+  width: min(360px, 100%);
+  background: var(--pf-panel);
+  border: 1px solid var(--pf-line);
+  border-radius: 14px;
+  padding: 22px;
+  display: grid;
+  gap: 14px;
+  box-shadow: 0 20px 60px rgb(0 0 0 / 0.45);
+}
+
+.pf-title {
+  margin: 0;
+  font-size: 26px;
+  letter-spacing: 0.02em;
+}
+
+.pf-sub {
+  margin: -8px 0 0;
+  color: var(--pf-muted);
+  font-size: 13px;
+}
+
+.pf-label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--pf-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.pf-input {
+  font: inherit;
+  color: var(--pf-text);
+  background: var(--pf-bg);
+  border: 1px solid var(--pf-line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  outline: none;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.pf-input:focus {
+  border-color: var(--pf-accent);
+}
+.pf-code {
+  text-transform: uppercase;
+  letter-spacing: 0.25em;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+.pf-row {
+  display: flex;
+  gap: 8px;
+}
+.pf-row > * {
+  flex: 1;
+  min-width: 0;
+}
+
+.pf-btn {
+  font: inherit;
+  font-weight: 600;
+  color: var(--pf-text);
+  background: transparent;
+  border: 1px solid var(--pf-line);
+  border-radius: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+.pf-btn:hover:not(:disabled) {
+  border-color: var(--pf-muted);
+}
+.pf-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.pf-btn.primary {
+  background: var(--pf-accent);
+  border-color: var(--pf-accent);
+  color: var(--pf-accent-ink);
+}
+.pf-btn.ghost {
+  border-color: transparent;
+  color: var(--pf-muted);
+}
+
+.pf-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--pf-muted);
+  font-size: 12px;
+}
+.pf-divider::before,
+.pf-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--pf-line);
+}
+
+.pf-room-code {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 30px;
+  letter-spacing: 0.3em;
+  text-align: center;
+  padding: 8px 0 4px;
+}
+
+.pf-players {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.pf-players li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--pf-bg);
+}
+.pf-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  flex: none;
+}
+.pf-tag {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--pf-muted);
+}
+
+.pf-status {
+  margin: 0;
+  color: var(--pf-muted);
+  font-size: 13px;
+  text-align: center;
+}
+.pf-status.error {
+  color: var(--pf-danger);
+}
+
+.pf-result {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+}

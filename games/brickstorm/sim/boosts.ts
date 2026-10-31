@@ -1,4 +1,5 @@
 import { random } from '@forge/core/rng'
+import { BALL_R } from './config'
 import type { BoostId, RunState } from './types'
 
 export type Rarity = 'common' | 'rare' | 'epic'
@@ -12,6 +13,16 @@ export const BOOSTS: Record<BoostId, { name: string; text: string; rarity: Rarit
   crit: { name: 'Lucky Strike', text: '+10% crit chance (crits deal 3×)', rarity: 'rare', max: 3 },
   bouncy: { name: 'Rubber Walls', text: '+1 damage per wall bounce, stacking', rarity: 'epic', max: 1 },
   double: { name: 'Double Down', text: 'Double your balls for the next 3 volleys', rarity: 'epic', max: 99 },
+  fireball: {
+    name: 'Fireball',
+    text: 'Every 8th ball is a fireball that burns through bricks',
+    rarity: 'rare',
+    max: 3,
+  },
+  bombball: { name: 'Bomb Ball', text: 'Every 12th ball explodes on its first hit', rarity: 'epic', max: 2 },
+  twin: { name: 'Twin Shot', text: 'Balls split in two on their first hit', rarity: 'rare', max: 1 },
+  big: { name: 'Big Balls', text: '+20% ball size', rarity: 'common', max: 3 },
+  lightning: { name: 'Chain Lightning', text: '15% of hits arc to 2 nearby bricks', rarity: 'rare', max: 3 },
 }
 
 const WEIGHT: Record<Rarity, number> = { common: 60, rare: 30, epic: 10 }
@@ -27,6 +38,12 @@ export function modsOf(boosts: Partial<Record<BoostId, number>>) {
     pierce: n('pierce') ? 1 : 0,
     critChance: 0.1 * n('crit'),
     bouncy: n('bouncy') > 0,
+    /** Every Nth ball is a fireball / bomb (0 = never). */
+    fireEvery: [0, 8, 6, 4][n('fireball')] ?? 4,
+    bombEvery: [0, 12, 8][n('bombball')] ?? 8,
+    twin: n('twin') > 0,
+    radius: BALL_R * (1 + 0.2 * n('big')),
+    zapChance: 0.15 * n('lightning'),
   }
 }
 

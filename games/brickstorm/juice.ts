@@ -53,6 +53,8 @@ export class Juice {
   banner: { text: string; age: number } | null = null
   /** Current turn, for colouring kill bursts like the bricks. */
   turn = 1
+  /** Lightning arcs to draw; the renderer reads this list. */
+  zaps: Array<{ x1: number; y1: number; x2: number; y2: number; life: number }> = []
   /** Equipped brick-break effect id. */
   impact = 'impact:shards'
   /** When each kind of sound last played, so big volleys don't stack hundreds of tones. */
@@ -103,12 +105,29 @@ export class Juice {
       case 'turn':
         this.turn = e.turn
         return
+      case 'explode':
+        this.particles.burst(e.x, e.y, {
+          count: 26,
+          color: ['#ff9f43', '#ffc83d', '#ff6b6b'],
+          speed: 320,
+          life: 0.5,
+        })
+        this.shake.add(0.25)
+        return this.play('explode', BRICK_SOUNDS.explode)
+      case 'zap':
+        this.zaps.push({ x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, life: 0.18 })
+        return this.play('zap', BRICK_SOUNDS.zap)
+      case 'revive':
+        this.show('REVIVED!', 0.8)
+        return playSound(BRICK_SOUNDS.revive)
       case 'land':
         return
     }
   }
 
   update(dt: number): void {
+    for (const z of this.zaps) z.life -= dt
+    this.zaps = this.zaps.filter((z) => z.life > 0)
     this.flash = Math.max(0, this.flash - dt * 2.5)
     if (this.banner) {
       this.banner.age += dt

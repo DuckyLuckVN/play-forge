@@ -56,19 +56,19 @@ export function aimFromPointer(launchX: number, px: number, py: number): number 
 }
 
 /** Moves a ball one small step against the walls and rects; returns true if it bounced. */
-export function bounceWalls(b: { x: number; y: number; vx: number; vy: number }): boolean {
+export function bounceWalls(b: { x: number; y: number; vx: number; vy: number }, r = BALL_R): boolean {
   let hit = false
-  if (b.x < BALL_R && b.vx < 0) {
-    b.x = BALL_R
+  if (b.x < r && b.vx < 0) {
+    b.x = r
     b.vx = -b.vx
     hit = true
-  } else if (b.x > BOARD_W - BALL_R && b.vx > 0) {
-    b.x = BOARD_W - BALL_R
+  } else if (b.x > BOARD_W - r && b.vx > 0) {
+    b.x = BOARD_W - r
     b.vx = -b.vx
     hit = true
   }
-  if (b.y < TOP + BALL_R && b.vy < 0) {
-    b.y = TOP + BALL_R
+  if (b.y < TOP + r && b.vy < 0) {
+    b.y = TOP + r
     b.vy = -b.vy
     hit = true
   }
@@ -76,10 +76,15 @@ export function bounceWalls(b: { x: number; y: number; vx: number; vy: number })
 }
 
 /** The deepest contact between a ball and any rect, with the rect's index. */
-export function deepestContact(x: number, y: number, rects: Rect[]): (Contact & { index: number }) | null {
+export function deepestContact(
+  x: number,
+  y: number,
+  rects: Rect[],
+  r = BALL_R,
+): (Contact & { index: number }) | null {
   let best: (Contact & { index: number }) | null = null
-  rects.forEach((r, index) => {
-    const c = circleRect(x, y, BALL_R, r)
+  rects.forEach((rect, index) => {
+    const c = circleRect(x, y, r, rect)
     if (c && (!best || c.depth > best.depth)) best = { ...c, index }
   })
   return best

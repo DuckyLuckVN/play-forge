@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "node scripts/build.mjs",
+    "readme": "node scripts/readme.mjs",
     "preview": "npx --yes serve dist",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

@@ -6,7 +6,6 @@ import {
   BALL_SPEED,
   BOARD_W,
   CELL,
-  COMBO_GAP,
   DANGER_ROW,
   FEVER_AT,
   FIRE_GAP,
@@ -116,7 +115,7 @@ export function step(s: RunState): void {
   const mods = modsOf(s.boosts)
   s.volleyTime += TICK
   s.sinceHit += TICK
-  if (s.sinceHit > COMBO_GAP) s.combo = 0
+  if (s.sinceHit > mods.comboGap) s.combo = 0
 
   s.fireTimer -= TICK
   while (s.fireTimer <= 0) {
@@ -226,7 +225,7 @@ function collectPickups(s: RunState, ball: Ball, mods: Mods): void {
   for (let i = s.pickups.length - 1; i >= 0; i--) {
     const p = s.pickups[i]
     const { x, y } = cellCenter(p.col, p.row)
-    if (Math.hypot(ball.x - x, ball.y - y) >= PICKUP_R + ball.r) continue
+    if (Math.hypot(ball.x - x, ball.y - y) >= PICKUP_R + ball.r + mods.pickupReach) continue
     s.pickups.splice(i, 1)
     if (p.kind === 'ball') s.pendingBalls++
     else s.coins += Math.round(COIN_PICKUP * mods.coinMult)
@@ -246,10 +245,17 @@ function endTurn(s: RunState): void {
     bonus(s, { type: 'closeOne', coins: s.turn * 5 })
   }
 
-  for (const b of s.bricks) b.row++
-  for (const p of s.pickups) p.row++
+  const mods = modsOf(s.boosts)
+  const drops = mods.glass && s.turn % 10 === 0 ? 2 : 1
+  for (const b of s.bricks) b.row += drops
+  for (const p of s.pickups) p.row += drops
   s.pickups = s.pickups.filter((p) => p.row < DANGER_ROW)
 
+  if (mods.secondWind && !s.secondWindUsed && s.bricks.some((b) => b.row >= DANGER_ROW)) {
+    s.secondWindUsed = true
+    s.bricks = s.bricks.filter((b) => b.row < DANGER_ROW)
+    s.events.push({ type: 'secondWind' })
+  }
   if (s.bricks.some((b) => b.row >= DANGER_ROW)) {
     s.phase = 'over'
     s.events.push({ type: 'over' })

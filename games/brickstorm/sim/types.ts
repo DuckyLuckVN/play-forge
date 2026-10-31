@@ -61,6 +61,13 @@ export type BoostId =
   | 'twin'
   | 'big'
   | 'lightning'
+  | 'aftershock'
+  | 'magnet'
+  | 'midas'
+  | 'keeper'
+  | 'brain'
+  | 'glass'
+  | 'secondWind'
 
 export type SimEvent =
   | { type: 'fire' }
@@ -78,6 +85,7 @@ export type SimEvent =
   | { type: 'turn'; turn: number }
   | { type: 'over' }
   | { type: 'revive' }
+  | { type: 'secondWind' }
   | { type: 'explode'; x: number; y: number; depth: number }
   | { type: 'zap'; x1: number; y1: number; x2: number; y2: number; depth: number }
 

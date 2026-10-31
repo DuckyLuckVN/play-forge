@@ -1,5 +1,5 @@
 import { random } from '@forge/core/rng'
-import { BALL_R } from './config'
+import { BALL_R, CELL, COMBO_GAP } from './config'
 import type { BoostId, RunState } from './types'
 
 export type Rarity = 'common' | 'rare' | 'epic'
@@ -23,6 +23,50 @@ export const BOOSTS: Record<BoostId, { name: string; text: string; rarity: Rarit
   twin: { name: 'Twin Shot', text: 'Balls split in two on their first hit', rarity: 'rare', max: 1 },
   big: { name: 'Big Balls', text: '+20% ball size', rarity: 'common', max: 3 },
   lightning: { name: 'Chain Lightning', text: '15% of hits arc to 2 nearby bricks', rarity: 'rare', max: 3 },
+  aftershock: {
+    name: 'Aftershock',
+    text: 'Destroyed bricks damage their 4 neighbours',
+    rarity: 'rare',
+    max: 1,
+  },
+  magnet: { name: 'Magnet', text: 'Grab pickups a whole cell away', rarity: 'common', max: 1 },
+  midas: { name: 'Midas', text: '+1 coin for every brick destroyed', rarity: 'common', max: 5 },
+  keeper: { name: 'Combo Keeper', text: '+1 s before your combo resets', rarity: 'common', max: 3 },
+  brain: { name: 'Brain', text: '+30% XP', rarity: 'common', max: 3 },
+  glass: {
+    name: 'Glass Cannon',
+    text: '×2 damage, but bricks drop an extra row every 10 turns',
+    rarity: 'epic',
+    max: 1,
+  },
+  secondWind: {
+    name: 'Second Wind',
+    text: 'Once per run, a brick reaching the bottom wipes its row instead',
+    rarity: 'epic',
+    max: 1,
+  },
+}
+
+/** Boosts that play especially well together; shown as a SYNERGY ribbon. Always symmetric. */
+export const SYNERGIES: Partial<Record<BoostId, BoostId[]>> = {
+  fireball: ['aftershock'],
+  bombball: ['aftershock'],
+  aftershock: ['fireball', 'bombball'],
+  lightning: ['crit'],
+  crit: ['lightning'],
+  twin: ['big'],
+  big: ['twin'],
+  midas: ['coins'],
+  coins: ['midas'],
+  glass: ['secondWind'],
+  secondWind: ['glass'],
+  keeper: ['brain'],
+  brain: ['keeper'],
+}
+
+/** True if the run already owns a synergy partner of `id`. */
+export function isSynergy(s: RunState, id: BoostId): boolean {
+  return (SYNERGIES[id] ?? []).some((p) => (s.boosts[p] ?? 0) > 0)
 }
 
 const WEIGHT: Record<Rarity, number> = { common: 60, rare: 30, epic: 10 }
@@ -32,7 +76,7 @@ export type Mods = ReturnType<typeof modsOf>
 export function modsOf(boosts: Partial<Record<BoostId, number>>) {
   const n = (id: BoostId) => boosts[id] ?? 0
   return {
-    damageMult: 1 + 0.25 * n('damage'),
+    damageMult: (1 + 0.25 * n('damage')) * (n('glass') ? 2 : 1),
     coinMult: 1 + 0.3 * n('coins'),
     speedMult: 1 + 0.15 * n('speed'),
     pierce: n('pierce') ? 1 : 0,
@@ -44,6 +88,13 @@ export function modsOf(boosts: Partial<Record<BoostId, number>>) {
     twin: n('twin') > 0,
     radius: BALL_R * (1 + 0.2 * n('big')),
     zapChance: 0.15 * n('lightning'),
+    aftershock: n('aftershock') > 0,
+    pickupReach: n('magnet') ? CELL : 0,
+    midas: n('midas'),
+    comboGap: COMBO_GAP + n('keeper'),
+    xpMult: 1 + 0.3 * n('brain'),
+    glass: n('glass') > 0,
+    secondWind: n('secondWind') > 0,
   }
 }
 

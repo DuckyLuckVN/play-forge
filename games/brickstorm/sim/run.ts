@@ -58,6 +58,8 @@ export function createRun(seed: number): RunState {
     boosts: {},
     doubleVolleys: 0,
     fireCharges: 0,
+    freezeNext: false,
+    surgeNext: false,
     nextId: 1,
     events: [],
   }
@@ -78,7 +80,9 @@ export function fire(s: RunState, angle: number): void {
   const a = Math.max(AIM_MIN, Math.min(Math.PI - AIM_MIN, angle))
   const speed = BALL_SPEED * mods.speedMult
   const [vx, vy] = antiStall(Math.cos(a) * speed, -Math.sin(a) * speed)
-  const n = s.doubleVolleys > 0 ? s.ballCount * 2 : s.ballCount
+  let n = s.doubleVolleys > 0 ? s.ballCount * 2 : s.ballCount
+  if (s.surgeNext) n = Math.ceil(n * 1.5)
+  s.surgeNext = false
   const charges = Math.min(n, s.fireCharges)
   s.fireCharges -= charges
   const kindOf = (i: number): Ball['kind'] => {
@@ -253,7 +257,8 @@ function endTurn(s: RunState): void {
   }
 
   const mods = modsOf(s.boosts)
-  const drops = mods.glass && s.turn % 10 === 0 ? 2 : 1
+  const drops = s.freezeNext ? 0 : mods.glass && s.turn % 10 === 0 ? 2 : 1
+  s.freezeNext = false
   for (const b of s.bricks) b.row += drops
   for (const p of s.pickups) p.row += drops
   s.pickups = s.pickups.filter((p) => p.row < DANGER_ROW)

@@ -23,6 +23,11 @@ const HELPER_GLYPH: Record<string, string> = {
   'helper:luckyStart': '★',
   'helper:reroll': '↻',
   'helper:revive': '♥',
+  'helper:pushBack': '⇡',
+  'helper:rowBomb': '✸',
+  'helper:freeze': '❄',
+  'helper:firePack': '🔥',
+  'helper:surge': '×1.5',
 }
 
 const arenaPainter = new ArenaPainter()

@@ -18,6 +18,11 @@ export interface Helpers {
   luckyStart: number
   reroll: number
   revive: number
+  pushBack: number
+  rowBomb: number
+  freeze: number
+  firePack: number
+  surge: number
 }
 
 export interface SavedRun {
@@ -35,6 +40,8 @@ export interface Save {
   owned: string[]
   equipped: Equipped
   helpers: Helpers
+  /** Brick and pickup kinds the player has already been told about. */
+  seen: string[]
   run: SavedRun | null
 }
 
@@ -45,7 +52,18 @@ export const DEFAULT_SAVE: Save = {
   coins: 0,
   owned: ['ball:classic', 'trail:none', 'arena:indigo', 'impact:shards'],
   equipped: { ball: 'ball:classic', trail: 'trail:none', arena: 'arena:indigo', impact: 'impact:shards' },
-  helpers: { headStart: 0, luckyStart: 0, reroll: 0, revive: 0 },
+  helpers: {
+    headStart: 0,
+    luckyStart: 0,
+    reroll: 0,
+    revive: 0,
+    pushBack: 0,
+    rowBomb: 0,
+    freeze: 0,
+    firePack: 0,
+    surge: 0,
+  },
+  seen: [],
   run: null,
 }
 
@@ -100,6 +118,7 @@ function migrate(data: unknown): { save: Save; droppedRun: boolean } | null {
       if (count(v)) save.helpers[k] = Math.floor(v)
     }
   }
+  if (Array.isArray(data.seen)) save.seen = data.seen.filter((x) => typeof x === 'string')
   const droppedRun = data.run !== null && data.run !== undefined && !validRun(data.run)
   save.run = droppedRun ? null : ((data.run as SavedRun | null) ?? null)
   return { save, droppedRun }

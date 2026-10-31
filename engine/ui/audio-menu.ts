@@ -1,4 +1,10 @@
-import { getAudioSettings, onAudioSettingsChange, playSound, setAudioSettings, UI_SOUNDS } from '../audio/sound'
+import {
+  getAudioSettings,
+  onAudioSettingsChange,
+  playSound,
+  setAudioSettings,
+  UI_SOUNDS,
+} from '../audio/sound'
 import { h, icon } from './dom'
 import { icons } from './icons'
 

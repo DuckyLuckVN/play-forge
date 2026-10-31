@@ -38,7 +38,11 @@ describe('Session', () => {
     opts: Partial<SessionOptions> & { playerId: string },
     def: GameDefinition<Counter, number> = counter,
   ) => {
-    const s = new Session(def, createBroadcastTransport('test', roomId), { host: false, name: opts.playerId, ...opts })
+    const s = new Session(def, createBroadcastTransport('test', roomId), {
+      host: false,
+      name: opts.playerId,
+      ...opts,
+    })
     sessions.push(s)
     return s
   }
@@ -148,6 +152,27 @@ describe('Session', () => {
     guest.on('hostGone', () => (gone = true))
     host.dispose()
     await until(() => gone)
+  })
+
+  it('frees the seat at once when a player leaves on purpose', async () => {
+    const r = room()
+    const host = join(r, { host: true, playerId: 'host', graceMs: 60000 })
+    const guest = join(r, { playerId: 'guest' })
+    await until(() => host.lobby.players.length === 2)
+    guest.leave()
+    await until(() => host.lobby.players.length === 1)
+    expect(host.reconnecting).toEqual([])
+  })
+
+  it('tells guests at once when the host closes the room', async () => {
+    const r = room()
+    const host = join(r, { host: true, playerId: 'host' })
+    const guest = join(r, { playerId: 'guest', hostWaitMs: 60000 })
+    await until(() => guest.hostConnected)
+    let gone = false
+    guest.on('hostGone', () => (gone = true))
+    host.leave()
+    await until(() => gone, 1000)
   })
 
   it('lets a full room watch without taking a seat', async () => {

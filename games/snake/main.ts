@@ -33,10 +33,14 @@ createGameApp<SnakeState, Direction>({
     const stopInput = bindInput<Direction>(
       {
         keys: {
-          ArrowUp: 'up', KeyW: 'up',
-          ArrowDown: 'down', KeyS: 'down',
-          ArrowLeft: 'left', KeyA: 'left',
-          ArrowRight: 'right', KeyD: 'right',
+          ArrowUp: 'up',
+          KeyW: 'up',
+          ArrowDown: 'down',
+          KeyS: 'down',
+          ArrowLeft: 'left',
+          KeyA: 'left',
+          ArrowRight: 'right',
+          KeyD: 'right',
         },
         swipe: { up: 'up', down: 'down', left: 'left', right: 'right' },
         swipeTarget: stage,

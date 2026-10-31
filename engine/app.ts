@@ -171,7 +171,11 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   let lastLobby: LobbyState | null = null
   const snapshot = (l: LobbyState): LobbyState => ({ ...l, players: l.players.map((p) => ({ ...p })) })
 
-  function begin(transport: Transport, host: boolean, extra: { offline?: boolean; restore?: RoomSnapshot } = {}) {
+  function begin(
+    transport: Transport,
+    host: boolean,
+    extra: { offline?: boolean; restore?: RoomSnapshot } = {},
+  ) {
     const name = storedName() || 'Player'
     const s = (session = new Session(def, transport, { host, name, playerId, ...extra }))
     joinedAt = performance.now()
@@ -201,7 +205,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       }),
       s.on('hostGone', () => {
         store.save(null)
-        showMessage('The host left', 'The host did not come back, so the room closed. Create a new room to keep playing.')
+        showMessage('The room closed', 'The host left the room. Create a new room to keep playing.')
       }),
     ]
     // Re-render to show the "still looking" hint if the host never answers.
@@ -217,7 +221,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
 
   function leave() {
     cleanup?.()
-    session?.dispose()
+    session?.leave()
     session = cleanup = null
     room = ''
     store.save(null)
@@ -372,9 +376,20 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   function showMenu(error = '') {
     render()
     const fromLink = /room=([A-Z0-9]+)/i.exec(location.hash)?.[1]?.toUpperCase() ?? ''
-    const name = h('input', { class: 'pf-input', value: storedName() || 'Player', maxLength: 16, id: 'pf-name' })
+    const name = h('input', {
+      class: 'pf-input',
+      value: storedName() || 'Player',
+      maxLength: 16,
+      id: 'pf-name',
+    })
     const saveName = () => storedName(name.value.trim() || 'Player')
-    const code = h('input', { class: 'pf-input code', placeholder: 'CODE', maxLength: 5, value: fromLink, spellcheck: false })
+    const code = h('input', {
+      class: 'pf-input code',
+      placeholder: 'CODE',
+      maxLength: 5,
+      value: fromLink,
+      spellcheck: false,
+    })
     code.setAttribute('aria-label', 'Room code')
     code.setAttribute('autocapitalize', 'characters')
     const join = () => {
@@ -429,7 +444,10 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   }
 
   function offlineNote() {
-    return !navigator.onLine && h('p', { class: 'pf-note error', textContent: 'You are offline. Check your connection.' })
+    return (
+      !navigator.onLine &&
+      h('p', { class: 'pf-note error', textContent: 'You are offline. Check your connection.' })
+    )
   }
 
   function waitingDots() {
@@ -465,7 +483,10 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         'div',
         { class: 'pf-panel' },
         h('h2', { class: 'pf-heading', textContent: 'Host disconnected' }),
-        h('p', { class: 'pf-lede', textContent: 'Waiting for them to come back. If they reloaded, this takes a few seconds.' }),
+        h('p', {
+          class: 'pf-lede',
+          textContent: 'Waiting for them to come back. If they reloaded, this takes a few seconds.',
+        }),
         waitingDots(),
         offlineNote(),
         button('Leave room', leave, 'quiet'),
@@ -487,7 +508,11 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       h(
         'div',
         { class: 'pf-room-code' },
-        h('small', { textContent: canLink ? 'Room code. Share it, or copy the link.' : 'Room code. Share it with friends.' }),
+        h('small', {
+          textContent: canLink
+            ? 'Room code. Share it, or copy the link.'
+            : 'Room code. Share it with friends.',
+        }),
         room,
       ),
       canLink && copy,
@@ -524,7 +549,9 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         seenTokens.add(p.id)
         token.style.setProperty('--c', playerColor(p.slot))
         if (isHost || p.ready) {
-          const badge = h('span', { class: `pf-badge${isHost ? ' host' : ''}${seenReady.has(p.id) ? '' : ' pop'}` })
+          const badge = h('span', {
+            class: `pf-badge${isHost ? ' host' : ''}${seenReady.has(p.id) ? '' : ' pop'}`,
+          })
           badge.append(icon(isHost ? icons.crown : icons.check))
           token.append(badge)
           seenReady.add(p.id)
@@ -538,7 +565,10 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
           },
           token,
           h('div', { class: 'pf-seat-name', textContent: p.name }),
-          h('div', { class: `pf-seat-status${p.connected && (isHost || p.ready) ? ' ok' : ''}`, textContent: status }),
+          h('div', {
+            class: `pf-seat-status${p.connected && (isHost || p.ready) ? ' ok' : ''}`,
+            textContent: status,
+          }),
         )
       }),
     )

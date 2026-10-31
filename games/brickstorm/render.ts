@@ -3,6 +3,7 @@ import type { Shake } from '@forge/fx/shake'
 import { ease } from '@forge/fx/tween'
 import type { Canvas2D } from '@forge/render2d/canvas'
 import { FONT, theme } from '@forge/ui/theme'
+import { ArenaPainter, type ArenaId } from './arenas'
 import { hpColor, type Juice } from './juice'
 import { xpToNext } from './sim/boosts'
 import {
@@ -28,6 +29,9 @@ const TRAIL = 4
 export class BoardRenderer {
   /** Recent positions per ball, for the fever trail. */
   private trails: Array<Array<[number, number]>> = []
+  private arenaPainter = new ArenaPainter()
+  /** The equipped arena (background). */
+  arena: ArenaId = 'indigo'
 
   constructor(
     private view: Canvas2D,
@@ -38,8 +42,7 @@ export class BoardRenderer {
   draw(s: RunState | null, juice: Juice, aim: number | null, time: number): void {
     const { ctx } = this.view
     ctx.save()
-    ctx.fillStyle = theme.night
-    ctx.fillRect(0, 0, BOARD_W, BOARD_H)
+    this.arenaPainter.draw(ctx, this.arena, s?.turn ?? 1, s?.fever ?? false, time)
     this.shake.apply(ctx)
     this.drawBoard(ctx, s, time)
     if (s) {
@@ -62,8 +65,11 @@ export class BoardRenderer {
   }
 
   private drawBoard(ctx: CanvasRenderingContext2D, s: RunState | null, time: number): void {
-    ctx.fillStyle = theme.pit
-    ctx.fillRect(0, TOP, BOARD_W, FLOOR_Y + BALL_R - TOP)
+    // A translucent well, so the arena shows through the board.
+    ctx.fillStyle = 'rgb(0 0 0 / 0.35)'
+    ctx.beginPath()
+    ctx.roundRect(0, TOP, BOARD_W, FLOOR_Y + BALL_R - TOP, 10)
+    ctx.fill()
     ctx.fillStyle = 'rgb(255 255 255 / 0.025)'
     for (let r = 0; r < ROWS; r++) {
       for (let c = (r % 2) as number; c < COLS; c += 2) ctx.fillRect(c * CELL, TOP + r * CELL, CELL, CELL)

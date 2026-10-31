@@ -18,18 +18,21 @@
 }
 @media (min-width: 900px) {
   .bs-stage {
-    grid-template-columns: 220px minmax(0, 1fr) 260px;
-    max-width: 1280px;
+    grid-template-columns: minmax(190px, 250px) minmax(0, 1fr) minmax(210px, 290px);
+    max-width: 1400px;
     width: 100%;
     margin: 0 auto;
   }
   .bs-side {
     display: grid;
     align-content: start;
-    gap: 14px;
+    align-self: start;
+    gap: 12px;
     min-height: 0;
+    /* Same height as the board (set from the canvas size). */
+    max-height: var(--bs-board-h, 100%);
     overflow-y: auto;
-    padding-top: 4px;
+    scrollbar-width: thin;
   }
   .bs-drawer-btn {
     display: none;
@@ -153,7 +156,12 @@
   display: flex;
 }
 
+.bs-board {
+  align-items: flex-start;
+}
+/* Pin the board to the top of its column so the side panels line up with it. */
 .bs-board canvas {
+  margin: 0 auto !important;
   touch-action: none;
   border-radius: 14px;
   cursor: crosshair;
@@ -358,4 +366,116 @@
 /* The pick heading only takes focus to absorb stray keys; no ring needed. */
 .pf-panel h2[tabindex='-1']:focus {
   outline: none;
+}
+
+.bs-side-nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.bs-side-nav .pf-btn {
+  min-height: 0;
+  padding: 10px;
+}
+.bs-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 8px;
+}
+.bs-tile {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 4px;
+  padding: 10px 6px 8px;
+  border: 2px solid var(--pf-rim);
+  border-radius: 14px;
+  background: var(--pf-felt);
+  color: var(--pf-chalk);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease;
+}
+.bs-tile:hover {
+  transform: translateY(-2px);
+}
+.bs-tile:focus-visible {
+  outline: 3px solid var(--pf-yolk);
+  outline-offset: 2px;
+}
+.bs-tile.common {
+  border-color: #5ab8ff;
+  color: #5ab8ff;
+}
+.bs-tile.rare {
+  border-color: #b48cff;
+  color: #b48cff;
+}
+.bs-tile.epic {
+  border-color: var(--pf-yolk);
+  color: var(--pf-yolk);
+  box-shadow: 0 0 12px rgb(255 200 61 / 0.3);
+}
+.bs-tile.helper {
+  border-color: #4be3a0;
+}
+.bs-tile.helper.waiting {
+  opacity: 0.55;
+}
+.bs-tile-icon,
+.bs-tile-icon svg {
+  width: 36px;
+  height: 36px;
+}
+.bs-tile-icon.glyph {
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  color: #4be3a0;
+}
+.bs-tile-name {
+  font-size: 12px;
+  line-height: 1.15;
+  text-align: center;
+  color: var(--pf-chalk);
+}
+.bs-badge {
+  position: absolute;
+  top: -8px;
+  left: -6px;
+  min-width: 24px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--pf-yolk);
+  color: var(--pf-ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+.bs-info {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--pf-haze);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--pf-haze);
+  font: italic 700 12px/1 serif;
+  cursor: pointer;
+}
+.bs-info:hover {
+  color: var(--pf-chalk);
+  border-color: var(--pf-chalk);
+}
+.bs-detail-icon,
+.bs-detail-icon svg {
+  width: 56px;
+  height: 56px;
+  color: var(--pf-yolk);
 }

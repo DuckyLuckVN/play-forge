@@ -33,38 +33,67 @@ export function statsPanel(s: RunState, bestTurn: number): HTMLElement {
   )
 }
 
-export function boostsPanel(s: RunState): HTMLElement {
+/** Shop and Guide, at the top of the left panel. */
+export function navPanel(onShop: () => void, onGuide: () => void): HTMLElement {
+  return h(
+    'div',
+    { class: 'bs-side-nav' },
+    h('button', { class: 'pf-btn primary', type: 'button', textContent: 'Shop', onclick: onShop }),
+    h('button', { class: 'pf-btn', type: 'button', textContent: '? Guide', onclick: onGuide }),
+  )
+}
+
+function infoButton(label: string, onInfo: () => void): HTMLButtonElement {
+  const b = h('button', {
+    class: 'bs-info',
+    type: 'button',
+    textContent: 'i',
+    onclick: (e: MouseEvent) => {
+      e.stopPropagation()
+      onInfo()
+    },
+  })
+  b.setAttribute('aria-label', `About ${label}`)
+  return b
+}
+
+/** Owned boosts as tiles; tapping one (or its ⓘ) shows what it does. */
+export function boostsPanel(s: RunState, onInfo: (id: BoostId) => void): HTMLElement {
   const owned = (Object.keys(s.boosts) as BoostId[]).filter((id) => (s.boosts[id] ?? 0) > 0)
   return h(
     'div',
     { class: 'bs-side-block' },
-    h('h3', { textContent: 'Boosts' }),
+    h('h3', { textContent: `Boosts${owned.length ? ` · ${owned.length}` : ''}` }),
     owned.length
       ? h(
-          'ul',
-          { class: 'bs-boost-list' },
+          'div',
+          { class: 'bs-tiles' },
           ...owned.map((id) => {
             const b = BOOSTS[id]
-            const art = h('span', { class: `bs-mini-icon ${b.rarity}` })
+            const art = h('span', { class: 'bs-tile-icon' })
             art.innerHTML = BOOST_ICONS[id]
-            return h(
-              'li',
-              { title: b.text },
+            const tile = h(
+              'button',
+              { class: `bs-tile ${b.rarity}`, type: 'button', onclick: () => onInfo(id) },
               art,
-              h('span', { class: 'bs-boost-name', textContent: b.name }),
-              h('span', { class: 'bs-boost-count', textContent: `×${s.boosts[id]}` }),
+              h('span', { class: 'bs-tile-name', textContent: b.name }),
+              h('span', { class: 'bs-badge', textContent: `×${s.boosts[id]}` }),
+              infoButton(b.name, () => onInfo(id)),
             )
+            tile.setAttribute('aria-label', `${b.name} level ${s.boosts[id]}. Show details`)
+            return tile
           }),
         )
       : h('p', { class: 'bs-side-empty', textContent: 'Level up to pick boosts.' }),
   )
 }
 
-/** Helper tray: buttons for owned mid-run helpers, usable while aiming. */
+/** Owned mid-run helpers as tiles: tap to use (with a confirm), ⓘ for details. */
 export function helpersPanel(
   helpers: Helpers,
   canUse: boolean,
-  onUse: (id: ActiveHelper) => void,
+  onTap: (id: ActiveHelper) => void,
+  onInfo: (id: ActiveHelper) => void,
 ): HTMLElement {
   const owned = ACTIVE_HELPERS.filter((a) => helpers[a.id] > 0)
   return h(
@@ -74,29 +103,31 @@ export function helpersPanel(
     owned.length
       ? h(
           'div',
-          { class: 'bs-helper-tray' },
+          { class: 'bs-tiles' },
           ...owned.map((a) => {
-            const b = h(
+            const tile = h(
               'button',
               {
-                class: 'pf-btn bs-helper',
+                class: `bs-tile helper${canUse ? '' : ' waiting'}`,
                 type: 'button',
-                disabled: !canUse,
-                title: a.text,
-                onclick: () => onUse(a.id),
+                onclick: () => (canUse ? onTap(a.id) : onInfo(a.id)),
               },
-              h('span', { class: 'bs-helper-glyph', textContent: a.glyph }),
-              h('span', { textContent: a.name }),
-              h('span', { class: 'bs-boost-count', textContent: `×${helpers[a.id]}` }),
+              h('span', { class: 'bs-tile-icon glyph', textContent: a.glyph }),
+              h('span', { class: 'bs-tile-name', textContent: a.name }),
+              h('span', { class: 'bs-badge', textContent: `×${helpers[a.id]}` }),
+              infoButton(a.name, () => onInfo(a.id)),
             )
-            b.setAttribute('aria-label', `Use ${a.name} (${helpers[a.id]} left): ${a.text}`)
-            return b
+            tile.setAttribute('aria-label', `${canUse ? 'Use' : 'About'} ${a.name} (${helpers[a.id]} left)`)
+            return tile
           }),
         )
       : h('p', {
           class: 'bs-side-empty',
           textContent: 'Buy helpers in the shop, then use them here while aiming.',
         }),
+    owned.length > 0 &&
+      !canUse &&
+      h('p', { class: 'bs-side-empty', textContent: 'Helpers can be used while aiming.' }),
     (helpers.reroll > 0 || helpers.revive > 0) &&
       h('p', {
         class: 'bs-side-empty',

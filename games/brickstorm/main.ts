@@ -20,14 +20,14 @@ import { bankRun, clearRun, loadSave, recordRun, spend, writeSave } from './save
 import { shopPanel } from './shop-ui'
 import { applyHelpers, growBoard, revive, reviveCost, useHelper } from './sim/meta'
 import { dims } from './sim/dims'
-import { GUIDE, newlySeen } from './guide'
-import { boostsPanel, guidePanel, helpersPanel, statsPanel } from './panels'
+import { boostDetail, GUIDE, newlySeen } from './guide'
+import { ACTIVE_HELPERS, boostsPanel, guidePanel, helpersPanel, navPanel, statsPanel } from './panels'
 import { BOOST_ICONS } from './icons'
 import { BOOSTS, isSynergy, pickBoost, reroll, rerollCost } from './sim/boosts'
 import { AIM_MIN, BOARD_H, BOARD_W, boardSize, COLS, MAX_COLS, MAX_ROWS, ROWS, TICK } from './sim/config'
 import { aimFromPointer } from './sim/physics'
 import { canRecall, createRun, drainEvents, fire, recall, speedMultiplier, step } from './sim/run'
-import type { ActiveHelper, RunState } from './sim/types'
+import type { ActiveHelper, BoostId, RunState } from './sim/types'
 
 const CONTROLS = 'Drag to aim and release to launch. Keys: ←/→ aim, Space launch, F fast, Esc pause.'
 const AIM_STEP = (1.5 * Math.PI) / 180
@@ -101,6 +101,10 @@ document.addEventListener('click', (e) => {
 
 // ---------- Game objects ----------
 const view = createCanvas2D(boardEl, BOARD_W, BOARD_H)
+// Side panels match the board's height (CSS reads --bs-board-h).
+new ResizeObserver(() => {
+  stage.style.setProperty('--bs-board-h', `${view.canvas.getBoundingClientRect().height}px`)
+}).observe(view.canvas)
 const particles = new Particles()
 const shake = new Shake(8)
 const juice = new Juice(particles, shake)
@@ -246,12 +250,29 @@ function inRun() {
   return !!run && (run.phase === 'aim' || run.phase === 'volley')
 }
 
-/** Top-bar shop: during a run, pause first and come back to the pause screen. */
+/**
+ * Pauses the run for an overlay (shop, guide, details, confirm) and returns a
+ * function that puts things back: the game resumes if it was running before.
+ */
+function holdRun(): () => void {
+  const wasPaused = paused
+  if (inRun() && !paused) {
+    paused = true
+    acc = 0
+    dragging = false
+    checkpoint()
+  }
+  return () => {
+    paused = wasPaused
+    show(null)
+    panelsKey = ''
+  }
+}
+
+/** Shop from the top bar or side panel: closing it goes straight back to the game. */
 function openShopFromBar() {
-  if (inRun()) {
-    pause()
-    showShop(showPaused)
-  } else if (!run) showShop(showHome)
+  if (inRun()) showShop(holdRun())
+  else if (!run) showShop(showHome)
 }
 
 function showGuide(onBack: () => void) {
@@ -259,36 +280,98 @@ function showGuide(onBack: () => void) {
 }
 
 function openGuideFromBar() {
-  if (inRun()) {
-    pause()
-    showGuide(showPaused)
-  } else if (!run) showGuide(showHome)
+  if (inRun()) showGuide(holdRun())
+  else if (!run) showGuide(showHome)
+}
+
+/** A small popup explaining a boost or helper. */
+function showDetail(title: string, body: string, extra: string, back: () => void, iconHtml?: string) {
+  const art = h('span', { class: 'bs-detail-icon' })
+  if (iconHtml) art.innerHTML = iconHtml
+  show(
+    h(
+      'div',
+      { class: 'pf-panel bs-detail' },
+      h(
+        'div',
+        { class: 'bs-shop-head' },
+        h('h2', { class: 'pf-heading', textContent: title }),
+        iconHtml ? art : null,
+      ),
+      h('p', { class: 'pf-lede', textContent: body }),
+      extra && h('p', { class: 'bs-side-empty', textContent: extra }),
+      primary('Got it', back),
+    ),
+    `detail-${title}`,
+  )
+}
+
+function boostInfo(id: BoostId, back = holdRun()) {
+  if (!run) return
+  const b = BOOSTS[id]
+  showDetail(
+    `${b.name} ×${run.boosts[id] ?? 0}`,
+    boostDetail(id, run.boosts[id] ?? 1),
+    `${b.rarity} boost`,
+    back,
+    BOOST_ICONS[id],
+  )
+}
+
+function helperInfo(id: ActiveHelper, back = holdRun()) {
+  const a = ACTIVE_HELPERS.find((x) => x.id === id)!
+  showDetail(
+    `${a.name} ×${save.helpers[id]}`,
+    `${a.text}.`,
+    'Use it while aiming, from the Helpers panel.',
+    back,
+  )
+}
+
+/** Tapping a helper asks first: helpers are bought with coins. */
+function confirmHelper(id: ActiveHelper, back = holdRun()) {
+  const a = ACTIVE_HELPERS.find((x) => x.id === id)!
+  show(
+    h(
+      'div',
+      { class: 'pf-panel bs-detail' },
+      h('h2', { class: 'pf-heading', textContent: `Use ${a.name}?` }),
+      h('p', { class: 'pf-lede', textContent: `${a.text}.` }),
+      h('p', {
+        class: 'bs-side-empty',
+        textContent: `You have ${save.helpers[id]}. Using one leaves ${save.helpers[id] - 1}.`,
+      }),
+      primary('Use it', () => {
+        back()
+        useActiveHelper(id)
+      }),
+      button('Cancel', back, 'quiet'),
+    ),
+    `confirm-${id}`,
+  )
 }
 
 /** Phone: stats, boosts and helpers in a drawer over the paused game. */
 function openDrawer() {
   if (!run) return
-  const wasPaused = paused
-  if (inRun()) {
-    paused = true
-    acc = 0
-    dragging = false
-  }
-  const close = () => {
-    paused = wasPaused
-    show(null)
-  }
+  const close = holdRun()
   const s = run
+  const reopen = () => {
+    close()
+    openDrawer()
+  }
   show(
     h(
       'div',
       { class: 'pf-panel wide bs-shop' },
       statsPanel(s, save.bestTurn),
-      boostsPanel(s),
-      helpersPanel(save.helpers, s.phase === 'aim', (id) => {
-        useActiveHelper(id)
-        close()
-      }),
+      boostsPanel(s, (id) => boostInfo(id, reopen)),
+      helpersPanel(
+        save.helpers,
+        s.phase === 'aim',
+        (id) => confirmHelper(id, close),
+        (id) => helperInfo(id, reopen),
+      ),
       primary('Close', close),
     ),
     'drawer',
@@ -329,10 +412,15 @@ function renderPanels(s: RunState | null, time: number) {
     rightSide.replaceChildren()
     return
   }
-  leftSide.replaceChildren(statsPanel(s, save.bestTurn))
+  leftSide.replaceChildren(navPanel(openShopFromBar, openGuideFromBar), statsPanel(s, save.bestTurn))
   rightSide.replaceChildren(
-    boostsPanel(s),
-    helpersPanel(save.helpers, s.phase === 'aim' && !paused, useActiveHelper),
+    boostsPanel(s, (id) => boostInfo(id)),
+    helpersPanel(
+      save.helpers,
+      s.phase === 'aim' && !paused,
+      (id) => confirmHelper(id),
+      (id) => helperInfo(id),
+    ),
   )
 }
 

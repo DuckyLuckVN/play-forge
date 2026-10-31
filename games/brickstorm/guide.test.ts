@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { GUIDE, newlySeen, runStats } from './guide'
+import { boostDetail, GUIDE, newlySeen, runStats } from './guide'
+import { BOOSTS } from './sim/boosts'
+import type { BoostId } from './sim/types'
 import { brick, empty } from './sim/testing'
 
 describe('guide', () => {
@@ -35,5 +37,19 @@ describe('runStats', () => {
     expect(stats['Crit chance']).toBe('10%')
     expect(stats['Balls']).toBe('12')
     expect(stats['Best turn']).toBe('40')
+  })
+})
+
+describe('boostDetail', () => {
+  it('describes what the owned level does', () => {
+    expect(boostDetail('fireball', 2)).toMatch(/every 6th/i)
+    expect(boostDetail('damage', 3)).toContain('+75%')
+    expect(boostDetail('crit', 2)).toContain('20%')
+    expect(boostDetail('big', 1)).toContain('+20%')
+  })
+
+  it('has a line for every boost', () => {
+    for (const id of Object.keys(BOOSTS) as BoostId[])
+      expect(boostDetail(id, 1).length, id).toBeGreaterThan(10)
   })
 })

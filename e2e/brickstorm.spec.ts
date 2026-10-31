@@ -39,6 +39,6 @@ test('brickstorm: the built single file works straight from disk (file://)', asy
   const file = path.resolve('dist/games/brickstorm/index.html')
   await page.goto(pathToFileURL(file).href)
   await page.getByRole('button', { name: 'Play' }).click()
-  await expect(page.locator('canvas')).toBeVisible()
+  await expect(page.locator('.bs-board canvas')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Recall' })).toBeVisible()
 })

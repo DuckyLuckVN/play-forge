@@ -3,3 +3,10 @@ dist
 .DS_Store
 playwright-report
 test-results
+
+# AI agent files
+AGENTS.md
+CLAUDE.md
+.claude/
+.superpowers/
+docs/superpowers/

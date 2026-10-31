@@ -1,7 +1,7 @@
 // The one damage pipeline: every way a brick can lose hp goes through here, so
 // kills, coins, XP and on-death effects are counted exactly once.
 import { modsOf, xpToNext } from './boosts'
-import { randomInt } from '@forge/core/rng'
+import { random, randomInt } from '@forge/core/rng'
 import { CELL, COLS, COMBO_TIERS, DANGER_ROW } from './config'
 import { cellCenter } from './rows'
 import type { Brick, RunState } from './types'
@@ -40,8 +40,11 @@ export function killBrick(s: RunState, brick: Brick, depth: number): void {
   if (i < 0) return
   s.bricks.splice(i, 1)
   const mods = modsOf(s.boosts)
-  const coins = Math.max(1, Math.round(comboMultiplier(s.combo) * mods.coinMult)) + mods.midas
-  s.coins += brick.kind === 'gold' ? coins * 5 : coins
+  // Only some bricks drop a coin; gold always pays, triple.
+  const coins = Math.max(1, Math.round(comboMultiplier(s.combo) * mods.coinMult))
+  if (brick.kind === 'gold') s.coins += coins * 3
+  else if (random(s.rng) < COIN_DROP) s.coins += coins
+  s.coins += mods.midas
   gainXp(s, mods.xpMult)
   const { x, y } = cellCenter(brick.col, brick.row)
   s.events.push({ type: 'kill', id: brick.id, x, y, maxHp: brick.maxHp, kind: brick.kind })
@@ -51,6 +54,9 @@ export function killBrick(s: RunState, brick: Brick, depth: number): void {
     for (const b of near) damageBrick(s, b, 1 * mods.damageMult, 'blast', depth + 1)
   }
 }
+
+/** Share of ordinary bricks that drop a coin. */
+const COIN_DROP = 0.3
 
 const MYSTERY_REWARDS = ['balls', 'pick', 'coins', 'fire'] as const
 

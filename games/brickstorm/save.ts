@@ -4,7 +4,7 @@
 import type { RunState } from './sim/types'
 
 export const SAVE_KEY = 'play-forge:brickstorm:save'
-export const SIM_VERSION = 2
+export const SIM_VERSION = 3
 
 export interface Equipped {
   ball: string

@@ -32,9 +32,14 @@ export function specialChance(turn: number): number {
 
 const MAX_SPECIALS_PER_ROW = 2
 
+/** Typical brick hp on a turn: grows faster than the turn so ball count can't keep up forever. */
+export function hpScale(turn: number): number {
+  return turn * (1 + turn / 40)
+}
+
 function brickHp(state: RunState): number {
   const { rng, turn } = state
-  let hp = Math.max(1, Math.round(turn * (0.8 + 0.4 * random(rng))))
+  let hp = Math.max(1, Math.round(hpScale(turn) * (0.8 + 0.4 * random(rng))))
   if (random(rng) < 1 / 6) hp *= 2
   return hp
 }
@@ -60,7 +65,7 @@ export function spawnRow(state: RunState): void {
   const unlocked = (Object.keys(UNLOCK) as Array<keyof typeof UNLOCK>).filter((k) => turn >= UNLOCK[k])
   const chance = specialChance(turn)
   let specials = 0
-  const count = Math.min(6, Math.max(2, 2 + randomInt(rng, 3) + Math.floor(turn / 15)))
+  const count = Math.min(7, Math.max(2, 2 + randomInt(rng, 3) + Math.floor(turn / 12) + (turn >= 10 ? 1 : 0)))
   for (let i = 0; i < count; i++) {
     let kind: BrickKind = 'normal'
     if (unlocked.length && specials < MAX_SPECIALS_PER_ROW && random(rng) < chance) {
@@ -72,8 +77,8 @@ export function spawnRow(state: RunState): void {
   const pickup = (kind: PickupKind, p: number) => {
     if (free.length && random(rng) < p) state.pickups.push({ id: state.nextId++, col: take(), row: 0, kind })
   }
-  pickup('ball', 0.9)
-  pickup('coin', 0.25)
+  pickup('ball', 0.65)
+  pickup('coin', 0.12)
   if (turn >= 4) {
     pickup('fire', 0.06)
     pickup('laser', 0.05)

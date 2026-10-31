@@ -12,6 +12,7 @@ import { audioMenu } from '@forge/ui/audio-menu'
 import { h, icon, toast } from '@forge/ui/dom'
 import { icons } from '@forge/ui/icons'
 import { applyTheme } from '@forge/ui/theme'
+import { toBoard } from './input'
 import { Juice } from './juice'
 import { BoardRenderer } from './render'
 import { loadSave, recordRun, writeSave } from './save'
@@ -280,31 +281,31 @@ startRenderLoop((dt, time) => {
 })
 
 // ---------- Input ----------
-function boardPoint(e: PointerEvent): [number, number] {
-  const r = view.canvas.getBoundingClientRect()
-  return [((e.clientX - r.left) / r.width) * BOARD_W, ((e.clientY - r.top) / r.height) * BOARD_H]
-}
+const boardPoint = (e: PointerEvent) => toBoard(view.canvas.getBoundingClientRect(), e.clientX, e.clientY)
 
 const aiming = () => !!run && !paused && run.phase === 'aim'
 
-view.canvas.addEventListener('pointerdown', (e) => {
-  if (!aiming()) return
+// Aim and launch work from anywhere on the page, so the guide keeps following
+// the pointer in the side gutters. Presses on buttons and panels are theirs.
+const UI = '.pf-overlay, .pf-bar, .bs-controls, button, a, input'
+
+window.addEventListener('pointerdown', (e) => {
+  if (!aiming() || (e.target as Element).closest?.(UI)) return
   dragging = true
-  view.canvas.setPointerCapture(e.pointerId)
   aim = aimFromPointer(run!.launchX, ...boardPoint(e))
 })
-view.canvas.addEventListener('pointermove', (e) => {
+window.addEventListener('pointermove', (e) => {
   if (!aiming() || (!dragging && e.pointerType !== 'mouse')) return
   aim = aimFromPointer(run!.launchX, ...boardPoint(e))
 })
-view.canvas.addEventListener('pointerup', (e) => {
+window.addEventListener('pointerup', (e) => {
   if (!dragging) return
   dragging = false
   if (!aiming()) return
   aim = aimFromPointer(run!.launchX, ...boardPoint(e))
   fire(run!, aim)
 })
-view.canvas.addEventListener('pointercancel', () => (dragging = false))
+window.addEventListener('pointercancel', () => (dragging = false))
 
 window.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return

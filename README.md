@@ -32,21 +32,36 @@ Multiplayer: one player clicks **Create room** and shares the 5-letter code (or 
 
 ```
 engine/                  reusable library, imported as '@forge'
-  app.ts                 createGameApp(): menu → lobby → match → results UI
+  app.ts                 createGameApp(): top bar, start screen, lobby with seats + ready-up,
+                         3-2-1 countdown, pause (solo), results. Same flow for every game
+  audio/sound.ts         Web Audio synth (no sound files), shared UI sounds, mute toggle
   core/                  emitter, fixed-rate ticker + render loop, input (keys/swipe), seeded RNG
   net/
     transport.ts         Transport interface + offline transport
     trystero.ts          internet P2P (WebRTC)
     broadcast.ts         same-browser tabs (dev/testing)
-    session.ts           host-authoritative Session + GameDefinition contract
+    session.ts           host-authoritative Session: lobby, ready flags, countdown, pause, ticks
   render2d/canvas.ts     HiDPI, letterboxed 2D canvas
-  ui/lobby.css
+  ui/
+    theme.ts             design tokens: colours for CSS and canvas, player colours
+    base.css             shared components: buttons, panels, seats, chips, toasts, countdown
+    dom.ts, icons.ts     tiny DOM helper, toasts, inline SVG icons
+launcher/                the game picker page (dist/index.html)
 games/
-  games.json             launcher listing
-  snake/                 index.html, main.ts (wiring), sim.ts (rules), render.ts, sim.test.ts
-index.html               launcher page
-scripts/build.mjs        builds launcher + one single-file HTML per game into dist/
+  games.json             launcher + README listing
+  snake/                 main.ts (wiring), sim.ts (rules), render.ts, sounds.ts, cover.svg, tests
+scripts/                 build.mjs (single-file builds), readme.mjs (README games table)
 ```
+
+## Design system
+
+Every page uses the same tokens and components, so a new game looks and behaves like the others for free.
+
+- **Look:** a "game night table". Deep indigo background, chunky buttons that press down, players as coloured tokens in seats. Font: Fredoka, bundled into the file so it works offline.
+- **Colours:** defined once in `engine/ui/theme.ts`. CSS reads them as `--pf-*` variables, and canvas code imports `theme` and `playerColor(slot)`.
+- **Flow:** start screen (Play solo / Create room / Join) → room (seats, "I'm ready", host starts) → 3-2-1 → play → results with a rematch ready-up. Solo games can pause (Esc / P, or automatically when the tab is hidden).
+- **Sound:** shared UI sounds (clicks, join/leave, ready, countdown, win/lose) play automatically. Games add their own with `playSound()`. One mute button applies to every game.
+- **Copy:** sentence case, plain verbs, and an action keeps the same name throughout (for example "Create room" and "Leave room").
 
 ## Tech choices
 
@@ -63,7 +78,7 @@ scripts/build.mjs        builds launcher + one single-file HTML per game into di
 ```bash
 npm install
 npm run dev          # http://localhost:5173 (launcher), /games/snake/
-npm test             # unit tests (simulation + session over BroadcastChannel)
+npm test             # unit tests (rules, session, networked game over BroadcastChannel)
 npm run typecheck
 npm run build        # dist/ (or: npm run build -- snake)
 ```
@@ -72,10 +87,14 @@ To test multiplayer locally without the internet, open the game in two tabs with
 
 ## Adding a game
 
-1. Create `games/<id>/index.html` with a `#stage` element and `main.ts`. Copy `games/snake` as a template.
-2. Write the rules as a `GameDefinition<State, Input>` (`setup`, `tick`, `isFinished`). The state must be JSON-serialisable, and randomness must use `@forge/core/rng` with the seed stored in state.
-3. Call `createGameApp({ def, title, stage, mount, resultText })`. In `mount`, start rendering from `session.state` and bind input to `session.sendInput`.
-4. Add an entry to `games/games.json`. The launcher page and the games table in this README are generated from it (`npm run build` or `npm run readme`).
+1. Copy `games/snake` to `games/<id>/`. `index.html` only loads `main.ts`; the engine builds the page.
+2. Write the rules in `sim.ts` as a `GameDefinition<State, Input>` (`setup`, `tick`, `isFinished`, optional `countdown`). Keep the state JSON-serialisable, and use `@forge/core/rng` with the seed stored in state for randomness.
+3. For sounds and effects on every player's screen, push one-tick events into the state (e.g. `state.events = [{ type: 'eat', player }]`) and play them in `mount` when a new state arrives.
+4. In `main.ts`, call `createGameApp({ def, title, tagline, controls, mount, scores, outcome })`:
+   - `mount(session, stage)`: render from `session.state`, send input with `session.sendInput`, return a cleanup function.
+   - `scores(state)`: drives the score chips in the top bar and the scores on the seats after a match.
+   - `outcome(state, selfId)`: the result headline, plus `win` / `lose` / `draw` / `done` to pick the end sound.
+5. Add a `cover.svg` (320×200) and an entry in `games/games.json`. The launcher and the README games table update from it (`npm run build` or `npm run readme`).
 
 ## Deploy
 

@@ -1,20 +1,23 @@
-import { bindInput, createCanvas2D, createGameApp, startRenderLoop, type Direction } from '@forge'
-import { CELL, HUD, render } from './render'
+import { bindInput, createCanvas2D, createGameApp, playSound, startRenderLoop, type Direction } from '@forge'
+import { CELL, render } from './render'
 import { snakeGame, type SnakeState } from './sim'
-
-const stage = document.getElementById('stage')!
+import { SNAKE_SOUNDS } from './sounds'
 
 createGameApp<SnakeState, Direction>({
   def: snakeGame,
   title: 'Snake',
-  subtitle: 'Eat, grow, outlast. Arrow keys / WASD or swipe.',
-  stage,
-  mount(session) {
-    const view = createCanvas2D(stage, 32 * CELL, 24 * CELL + HUD)
+  tagline: 'Eat, grow, and be the last snake moving.',
+  controls: 'Steer with the arrow keys or WASD. On a phone, swipe.',
+  mount(session, stage) {
+    const view = createCanvas2D(stage, 32 * CELL, 24 * CELL)
     const offState = session.on('state', (s) => {
-      const w = s.width * CELL
-      const h = s.height * CELL + HUD
-      if (view.width !== w || view.height !== h) view.setSize(w, h)
+      if (view.width !== s.width * CELL || view.height !== s.height * CELL)
+        view.setSize(s.width * CELL, s.height * CELL)
+      for (const e of s.events) {
+        const mine = e.player === session.selfId
+        // Your own sounds are loud; everyone else's are quieter.
+        playSound(SNAKE_SOUNDS[e.type], mine ? 1 : 0.35)
+      }
     })
     const stopRender = startRenderLoop((_dt, time) => render(view, session.state, session.selfId, time))
     const stopInput = bindInput<Direction>(
@@ -37,10 +40,16 @@ createGameApp<SnakeState, Direction>({
       view.destroy()
     }
   },
-  resultText(state, session) {
-    if (state.snakes.length === 1) return `Score: ${state.snakes[0].score}`
+  scores: (state) => state.snakes.map((s) => ({ id: s.id, score: s.score, out: !s.alive })),
+  outcome(state, selfId) {
+    if (state.snakes.length === 1) {
+      const n = state.snakes[0].score
+      return { headline: `You ate ${n} ${n === 1 ? 'apple' : 'apples'}`, result: 'done' }
+    }
     const winner = state.snakes.find((s) => s.id === state.winner)
-    if (!winner) return 'Draw!'
-    return winner.id === session.selfId ? 'You win!' : `${winner.name} wins!`
+    if (!winner) return { headline: 'Draw!', result: 'draw' }
+    return winner.id === selfId
+      ? { headline: 'You win!', result: 'win' }
+      : { headline: `${winner.name} wins`, result: 'lose' }
   },
 })

@@ -1,91 +1,92 @@
-import { playerColor } from '@forge/app'
+import { playerColor, theme } from '@forge/ui/theme'
 import type { Canvas2D } from '@forge/render2d/canvas'
-import type { SnakeState } from './sim'
+import type { Point, SnakeState } from './sim'
 
 export const CELL = 20
-export const HUD = 36
+
+const FOOD = '#ff5d7a'
 
 export function render(view: Canvas2D, state: SnakeState | null, selfId: string, time: number) {
   const { ctx } = view
-  ctx.fillStyle = '#0e1116'
-  ctx.fillRect(0, 0, view.width, view.height)
+  ctx.clearRect(0, 0, view.width, view.height)
   if (!state) return
 
-  drawHud(view, state, selfId)
+  // Board: a sunken tray with a soft checker.
+  ctx.fillStyle = theme.pit
+  roundRect(ctx, 0, 0, view.width, view.height, 14)
   ctx.save()
-  ctx.translate(0, HUD)
-
-  // Board
-  ctx.fillStyle = '#141820'
-  ctx.fillRect(0, 0, state.width * CELL, state.height * CELL)
-  ctx.fillStyle = '#1a1f29'
+  ctx.beginPath()
+  ctx.roundRect(0, 0, view.width, view.height, 14)
+  ctx.clip()
+  ctx.fillStyle = 'rgb(255 255 255 / 0.025)'
   for (let y = 0; y < state.height; y++)
-    for (let x = (y % 2); x < state.width; x += 2) ctx.fillRect(x * CELL, y * CELL, CELL, CELL)
+    for (let x = y % 2; x < state.width; x += 2) ctx.fillRect(x * CELL, y * CELL, CELL, CELL)
 
-  // Food (gently pulsing)
-  const pulse = 1 + Math.sin(time * 6) * 0.08
-  ctx.fillStyle = '#ff5d6c'
+  // Food, gently bobbing.
   for (const [x, y] of state.food) {
+    const bob = Math.sin(time * 5 + x + y) * 1.2
+    ctx.fillStyle = 'rgb(0 0 0 / 0.25)'
     ctx.beginPath()
-    ctx.arc((x + 0.5) * CELL, (y + 0.5) * CELL, CELL * 0.3 * pulse, 0, Math.PI * 2)
+    ctx.ellipse((x + 0.5) * CELL, (y + 0.82) * CELL, CELL * 0.22, CELL * 0.08, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = FOOD
+    ctx.beginPath()
+    ctx.arc((x + 0.5) * CELL, (y + 0.45) * CELL + bob, CELL * 0.28, 0, Math.PI * 2)
     ctx.fill()
   }
 
-  // Snakes: dead ones first so living snakes draw on top.
-  const ordered = [...state.snakes].sort((a, b) => Number(a.alive) - Number(b.alive))
-  for (const s of ordered) {
+  for (const s of state.snakes) {
     if (!s.alive) continue
     const color = playerColor(s.slot)
+    // Body as one thick rounded stroke, so turns read as a continuous snake.
+    ctx.strokeStyle = color
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    ctx.lineWidth = CELL * 0.72
+    ctx.beginPath()
     s.body.forEach(([x, y], i) => {
-      ctx.globalAlpha = i === 0 ? 1 : Math.max(0.55, 1 - i / (s.body.length * 1.6))
-      ctx.fillStyle = color
-      const inset = i === 0 ? 1 : 2
-      roundRect(ctx, x * CELL + inset, y * CELL + inset, CELL - inset * 2, CELL - inset * 2, 5)
+      const cx = (x + 0.5) * CELL
+      const cy = (y + 0.5) * CELL
+      if (i === 0) ctx.moveTo(cx, cy)
+      else ctx.lineTo(cx, cy)
     })
-    ctx.globalAlpha = 1
-    drawEyes(ctx, s.body[0], s.dir)
-    if (s.id === selfId && state.tick < 15) drawYouMarker(ctx, s.body[0], color)
+    ctx.stroke()
+    drawHead(ctx, s.body[0], s.dir, color)
+    if (s.id === selfId && state.tick < 12) drawYouRing(ctx, s.body[0], color, time)
   }
   ctx.restore()
 }
 
-function drawHud(view: Canvas2D, state: SnakeState, selfId: string) {
-  const { ctx } = view
-  ctx.font = '600 14px ui-sans-serif, system-ui, sans-serif'
-  ctx.textBaseline = 'middle'
-  let x = 8
-  for (const s of state.snakes) {
-    const label = `${s.name}${s.id === selfId ? ' (you)' : ''}  ${s.score}`
-    ctx.globalAlpha = s.alive ? 1 : 0.35
-    ctx.fillStyle = playerColor(s.slot)
-    roundRect(ctx, x, HUD / 2 - 5, 10, 10, 3)
-    ctx.fillStyle = '#e8ebf0'
-    ctx.fillText(label, x + 16, HUD / 2)
-    x += ctx.measureText(label).width + 34
-  }
-  ctx.globalAlpha = 1
-}
-
-function drawEyes(ctx: CanvasRenderingContext2D, [x, y]: [number, number], dir: string) {
+function drawHead(ctx: CanvasRenderingContext2D, [x, y]: Point, dir: string, color: string) {
   const cx = (x + 0.5) * CELL
   const cy = (y + 0.5) * CELL
-  const f = CELL * 0.18 // forward offset
-  const s = CELL * 0.2 // sideways offset
+  ctx.fillStyle = color
+  ctx.beginPath()
+  ctx.arc(cx, cy, CELL * 0.48, 0, Math.PI * 2)
+  ctx.fill()
   const [fx, fy] = dir === 'up' ? [0, -1] : dir === 'down' ? [0, 1] : dir === 'left' ? [-1, 0] : [1, 0]
-  ctx.fillStyle = '#0e1116'
   for (const side of [-1, 1]) {
+    const ex = cx + fx * CELL * 0.12 + fy * CELL * 0.2 * side
+    const ey = cy + fy * CELL * 0.12 + fx * CELL * 0.2 * side
+    ctx.fillStyle = '#fff'
     ctx.beginPath()
-    ctx.arc(cx + fx * f + fy * s * side, cy + fy * f + fx * s * side, 2.2, 0, Math.PI * 2)
+    ctx.arc(ex, ey, CELL * 0.14, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = theme.night
+    ctx.beginPath()
+    ctx.arc(ex + fx * 1.5, ey + fy * 1.5, CELL * 0.07, 0, Math.PI * 2)
     ctx.fill()
   }
 }
 
-function drawYouMarker(ctx: CanvasRenderingContext2D, [x, y]: [number, number], color: string) {
+function drawYouRing(ctx: CanvasRenderingContext2D, [x, y]: Point, color: string, time: number) {
   ctx.strokeStyle = color
-  ctx.lineWidth = 2
+  ctx.lineWidth = 2.5
+  ctx.globalAlpha = 0.5 + Math.sin(time * 8) * 0.3
   ctx.beginPath()
-  ctx.arc((x + 0.5) * CELL, (y + 0.5) * CELL, CELL * 1.1, 0, Math.PI * 2)
+  ctx.arc((x + 0.5) * CELL, (y + 0.5) * CELL, CELL * 1.2, 0, Math.PI * 2)
   ctx.stroke()
+  ctx.globalAlpha = 1
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {

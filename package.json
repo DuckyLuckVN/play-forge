@@ -17,6 +17,7 @@
     "vitest": "^4.1.12"
   },
   "dependencies": {
+    "@fontsource-variable/fredoka": "^5.3.0",
     "trystero": "^0.26.0"
   }
 }

@@ -204,8 +204,12 @@ function bounceOffBricks(s: RunState, ball: Ball, mods: Mods): void {
     explode(s, col, row, s.turn, 0, 'bomb')
   }
   if (mods.twin && !ball.split) {
+    // The twin leaves mirrored across the contact normal, so it also heads away from the brick.
     ball.split = true
-    s.balls.push({ ...ball, vx: -ball.vx, inside: [] })
+    const vn = ball.vx * contact.nx + ball.vy * contact.ny
+    const tx = ball.vx - vn * contact.nx
+    const ty = ball.vy - vn * contact.ny
+    s.balls.push({ ...ball, vx: vn * contact.nx - tx, vy: vn * contact.ny - ty, inside: [] })
   }
 }
 
@@ -257,7 +261,8 @@ function endTurn(s: RunState): void {
   }
 
   const mods = modsOf(s.boosts)
-  const drops = s.freezeNext ? 0 : mods.glass && s.turn % 10 === 0 ? 2 : 1
+  const frozen = s.freezeNext
+  const drops = frozen ? 0 : mods.glass && s.turn % 10 === 0 ? 2 : 1
   s.freezeNext = false
   for (const b of s.bricks) b.row += drops
   for (const p of s.pickups) p.row += drops
@@ -273,17 +278,23 @@ function endTurn(s: RunState): void {
     s.events.push({ type: 'over' })
     return
   }
-  startNextTurn(s)
+  // A frozen turn adds no row: nothing moved, so row 0 is still occupied.
+  startNextTurn(s, !frozen)
 }
 
 /** Advances to the next turn: a new row at the top, then aim (or a pending boost pick). */
-export function startNextTurn(s: RunState): void {
+export function startNextTurn(s: RunState, spawn = true): void {
   s.turn++
   const milestone = MILESTONES[s.turn]
   if (milestone) bonus(s, { type: 'milestone', turn: s.turn, coins: milestone })
-  spawnRow(s)
+  if (spawn) spawnRow(s)
   s.events.push({ type: 'turn', turn: s.turn })
   if (s.bricks.some((b) => b.row === DANGER_ROW - 1)) s.events.push({ type: 'danger' })
+  openPickOrAim(s)
+}
+
+/** Back to aiming, or to the boost pick first if one is waiting. */
+export function openPickOrAim(s: RunState): void {
   if (s.pendingPicks > 0) {
     s.phase = 'pick'
     s.choices = rollChoices(s)

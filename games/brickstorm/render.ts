@@ -3,31 +3,138 @@ import type { Shake } from '@forge/fx/shake'
 import { ease } from '@forge/fx/tween'
 import type { Canvas2D } from '@forge/render2d/canvas'
 import { FONT, theme } from '@forge/ui/theme'
-import { hpColor, type Juice } from './juice'
+import { ArenaPainter, type ArenaId } from './arenas'
+import { drawBall, TRAIL_STYLE } from './cosmetics'
+import { COIN_FLY, hpColor, type Juice } from './juice'
 import { xpToNext } from './sim/boosts'
-import {
-  BALL_R,
-  BOARD_H,
-  BOARD_W,
-  CELL,
-  COLS,
-  COMBO_TIERS,
-  DANGER_ROW,
-  FLOOR_Y,
-  PICKUP_R,
-  ROWS,
-  TOP,
-} from './sim/config'
+import { BALL_R, boardSize, CELL, COLS, COMBO_TIERS, PICKUP_R, ROWS, TOP } from './sim/config'
 import { traceGuide } from './sim/physics'
+import { dims, type Dims } from './sim/dims'
 import { brickRect, cellCenter } from './sim/rows'
-import type { RunState } from './sim/types'
+import type { BrickKind, PickupKind, Rect, RunState } from './sim/types'
 
 const GUIDE_LENGTH = 260
 const TRAIL = 4
 
+/** A glyph in the corner (or frame) that tells special bricks apart. */
+export function drawKindGlyph(ctx: CanvasRenderingContext2D, kind: BrickKind, r: Rect, time: number): void {
+  if (kind === 'normal') return
+  const cx = r.x + r.w - 10
+  const cy = r.y + 11
+  ctx.save()
+  switch (kind) {
+    case 'bomb':
+      ctx.fillStyle = theme.night
+      ctx.beginPath()
+      ctx.arc(cx, cy + 1, 6, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = Math.sin(time * 12) > 0 ? theme.coral : theme.yolk
+      ctx.fillRect(cx + 3, cy - 7, 3, 3)
+      break
+    case 'gold':
+      ctx.strokeStyle = '#fff3b0'
+      ctx.lineWidth = 2
+      ctx.globalAlpha = 0.6 + 0.4 * Math.sin(time * 5)
+      ctx.beginPath()
+      ctx.roundRect(r.x + 3, r.y + 3, r.w - 6, r.h - 6, 7)
+      ctx.stroke()
+      break
+    case 'lightning':
+      ctx.fillStyle = '#eaf6ff'
+      ctx.beginPath()
+      ctx.moveTo(cx + 2, cy - 8)
+      ctx.lineTo(cx - 5, cy + 1)
+      ctx.lineTo(cx, cy + 1)
+      ctx.lineTo(cx - 2, cy + 8)
+      ctx.lineTo(cx + 5, cy - 1)
+      ctx.lineTo(cx, cy - 1)
+      ctx.closePath()
+      ctx.fill()
+      break
+    case 'mystery':
+      ctx.fillStyle = theme.night
+      ctx.font = `700 14px ${FONT}`
+      ctx.fillText('?', cx, cy + 1)
+      break
+    case 'armored':
+      ctx.strokeStyle = '#d6dbe8'
+      ctx.lineWidth = 4
+      ctx.beginPath()
+      ctx.roundRect(r.x + 2, r.y + 2, r.w - 4, r.h - 4, 8)
+      ctx.stroke()
+      break
+    case 'splitter':
+      ctx.strokeStyle = theme.night
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo(r.x + r.w / 2, r.y + 4)
+      ctx.lineTo(r.x + r.w / 2 - 4, r.y + r.h / 2 - 8)
+      ctx.lineTo(r.x + r.w / 2 + 3, r.y + r.h / 2 + 8)
+      ctx.lineTo(r.x + r.w / 2, r.y + r.h - 4)
+      ctx.stroke()
+      break
+  }
+  ctx.restore()
+}
+
+/** One pickup, centred at (x, y). */
+export function drawPickupGlyph(
+  ctx: CanvasRenderingContext2D,
+  kind: PickupKind,
+  x: number,
+  y: number,
+  time: number,
+): void {
+  if (kind === 'ball') {
+    ctx.strokeStyle = theme.chalk
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.arc(x, y, PICKUP_R, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.fillStyle = theme.chalk
+    ctx.fillRect(x - 6, y - 1.5, 12, 3)
+    ctx.fillRect(x - 1.5, y - 6, 3, 12)
+  } else if (kind === 'fire') {
+    ctx.fillStyle = '#ff9f43'
+    ctx.globalAlpha = 0.35
+    ctx.beginPath()
+    ctx.arc(x, y, PICKUP_R + 4, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.globalAlpha = 1
+    drawBall(ctx, 'ball:flame', x, y, PICKUP_R - 3, time, 0, -1)
+  } else if (kind === 'laser') {
+    ctx.strokeStyle = '#ff6fb5'
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.moveTo(x - PICKUP_R, y)
+    ctx.lineTo(x + PICKUP_R, y)
+    ctx.moveTo(x + PICKUP_R - 5, y - 5)
+    ctx.lineTo(x + PICKUP_R, y)
+    ctx.lineTo(x + PICKUP_R - 5, y + 5)
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.arc(x, y, PICKUP_R, 0, Math.PI * 2)
+    ctx.stroke()
+  } else {
+    ctx.fillStyle = theme.yolk
+    ctx.beginPath()
+    ctx.arc(x, y, PICKUP_R - 2, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = theme.yolkEdge
+    ctx.lineWidth = 2
+    ctx.stroke()
+  }
+}
+
 export class BoardRenderer {
   /** Recent positions per ball, for the fever trail. */
   private trails: Array<Array<[number, number]>> = []
+  private arenaPainter = new ArenaPainter()
+  /** The equipped arena (background). */
+  arena: ArenaId = 'indigo'
+  /** Equipped ball skin and trail ids, e.g. 'ball:star'. */
+  ball = 'ball:classic'
+  trail = 'trail:none'
 
   constructor(
     private view: Canvas2D,
@@ -35,41 +142,55 @@ export class BoardRenderer {
     private shake: Shake,
   ) {}
 
+  /** Board geometry for the frame being drawn. */
+  private d: Dims = boardSize(COLS, ROWS)
+
   draw(s: RunState | null, juice: Juice, aim: number | null, time: number): void {
+    this.d = s ? dims(s) : boardSize(COLS, ROWS)
     const { ctx } = this.view
     ctx.save()
-    ctx.fillStyle = theme.night
-    ctx.fillRect(0, 0, BOARD_W, BOARD_H)
+    this.arenaPainter.draw(ctx, this.arena, s?.turn ?? 1, s?.fever ?? false, time, this.d)
     this.shake.apply(ctx)
     this.drawBoard(ctx, s, time)
     if (s) {
       this.drawPickups(ctx, s, time)
-      this.drawBricks(ctx, s)
+      this.drawBricks(ctx, s, time)
       if (s.phase === 'aim' && aim !== null) this.drawGuide(ctx, s, aim)
-      this.drawBalls(ctx, s)
+      this.drawBalls(ctx, s, time, juice.zaps)
+    }
+    for (const l of juice.lasers) {
+      ctx.fillStyle = '#ff6fb5'
+      ctx.globalAlpha = l.life / 0.3
+      ctx.fillRect(0, l.y - 6 * (l.life / 0.3), this.d.boardW, 12 * (l.life / 0.3))
+      ctx.globalAlpha = 1
     }
     this.particles.draw(ctx)
     ctx.restore()
     if (s) {
-      this.drawHud(ctx, s)
+      this.drawHud(ctx, s, juice)
       this.drawCombo(ctx, s)
     }
+    this.drawCoinFlyers(ctx, juice)
     this.drawBanner(ctx, juice)
     if (juice.flash > 0) {
       ctx.fillStyle = `rgb(255 255 255 / ${juice.flash * 0.45})`
-      ctx.fillRect(0, 0, BOARD_W, BOARD_H)
+      ctx.fillRect(0, 0, this.d.boardW, this.d.boardH)
     }
   }
 
   private drawBoard(ctx: CanvasRenderingContext2D, s: RunState | null, time: number): void {
-    ctx.fillStyle = theme.pit
-    ctx.fillRect(0, TOP, BOARD_W, FLOOR_Y + BALL_R - TOP)
+    // A translucent well, so the arena shows through the board.
+    ctx.fillStyle = 'rgb(0 0 0 / 0.35)'
+    ctx.beginPath()
+    ctx.roundRect(0, TOP, this.d.boardW, this.d.floorY + BALL_R - TOP, 10)
+    ctx.fill()
     ctx.fillStyle = 'rgb(255 255 255 / 0.025)'
-    for (let r = 0; r < ROWS; r++) {
-      for (let c = (r % 2) as number; c < COLS; c += 2) ctx.fillRect(c * CELL, TOP + r * CELL, CELL, CELL)
+    for (let r = 0; r < this.d.rows; r++) {
+      for (let c = (r % 2) as number; c < this.d.cols; c += 2)
+        ctx.fillRect(c * CELL, TOP + r * CELL, CELL, CELL)
     }
-    const y = TOP + DANGER_ROW * CELL
-    const danger = s?.bricks.some((b) => b.row === DANGER_ROW - 1) ?? false
+    const y = TOP + this.d.dangerRow * CELL
+    const danger = s?.bricks.some((b) => b.row === this.d.dangerRow - 1) ?? false
     const pulse = danger ? 0.55 + 0.45 * Math.sin(time * 8) : 0.25
     ctx.strokeStyle = theme.coral
     ctx.globalAlpha = pulse
@@ -77,23 +198,24 @@ export class BoardRenderer {
     ctx.setLineDash([10, 8])
     ctx.beginPath()
     ctx.moveTo(0, y)
-    ctx.lineTo(BOARD_W, y)
+    ctx.lineTo(this.d.boardW, y)
     ctx.stroke()
     ctx.setLineDash([])
     ctx.globalAlpha = 1
   }
 
-  private drawBricks(ctx: CanvasRenderingContext2D, s: RunState): void {
+  private drawBricks(ctx: CanvasRenderingContext2D, s: RunState, time: number): void {
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     for (const b of s.bricks) {
       const r = brickRect(b)
-      ctx.fillStyle = hpColor(b.hp, s.turn)
+      ctx.fillStyle = b.kind === 'gold' ? '#ffc83d' : hpColor(b.hp, s.turn)
       ctx.beginPath()
       ctx.roundRect(r.x, r.y, r.w, r.h, 9)
       ctx.fill()
       ctx.fillStyle = 'rgb(255 255 255 / 0.18)'
       ctx.fillRect(r.x + 6, r.y + 4, r.w - 12, 4)
+      drawKindGlyph(ctx, b.kind, r, time)
       const hp = Math.ceil(b.hp)
       ctx.fillStyle = theme.night
       ctx.font = `700 ${hp >= 1000 ? 15 : 20}px ${FONT}`
@@ -104,30 +226,20 @@ export class BoardRenderer {
   private drawPickups(ctx: CanvasRenderingContext2D, s: RunState, time: number): void {
     for (const p of s.pickups) {
       const { x, y } = cellCenter(p.col, p.row)
-      const bob = Math.sin(time * 4 + p.id) * 3
-      if (p.kind === 'ball') {
-        ctx.strokeStyle = theme.chalk
-        ctx.lineWidth = 3
-        ctx.beginPath()
-        ctx.arc(x, y + bob, PICKUP_R, 0, Math.PI * 2)
-        ctx.stroke()
-        ctx.fillStyle = theme.chalk
-        ctx.fillRect(x - 6, y + bob - 1.5, 12, 3)
-        ctx.fillRect(x - 1.5, y + bob - 6, 3, 12)
-      } else {
-        ctx.fillStyle = theme.yolk
-        ctx.beginPath()
-        ctx.arc(x, y + bob, PICKUP_R - 2, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.strokeStyle = theme.yolkEdge
-        ctx.lineWidth = 2
-        ctx.stroke()
-      }
+      drawPickupGlyph(ctx, p.kind, x, y + Math.sin(time * 4 + p.id) * 3, time)
     }
   }
 
   private drawGuide(ctx: CanvasRenderingContext2D, s: RunState, aim: number): void {
-    const pts = traceGuide(s.launchX, FLOOR_Y - BALL_R, aim, GUIDE_LENGTH, s.bricks.map(brickRect))
+    const pts = traceGuide(
+      s.launchX,
+      this.d.floorY - BALL_R,
+      aim,
+      GUIDE_LENGTH,
+      s.bricks.map(brickRect),
+      this.d.boardW,
+      this.d.floorY,
+    )
     ctx.strokeStyle = 'rgb(244 241 255 / 0.7)'
     ctx.lineWidth = 3
     ctx.lineCap = 'round'
@@ -138,19 +250,26 @@ export class BoardRenderer {
     ctx.setLineDash([])
   }
 
-  private drawBalls(ctx: CanvasRenderingContext2D, s: RunState): void {
+  private drawBalls(ctx: CanvasRenderingContext2D, s: RunState, time: number, zaps: Juice['zaps']): void {
     const flying = s.balls.filter((b) => b.status === 'flying')
-    if (s.fever) {
+    const style = TRAIL_STYLE[this.trail] ?? TRAIL_STYLE['trail:none']
+    const len = s.fever ? Math.max(style.len, TRAIL) : style.len
+    if (len > 0) {
       flying.forEach((b, i) => {
         const trail = (this.trails[i] ??= [])
         trail.unshift([b.x, b.y])
-        trail.length = Math.min(trail.length, TRAIL)
+        trail.length = Math.min(trail.length, len)
         trail.forEach(([x, y], k) => {
-          ctx.fillStyle = theme.yolk
-          ctx.globalAlpha = 0.35 * (1 - k / TRAIL)
-          ctx.beginPath()
-          ctx.arc(x, y, BALL_R + 2, 0, Math.PI * 2)
-          ctx.fill()
+          if (k === 0) return
+          const r = BALL_R * (s.fever ? 1.2 : style.size) * (1 - k / (len + 1))
+          ctx.fillStyle = s.fever ? theme.yolk : style.color(k, time)
+          ctx.globalAlpha = (s.fever ? 0.4 : 0.6) * (1 - k / len)
+          if (style.shape === 'square' && !s.fever) ctx.fillRect(x - r, y - r, r * 2, r * 2)
+          else {
+            ctx.beginPath()
+            ctx.arc(x, y, r, 0, Math.PI * 2)
+            ctx.fill()
+          }
         })
       })
       ctx.globalAlpha = 1
@@ -158,26 +277,57 @@ export class BoardRenderer {
       this.trails = []
     }
 
-    ctx.fillStyle = s.fever ? theme.yolk : theme.chalk
     for (const b of flying) {
+      if (s.fever) {
+        ctx.fillStyle = theme.yolk
+        ctx.globalAlpha = 0.35
+        ctx.beginPath()
+        ctx.arc(b.x, b.y, BALL_R * 1.8, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.globalAlpha = 1
+      }
+      if (b.kind === 'fire') {
+        ctx.fillStyle = '#ff9f43'
+        ctx.globalAlpha = 0.45 + 0.2 * Math.sin(time * 40)
+        ctx.beginPath()
+        ctx.arc(b.x, b.y, b.r * 2, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.globalAlpha = 1
+        drawBall(ctx, 'ball:flame', b.x, b.y, b.r * 1.2, time, b.vx, b.vy)
+      } else if (b.kind === 'bomb') {
+        ctx.fillStyle = '#2b1d00'
+        ctx.beginPath()
+        ctx.arc(b.x, b.y, b.r * 1.15, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = Math.sin(time * 30) > 0 ? theme.coral : theme.yolk
+        ctx.beginPath()
+        ctx.arc(b.x + b.r * 0.6, b.y - b.r * 0.6, b.r * 0.4, 0, Math.PI * 2)
+        ctx.fill()
+      } else {
+        drawBall(ctx, this.ball, b.x, b.y, b.r, time, b.vx, b.vy)
+      }
+    }
+    for (const z of zaps) {
+      ctx.strokeStyle = '#bfe4ff'
+      ctx.lineWidth = 3
+      ctx.globalAlpha = Math.max(0, z.life / 0.18)
       ctx.beginPath()
-      ctx.arc(b.x, b.y, BALL_R, 0, Math.PI * 2)
-      ctx.fill()
+      ctx.moveTo(z.x1, z.y1)
+      const mx = (z.x1 + z.x2) / 2 + Math.sin(time * 90) * 10
+      const my = (z.y1 + z.y2) / 2 + Math.cos(time * 70) * 10
+      ctx.lineTo(mx, my)
+      ctx.lineTo(z.x2, z.y2)
+      ctx.stroke()
+      ctx.globalAlpha = 1
     }
 
     // Balls waiting at the launch point, and balls that already landed.
     const home = s.phase === 'volley' ? (s.nextLaunchX ?? s.launchX) : s.launchX
     const waiting = s.phase === 'volley' ? s.balls.some((b) => b.status !== 'flying') : true
-    if (waiting) {
-      ctx.fillStyle = theme.chalk
-      ctx.beginPath()
-      ctx.arc(s.phase === 'volley' ? s.launchX : home, FLOOR_Y - BALL_R, BALL_R, 0, Math.PI * 2)
-      ctx.fill()
-    }
+    if (waiting)
+      drawBall(ctx, this.ball, s.phase === 'volley' ? s.launchX : home, this.d.floorY - BALL_R, BALL_R, time)
     if (s.phase === 'volley' && s.nextLaunchX !== null) {
-      ctx.beginPath()
-      ctx.arc(s.nextLaunchX, FLOOR_Y - BALL_R, BALL_R, 0, Math.PI * 2)
-      ctx.fill()
+      drawBall(ctx, this.ball, s.nextLaunchX, this.d.floorY - BALL_R, BALL_R, time)
     }
     if (s.phase === 'aim') {
       const n = s.doubleVolleys > 0 ? s.ballCount * 2 : s.ballCount
@@ -185,11 +335,11 @@ export class BoardRenderer {
       ctx.font = `600 14px ${FONT}`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'top'
-      ctx.fillText(`×${n}`, home, FLOOR_Y + 4)
+      ctx.fillText(`×${n}`, home, this.d.floorY + 4)
     }
   }
 
-  private drawHud(ctx: CanvasRenderingContext2D, s: RunState): void {
+  private drawHud(ctx: CanvasRenderingContext2D, s: RunState, juice: Juice): void {
     ctx.textBaseline = 'middle'
     ctx.font = `700 20px ${FONT}`
     ctx.fillStyle = theme.chalk
@@ -197,10 +347,10 @@ export class BoardRenderer {
     ctx.fillText(`Turn ${s.turn}`, 12, TOP / 2 - 4)
     ctx.textAlign = 'right'
     ctx.fillStyle = theme.yolk
-    ctx.fillText(`● ${s.coins}`, BOARD_W - 12, TOP / 2 - 4)
+    ctx.fillText(`● ${Math.floor(juice.shownCoins)}`, this.d.boardW - 12, TOP / 2 - 4)
 
     const need = xpToNext(s.level)
-    const w = BOARD_W - 24
+    const w = this.d.boardW - 24
     ctx.fillStyle = 'rgb(255 255 255 / 0.1)'
     ctx.beginPath()
     ctx.roundRect(12, TOP - 12, w, 6, 3)
@@ -219,8 +369,24 @@ export class BoardRenderer {
     ctx.textBaseline = 'top'
     ctx.fillStyle = s.fever ? theme.yolk : theme.chalk
     ctx.globalAlpha = 0.85
-    ctx.fillText(`x${s.combo}${s.combo >= 25 ? '!' : ''}`, BOARD_W / 2, TOP + 6)
+    ctx.fillText(`x${s.combo}${s.combo >= 25 ? '!' : ''}`, this.d.boardW / 2, TOP + 6)
     ctx.globalAlpha = 1
+  }
+
+  private drawCoinFlyers(ctx: CanvasRenderingContext2D, juice: Juice): void {
+    const tx = this.d.boardW - 50
+    const ty = TOP / 2 - 4
+    ctx.fillStyle = theme.yolk
+    for (const c of juice.coinFlyers) {
+      const t = (c.age - c.delay) / COIN_FLY
+      if (t < 0) continue
+      const k = ease.inCubic(Math.min(1, t))
+      const x = c.x0 + (tx - c.x0) * k
+      const y = c.y0 + (ty - c.y0) * k - Math.sin(k * Math.PI) * 60
+      ctx.beginPath()
+      ctx.arc(x, y, 5, 0, Math.PI * 2)
+      ctx.fill()
+    }
   }
 
   private drawBanner(ctx: CanvasRenderingContext2D, juice: Juice): void {
@@ -229,7 +395,7 @@ export class BoardRenderer {
     const grow = ease.outBack(Math.min(1, b.age / 0.3))
     const fade = Math.min(1, Math.max(0, (1.4 - b.age) / 0.4))
     ctx.save()
-    ctx.translate(BOARD_W / 2, BOARD_H * 0.42)
+    ctx.translate(this.d.boardW / 2, this.d.boardH * 0.42)
     ctx.scale(grow, grow)
     ctx.globalAlpha = fade
     ctx.font = `700 46px ${FONT}`

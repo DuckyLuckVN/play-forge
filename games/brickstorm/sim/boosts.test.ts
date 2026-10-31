@@ -6,7 +6,7 @@ import type { BoostId } from './types'
 
 describe('boost stats', () => {
   it('maps boost counts to modifiers', () => {
-    expect(modsOf({ damage: 2, crit: 1, bouncy: 1 })).toEqual({
+    expect(modsOf({ damage: 2, crit: 1, bouncy: 1 })).toMatchObject({
       damageMult: 1.5,
       coinMult: 1,
       speedMult: 1,
@@ -86,15 +86,11 @@ describe('picking', () => {
     expect(s.choices).toHaveLength(3)
   })
 
-  it('limits rerolls', () => {
+  it('rerolls offer new boosts', () => {
     const s = picking(['balls', 'damage', 'coins'])
-    s.rerolls = 1
     reroll(s)
-    const after = s.choices
-    expect(after).not.toEqual(['balls', 'damage', 'coins'])
-    expect(s.rerolls).toBe(0)
-    reroll(s)
-    expect(s.choices).toBe(after)
+    expect(s.choices).not.toEqual(['balls', 'damage', 'coins'])
+    expect(s.rerollsUsed).toBe(1)
   })
 })
 

@@ -59,12 +59,27 @@ function readSettings(): AudioSettings {
 // Perceived loudness is roughly logarithmic; squaring makes sliders feel even.
 const curve = (v: number) => v * v
 
+let duck = 1
+
+/** Music bus level for a music setting, lowered by a temporary duck factor (0..1). */
+export function duckedMusicGain(music: number, duckFactor: number): number {
+  return curve(music) * 0.35 * Math.max(0, Math.min(1, duckFactor))
+}
+
+/** Temporarily lowers the music (1 = normal) so game effects cut through. */
+export function setMusicDuck(factor: number): void {
+  const next = Math.max(0, Math.min(1, factor))
+  if (next === duck) return
+  duck = next
+  applyLevels()
+}
+
 function applyLevels() {
   if (!ctx || !master || !sfxBus || !musicBus) return
   const t = ctx.currentTime
   master.gain.setTargetAtTime(settings.muted ? 0 : 1, t, 0.03)
   sfxBus.gain.setTargetAtTime(curve(settings.sfx) * 0.5, t, 0.03)
-  musicBus.gain.setTargetAtTime(curve(settings.music) * 0.35, t, 0.03)
+  musicBus.gain.setTargetAtTime(duckedMusicGain(settings.music, duck), t, 0.15)
 }
 
 /** The shared AudioContext, created on first use. Null if unsupported. */

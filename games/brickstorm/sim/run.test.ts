@@ -101,11 +101,13 @@ describe('turn loop', () => {
   it('ramps the speed multiplier', () => {
     const s = empty()
     fire(s, Math.PI / 2)
-    s.volleyTime = 0
+    s.volleyTime = 1
     expect(speedMultiplier(s, false)).toBe(1)
-    s.volleyTime = 3.1
+    s.volleyTime = 5.9
+    expect(speedMultiplier(s, false)).toBe(1)
+    s.volleyTime = 6.1
     expect(speedMultiplier(s, false)).toBe(2)
-    s.volleyTime = 8.1
+    s.volleyTime = 12.1
     expect(speedMultiplier(s, false)).toBe(3)
     s.volleyTime = 0
     expect(speedMultiplier(s, true)).toBe(3)
@@ -128,7 +130,7 @@ describe('turn loop', () => {
     for (const angle of [Math.PI / 2 - 0.6, Math.PI / 2, Math.PI / 2 + 0.6]) {
       const s = empty()
       s.ballCount = 20
-      s.boosts = { speed: 5 } // 1.75× ball speed
+      s.boosts = { speed: 5, big: 3 } // 1.75× ball speed, 1.6× ball size
       for (let c = 0; c < COLS; c++) brick(s, c, 4, 1e9)
       const rects = s.bricks.map(brickRect)
       fire(s, angle)
@@ -147,5 +149,20 @@ describe('turn loop', () => {
         }
       }
     }
+  })
+
+  it('pays a milestone bonus on reaching turn 25', () => {
+    const s = empty()
+    s.turn = 24
+    brick(s, 0, 0, 1e6) // not a board wipe
+    fire(s, Math.PI / 2)
+    runVolley(s)
+    expect(s.turn).toBe(25)
+    expect(s.coins).toBe(50)
+    expect(drainEvents(s).find((e) => e.type === 'milestone')).toEqual({
+      type: 'milestone',
+      turn: 25,
+      coins: 50,
+    })
   })
 })

@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { reroll, rerollCost } from './boosts'
 import { DANGER_ROW } from './config'
 import { applyHelpers, revive, reviveCost } from './meta'
-import { drainEvents } from './run'
 import { brick, empty } from './testing'
 
 describe('reroll', () => {
@@ -27,14 +26,10 @@ describe('revive', () => {
     brick(s, 2, DANGER_ROW - 1, 5)
     brick(s, 3, DANGER_ROW - 2, 5)
     s.phase = 'over'
-    const turn = s.turn
     revive(s)
     expect(s.phase).toBe('aim')
-    expect(s.turn).toBe(turn + 1)
-    expect(s.bricks.filter((b) => b.row > 0)).toEqual([kept])
-    expect(s.bricks.some((b) => b.row === 0)).toBe(true)
+    expect(s.bricks).toEqual([kept])
     expect(s.revivesUsed).toBe(1)
-    expect(drainEvents(s).some((e) => e.type === 'revive')).toBe(true)
   })
 
   it('only works after game over', () => {

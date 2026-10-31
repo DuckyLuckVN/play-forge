@@ -2,7 +2,7 @@
 import { rollChoices } from './boosts'
 import { DANGER_ROW } from './config'
 import { killBrick } from './damage'
-import { startNextTurn } from './run'
+import { openPickOrAim } from './run'
 import type { ActiveHelper, RunState } from './types'
 
 /** Coins for the next revive this run: 100, 200, 300… */
@@ -17,7 +17,8 @@ export function revive(s: RunState): void {
   s.pickups = s.pickups.filter((p) => p.row < DANGER_ROW - 2)
   s.revivesUsed++
   s.events.push({ type: 'revive' })
-  startNextTurn(s)
+  // Same turn: aim again (the next volley brings the next row).
+  openPickOrAim(s)
 }
 
 /** Applies helpers the player switched on for this run. */
@@ -36,6 +37,7 @@ export function applyHelpers(s: RunState, use: { headStart: boolean; luckyStart:
  */
 export function useHelper(s: RunState, id: ActiveHelper): boolean {
   if (s.phase !== 'aim') return false
+  s.combo = 0 // helper kills pay the base coin rate, not the last volley's combo
   switch (id) {
     case 'pushBack':
       s.bricks = s.bricks.filter((b) => b.row > 0)
@@ -59,5 +61,6 @@ export function useHelper(s: RunState, id: ActiveHelper): boolean {
       break
   }
   s.events.push({ type: 'helper', id })
+  openPickOrAim(s) // a level-up from Row Bomb opens its pick now
   return true
 }

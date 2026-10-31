@@ -177,7 +177,7 @@ export function bankRun(save: Save, s: RunState, banked: number): { save: Save; 
     save: {
       ...save,
       coins: save.coins + gained,
-      run: { simVersion: SIM_VERSION, banked: s.coins, state: structuredClone(s) },
+      run: { simVersion: SIM_VERSION, banked: s.coins, state: { ...structuredClone(s), events: [] } },
     },
     banked: s.coins,
   }

@@ -130,7 +130,7 @@ export class Juice {
           color: e.kind === 'gold' ? theme.yolk : hpColor(e.maxHp, this.turn),
           ...IMPACT_STYLE[this.impact],
         })
-        this.flyCoins(e.x, e.y, e.kind === 'gold' ? 5 : 1)
+        this.flyCoins(e.x, e.y, Math.min(e.coins, 5))
         if (e.kind === 'gold') {
           this.particles.burst(e.x, e.y, {
             count: 14,

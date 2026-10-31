@@ -40,8 +40,9 @@ export function hpScale(turn: number): number {
 
 function brickHp(state: RunState): number {
   const { rng, turn } = state
-  let hp = Math.max(1, Math.round(hpScale(turn) * (0.8 + 0.4 * random(rng))))
-  if (random(rng) < 1 / 6) hp *= 2
+  // Close to the turn's typical value, so the numbers read as "about this turn".
+  let hp = Math.max(1, Math.round(hpScale(turn) * (0.9 + 0.2 * random(rng))))
+  if (turn >= 10 && random(rng) < 0.1) hp *= 2
   return hp
 }
 

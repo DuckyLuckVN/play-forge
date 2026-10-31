@@ -117,6 +117,10 @@ export class Juice {
       case 'zap':
         this.zaps.push({ x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, life: 0.18 })
         return this.play('zap', BRICK_SOUNDS.zap)
+      case 'secondWind':
+        this.show('SECOND WIND!', 1)
+        this.shake.add(0.4)
+        return playSound(BRICK_SOUNDS.secondWind)
       case 'revive':
         this.show('REVIVED!', 0.8)
         return playSound(BRICK_SOUNDS.revive)

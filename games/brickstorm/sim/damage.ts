@@ -33,15 +33,19 @@ export function gainXp(s: RunState, amount: number): void {
   }
 }
 
-export function killBrick(s: RunState, brick: Brick, _depth: number): void {
+export function killBrick(s: RunState, brick: Brick, depth: number): void {
   const i = s.bricks.indexOf(brick)
   if (i < 0) return
   s.bricks.splice(i, 1)
   const mods = modsOf(s.boosts)
-  s.coins += Math.max(1, Math.round(comboMultiplier(s.combo) * mods.coinMult))
-  gainXp(s, 1)
+  s.coins += Math.max(1, Math.round(comboMultiplier(s.combo) * mods.coinMult)) + mods.midas
+  gainXp(s, mods.xpMult)
   const { x, y } = cellCenter(brick.col, brick.row)
   s.events.push({ type: 'kill', x, y, maxHp: brick.maxHp })
+  if (mods.aftershock) {
+    const near = s.bricks.filter((b) => Math.abs(b.col - brick.col) + Math.abs(b.row - brick.row) === 1)
+    for (const b of near) damageBrick(s, b, 1 * mods.damageMult, 'blast', depth + 1)
+  }
 }
 
 /** Damages every brick in the 3×3 around a cell. */

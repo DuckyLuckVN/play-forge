@@ -7,6 +7,7 @@
   justify-items: stretch;
 }
 .bs-center {
+  position: relative;
   min-height: 0;
   min-width: 0;
   display: grid;
@@ -255,8 +256,64 @@
   }
 }
 
+/* First-seen hint card over the middle of the board. */
+.bs-notice {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  z-index: 5;
+  width: min(380px, calc(100% - 24px));
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px 14px;
+  overflow: hidden;
+  border: 2px solid var(--pf-yolk);
+  border-radius: 16px;
+  background: rgb(16 19 44 / 0.94);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+  color: var(--pf-chalk);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transform: translateX(-50%);
+  animation: bs-notice-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.bs-notice[hidden] {
+  display: none;
+}
+.bs-notice > span {
+  display: grid;
+  gap: 2px;
+}
+.bs-notice strong {
+  color: var(--pf-yolk);
+}
+.bs-notice > span > span {
+  font-size: 14px;
+  color: var(--pf-haze);
+}
+/* Time left, as a bar shrinking along the bottom edge. */
+.bs-notice-time {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 100%;
+  background: var(--pf-yolk);
+  transform-origin: left;
+  transform: scaleX(var(--left, 1));
+}
+@keyframes bs-notice-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -16px) scale(0.92);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .bs-card.pf-btn {
+  .bs-card.pf-btn,
+  .bs-notice {
     animation: none;
   }
 }

@@ -136,7 +136,8 @@ export function helpersPanel(
   )
 }
 
-function sample(id: string): HTMLCanvasElement {
+/** A small picture of a Guide entry (brick, pickup or special ball). */
+export function sample(id: string): HTMLCanvasElement {
   const size = 48
   const canvas = h('canvas', { width: size * 2, height: size * 2 })
   canvas.style.width = canvas.style.height = `${size}px`

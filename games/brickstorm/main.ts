@@ -21,7 +21,8 @@ import { shopPanel } from './shop-ui'
 import { applyHelpers, growBoard, revive, reviveCost, useHelper } from './sim/meta'
 import { dims } from './sim/dims'
 import { boostDetail, GUIDE, newlySeen } from './guide'
-import { ACTIVE_HELPERS, boostsPanel, guidePanel, helpersPanel, navPanel, statsPanel } from './panels'
+import { NoticeQueue } from './notices'
+import { ACTIVE_HELPERS, boostsPanel, guidePanel, helpersPanel, navPanel, sample, statsPanel } from './panels'
 import { BOOST_ICONS } from './icons'
 import { BOOSTS, isSynergy, pickBoost, reroll, rerollCost } from './sim/boosts'
 import { AIM_MIN, BOARD_H, BOARD_W, boardSize, COLS, MAX_COLS, MAX_ROWS, ROWS, TICK } from './sim/config'
@@ -83,13 +84,18 @@ const recallBtn = button('Recall', () => {
 const drawerBtn = button('Boosts & helpers', () => openDrawer())
 drawerBtn.classList.add('bs-drawer-btn')
 const controls = h('div', { class: 'bs-controls' }, fastBtn, recallBtn, drawerBtn)
+// First-seen hints: a card over the middle of the board. Tap to dismiss.
+const notices = new NoticeQueue()
+const noticeEl = h('button', { class: 'bs-notice', type: 'button', onclick: () => notices.dismiss() })
+noticeEl.hidden = true
+let noticeShown: object | null = null
 const leftSide = h('aside', { class: 'bs-side left' })
 const rightSide = h('aside', { class: 'bs-side right' })
 const stage = h(
   'main',
   { class: 'pf-stage bs-stage' },
   leftSide,
-  h('div', { class: 'bs-center' }, boardEl, controls),
+  h('div', { class: 'bs-center' }, boardEl, controls, noticeEl),
   rightSide,
 )
 const overlay = h('div', { class: 'pf-overlay' })
@@ -180,6 +186,7 @@ const wallet = () => h('span', { class: 'bs-wallet', textContent: `● ${save.co
 
 function leaveRun() {
   run = null
+  notices.clear()
   paused = false
   controls.hidden = true
   pauseBtn.hidden = true
@@ -432,10 +439,29 @@ function announceNewKinds(s: RunState) {
   if (!fresh.length) return
   for (const id of fresh) {
     const g = GUIDE.find((e) => e.id === id)
-    if (g) toast(`New: ${g.name}. ${g.text}`)
+    if (g) notices.push({ id, title: `New: ${g.name}`, text: g.text })
   }
   save = { ...save, seen: [...save.seen, ...fresh] }
   persist()
+}
+
+/** Shows the current notice, ticking only while the game is in view. */
+function updateNotice(dt: number) {
+  if (run && !paused && !panel) notices.update(dt)
+  const n = run && !panel ? notices.current : null
+  if (n !== noticeShown) {
+    noticeShown = n
+    noticeEl.hidden = !n
+    if (n) {
+      noticeEl.replaceChildren(
+        sample(n.id),
+        h('span', {}, h('strong', { textContent: n.title }), h('span', { textContent: n.text })),
+        h('i', { class: 'bs-notice-time' }),
+      )
+      noticeEl.setAttribute('aria-label', `${n.title}. ${n.text} Tap to close.`)
+    }
+  }
+  if (n) noticeEl.style.setProperty('--left', String(1 - notices.progress))
 }
 
 /** Before a run: switch on owned helpers (Head Start, Lucky Start). */
@@ -728,6 +754,7 @@ startRenderLoop((dt, time) => {
   shake.update(dt)
   juice.update(dt)
   if (s && s.phase === 'aim') announceNewKinds(s)
+  updateNotice(dt)
   renderPanels(s, time)
   const d = s ? dims(s) : boardSize(COLS, ROWS)
   if (view.width !== d.boardW || view.height !== d.boardH) view.setSize(d.boardW, d.boardH)

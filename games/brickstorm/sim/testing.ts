@@ -11,7 +11,7 @@ export function empty(seed = 1): RunState {
 }
 
 export function brick(s: RunState, col: number, row: number, hp: number): Brick {
-  const b = { id: s.nextId++, col, row, hp, maxHp: hp }
+  const b: Brick = { id: s.nextId++, col, row, hp, maxHp: hp, kind: 'normal', split: false }
   s.bricks.push(b)
   return b
 }

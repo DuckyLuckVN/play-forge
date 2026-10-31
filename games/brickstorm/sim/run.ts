@@ -227,9 +227,14 @@ function collectPickups(s: RunState, ball: Ball, mods: Mods): void {
     const { x, y } = cellCenter(p.col, p.row)
     if (Math.hypot(ball.x - x, ball.y - y) >= PICKUP_R + ball.r + mods.pickupReach) continue
     s.pickups.splice(i, 1)
-    if (p.kind === 'ball') s.pendingBalls++
-    else s.coins += Math.round(COIN_PICKUP * mods.coinMult)
     s.events.push({ type: 'pickup', kind: p.kind, x, y })
+    if (p.kind === 'ball') s.pendingBalls++
+    else if (p.kind === 'coin') s.coins += Math.round(COIN_PICKUP * mods.coinMult)
+    else if (p.kind === 'fire') s.fireCharges += 3
+    else {
+      s.events.push({ type: 'laser', y })
+      for (const b of s.bricks.filter((b) => b.row === p.row)) damageBrick(s, b, s.turn, 'laser')
+    }
   }
 }
 

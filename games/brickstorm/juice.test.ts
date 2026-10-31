@@ -46,7 +46,7 @@ describe('Juice', () => {
 
   it('shakes and bursts on a kill', () => {
     const j = juice()
-    j.handle({ type: 'kill', x: 10, y: 20, maxHp: 5 })
+    j.handle({ type: 'kill', id: 1, x: 10, y: 20, maxHp: 5, kind: 'normal' })
     expect(particles.burst).toHaveBeenCalled()
     expect(shake.add).toHaveBeenCalledWith(0.08)
   })
@@ -64,7 +64,7 @@ describe('Juice', () => {
     vi.mocked(playSound).mockClear()
     for (let i = 0; i < 20; i++) {
       j.handle({ type: 'wall' })
-      j.handle({ type: 'kill', x: 0, y: 0, maxHp: 1 })
+      j.handle({ type: 'kill', id: 1, x: 0, y: 0, maxHp: 1, kind: 'normal' })
       j.handle({ type: 'pickup', kind: 'coin', x: 0, y: 0 })
     }
     expect(playSound).toHaveBeenCalledTimes(3)

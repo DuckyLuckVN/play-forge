@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { playSound } from '@forge/audio/sound'
 import { theme } from '@forge/ui/theme'
-import { comboPitch, hitSound, hpColor, Juice } from './juice'
+import { comboPitch, hitSound, hpColor, Juice, pitched } from './juice'
 
 vi.mock('@forge/audio/sound', () => ({ playSound: vi.fn() }))
 vi.mock('@forge/fx/confetti', () => ({ celebrate: vi.fn() }))
@@ -26,6 +26,23 @@ describe('hitSound', () => {
     expect(s[0].freq).toBeCloseTo(comboPitch(7))
     expect(s[0].vol).toBe(0.45)
     expect(s[1].freq).toBeCloseTo(comboPitch(7) / 2)
+  })
+})
+
+describe('pitched', () => {
+  it('scales every tone, including slides', () => {
+    expect(
+      pitched(
+        [
+          { freq: 100, to: 50, dur: 1 },
+          { freq: 200, dur: 1 },
+        ],
+        1.5,
+      ),
+    ).toEqual([
+      { freq: 150, to: 75, dur: 1 },
+      { freq: 300, to: undefined, dur: 1 },
+    ])
   })
 })
 

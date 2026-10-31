@@ -180,6 +180,9 @@ export class Juice {
         this.show(HELPER_TEXT[e.id], 0.5)
         if (e.id === 'rowBomb' || e.id === 'pushBack') this.shake.add(0.35)
         return playSound(e.id === 'rowBomb' ? BRICK_SOUNDS.explode : BRICK_SOUNDS.secondWind)
+      case 'grow':
+        this.show(e.axis === 'col' ? 'WIDER!' : 'TALLER!', 0.6)
+        return playSound(BRICK_SOUNDS.secondWind)
       case 'jackpot':
         this.show('JACKPOT ROW!', 0.4)
         return playSound(BRICK_SOUNDS.jackpot)

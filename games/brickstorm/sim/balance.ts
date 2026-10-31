@@ -2,7 +2,9 @@
 // `npm run balance` prints medians against the targets in the v2 plan.
 import { random } from '@forge/core/rng'
 import { pickBoost } from './boosts'
-import { AIM_MIN, DANGER_ROW } from './config'
+import { AIM_MIN } from './config'
+import { dims } from './dims'
+import { growBoard } from './meta'
 import { spawnRow, specialChance } from './rows'
 import { canRecall, createRun, drainEvents, fire, recall, step } from './run'
 import type { BoostId, RunState } from './types'
@@ -48,7 +50,7 @@ function score(s: RunState): number {
     else if (e.type === 'pickup') v += 15
     else if (e.type === 'over') v -= 10_000
   }
-  return v - 50 * s.bricks.filter((b) => b.row >= DANGER_ROW - 2).length
+  return v - 50 * s.bricks.filter((b) => b.row >= dims(s).dangerRow - 2).length
 }
 
 function greedyAngle(s: RunState): number {
@@ -74,6 +76,10 @@ export function simulateRun(seed: number, bot: Bot, maxTurns = 80): RunResult {
   const aimRng = { seed: seed ^ 0x9e3779b9 }
   let firstLevelTurn: number | null = null
   while (s.phase !== 'over' && s.turn < maxTurns) {
+    if (s.phase === 'grow') {
+      growBoard(s, s.cols < 10 ? 'col' : 'row')
+      continue
+    }
     if (s.phase === 'pick') {
       pickBoost(s, PREFER.find((id) => s.choices.includes(id)) ?? s.choices[0])
       continue

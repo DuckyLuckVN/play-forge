@@ -4,7 +4,7 @@
 import type { RunState } from './sim/types'
 
 export const SAVE_KEY = 'play-forge:brickstorm:save'
-export const SIM_VERSION = 3
+export const SIM_VERSION = 4
 
 export interface Equipped {
   ball: string
@@ -85,7 +85,7 @@ function validRun(run: unknown): run is SavedRun {
   const s = run.state
   return (
     isObject(s) &&
-    ['aim', 'pick', 'over', 'volley'].includes(s.phase as string) &&
+    ['aim', 'pick', 'grow', 'over', 'volley'].includes(s.phase as string) &&
     Array.isArray(s.bricks) &&
     Array.isArray(s.balls) &&
     Array.isArray(s.pickups) &&

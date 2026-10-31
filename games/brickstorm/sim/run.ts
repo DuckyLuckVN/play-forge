@@ -6,18 +6,22 @@ import {
   BALL_SPEED,
   BOARD_W,
   CELL,
-  DANGER_ROW,
+  COLS,
   FEVER_AT,
   FIRE_GAP,
-  FLOOR_Y,
+  GROW_EVERY,
+  MAX_COLS,
+  MAX_ROWS,
   PICKUP_R,
   RECALL_AFTER,
+  ROWS,
   SLOWMO,
   TICK,
 } from './config'
 import { random } from '@forge/core/rng'
 import { modsOf, rollChoices, type Mods } from './boosts'
 import { damageBrick, explode, zap } from './damage'
+import { dims } from './dims'
 export { comboMultiplier } from './damage'
 import { antiStall, bounceWalls, circleRect, deepestContact, reflect } from './physics'
 import { brickRect, cellCenter, spawnRow } from './rows'
@@ -33,6 +37,8 @@ export function createRun(seed: number): RunState {
     seed,
     turn: 1,
     phase: 'aim',
+    cols: COLS,
+    rows: ROWS,
     launchX: BOARD_W / 2,
     nextLaunchX: null,
     ballCount: 1,
@@ -58,6 +64,7 @@ export function createRun(seed: number): RunState {
     boosts: {},
     doubleVolleys: 0,
     fireCharges: 0,
+    growPending: false,
     freezeNext: false,
     surgeNext: false,
     nextId: 1,
@@ -92,7 +99,7 @@ export function fire(s: RunState, angle: number): void {
   }
   s.balls = Array.from({ length: n }, (_, i): Ball => ({
     x: s.launchX,
-    y: FLOOR_Y - mods.radius,
+    y: dims(s).floorY - mods.radius,
     vx,
     vy,
     status: 'queued',
@@ -111,7 +118,7 @@ export function fire(s: RunState, angle: number): void {
   s.combo = 0
   s.fever = false
   s.nextLaunchX = null
-  s.dangerAtStart = s.bricks.some((b) => b.row === DANGER_ROW - 1)
+  s.dangerAtStart = s.bricks.some((b) => b.row === dims(s).dangerRow - 1)
   s.events.push({ type: 'fire' })
 }
 
@@ -141,6 +148,7 @@ export function step(s: RunState): void {
 
 function moveBall(s: RunState, ball: Ball, mods: Mods): void {
   const r = ball.r
+  const d = dims(s)
   const dist = Math.hypot(ball.vx, ball.vy) * TICK
   const n = Math.max(1, Math.ceil(dist / (r / 2)))
   const dt = TICK / n
@@ -148,7 +156,7 @@ function moveBall(s: RunState, ball: Ball, mods: Mods): void {
     ball.x += ball.vx * dt
     ball.y += ball.vy * dt
 
-    if (bounceWalls(ball, r)) {
+    if (bounceWalls(ball, r, d.boardW)) {
       ;[ball.vx, ball.vy] = antiStall(ball.vx, ball.vy)
       if (mods.bouncy) ball.bounceBonus += 1
       s.events.push({ type: 'wall' })
@@ -159,10 +167,10 @@ function moveBall(s: RunState, ball: Ball, mods: Mods): void {
 
     collectPickups(s, ball, mods)
 
-    if (ball.y >= FLOOR_Y - r && ball.vy > 0) {
-      ball.y = FLOOR_Y - r
+    if (ball.y >= d.floorY - r && ball.vy > 0) {
+      ball.y = d.floorY - r
       ball.status = 'landed'
-      if (s.nextLaunchX === null) s.nextLaunchX = Math.max(BALL_R, Math.min(BOARD_W - BALL_R, ball.x))
+      if (s.nextLaunchX === null) s.nextLaunchX = Math.max(BALL_R, Math.min(d.boardW - BALL_R, ball.x))
       s.events.push({ type: 'land' })
       return
     }
@@ -256,7 +264,8 @@ function endTurn(s: RunState): void {
   if (s.doubleVolleys > 0) s.doubleVolleys--
 
   if (s.bricks.length === 0) bonus(s, { type: 'allClear', coins: s.turn })
-  if (s.dangerAtStart && !s.bricks.some((b) => b.row === DANGER_ROW - 1)) {
+  const { dangerRow } = dims(s)
+  if (s.dangerAtStart && !s.bricks.some((b) => b.row === dangerRow - 1)) {
     bonus(s, { type: 'closeOne', coins: s.turn * 5 })
   }
 
@@ -266,14 +275,14 @@ function endTurn(s: RunState): void {
   s.freezeNext = false
   for (const b of s.bricks) b.row += drops
   for (const p of s.pickups) p.row += drops
-  s.pickups = s.pickups.filter((p) => p.row < DANGER_ROW)
+  s.pickups = s.pickups.filter((p) => p.row < dangerRow)
 
-  if (mods.secondWind && !s.secondWindUsed && s.bricks.some((b) => b.row >= DANGER_ROW)) {
+  if (mods.secondWind && !s.secondWindUsed && s.bricks.some((b) => b.row >= dangerRow)) {
     s.secondWindUsed = true
-    s.bricks = s.bricks.filter((b) => b.row < DANGER_ROW)
+    s.bricks = s.bricks.filter((b) => b.row < dangerRow)
     s.events.push({ type: 'secondWind' })
   }
-  if (s.bricks.some((b) => b.row >= DANGER_ROW)) {
+  if (s.bricks.some((b) => b.row >= dangerRow)) {
     s.phase = 'over'
     s.events.push({ type: 'over' })
     return
@@ -288,8 +297,9 @@ export function startNextTurn(s: RunState, spawn = true): void {
   const milestone = MILESTONES[s.turn]
   if (milestone) bonus(s, { type: 'milestone', turn: s.turn, coins: milestone })
   if (spawn) spawnRow(s)
+  if (s.turn % GROW_EVERY === 0) s.growPending = true
   s.events.push({ type: 'turn', turn: s.turn })
-  if (s.bricks.some((b) => b.row === DANGER_ROW - 1)) s.events.push({ type: 'danger' })
+  if (s.bricks.some((b) => b.row === dims(s).dangerRow - 1)) s.events.push({ type: 'danger' })
   openPickOrAim(s)
 }
 
@@ -298,7 +308,10 @@ export function openPickOrAim(s: RunState): void {
   if (s.pendingPicks > 0) {
     s.phase = 'pick'
     s.choices = rollChoices(s)
+  } else if (s.growPending && (s.cols < MAX_COLS || s.rows < MAX_ROWS)) {
+    s.phase = 'grow'
   } else {
+    s.growPending = false
     s.phase = 'aim'
   }
 }

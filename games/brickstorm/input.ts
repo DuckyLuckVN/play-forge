@@ -5,6 +5,8 @@ export function toBoard(
   rect: { left: number; top: number; width: number; height: number },
   clientX: number,
   clientY: number,
+  boardW = BOARD_W,
+  boardH = BOARD_H,
 ): [number, number] {
-  return [((clientX - rect.left) / rect.width) * BOARD_W, ((clientY - rect.top) / rect.height) * BOARD_H]
+  return [((clientX - rect.left) / rect.width) * boardW, ((clientY - rect.top) / rect.height) * boardH]
 }

@@ -2,8 +2,13 @@
 // logical pixels) and seconds.
 
 export const CELL = 56
+/** Starting board size; a run's board can grow (see dims.ts). */
 export const COLS = 7
 export const ROWS = 12
+export const MAX_COLS = 10
+export const MAX_ROWS = 16
+/** Every this many turns the player may grow the board. */
+export const GROW_EVERY = 50
 /** HUD band above row 0. */
 export const TOP = 56
 export const BOARD_W = COLS * CELL
@@ -41,5 +46,11 @@ export const AUTO_3X = 12
 export const RECALL_AFTER = 6
 export const SLOWMO = 0.3
 
-/** A brick entering this row ends the run. */
+/** A brick entering this row ends the run (starting board). */
 export const DANGER_ROW = ROWS - 1
+
+/** Pixel and row geometry for a board of a given size. */
+export function boardSize(cols: number, rows: number) {
+  const floorY = TOP + rows * CELL + 48
+  return { cols, rows, dangerRow: rows - 1, boardW: cols * CELL, floorY, boardH: floorY + 24 }
+}

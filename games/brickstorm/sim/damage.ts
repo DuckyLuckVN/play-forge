@@ -2,7 +2,8 @@
 // kills, coins, XP and on-death effects are counted exactly once.
 import { modsOf, xpToNext } from './boosts'
 import { random, randomInt } from '@forge/core/rng'
-import { CELL, COLS, COMBO_TIERS, DANGER_ROW } from './config'
+import { CELL, COMBO_TIERS } from './config'
+import { dims } from './dims'
 import { cellCenter } from './rows'
 import type { Brick, RunState } from './types'
 
@@ -96,7 +97,11 @@ function onDeath(s: RunState, brick: Brick, depth: number): void {
         [brick.col, brick.row + 1],
       ].filter(
         ([c, r]) =>
-          c >= 0 && c < COLS && r >= 0 && r < DANGER_ROW && !s.bricks.some((b) => b.col === c && b.row === r),
+          c >= 0 &&
+          c < s.cols &&
+          r >= 0 &&
+          r < dims(s).dangerRow &&
+          !s.bricks.some((b) => b.col === c && b.row === r),
       )
       for (const [col, row] of cells.slice(0, 2)) {
         s.bricks.push({ id: s.nextId++, col, row, hp, maxHp: hp, kind: 'normal', split: true })

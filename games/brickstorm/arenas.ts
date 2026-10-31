@@ -34,13 +34,13 @@ interface Star {
   phase: number
 }
 
-/** Fixed pseudo-random stars (LCG), so the sky is the same every load. */
+/** Fixed pseudo-random stars (LCG), so the sky is the same every load. Positions are 0..1. */
 function makeStars(count: number, seed: number, size: number): Star[] {
   let s = seed
   const next = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296
   return Array.from({ length: count }, () => ({
-    x: next() * BOARD_W,
-    y: next() * BOARD_H,
+    x: next(),
+    y: next(),
     size: size * (0.6 + next() * 0.8),
     phase: next() * Math.PI * 2,
   }))
@@ -53,40 +53,52 @@ export class ArenaPainter {
   private far = makeStars(46, 7, 1.7)
   private near = makeStars(24, 99, 2.8)
 
-  draw(ctx: CanvasRenderingContext2D, arena: ArenaId, turn: number, fever: boolean, time: number): void {
+  draw(
+    ctx: CanvasRenderingContext2D,
+    arena: ArenaId,
+    turn: number,
+    fever: boolean,
+    time: number,
+    size: { boardW: number; boardH: number; floorY: number } = {
+      boardW: BOARD_W,
+      boardH: BOARD_H,
+      floorY: FLOOR_Y,
+    },
+  ): void {
+    const { boardW: W, boardH: H, floorY } = size
     const a = ARENAS[arena] ?? ARENAS.indigo
     const level = stormLevel(turn)
     const warm = 0.07 * level
-    const sky = ctx.createLinearGradient(0, 0, 0, BOARD_H)
+    const sky = ctx.createLinearGradient(0, 0, 0, H)
     sky.addColorStop(0, mix(a.top, STORM, warm))
     sky.addColorStop(1, mix(a.bottom, STORM, warm * 0.5))
     ctx.fillStyle = sky
-    ctx.fillRect(0, 0, BOARD_W, BOARD_H)
+    ctx.fillRect(0, 0, W, H)
 
     const still = prefersReducedMotion()
     const speed = 1 + 0.3 * level
     const layer = (stars: Star[], drift: number, alpha: number) => {
       ctx.fillStyle = a.star
       for (const st of stars) {
-        const y = still ? st.y : (st.y + time * drift * speed) % BOARD_H
+        const y = still ? st.y * H : (st.y * H + time * drift * speed) % H
         ctx.globalAlpha = alpha * (0.55 + 0.45 * Math.sin(time * 2 + st.phase))
-        ctx.fillRect(st.x, y, st.size, st.size)
+        ctx.fillRect(st.x * W, y, st.size, st.size)
       }
     }
     layer(this.far, 6, 0.5)
     layer(this.near, 16, 0.8)
     ctx.globalAlpha = 1
 
-    const glow = ctx.createRadialGradient(BOARD_W / 2, FLOOR_Y, 10, BOARD_W / 2, FLOOR_Y, BOARD_W * 0.7)
+    const glow = ctx.createRadialGradient(W / 2, floorY, 10, W / 2, floorY, W * 0.7)
     glow.addColorStop(0, a.glow + '40')
     glow.addColorStop(1, a.glow + '00')
     ctx.fillStyle = glow
-    ctx.fillRect(0, 0, BOARD_W, BOARD_H)
+    ctx.fillRect(0, 0, W, H)
 
     if (fever) {
       ctx.fillStyle = theme.yolk
       ctx.globalAlpha = 0.12 * (0.5 + 0.5 * Math.sin((time * 2 * Math.PI) / 0.5))
-      ctx.fillRect(0, 0, BOARD_W, BOARD_H)
+      ctx.fillRect(0, 0, W, H)
       ctx.globalAlpha = 1
     }
   }

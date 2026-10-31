@@ -48,22 +48,26 @@ export function antiStall(vx: number, vy: number): [number, number] {
 }
 
 /** Aim angle (direction = cos a, -sin a) from the launch point to a pointer. */
-export function aimFromPointer(launchX: number, px: number, py: number): number {
-  const dy = FLOOR_Y - py
+export function aimFromPointer(launchX: number, px: number, py: number, floorY = FLOOR_Y): number {
+  const dy = floorY - py
   if (dy <= 0) return px >= launchX ? AIM_MIN : Math.PI - AIM_MIN
   const a = Math.atan2(dy, px - launchX)
   return Math.max(AIM_MIN, Math.min(Math.PI - AIM_MIN, a))
 }
 
 /** Moves a ball one small step against the walls and rects; returns true if it bounced. */
-export function bounceWalls(b: { x: number; y: number; vx: number; vy: number }, r = BALL_R): boolean {
+export function bounceWalls(
+  b: { x: number; y: number; vx: number; vy: number },
+  r = BALL_R,
+  width = BOARD_W,
+): boolean {
   let hit = false
   if (b.x < r && b.vx < 0) {
     b.x = r
     b.vx = -b.vx
     hit = true
-  } else if (b.x > BOARD_W - r && b.vx > 0) {
-    b.x = BOARD_W - r
+  } else if (b.x > width - r && b.vx > 0) {
+    b.x = width - r
     b.vx = -b.vx
     hit = true
   }
@@ -97,6 +101,8 @@ export function traceGuide(
   angle: number,
   length: number,
   rects: Rect[],
+  width = BOARD_W,
+  floorY = FLOOR_Y,
 ): Array<[number, number]> {
   const step = BALL_R / 2
   const b = { x, y, vx: Math.cos(angle) * step, vy: -Math.sin(angle) * step }
@@ -104,7 +110,7 @@ export function traceGuide(
   for (let travelled = 0; travelled < length; travelled += step) {
     b.x += b.vx
     b.y += b.vy
-    let bounced = bounceWalls(b)
+    let bounced = bounceWalls(b, BALL_R, width)
     const c = deepestContact(b.x, b.y, rects)
     if (c) {
       b.x += c.nx * c.depth
@@ -112,7 +118,7 @@ export function traceGuide(
       ;[b.vx, b.vy] = reflect(b.vx, b.vy, c.nx, c.ny)
       bounced = true
     }
-    if (b.y >= FLOOR_Y - BALL_R && b.vy > 0) break
+    if (b.y >= floorY - BALL_R && b.vy > 0) break
     if (bounced) pts.push([b.x, b.y])
   }
   pts.push([b.x, b.y])

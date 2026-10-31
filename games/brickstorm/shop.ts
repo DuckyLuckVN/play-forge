@@ -57,6 +57,11 @@ export const CATALOG: ShopItem[] = [
   helper('luckyStart', 'Lucky Start', 80, 'Start a run with a free boost pick'),
   helper('reroll', 'Reroll Token', 40, 'One free boost reroll'),
   helper('revive', 'Revive Token', 150, 'One free revive on game over'),
+  helper('pushBack', 'Push Back', 120, 'Mid-run: lift every brick up a row'),
+  helper('rowBomb', 'Row Bomb', 100, 'Mid-run: destroy the lowest row'),
+  helper('freeze', 'Freeze', 80, "Mid-run: bricks don't drop after your next volley"),
+  helper('firePack', 'Fire Pack', 90, 'Mid-run: your next volley starts with 5 fireballs'),
+  helper('surge', 'Ball Surge', 70, 'Mid-run: +50% balls for your next volley'),
 ]
 
 export const findItem = (id: string) => CATALOG.find((i) => i.id === id)

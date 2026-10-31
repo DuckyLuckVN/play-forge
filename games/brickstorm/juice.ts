@@ -64,6 +64,14 @@ const HITSTOP = 0.04
 /** Seconds a coin takes to fly to the counter. */
 export const COIN_FLY = 0.5
 
+const HELPER_TEXT = {
+  pushBack: 'PUSH BACK!',
+  rowBomb: 'ROW BOMB!',
+  freeze: 'FROZEN!',
+  firePack: 'FIRE PACK!',
+  surge: 'BALL SURGE!',
+}
+
 const BANNER_LIFE = 1.4
 const SOUND_GAP_MS = 30
 
@@ -168,6 +176,10 @@ export class Juice {
       case 'milestone':
         this.show(`TURN ${e.turn}! +${e.coins}`, 0.5)
         return playSound(BRICK_SOUNDS.jackpot)
+      case 'helper':
+        this.show(HELPER_TEXT[e.id], 0.5)
+        if (e.id === 'rowBomb' || e.id === 'pushBack') this.shake.add(0.35)
+        return playSound(e.id === 'rowBomb' ? BRICK_SOUNDS.explode : BRICK_SOUNDS.secondWind)
       case 'jackpot':
         this.show('JACKPOT ROW!', 0.4)
         return playSound(BRICK_SOUNDS.jackpot)

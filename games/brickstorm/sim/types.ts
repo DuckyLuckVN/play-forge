@@ -2,6 +2,9 @@ import type { RngState } from '@forge/core/rng'
 
 export type Phase = 'aim' | 'volley' | 'pick' | 'over'
 
+/** Helpers the player can spend mid-run, while aiming. */
+export type ActiveHelper = 'pushBack' | 'rowBomb' | 'freeze' | 'firePack' | 'surge'
+
 export interface Rect {
   x: number
   y: number
@@ -92,6 +95,7 @@ export type SimEvent =
   | { type: 'revive' }
   | { type: 'secondWind' }
   | { type: 'jackpot' }
+  | { type: 'helper'; id: ActiveHelper }
   | { type: 'milestone'; turn: number; coins: number }
   | { type: 'laser'; y: number }
   | { type: 'mystery'; x: number; y: number; reward: 'balls' | 'pick' | 'coins' | 'fire' }
@@ -132,6 +136,10 @@ export interface RunState {
   doubleVolleys: number
   /** Next volley's first balls that will be fireballs. */
   fireCharges: number
+  /** Freeze helper: skip the next descend. */
+  freezeNext: boolean
+  /** Ball Surge helper: +50% balls next volley. */
+  surgeNext: boolean
   nextId: number
   events: SimEvent[]
 }

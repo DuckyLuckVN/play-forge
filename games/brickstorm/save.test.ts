@@ -50,6 +50,23 @@ describe('save', () => {
     expect(save).toEqual({ ...DEFAULT_SAVE, bestTurn: 12, bestCombo: 40 })
   })
 
+  it('adds new helper kinds and seen hints to an older v2 save', () => {
+    const storage = memoryStorage()
+    storage.setItem(
+      SAVE_KEY,
+      JSON.stringify({
+        ...DEFAULT_SAVE,
+        coins: 5,
+        helpers: { headStart: 1, luckyStart: 0, reroll: 2, revive: 0 },
+        seen: undefined,
+      }),
+    )
+    const { save } = loadSave(storage)
+    expect(save.helpers).toEqual({ ...DEFAULT_SAVE.helpers, headStart: 1, reroll: 2 })
+    expect(save.helpers.pushBack).toBe(0)
+    expect(save.seen).toEqual([])
+  })
+
   it('backs up corrupt data instead of losing it', () => {
     const storage = memoryStorage()
     storage.setItem(SAVE_KEY, '{oops')

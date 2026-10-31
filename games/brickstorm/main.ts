@@ -19,7 +19,8 @@ import { ARENAS, type ArenaId } from './arenas'
 import { bankRun, clearRun, loadSave, recordRun, spend, writeSave } from './save'
 import { shopPanel } from './shop-ui'
 import { applyHelpers, revive, reviveCost } from './sim/meta'
-import { BOOSTS, pickBoost, reroll, rerollCost } from './sim/boosts'
+import { BOOST_ICONS } from './icons'
+import { BOOSTS, isSynergy, pickBoost, reroll, rerollCost } from './sim/boosts'
 import { AIM_MIN, BOARD_H, BOARD_W, TICK } from './sim/config'
 import { aimFromPointer } from './sim/physics'
 import { canRecall, createRun, drainEvents, fire, recall, speedMultiplier, step } from './sim/run'
@@ -289,10 +290,13 @@ function showPick() {
   const settled = () => performance.now() - shownAt >= PICK_GRACE_MS
   const cards = s.choices.map((id) => {
     const b = BOOSTS[id]
+    const synergy = isSynergy(s, id)
+    const art = h('span', { class: 'bs-card-icon' })
+    art.innerHTML = BOOST_ICONS[id]
     const card = h(
       'button',
       {
-        class: `pf-btn bs-card ${b.rarity}`,
+        class: `pf-btn bs-card ${b.rarity}${synergy ? ' synergy' : ''}`,
         type: 'button',
         onclick: () => {
           if (!settled()) return
@@ -302,6 +306,8 @@ function showPick() {
           else show(null)
         },
       },
+      synergy && h('em', { class: 'bs-ribbon', textContent: 'SYNERGY' }),
+      art,
       h('small', { textContent: b.rarity }),
       h('strong', { textContent: b.name }),
       h('span', { textContent: b.text }),

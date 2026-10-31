@@ -181,3 +181,42 @@
   height: 22px;
   accent-color: var(--pf-yolk);
 }
+
+.bs-card {
+  position: relative;
+}
+.bs-card-icon {
+  display: block;
+  width: 56px;
+  height: 56px;
+}
+.bs-card.common .bs-card-icon {
+  color: #5ab8ff;
+}
+.bs-card.rare .bs-card-icon {
+  color: #b48cff;
+}
+.bs-card.epic .bs-card-icon {
+  color: var(--pf-yolk);
+}
+.bs-card.synergy {
+  border-color: #4be3a0;
+  box-shadow: 0 0 22px rgb(75 227 160 / 0.45);
+}
+.bs-ribbon {
+  position: absolute;
+  top: 10px;
+  right: -6px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: #4be3a0;
+  color: #0b2a1c;
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+/* The pick heading only takes focus to absorb stray keys; no ring needed. */
+.pf-panel h2[tabindex='-1']:focus {
+  outline: none;
+}

@@ -9,7 +9,7 @@ A collection of fun, interactive mini-games designed to bring people together. P
 | Game | Players | Description |
 | --- | --- | --- |
 | [Snake](https://duckyluckvn.github.io/play-forge/games/snake/) | 1–8 | Eat, grow, outlast. Solo or up to 8 players. |
-| [Brickstorm](https://duckyluckvn.github.io/play-forge/games/brickstorm/) | 1 | Aim, launch, and break the storm. Endless solo brick breaker. |
+| [Brickstorm](https://duckyluckvn.github.io/play-forge/games/brickstorm/) | 1 | Aim, launch, and break the storm. Boosts, special bricks and a shop. |
 <!-- games:end -->
 
 - **Online:** the GitHub Pages links above (deployed automatically on every push to `main`).

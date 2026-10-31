@@ -689,3 +689,54 @@ body {
     transition: none !important;
   }
 }
+
+/* ---------- Game options (segmented controls) ---------- */
+
+.pf-options {
+  display: grid;
+  gap: 10px;
+}
+.pf-option {
+  display: grid;
+  gap: 6px;
+}
+.pf-option-label {
+  font-weight: 500;
+  color: var(--pf-haze);
+}
+.pf-segmented {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--pf-radius);
+  background: var(--pf-pit);
+}
+.pf-segment {
+  flex: 1;
+  min-width: 0;
+  font: 600 15px/1 var(--pf-font);
+  color: var(--pf-haze);
+  background: none;
+  border: 0;
+  border-radius: 9px;
+  padding: 10px 6px;
+  cursor: pointer;
+  transition:
+    background 150ms,
+    color 150ms;
+}
+.pf-segment:hover:not(:disabled) {
+  color: var(--pf-chalk);
+}
+.pf-segment.on {
+  background: var(--pf-yolk);
+  color: var(--pf-ink);
+  box-shadow: 0 2px 0 var(--pf-yolk-edge);
+  animation: pf-pop 260ms cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+.pf-segment:disabled {
+  cursor: default;
+}
+.pf-segment:disabled:not(.on) {
+  opacity: 0.6;
+}

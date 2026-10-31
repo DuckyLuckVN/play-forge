@@ -68,7 +68,7 @@ Every page uses the same tokens and components, so a new game looks and behaves 
 
 - **Look:** a "game night table". Deep indigo background, chunky buttons that press down, players as coloured tokens in seats. Font: Fredoka, bundled into the file so it works offline.
 - **Colours:** defined once in `engine/ui/theme.ts`. CSS reads them as `--pf-*` variables, and canvas code imports `theme` and `playerColor(slot)`.
-- **Flow:** start screen (Play solo / Create room / Join) → room (seats, "I'm ready", host starts) → 3-2-1 → play → results with a rematch ready-up. Solo games can pause (Esc / P, or automatically when the tab is hidden).
+- **Flow:** start screen (name, game options, Play solo / Create room / Join) → room (seats, "I'm ready", host starts) → 3-2-1 → play → results with a rematch ready-up. Solo games can pause (Esc / P, or automatically when the tab is hidden).
 - **Sound:** shared UI sounds (clicks, join/leave, ready, countdown, win/lose) play automatically. Games add their own with `playSound()`.
 - **Music:** generated live (no files). The lounge track plays on the launcher, menus and lobbies, and gameplay crossfades to the game's track. Music and effects volumes are separate sliders, saved in localStorage and shared by every page. Music fades out in background tabs.
 - **Motion:** panels rise in only when the screen changes, and tokens, badges and score chips pop only when something new happens. Wins get confetti. All of it respects reduced-motion settings.
@@ -107,7 +107,7 @@ To test multiplayer locally without the internet, open the game in two tabs with
 ## Adding a game
 
 1. Copy `games/snake` to `games/<id>/`. `index.html` only loads `main.ts`; the engine builds the page.
-2. Write the rules in `sim.ts` as a `GameDefinition<State, Input>` (`setup`, `tick`, `isFinished`, optional `countdown`). Keep the state JSON-serialisable, and use `@forge/core/rng` with the seed stored in state for randomness.
+2. Write the rules in `sim.ts` as a `GameDefinition<State, Input>` (`setup`, `tick`, `isFinished`, optional `countdown`). Add `options` (e.g. speed, board size) and the engine shows them as pickers: on the start screen (remembered per player), and in the room, where only the host can change them. `tickRate` can be a function of the options; `setup` receives them too. Keep the state JSON-serialisable, and use `@forge/core/rng` with the seed stored in state for randomness.
 3. For sounds and effects on every player's screen, push one-tick events into the state (e.g. `state.events = [{ type: 'eat', player }]`) and play them in `mount` when a new state arrives.
 4. For smooth movement, render from `smoothState(session)`: interpolate between `prev` and `curr` with `alpha()`. Use `Particles`, `Shake` and `ease` from `@forge/fx` for effects. `games/snake/render.ts` shows all of these.
 5. In `main.ts`, call `createGameApp({ def, title, tagline, controls, music, mount, scores, outcome })`:

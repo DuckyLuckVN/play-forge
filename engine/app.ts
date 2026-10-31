@@ -5,8 +5,10 @@ import { ARCADE, LOUNGE } from './audio/tracks'
 import { celebrate } from './fx/confetti'
 import { createBroadcastTransport } from './net/broadcast'
 import {
+  resolveOptions,
   Session,
   type GameDefinition,
+  type GameOptions,
   type LobbyState,
   type PlayerInfo,
   type RoomSnapshot,
@@ -16,6 +18,7 @@ import { createTrysteroTransport } from './net/trystero'
 import { audioMenu } from './ui/audio-menu'
 import { h, icon, toast } from './ui/dom'
 import { icons } from './ui/icons'
+import { optionPickers } from './ui/options'
 import { applyTheme, playerColor } from './ui/theme'
 
 export interface Scoreline {
@@ -169,7 +172,28 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   let joinedAt = 0
   let playerId = (isReload && store.load()?.playerId) || randomId()
   let lastLobby: LobbyState | null = null
-  const snapshot = (l: LobbyState): LobbyState => ({ ...l, players: l.players.map((p) => ({ ...p })) })
+  const snapshot = (l: LobbyState): LobbyState => ({
+    ...l,
+    players: l.players.map((p) => ({ ...p })),
+    options: { ...l.options },
+  })
+
+  // The player's last chosen options, used for solo games and new rooms.
+  const optionsKey = `play-forge:options:${def.id}`
+  const chosenOptions = (): GameOptions => {
+    try {
+      return resolveOptions(def.options, JSON.parse(localStorage.getItem(optionsKey) ?? '{}'))
+    } catch {
+      return resolveOptions(def.options)
+    }
+  }
+  const saveOptions = (options: GameOptions) => {
+    try {
+      localStorage.setItem(optionsKey, JSON.stringify(options))
+    } catch {
+      // storage unavailable: the choice still applies to this session
+    }
+  }
 
   function begin(
     transport: Transport,
@@ -177,7 +201,13 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     extra: { offline?: boolean; restore?: RoomSnapshot } = {},
   ) {
     const name = storedName() || 'Player'
-    const s = (session = new Session(def, transport, { host, name, playerId, ...extra }))
+    const s = (session = new Session(def, transport, {
+      host,
+      name,
+      playerId,
+      options: chosenOptions(),
+      ...extra,
+    }))
     joinedAt = performance.now()
     lastLobby = snapshot(s.lobby)
     seenTokens.clear()
@@ -265,6 +295,17 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
           playSound(UI_SOUNDS.leave)
           toast(`${p.name} left`, playerColor(p.slot))
         }
+    }
+
+    // Tell guests when the host changes a setting.
+    if (!s.isHost && prev.hostId) {
+      for (const d of def.options ?? []) {
+        const v = lobby.options?.[d.id]
+        if (v && prev.options?.[d.id] && v !== prev.options[d.id]) {
+          playSound(UI_SOUNDS.ready)
+          toast(`${d.label}: ${d.choices.find((c) => c.value === v)?.label ?? v}`)
+        }
+      }
     }
 
     if (lobby.phase === 'countdown' && (prev.phase !== 'countdown' || prev.countdown !== lobby.countdown)) {
@@ -433,6 +474,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         h('h2', { class: 'pf-heading', textContent: opts.title }),
         opts.tagline && h('p', { class: 'pf-lede', textContent: opts.tagline }),
         h('label', { class: 'pf-field', htmlFor: 'pf-name' }, 'Your name', name),
+        menuOptions(),
         h('div', { class: 'pf-row' }, def.minPlayers <= 1 && solo, create),
         h('div', { class: 'pf-or', textContent: "or join a friend's room" }),
         h('div', { class: 'pf-row' }, code, joinBtn),
@@ -441,6 +483,20 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       ),
       'menu',
     )
+  }
+
+  /** Option pickers on the start screen; redraws in place to keep typed text. */
+  function menuOptions() {
+    const slot = h('div')
+    const draw = () =>
+      slot.replaceChildren(
+        optionPickers(def.options ?? [], chosenOptions(), (id, value) => {
+          saveOptions({ ...chosenOptions(), [id]: value })
+          draw()
+        }) ?? '',
+      )
+    draw()
+    return def.options?.length ? slot : null
   }
 
   function offlineNote() {
@@ -622,6 +678,16 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
           : h('h2', { class: 'pf-heading', textContent: `${opts.title} room` }),
         roomCodeBox(),
         seats(s),
+        optionPickers(
+          def.options ?? [],
+          s.lobby.options,
+          s.isHost
+            ? (id, value) => {
+                s.setOption(id, value)
+                saveOptions(s.lobby.options)
+              }
+            : null,
+        ),
         h('p', { class: 'pf-note', textContent: note }),
         offlineNote(),
         action,

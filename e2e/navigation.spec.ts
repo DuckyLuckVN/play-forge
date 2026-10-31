@@ -41,3 +41,12 @@ test('the menu fits a phone screen without sideways scrolling @phone', async ({ 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
   expect(overflow).toBeLessThanOrEqual(0)
 })
+
+test('the chosen speed is remembered on the start screen', async ({ page }) => {
+  await page.goto('games/snake/index.html')
+  const speed = page.getByRole('radiogroup', { name: 'Speed' })
+  await expect(speed.getByRole('radio', { name: 'Normal' })).toHaveAttribute('aria-checked', 'true')
+  await speed.getByRole('radio', { name: 'Slow' }).click()
+  await page.reload()
+  await expect(speed.getByRole('radio', { name: 'Slow' })).toHaveAttribute('aria-checked', 'true')
+})

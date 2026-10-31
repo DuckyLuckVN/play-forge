@@ -9,6 +9,7 @@ import { readdirSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { build } from 'vite'
 import { viteSingleFile } from 'vite-plugin-singlefile'
+import { updateReadme } from './readme.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const engine = fileURLToPath(new URL('../engine', import.meta.url))
@@ -41,3 +42,5 @@ for (const t of targets) {
   })
   console.log(`  ✓ ${t.out}/index.html`)
 }
+
+if (updateReadme()) console.log('\n▸ README.md games section updated, remember to commit it')

@@ -31,6 +31,15 @@ jobs:
         with:
           path: dist
 
+  # Separate from `build` so a stale README is flagged without blocking the deploy.
+  readme:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: node scripts/readme.mjs
+      - name: Check README games section is up to date
+        run: git diff --exit-code README.md || (echo "::error::Run 'npm run readme' and commit README.md" && exit 1)
+
   deploy:
     needs: build
     runs-on: ubuntu-latest

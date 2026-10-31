@@ -74,12 +74,25 @@ const HELPER_TEXT = {
 
 const BANNER_LIFE = 1.4
 const SOUND_GAP_MS = 30
+/** XP gained within this many seconds counts toward a rush. */
+const RUSH_WINDOW = 1
+/** A rush is at least this much of a level within the window. */
+const RUSH_AT = 0.3
+/** Seconds between XP ticks (at most 8 a second). */
+const XP_TICK_GAP = 0.125
+/** Seconds the level-up celebration plays before the pick screen opens. */
+export const LEVEL_UP_INTRO = 1.2
+
+/** A short XP tick whose pitch climbs an octave as the bar fills. */
+export function xpTick(fill: number): Tone[] {
+  return [{ freq: 660 * 2 ** Math.max(0, Math.min(1, fill)), dur: 0.05, wave: 'sine', vol: 0.3 }]
+}
 
 /** Turns simulation events into particles, shake, flashes, banners and sound. */
 export class Juice {
   /** 0..1 white flash over the board; decays in `update`. */
   flash = 0
-  banner: { text: string; age: number } | null = null
+  banner: { text: string; age: number; big?: boolean } | null = null
   /** Current turn, for colouring kill bursts like the bricks. */
   turn = 1
   /** Lightning arcs to draw; the renderer reads this list. */
@@ -95,6 +108,22 @@ export class Juice {
   private targetCoins = 0
   /** Coins flying from a broken brick to the HUD counter. */
   coinFlyers: Array<{ x0: number; y0: number; age: number; delay: number }> = []
+  /** XP as drawn, in levels (1.5 = halfway through the second level); eases toward the real value. */
+  shownXp = 0
+  private targetXp = 0
+  /** 0..1 glow on the XP bar during a rush of XP; decays in `update`. */
+  xpGlow = 0
+  /** 0..1 flash on the XP bar when it fills up. */
+  xpFlash = 0
+  /** Spark bursts waiting to be thrown off the end of the XP bar (the renderer takes them). */
+  xpSparks = 0
+  private xpGains: Array<{ at: number; amount: number }> = []
+  private clock = 0
+  private lastXpTick = -Infinity
+  /** The level-up celebration before the pick screen; null when none is playing. */
+  private levelUp: { age: number } | null = null
+  private leveled = false
+  private freePick = false
   /** Chain effects waiting for their ripple delay. */
   private queue: Array<{ e: Extract<SimEvent, { type: 'explode' | 'zap' }>; at: number }> = []
   private announced = 0
@@ -161,6 +190,7 @@ export class Juice {
       case 'danger':
         return playSound(BRICK_SOUNDS.danger)
       case 'levelUp':
+        this.leveled = true
         return playSound(BRICK_SOUNDS.levelUp)
       case 'over':
         this.shake.add(0.6)
@@ -191,6 +221,7 @@ export class Juice {
         this.shake.add(0.2)
         return this.play('laser', BRICK_SOUNDS.laser)
       case 'mystery':
+        if (e.reward === 'pick') this.freePick = true
         this.particles.text(e.x, e.y, MYSTERY_TEXT[e.reward], { color: theme.yolk, size: 18, rise: 40 })
         return playSound(BRICK_SOUNDS.mystery)
       case 'secondWind':
@@ -209,6 +240,61 @@ export class Juice {
   setCoins(coins: number): void {
     if (coins < this.targetCoins) this.shownCoins = coins // a new run
     this.targetCoins = coins
+  }
+
+  /** The real XP: `level` levels done and `fill` (0..1) of the next. `snap` skips the easing (a resumed run). */
+  setXp(level: number, fill: number, snap = false): void {
+    const total = level + fill
+    if (snap || total < this.targetXp) {
+      // A new or resumed run.
+      this.shownXp = this.targetXp = total
+      this.xpGains = []
+      return
+    }
+    if (total > this.targetXp) this.xpGains.push({ at: this.clock, amount: total - this.targetXp })
+    this.targetXp = total
+  }
+
+  /** Starts the level-up celebration that plays before the pick screen. */
+  startLevelUp(): void {
+    this.levelUp = { age: 0 }
+    this.show(this.leveled || !this.freePick ? 'LEVEL UP!' : 'FREE BOOST!', 0.6)
+    this.banner!.big = true
+    this.leveled = this.freePick = false
+    this.xpFlash = 1
+    this.xpSparks += 3
+    if (!prefersReducedMotion()) this.shake.add(0.3)
+    celebrate([theme.yolk, '#4be3a0', '#5ab8ff', '#b48cff'])
+    playSound(BRICK_SOUNDS.fanfare)
+  }
+
+  /** True once the celebration has played (or was skipped). */
+  get levelUpDone(): boolean {
+    const len = prefersReducedMotion() ? LEVEL_UP_INTRO / 2 : LEVEL_UP_INTRO
+    return !this.levelUp || this.levelUp.age >= len
+  }
+
+  skipLevelUp(): void {
+    this.levelUp = null
+  }
+
+  private updateXp(dt: number): void {
+    this.xpFlash = Math.max(0, this.xpFlash - dt * 2)
+    this.xpGains = this.xpGains.filter((g) => this.clock - g.at < RUSH_WINDOW)
+    const recent = this.xpGains.reduce((sum, g) => sum + g.amount, 0)
+    this.xpGlow = recent >= RUSH_AT ? 1 : Math.max(0, this.xpGlow - dt * 2)
+    const gap = this.targetXp - this.shownXp
+    if (gap > 0) {
+      const before = this.shownXp
+      this.shownXp = Math.min(this.targetXp, this.shownXp + Math.max(0.05, gap * 5) * dt)
+      if (Math.floor(this.shownXp) > Math.floor(before)) this.xpFlash = 1
+    }
+    if (this.xpGlow > 0 && gap > 0 && this.clock - this.lastXpTick >= XP_TICK_GAP) {
+      this.lastXpTick = this.clock
+      this.xpSparks++
+      playSound(xpTick(this.shownXp % 1))
+    }
+    if (this.levelUp) this.levelUp.age += dt
   }
 
   private flyCoins(x: number, y: number, n: number): void {
@@ -237,6 +323,8 @@ export class Juice {
   }
 
   update(dt: number): void {
+    this.clock += dt
+    this.updateXp(dt)
     this.hitstop = Math.max(0, this.hitstop - dt)
     for (const q of this.queue) q.at -= dt
     const due = this.queue.filter((q) => q.at <= 1e-9)

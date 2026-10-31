@@ -24,7 +24,7 @@ import { boostDetail, GUIDE, newlySeen } from './guide'
 import { NoticeQueue } from './notices'
 import { ACTIVE_HELPERS, boostsPanel, guidePanel, helpersPanel, navPanel, sample, statsPanel } from './panels'
 import { BOOST_ICONS } from './icons'
-import { BOOSTS, isSynergy, pickBoost, reroll, rerollCost } from './sim/boosts'
+import { BOOSTS, isSynergy, pickBoost, reroll, rerollCost, xpToNext } from './sim/boosts'
 import { AIM_MIN, BOARD_H, BOARD_W, boardSize, COLS, MAX_COLS, MAX_ROWS, ROWS, TICK } from './sim/config'
 import { aimFromPointer } from './sim/physics'
 import { canRecall, createRun, drainEvents, fire, recall, speedMultiplier, step } from './sim/run'
@@ -107,9 +107,11 @@ document.addEventListener('click', (e) => {
 
 // ---------- Game objects ----------
 const view = createCanvas2D(boardEl, BOARD_W, BOARD_H)
-// Side panels match the board's height (CSS reads --bs-board-h).
+// Side panels match the board's height; the notice card its width (CSS reads --bs-board-h/w).
 new ResizeObserver(() => {
-  stage.style.setProperty('--bs-board-h', `${view.canvas.getBoundingClientRect().height}px`)
+  const box = view.canvas.getBoundingClientRect()
+  stage.style.setProperty('--bs-board-h', `${box.height}px`)
+  stage.style.setProperty('--bs-board-w', `${box.width}px`)
 }).observe(view.canvas)
 const particles = new Particles()
 const shake = new Shake(8)
@@ -130,6 +132,8 @@ let dragging = false
 let acc = 0
 let panel = ''
 let overShown = false
+/** The level-up celebration for the current pick has started. */
+let pickIntro = false
 /** How many of the current run's coins are already in the wallet. */
 let banked = 0
 
@@ -447,8 +451,9 @@ function announceNewKinds(s: RunState) {
 
 /** Shows the current notice, ticking only while the game is in view. */
 function updateNotice(dt: number) {
-  if (run && !paused && !panel) notices.update(dt)
-  const n = run && !panel ? notices.current : null
+  if (run && !paused && !panel && run.phase !== 'pick') notices.update(dt)
+  // Hidden behind screens and during the level-up celebration.
+  const n = run && !panel && (run.phase === 'aim' || run.phase === 'volley') ? notices.current : null
   if (n !== noticeShown) {
     noticeShown = n
     noticeEl.hidden = !n
@@ -495,6 +500,7 @@ function beginRun(s: RunState) {
   run = s
   overShown = false
   juice.turn = s.turn
+  juice.setXp(s.level, s.xp / xpToNext(s.level), true)
   paused = false
   acc = 0
   aim = Math.PI / 2
@@ -741,7 +747,15 @@ startRenderLoop((dt, time) => {
   if (s) {
     for (const e of drainEvents(s)) juice.handle(e)
     juice.setCoins(s.coins)
-    if (s.phase === 'pick' && !panel.startsWith('pick')) showPick()
+    juice.setXp(s.level, s.xp / xpToNext(s.level))
+    // Level up: celebrate for a beat, then open the pick screen.
+    if (s.phase !== 'pick') pickIntro = false
+    else if (!panel.startsWith('pick')) {
+      if (!pickIntro) {
+        pickIntro = true
+        juice.startLevelUp()
+      } else if (juice.levelUpDone) showPick()
+    }
     if (s.phase === 'grow' && panel !== 'grow') showGrow()
     if (s.phase === 'over' && !overShown) {
       overShown = true
@@ -773,6 +787,7 @@ const aiming = () => !!run && !paused && run.phase === 'aim'
 const UI = '.pf-overlay, .pf-bar, .bs-controls, button, a, input'
 
 window.addEventListener('pointerdown', (e) => {
+  if (run?.phase === 'pick' && !panel) juice.skipLevelUp()
   if (!aiming() || (e.target as Element).closest?.(UI)) return
   dragging = true
   aim = aimAt(e)
@@ -792,6 +807,7 @@ window.addEventListener('pointercancel', () => (dragging = false))
 
 window.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return
+  if (run?.phase === 'pick' && !panel && (e.code === 'Space' || e.code === 'Enter')) juice.skipLevelUp()
   if (e.code === 'Escape' || e.code === 'KeyP') {
     if (paused) resume()
     else pause()

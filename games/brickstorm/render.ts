@@ -6,7 +6,7 @@ import { FONT, theme } from '@forge/ui/theme'
 import { ArenaPainter, type ArenaId } from './arenas'
 import { drawBall, TRAIL_STYLE } from './cosmetics'
 import { COIN_FLY, hpColor, type Juice } from './juice'
-import { modsOf, xpToNext } from './sim/boosts'
+import { modsOf } from './sim/boosts'
 import { BALL_R, boardSize, CELL, COLS, COMBO_TIERS, PICKUP_R, ROWS, TOP } from './sim/config'
 import { traceGuide } from './sim/physics'
 import { dims, type Dims } from './sim/dims'
@@ -14,6 +14,7 @@ import { brickRect, cellCenter } from './sim/rows'
 import type { BrickKind, PickupKind, Rect, RunState } from './sim/types'
 
 const TRAIL = 4
+const XP_COLOR = '#4be3a0'
 
 /** A glyph in the corner (or frame) that tells special bricks apart. */
 export function drawKindGlyph(ctx: CanvasRenderingContext2D, kind: BrickKind, r: Rect, time: number): void {
@@ -348,16 +349,41 @@ export class BoardRenderer {
     ctx.fillStyle = theme.yolk
     ctx.fillText(`● ${Math.floor(juice.shownCoins)}`, this.d.boardW - 12, TOP / 2 - 4)
 
-    const need = xpToNext(s.level)
+    // XP bar: eases toward the real XP, glows during a rush and flashes when it fills.
     const w = this.d.boardW - 24
+    const fill = juice.shownXp % 1
+    const grow = juice.xpGlow * 3
+    const y = TOP - 12 - grow / 2
     ctx.fillStyle = 'rgb(255 255 255 / 0.1)'
     ctx.beginPath()
-    ctx.roundRect(12, TOP - 12, w, 6, 3)
+    ctx.roundRect(12, y, w, 6 + grow, 3)
     ctx.fill()
-    ctx.fillStyle = '#4be3a0'
+    ctx.save()
+    if (juice.xpGlow > 0) {
+      ctx.shadowColor = XP_COLOR
+      ctx.shadowBlur = 14 * juice.xpGlow
+    }
+    ctx.fillStyle = XP_COLOR
     ctx.beginPath()
-    ctx.roundRect(12, TOP - 12, Math.max(6, (w * s.xp) / need), 6, 3)
+    ctx.roundRect(12, y, Math.max(6, w * fill), 6 + grow, 3)
     ctx.fill()
+    ctx.restore()
+    if (juice.xpFlash > 0) {
+      ctx.fillStyle = `rgb(255 255 255 / ${0.8 * juice.xpFlash})`
+      ctx.beginPath()
+      ctx.roundRect(12, y, w, 6 + grow, 3)
+      ctx.fill()
+    }
+    for (; juice.xpSparks > 0; juice.xpSparks--) {
+      this.particles.burst(12 + Math.max(6, w * fill), y + 3, {
+        count: 6,
+        color: [XP_COLOR, theme.chalk],
+        speed: 140,
+        life: 0.4,
+        size: 3,
+        gravity: 300,
+      })
+    }
   }
 
   private drawCombo(ctx: CanvasRenderingContext2D, s: RunState): void {
@@ -397,13 +423,13 @@ export class BoardRenderer {
     ctx.translate(this.d.boardW / 2, this.d.boardH * 0.42)
     ctx.scale(grow, grow)
     ctx.globalAlpha = fade
-    ctx.font = `700 46px ${FONT}`
+    ctx.font = `700 ${b.big ? 60 : 46}px ${FONT}`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.lineWidth = 8
+    ctx.lineWidth = b.big ? 10 : 8
     ctx.strokeStyle = theme.night
     ctx.strokeText(b.text, 0, 0)
-    ctx.fillStyle = theme.yolk
+    ctx.fillStyle = b.big ? XP_COLOR : theme.yolk
     ctx.fillText(b.text, 0, 0)
     ctx.restore()
   }

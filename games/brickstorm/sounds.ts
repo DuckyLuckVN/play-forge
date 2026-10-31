@@ -102,6 +102,16 @@ export const BRICK_SOUNDS = {
     { freq: 70, to: 50, dur: 0.12, wave: 'sine', vol: 0.7 },
     { freq: 70, to: 50, dur: 0.12, wave: 'sine', vol: 0.5, at: 0.18 },
   ],
+  /** Before the pick screen: a rising arpeggio into a bright chord. */
+  fanfare: [
+    { freq: 523, dur: 0.09, wave: 'square', vol: 0.28 },
+    { freq: 659, dur: 0.09, wave: 'square', vol: 0.28, at: 0.09 },
+    { freq: 784, dur: 0.09, wave: 'square', vol: 0.28, at: 0.18 },
+    { freq: 1047, dur: 0.5, wave: 'square', vol: 0.26, at: 0.27 },
+    { freq: 1319, dur: 0.5, wave: 'triangle', vol: 0.24, at: 0.27 },
+    { freq: 1568, dur: 0.5, wave: 'triangle', vol: 0.22, at: 0.27 },
+    { freq: 2093, to: 3136, dur: 0.3, wave: 'sine', vol: 0.15, at: 0.45 },
+  ],
   levelUp: [
     { freq: 523, dur: 0.07, wave: 'triangle', vol: 0.35 },
     { freq: 784, dur: 0.07, wave: 'triangle', vol: 0.35, at: 0.07 },

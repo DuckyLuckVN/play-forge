@@ -259,10 +259,10 @@
 /* First-seen hint card over the middle of the board. */
 .bs-notice {
   position: absolute;
-  top: 38%;
+  top: 52%;
   left: 50%;
   z-index: 5;
-  width: min(380px, calc(100% - 24px));
+  width: min(380px, calc(var(--bs-board-w, 100%) - 24px));
   display: grid;
   grid-template-columns: 48px 1fr;
   align-items: center;

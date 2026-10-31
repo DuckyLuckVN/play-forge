@@ -147,3 +147,104 @@ describe('Juice', () => {
     expect(j.coinFlyers).toHaveLength(2)
   })
 })
+
+describe('XP bar', () => {
+  it('eases the bar toward the real XP', () => {
+    const j = juice()
+    j.setXp(0, 0.5)
+    expect(j.shownXp).toBe(0)
+    for (let i = 0; i < 120; i++) j.update(1 / 60)
+    expect(j.shownXp).toBeCloseTo(0.5, 2)
+  })
+
+  it('fills the bar and flashes when a level is crossed', () => {
+    const j = juice()
+    j.setXp(1, 0.2)
+    while (j.shownXp < 1) j.update(1 / 60)
+    expect(j.xpFlash).toBe(1)
+    for (let i = 0; i < 120; i++) j.update(1 / 60)
+    expect(j.shownXp).toBeCloseTo(1.2, 2)
+  })
+
+  it('snaps back for a new run', () => {
+    const j = juice()
+    j.setXp(2, 0.5)
+    j.setXp(0, 0)
+    expect(j.shownXp).toBe(0)
+  })
+
+  it('jumps straight to a resumed run without a rush', () => {
+    const j = juice()
+    vi.mocked(playSound).mockClear()
+    j.setXp(4, 0.5, true)
+    j.update(0.1)
+    expect(j.shownXp).toBe(4.5)
+    expect(j.xpGlow).toBe(0)
+    expect(playSound).not.toHaveBeenCalled()
+  })
+
+  it('glows, sparks and ticks with a rising pitch on a quick rush of XP', () => {
+    const j = juice()
+    vi.mocked(playSound).mockClear()
+    for (let i = 0; i < 6; i++) {
+      j.setXp(0, (i + 1) * 0.08)
+      j.update(0.1)
+    }
+    expect(j.xpGlow).toBeGreaterThan(0)
+    expect(j.xpSparks).toBeGreaterThan(0)
+    const ticks = vi.mocked(playSound).mock.calls.map(([s]) => (s as { freq: number }[])[0].freq)
+    expect(ticks.length).toBeGreaterThan(1)
+    expect(ticks.at(-1)!).toBeGreaterThan(ticks[0])
+  })
+
+  it('stays calm on a slow trickle of XP', () => {
+    const j = juice()
+    vi.mocked(playSound).mockClear()
+    for (let i = 0; i < 10; i++) {
+      j.setXp(0, (i + 1) * 0.02)
+      j.update(0.5)
+    }
+    expect(j.xpGlow).toBe(0)
+    expect(playSound).not.toHaveBeenCalled()
+  })
+
+  it('ticks at most 8 times a second', () => {
+    const j = juice()
+    vi.mocked(playSound).mockClear()
+    for (let i = 0; i < 60; i++) {
+      j.setXp(i, 0.9)
+      j.update(1 / 60)
+    }
+    expect(vi.mocked(playSound).mock.calls.length).toBeLessThanOrEqual(8)
+  })
+})
+
+describe('level-up intro', () => {
+  it('celebrates, then lets the pick screen open after a beat', () => {
+    const j = juice()
+    vi.mocked(playSound).mockClear()
+    j.handle({ type: 'levelUp' })
+    j.startLevelUp()
+    expect(j.banner).toMatchObject({ text: 'LEVEL UP!', big: true })
+    expect(playSound).toHaveBeenCalledTimes(2)
+    expect(j.levelUpDone).toBe(false)
+    j.update(1)
+    expect(j.levelUpDone).toBe(false)
+    j.update(0.3)
+    expect(j.levelUpDone).toBe(true)
+  })
+
+  it('can be skipped', () => {
+    const j = juice()
+    j.startLevelUp()
+    j.skipLevelUp()
+    expect(j.levelUpDone).toBe(true)
+  })
+
+  it('says FREE BOOST for a pick from a mystery brick', () => {
+    const j = juice()
+    j.handle({ type: 'mystery', x: 0, y: 0, reward: 'pick' })
+    j.startLevelUp()
+    expect(j.banner?.text).toBe('FREE BOOST!')
+  })
+})

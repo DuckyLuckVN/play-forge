@@ -4,6 +4,7 @@ import { ease } from '@forge/fx/tween'
 import type { Canvas2D } from '@forge/render2d/canvas'
 import { FONT, theme } from '@forge/ui/theme'
 import { ArenaPainter, type ArenaId } from './arenas'
+import { drawBall, TRAIL_STYLE } from './cosmetics'
 import { hpColor, type Juice } from './juice'
 import { xpToNext } from './sim/boosts'
 import {
@@ -32,6 +33,9 @@ export class BoardRenderer {
   private arenaPainter = new ArenaPainter()
   /** The equipped arena (background). */
   arena: ArenaId = 'indigo'
+  /** Equipped ball skin and trail ids, e.g. 'ball:star'. */
+  ball = 'ball:classic'
+  trail = 'trail:none'
 
   constructor(
     private view: Canvas2D,
@@ -49,7 +53,7 @@ export class BoardRenderer {
       this.drawPickups(ctx, s, time)
       this.drawBricks(ctx, s)
       if (s.phase === 'aim' && aim !== null) this.drawGuide(ctx, s, aim)
-      this.drawBalls(ctx, s)
+      this.drawBalls(ctx, s, time)
     }
     this.particles.draw(ctx)
     ctx.restore()
@@ -144,19 +148,26 @@ export class BoardRenderer {
     ctx.setLineDash([])
   }
 
-  private drawBalls(ctx: CanvasRenderingContext2D, s: RunState): void {
+  private drawBalls(ctx: CanvasRenderingContext2D, s: RunState, time: number): void {
     const flying = s.balls.filter((b) => b.status === 'flying')
-    if (s.fever) {
+    const style = TRAIL_STYLE[this.trail] ?? TRAIL_STYLE['trail:none']
+    const len = s.fever ? Math.max(style.len, TRAIL) : style.len
+    if (len > 0) {
       flying.forEach((b, i) => {
         const trail = (this.trails[i] ??= [])
         trail.unshift([b.x, b.y])
-        trail.length = Math.min(trail.length, TRAIL)
+        trail.length = Math.min(trail.length, len)
         trail.forEach(([x, y], k) => {
-          ctx.fillStyle = theme.yolk
-          ctx.globalAlpha = 0.35 * (1 - k / TRAIL)
-          ctx.beginPath()
-          ctx.arc(x, y, BALL_R + 2, 0, Math.PI * 2)
-          ctx.fill()
+          if (k === 0) return
+          const r = BALL_R * (s.fever ? 1.2 : style.size) * (1 - k / (len + 1))
+          ctx.fillStyle = s.fever ? theme.yolk : style.color(k, time)
+          ctx.globalAlpha = (s.fever ? 0.4 : 0.6) * (1 - k / len)
+          if (style.shape === 'square' && !s.fever) ctx.fillRect(x - r, y - r, r * 2, r * 2)
+          else {
+            ctx.beginPath()
+            ctx.arc(x, y, r, 0, Math.PI * 2)
+            ctx.fill()
+          }
         })
       })
       ctx.globalAlpha = 1
@@ -164,26 +175,25 @@ export class BoardRenderer {
       this.trails = []
     }
 
-    ctx.fillStyle = s.fever ? theme.yolk : theme.chalk
     for (const b of flying) {
-      ctx.beginPath()
-      ctx.arc(b.x, b.y, BALL_R, 0, Math.PI * 2)
-      ctx.fill()
+      if (s.fever) {
+        ctx.fillStyle = theme.yolk
+        ctx.globalAlpha = 0.35
+        ctx.beginPath()
+        ctx.arc(b.x, b.y, BALL_R * 1.8, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.globalAlpha = 1
+      }
+      drawBall(ctx, this.ball, b.x, b.y, BALL_R, time, b.vx, b.vy)
     }
 
     // Balls waiting at the launch point, and balls that already landed.
     const home = s.phase === 'volley' ? (s.nextLaunchX ?? s.launchX) : s.launchX
     const waiting = s.phase === 'volley' ? s.balls.some((b) => b.status !== 'flying') : true
-    if (waiting) {
-      ctx.fillStyle = theme.chalk
-      ctx.beginPath()
-      ctx.arc(s.phase === 'volley' ? s.launchX : home, FLOOR_Y - BALL_R, BALL_R, 0, Math.PI * 2)
-      ctx.fill()
-    }
+    if (waiting)
+      drawBall(ctx, this.ball, s.phase === 'volley' ? s.launchX : home, FLOOR_Y - BALL_R, BALL_R, time)
     if (s.phase === 'volley' && s.nextLaunchX !== null) {
-      ctx.beginPath()
-      ctx.arc(s.nextLaunchX, FLOOR_Y - BALL_R, BALL_R, 0, Math.PI * 2)
-      ctx.fill()
+      drawBall(ctx, this.ball, s.nextLaunchX, FLOOR_Y - BALL_R, BALL_R, time)
     }
     if (s.phase === 'aim') {
       const n = s.doubleVolleys > 0 ? s.ballCount * 2 : s.ballCount

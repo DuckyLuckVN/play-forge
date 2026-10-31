@@ -5,6 +5,7 @@ import type { Shake } from '@forge/fx/shake'
 import { prefersReducedMotion } from '@forge/fx/tween'
 import { theme } from '@forge/ui/theme'
 import type { SimEvent } from './sim/types'
+import { IMPACT_STYLE } from './cosmetics'
 import { BRICK_SOUNDS } from './sounds'
 
 const PENTA = [0, 2, 4, 7, 9]
@@ -52,6 +53,8 @@ export class Juice {
   banner: { text: string; age: number } | null = null
   /** Current turn, for colouring kill bursts like the bricks. */
   turn = 1
+  /** Equipped brick-break effect id. */
+  impact = 'impact:shards'
   /** When each kind of sound last played, so big volleys don't stack hundreds of tones. */
   private lastPlayed = new Map<string, number>()
 
@@ -72,7 +75,7 @@ export class Juice {
         return
       }
       case 'kill':
-        this.particles.burst(e.x, e.y, { count: 10, color: hpColor(e.maxHp, this.turn), speed: 160 })
+        this.particles.burst(e.x, e.y, { color: hpColor(e.maxHp, this.turn), ...IMPACT_STYLE[this.impact] })
         this.shake.add(0.08)
         return this.play('kill', BRICK_SOUNDS.kill, 0.8)
       case 'pickup':

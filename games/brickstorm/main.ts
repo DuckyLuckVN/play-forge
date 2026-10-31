@@ -15,7 +15,10 @@ import { applyTheme } from '@forge/ui/theme'
 import { toBoard } from './input'
 import { Juice } from './juice'
 import { BoardRenderer } from './render'
-import { loadSave, recordRun, writeSave } from './save'
+import { ARENAS, type ArenaId } from './arenas'
+import { bankRun, clearRun, loadSave, recordRun, spend, writeSave } from './save'
+import { shopPanel } from './shop-ui'
+import { applyHelpers, revive, reviveCost } from './sim/meta'
 import { BOOSTS, pickBoost, reroll, rerollCost } from './sim/boosts'
 import { AIM_MIN, BOARD_H, BOARD_W, TICK } from './sim/config'
 import { aimFromPointer } from './sim/physics'
@@ -58,7 +61,10 @@ const fastBtn = button('⏩ Fast', () => {
   fastBtn.blur()
 })
 const recallBtn = button('Recall', () => {
-  if (run) recall(run)
+  if (run) {
+    recall(run)
+    checkpoint()
+  }
   recallBtn.blur()
 })
 const controls = h('div', { class: 'bs-controls' }, fastBtn, recallBtn)
@@ -81,6 +87,7 @@ const params = new URLSearchParams(location.search)
 const loaded = loadSave()
 let save = loaded.save
 if (loaded.corrupted) toast('Saved progress could not be read. A backup was kept.')
+if (loaded.droppedRun) toast('Your last run could not be resumed. Your coins are safe.')
 
 let run: RunState | null = null
 let paused = false
@@ -89,6 +96,9 @@ let aim: number | null = null
 let dragging = false
 let acc = 0
 let panel = ''
+let overShown = false
+/** How many of the current run's coins are already in the wallet. */
+let banked = 0
 
 if (params.has('debug')) Object.assign(window, { __brickstorm: { state: () => run } })
 
@@ -97,6 +107,27 @@ function setFast(on: boolean) {
   fastBtn.setAttribute('aria-pressed', String(on))
 }
 setFast(false)
+
+// ---------- Saving ----------
+function persist() {
+  writeSave(save)
+}
+
+/** Banks the run's new coins and snapshots it, at a turn boundary (aim or pick). */
+function checkpoint() {
+  if (!run || (run.phase !== 'aim' && run.phase !== 'pick')) return
+  ;({ save, banked } = bankRun(save, run, banked))
+  persist()
+}
+
+function applyCosmetics() {
+  renderer.arena = save.equipped.arena.split(':')[1] as ArenaId
+  renderer.ball = save.equipped.ball
+  renderer.trail = save.equipped.trail
+  juice.impact = save.equipped.impact
+  document.body.style.background = ARENAS[renderer.arena]?.bottom ?? ''
+}
+applyCosmetics()
 
 // ---------- Screens ----------
 function show(el: HTMLElement | null, key = '') {
@@ -118,30 +149,107 @@ function primary(text: string, onclick: () => void) {
   return b
 }
 
-function showHome() {
+const wallet = () => h('span', { class: 'bs-wallet', textContent: `● ${save.coins}` })
+
+function leaveRun() {
   run = null
   paused = false
   controls.hidden = true
   pauseBtn.hidden = true
+}
+
+function showHome() {
+  leaveRun()
   playMusic(LOUNGE)
+  const saved = save.run
   show(
     h(
       'div',
       { class: 'pf-panel' },
-      h('h2', { class: 'pf-heading', textContent: 'Brickstorm' }),
+      h(
+        'div',
+        { class: 'bs-shop-head' },
+        h('h2', { class: 'pf-heading', textContent: 'Brickstorm' }),
+        wallet(),
+      ),
       h('p', { class: 'pf-lede', textContent: 'Aim, launch, and break the storm.' }),
       save.bestTurn > 0 && h('p', { class: 'bs-best', textContent: `Best turn ${save.bestTurn}` }),
-      primary('Play', startRun),
+      saved && primary(`Continue · Turn ${saved.state.turn}`, resumeRun),
+      saved ? button('New run', confirmNewRun, 'wide') : primary('Play', showHelpers),
+      button('Shop', showShop, 'wide'),
       h('p', { class: 'pf-note', textContent: CONTROLS }),
     ),
     'home',
   )
 }
 
-function startRun() {
-  const seed = params.has('seed') ? Number(params.get('seed')) | 0 : randomSeed()
-  run = createRun(seed)
-  juice.turn = 1
+function confirmNewRun() {
+  show(
+    h(
+      'div',
+      { class: 'pf-panel' },
+      h('h2', { class: 'pf-heading', textContent: 'Start over?' }),
+      h('p', {
+        class: 'pf-lede',
+        textContent: `Your run at turn ${save.run?.state.turn} will be lost. Coins you earned are kept.`,
+      }),
+      primary('Start a new run', () => {
+        save = clearRun(save)
+        persist()
+        showHelpers()
+      }),
+      button('Back', showHome, 'quiet'),
+    ),
+    'confirm',
+  )
+}
+
+function showShop() {
+  show(
+    shopPanel(
+      () => save,
+      (next) => {
+        save = next
+        persist()
+        applyCosmetics()
+      },
+      showHome,
+    ),
+    'shop',
+  )
+}
+
+/** Before a run: switch on owned helpers (Head Start, Lucky Start). */
+function showHelpers() {
+  const owned = (['headStart', 'luckyStart'] as const).filter((k) => save.helpers[k] > 0)
+  if (!owned.length) return startRun({ headStart: false, luckyStart: false })
+  const use = { headStart: false, luckyStart: false }
+  const LABEL = { headStart: 'Head Start: +5 balls', luckyStart: 'Lucky Start: a free boost' }
+  show(
+    h(
+      'div',
+      { class: 'pf-panel' },
+      h('h2', { class: 'pf-heading', textContent: 'Use helpers?' }),
+      ...owned.map((k) => {
+        const box = h('input', { type: 'checkbox', onchange: () => (use[k] = box.checked) })
+        return h(
+          'label',
+          { class: 'bs-toggle' },
+          box,
+          h('span', { textContent: `${LABEL[k]} (you have ${save.helpers[k]})` }),
+        )
+      }),
+      primary('Start', () => startRun(use)),
+      button('Back', showHome, 'quiet'),
+    ),
+    'helpers',
+  )
+}
+
+function beginRun(s: RunState) {
+  run = s
+  overShown = false
+  juice.turn = s.turn
   paused = false
   acc = 0
   aim = Math.PI / 2
@@ -151,6 +259,25 @@ function startRun() {
   pauseBtn.hidden = false
   playMusic(ARCADE)
   show(null)
+}
+
+function startRun(use: { headStart: boolean; luckyStart: boolean }) {
+  const seed = params.has('seed') ? Number(params.get('seed')) | 0 : randomSeed()
+  const s = createRun(seed)
+  for (const k of ['headStart', 'luckyStart'] as const) {
+    if (use[k] && save.helpers[k] > 0) save.helpers = { ...save.helpers, [k]: save.helpers[k] - 1 }
+    else use[k] = false
+  }
+  applyHelpers(s, use)
+  banked = 0
+  beginRun(s)
+  checkpoint()
+}
+
+function resumeRun() {
+  if (!save.run) return
+  banked = save.run.banked
+  beginRun(structuredClone(save.run.state))
 }
 
 function showPick() {
@@ -170,6 +297,7 @@ function showPick() {
         onclick: () => {
           if (!settled()) return
           pickBoost(s, id)
+          checkpoint()
           if (s.phase === 'pick') showPick()
           else show(null)
         },
@@ -186,21 +314,34 @@ function showPick() {
     tabIndex: -1,
     autofocus: true,
   })
+  const token = save.helpers.reroll > 0
+  const cost = rerollCost(s)
+  const rerollBtn = button(
+    token ? `Reroll (use 1 of ${save.helpers.reroll} tokens)` : `Reroll (● ${cost})`,
+    () => {
+      if (!settled()) return
+      checkpoint() // bank this run's coins so they can be spent
+      if (save.helpers.reroll > 0) {
+        save.helpers = { ...save.helpers, reroll: save.helpers.reroll - 1 }
+      } else {
+        const paid = spend(save, cost)
+        if (!paid) return
+        save = paid
+      }
+      reroll(s)
+      checkpoint()
+      showPick()
+    },
+    'quiet',
+  )
+  rerollBtn.disabled = !token && save.coins + (s.coins - banked) < cost
   show(
     h(
       'div',
       { class: 'pf-panel wide' },
-      heading,
+      h('div', { class: 'bs-shop-head' }, heading, wallet()),
       h('div', { class: 'bs-cards' }, ...cards),
-      button(
-        `Reroll (${rerollCost(s)} coins)`,
-        () => {
-          if (!settled()) return
-          reroll(s)
-          showPick()
-        },
-        'quiet',
-      ),
+      rerollBtn,
     ),
     `pick-${s.level}-${s.pendingPicks}-${s.rerollsUsed}`,
   )
@@ -211,6 +352,7 @@ function pause() {
   paused = true
   acc = 0
   dragging = false
+  checkpoint()
   show(
     h(
       'div',
@@ -218,7 +360,7 @@ function pause() {
       h('h2', { class: 'pf-heading', textContent: 'Paused' }),
       h('p', { class: 'pf-lede', textContent: CONTROLS }),
       primary('Resume', resume),
-      button('Quit', showHome, 'quiet'),
+      button('Quit (your run is saved)', showHome, 'quiet'),
     ),
     'paused',
   )
@@ -229,10 +371,46 @@ function resume() {
   show(null)
 }
 
+/** Game over: bank the coins, then offer a revive before the results. */
 function finish(s: RunState) {
+  ;({ save, banked } = bankRun(save, s, banked))
+  save = clearRun(save)
+  persist()
+  const token = save.helpers.revive > 0
+  const cost = reviveCost(s)
+  if (!token && save.coins < cost) return showResults(s)
+  show(
+    h(
+      'div',
+      { class: 'pf-panel' },
+      h('h2', { class: 'pf-heading', textContent: 'Continue?' }),
+      h('p', { class: 'pf-lede', textContent: 'Clear the 3 lowest rows and keep going.' }),
+      h('div', { class: 'bs-shop-head' }, h('span', { textContent: `Turn ${s.turn}` }), wallet()),
+      primary(token ? `Revive (use 1 of ${save.helpers.revive} tokens)` : `Revive (● ${cost})`, () => {
+        if (save.helpers.revive > 0) save.helpers = { ...save.helpers, revive: save.helpers.revive - 1 }
+        else {
+          const paid = spend(save, cost)
+          if (!paid) return showResults(s)
+          save = paid
+        }
+        revive(s)
+        overShown = false
+        controls.hidden = false
+        pauseBtn.hidden = false
+        playMusic(ARCADE)
+        checkpoint()
+        show(null)
+      }),
+      button('No thanks', () => showResults(s), 'quiet'),
+    ),
+    'revive',
+  )
+}
+
+function showResults(s: RunState) {
   const before = save.bestTurn
   save = recordRun(save, s.turn, s.bestCombo)
-  writeSave(save)
+  persist()
   controls.hidden = true
   pauseBtn.hidden = true
   playMusic(LOUNGE)
@@ -247,9 +425,10 @@ function finish(s: RunState) {
         { class: 'bs-stats' },
         h('span', { textContent: `Best turn ${save.bestTurn}` }),
         h('span', { textContent: `Best combo ${save.bestCombo}` }),
-        h('span', { textContent: `Coins ${s.coins}` }),
+        h('span', { textContent: `Coins earned ${s.coins} · wallet ● ${save.coins}` }),
       ),
-      primary('Play again', startRun),
+      primary('Play again', showHelpers),
+      button('Shop', showShop, 'wide'),
       button('Home', showHome, 'quiet'),
     ),
     'over',
@@ -265,12 +444,18 @@ startRenderLoop((dt, time) => {
       step(s)
       acc -= TICK
     }
-    if (s.phase !== 'volley') acc = 0
+    if (s.phase !== 'volley') {
+      acc = 0
+      checkpoint()
+    }
   }
   if (s) {
     for (const e of drainEvents(s)) juice.handle(e)
     if (s.phase === 'pick' && !panel.startsWith('pick')) showPick()
-    if (s.phase === 'over' && panel !== 'over') finish(s)
+    if (s.phase === 'over' && !overShown) {
+      overShown = true
+      finish(s)
+    }
   }
   recallBtn.disabled = !(s && canRecall(s))
   setMusicDuck(s && s.phase === 'volley' && !paused ? 0.6 : 1)

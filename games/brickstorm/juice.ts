@@ -45,6 +45,20 @@ export function hpColor(hp: number, turn: number): string {
 
 const MYSTERY_TEXT = { balls: '+3 BALLS', pick: 'FREE BOOST', coins: '+50 COINS', fire: 'FIREBALLS!' }
 
+/** Combo announcer: [combo, text, stinger]. */
+const ANNOUNCER = [
+  [25, 'NICE!', 'stinger1'],
+  [50, 'GREAT!', 'stinger2'],
+  [100, 'AMAZING!', 'stinger3'],
+  [200, 'INSANE!', 'stinger4'],
+] as const
+
+/** Seconds between links of a chain reaction. */
+const RIPPLE = 0.06
+const HITSTOP = 0.04
+/** Seconds a coin takes to fly to the counter. */
+export const COIN_FLY = 0.5
+
 const BANNER_LIFE = 1.4
 const SOUND_GAP_MS = 30
 
@@ -61,6 +75,16 @@ export class Juice {
   lasers: Array<{ y: number; life: number }> = []
   /** Equipped brick-break effect id. */
   impact = 'impact:shards'
+  /** Seconds the simulation should freeze for (hitstop on big chains). */
+  hitstop = 0
+  /** Coins as shown on the HUD; eases toward the real total. */
+  shownCoins = 0
+  private targetCoins = 0
+  /** Coins flying from a broken brick to the HUD counter. */
+  coinFlyers: Array<{ x0: number; y0: number; age: number; delay: number }> = []
+  /** Chain effects waiting for their ripple delay. */
+  private queue: Array<{ e: Extract<SimEvent, { type: 'explode' | 'zap' }>; at: number }> = []
+  private announced = 0
   /** When each kind of sound last played, so big volleys don't stack hundreds of tones. */
   private lastPlayed = new Map<string, number>()
 
@@ -72,12 +96,20 @@ export class Juice {
   handle(e: SimEvent): void {
     switch (e.type) {
       case 'fire':
+        this.announced = 0
         return playSound(BRICK_SOUNDS.fire)
       case 'launch':
         return this.play('launch', BRICK_SOUNDS.launch)
       case 'hit': {
         this.play('hit', hitSound(e.combo))
         if (e.crit) this.particles.text(e.x, e.y, 'CRIT', { color: theme.yolk, size: 16 })
+        const level = ANNOUNCER.filter(([at]) => e.combo >= at).length
+        if (level > this.announced) {
+          this.announced = level
+          const [, text, sound] = ANNOUNCER[level - 1]
+          this.show(text, 0.3)
+          playSound(BRICK_SOUNDS[sound])
+        }
         return
       }
       case 'kill':
@@ -85,6 +117,7 @@ export class Juice {
           color: e.kind === 'gold' ? theme.yolk : hpColor(e.maxHp, this.turn),
           ...IMPACT_STYLE[this.impact],
         })
+        this.flyCoins(e.x, e.y, e.kind === 'gold' ? 5 : 1)
         if (e.kind === 'gold') {
           this.particles.burst(e.x, e.y, {
             count: 14,
@@ -123,17 +156,13 @@ export class Juice {
         this.turn = e.turn
         return
       case 'explode':
-        this.particles.burst(e.x, e.y, {
-          count: 26,
-          color: ['#ff9f43', '#ffc83d', '#ff6b6b'],
-          speed: 320,
-          life: 0.5,
-        })
-        this.shake.add(0.25)
-        return this.play('explode', BRICK_SOUNDS.explode)
       case 'zap':
-        this.zaps.push({ x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, life: 0.18 })
-        return this.play('zap', BRICK_SOUNDS.zap)
+        // Chains ripple outward: each link plays a beat after the one before.
+        this.queue.push({ e, at: e.depth * RIPPLE })
+        return
+      case 'milestone':
+        this.show(`TURN ${e.turn}! +${e.coins}`, 0.5)
+        return playSound(BRICK_SOUNDS.jackpot)
       case 'jackpot':
         this.show('JACKPOT ROW!', 0.4)
         return playSound(BRICK_SOUNDS.jackpot)
@@ -156,7 +185,51 @@ export class Juice {
     }
   }
 
+  /** The real coin total the HUD counter should ease toward. */
+  setCoins(coins: number): void {
+    if (coins < this.targetCoins) this.shownCoins = coins // a new run
+    this.targetCoins = coins
+  }
+
+  private flyCoins(x: number, y: number, n: number): void {
+    for (let i = 0; i < n && this.coinFlyers.length < 40; i++) {
+      this.coinFlyers.push({ x0: x, y0: y, age: 0, delay: i * 0.05 })
+    }
+  }
+
+  private playChain(e: Extract<SimEvent, { type: 'explode' | 'zap' }>): void {
+    if (e.type === 'explode') {
+      this.particles.burst(e.x, e.y, {
+        count: 26,
+        color: ['#ff9f43', '#ffc83d', '#ff6b6b'],
+        speed: 320,
+        life: 0.5,
+      })
+      this.shake.add(0.25)
+      // Rising boom pitch along the chain.
+      playSound(BRICK_SOUNDS.explode, 1)
+      if (e.depth >= 2) this.hitstop = Math.max(this.hitstop, HITSTOP)
+    } else {
+      this.zaps.push({ x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, life: 0.18 })
+      this.play('zap', BRICK_SOUNDS.zap)
+      if (e.depth >= 2) this.hitstop = Math.max(this.hitstop, HITSTOP)
+    }
+  }
+
   update(dt: number): void {
+    this.hitstop = Math.max(0, this.hitstop - dt)
+    for (const q of this.queue) q.at -= dt
+    const due = this.queue.filter((q) => q.at <= 1e-9)
+    this.queue = this.queue.filter((q) => q.at > 1e-9)
+    for (const q of due) this.playChain(q.e)
+    for (const c of this.coinFlyers) c.age += dt
+    this.coinFlyers = this.coinFlyers.filter((c) => c.age < c.delay + COIN_FLY)
+    const gap = this.targetCoins - this.shownCoins
+    if (gap > 0) {
+      const before = Math.floor(this.shownCoins)
+      this.shownCoins = Math.min(this.targetCoins, this.shownCoins + Math.max(1, gap * 6) * dt)
+      if (Math.floor(this.shownCoins) > before) this.play('coin', BRICK_SOUNDS.coin)
+    }
     for (const z of this.zaps) z.life -= dt
     this.zaps = this.zaps.filter((z) => z.life > 0)
     for (const l of this.lasers) l.life -= dt

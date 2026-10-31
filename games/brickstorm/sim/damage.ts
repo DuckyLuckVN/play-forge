@@ -58,7 +58,7 @@ export function killBrick(s: RunState, brick: Brick, depth: number): void {
 }
 
 /** Share of ordinary bricks that drop a coin. */
-const COIN_DROP = 0.3
+const COIN_DROP = 0.22
 
 const MYSTERY_REWARDS = ['balls', 'pick', 'coins', 'fire'] as const
 

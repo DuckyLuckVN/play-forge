@@ -113,3 +113,71 @@
     animation: none;
   }
 }
+
+.bs-shop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.bs-wallet {
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--pf-yolk);
+  white-space: nowrap;
+}
+
+.bs-shop {
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+}
+.bs-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.bs-tab.active {
+  background: var(--pf-rim);
+  color: var(--pf-chalk);
+}
+.bs-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+}
+.bs-item {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 10px;
+  border: 2px solid var(--pf-rim);
+  border-radius: 14px;
+  background: var(--pf-pit);
+  text-align: center;
+}
+.bs-item canvas {
+  border-radius: 10px;
+}
+.bs-item .pf-btn {
+  width: 100%;
+  min-height: 0;
+  padding: 8px;
+}
+.bs-item-text {
+  font-size: 13px;
+  color: var(--pf-haze);
+}
+
+.bs-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 17px;
+  cursor: pointer;
+}
+.bs-toggle input {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--pf-yolk);
+}

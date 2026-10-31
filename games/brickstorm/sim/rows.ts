@@ -80,7 +80,7 @@ export function spawnRow(state: RunState): void {
     if (free.length && random(rng) < p) state.pickups.push({ id: state.nextId++, col: take(), row: 0, kind })
   }
   pickup('ball', 0.6)
-  pickup('coin', 0.12)
+  pickup('coin', 0.1)
   if (turn >= 4) {
     pickup('fire', 0.06)
     pickup('laser', 0.05)

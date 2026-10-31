@@ -37,11 +37,11 @@ describe('difficulty', () => {
 })
 
 describe('coins', () => {
-  it('drops a coin from about 30% of kills', () => {
+  it('drops a coin from about 22% of kills', () => {
     const s = empty()
     for (let i = 0; i < 2000; i++) killBrick(s, brick(s, 0, 0, 1), 0)
-    expect(s.coins / 2000).toBeGreaterThan(0.25)
-    expect(s.coins / 2000).toBeLessThan(0.35)
+    expect(s.coins / 2000).toBeGreaterThan(0.18)
+    expect(s.coins / 2000).toBeLessThan(0.26)
   })
 
   it('always pays gold, 2×', () => {

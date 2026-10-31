@@ -1,4 +1,5 @@
 .bs-stage {
+  touch-action: none;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   grid-template-columns: minmax(0, 1fr);

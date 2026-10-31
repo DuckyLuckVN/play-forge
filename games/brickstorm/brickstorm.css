@@ -1,11 +1,150 @@
 .bs-stage {
   touch-action: none;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
   grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
+  gap: 16px;
   align-items: stretch;
   justify-items: stretch;
+}
+.bs-center {
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+.bs-side {
+  display: none;
+}
+@media (min-width: 900px) {
+  .bs-stage {
+    grid-template-columns: 220px minmax(0, 1fr) 260px;
+    max-width: 1280px;
+    width: 100%;
+    margin: 0 auto;
+  }
+  .bs-side {
+    display: grid;
+    align-content: start;
+    gap: 14px;
+    min-height: 0;
+    overflow-y: auto;
+    padding-top: 4px;
+  }
+  .bs-drawer-btn {
+    display: none;
+  }
+}
+.bs-side-block {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 2px solid var(--pf-rim);
+  border-radius: 16px;
+  background: rgb(16 19 44 / 0.75);
+}
+.bs-side-block h3 {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pf-haze);
+}
+.bs-stats-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  margin: 0;
+}
+.bs-stats-list dt {
+  color: var(--pf-haze);
+  font-size: 14px;
+}
+.bs-stats-list dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 600;
+}
+.bs-boost-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.bs-boost-list li {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+.bs-mini-icon {
+  width: 28px;
+  height: 28px;
+}
+.bs-mini-icon svg {
+  width: 28px;
+  height: 28px;
+}
+.bs-mini-icon.common {
+  color: #5ab8ff;
+}
+.bs-mini-icon.rare {
+  color: #b48cff;
+}
+.bs-mini-icon.epic {
+  color: var(--pf-yolk);
+}
+.bs-boost-count {
+  color: var(--pf-yolk);
+  font-weight: 700;
+}
+.bs-side-empty {
+  margin: 0;
+  font-size: 14px;
+  color: var(--pf-haze);
+}
+.bs-helper-tray {
+  display: grid;
+  gap: 6px;
+}
+.bs-helper.pf-btn {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 0;
+  padding: 8px 10px;
+  text-align: left;
+}
+.bs-helper-glyph {
+  font-size: 18px;
+  text-align: center;
+}
+.bs-guide-btn {
+  font-weight: 700;
+  font-size: 20px;
+}
+.bs-guide {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.bs-guide li {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 12px;
+  align-items: center;
+}
+.bs-guide li div {
+  display: grid;
+  gap: 2px;
+}
+.bs-guide li span {
+  color: var(--pf-haze);
+  font-size: 14px;
 }
 
 .bs-board {

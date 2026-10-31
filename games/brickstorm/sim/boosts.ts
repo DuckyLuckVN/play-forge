@@ -1,5 +1,5 @@
 import { random } from '@forge/core/rng'
-import { BALL_R, CELL, COMBO_GAP } from './config'
+import { BALL_R, CELL, COMBO_GAP, MAX_COLS, MAX_ROWS } from './config'
 import type { BoostId, RunState } from './types'
 
 export type Rarity = 'common' | 'rare' | 'epic'
@@ -126,7 +126,10 @@ export function pickBoost(s: RunState, id: BoostId): void {
     s.choices = rollChoices(s)
   } else {
     s.choices = []
-    s.phase = 'aim'
+    // A board growth due this turn comes right after the pick.
+    const canGrow = s.cols < MAX_COLS || s.rows < MAX_ROWS
+    if (!canGrow) s.growPending = false
+    s.phase = s.growPending ? 'grow' : 'aim'
   }
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   bankRun,
+  canBank,
   clearRun,
   DEFAULT_SAVE,
   loadSave,
@@ -150,5 +151,15 @@ describe('wallet', () => {
   it('refuses to overdraw', () => {
     expect(spend({ ...fresh(), coins: 10 }, 11)).toBeNull()
     expect(spend({ ...fresh(), coins: 10 }, 10)!.coins).toBe(0)
+  })
+
+  it('banks at every turn boundary, including the grow choice', () => {
+    expect(['aim', 'pick', 'grow', 'volley', 'over'].map((phase) => canBank(phase as never))).toEqual([
+      true,
+      true,
+      true,
+      false,
+      false,
+    ])
   })
 })

@@ -16,7 +16,7 @@ import { toBoard } from './input'
 import { Juice } from './juice'
 import { BoardRenderer } from './render'
 import { ARENAS, type ArenaId } from './arenas'
-import { bankRun, clearRun, loadSave, recordRun, spend, writeSave } from './save'
+import { bankRun, canBank, clearRun, loadSave, recordRun, spend, writeSave } from './save'
 import { shopPanel } from './shop-ui'
 import { applyHelpers, growBoard, revive, reviveCost, useHelper } from './sim/meta'
 import { dims } from './sim/dims'
@@ -142,7 +142,7 @@ function persist() {
 
 /** Banks the run's new coins and snapshots it, at a turn boundary (aim or pick). */
 function checkpoint() {
-  if (!run || (run.phase !== 'aim' && run.phase !== 'pick')) return
+  if (!run || !canBank(run.phase)) return
   ;({ save, banked } = bankRun(save, run, banked))
   persist()
 }
@@ -263,9 +263,11 @@ function holdRun(): () => void {
     checkpoint()
   }
   return () => {
+    panelsKey = ''
+    // Opened over the pause menu (or another overlay): go back to the pause menu, never a blank paused game.
+    if (wasPaused && inRun()) return showPaused()
     paused = wasPaused
     show(null)
-    panelsKey = ''
   }
 }
 
@@ -329,7 +331,7 @@ function helperInfo(id: ActiveHelper, back = holdRun()) {
 }
 
 /** Tapping a helper asks first: helpers are bought with coins. */
-function confirmHelper(id: ActiveHelper, back = holdRun()) {
+function confirmHelper(id: ActiveHelper, back = holdRun(), onCancel = back) {
   const a = ACTIVE_HELPERS.find((x) => x.id === id)!
   show(
     h(
@@ -345,7 +347,7 @@ function confirmHelper(id: ActiveHelper, back = holdRun()) {
         back()
         useActiveHelper(id)
       }),
-      button('Cancel', back, 'quiet'),
+      button('Cancel', onCancel, 'quiet'),
     ),
     `confirm-${id}`,
   )
@@ -369,7 +371,7 @@ function openDrawer() {
       helpersPanel(
         save.helpers,
         s.phase === 'aim',
-        (id) => confirmHelper(id, close),
+        (id) => confirmHelper(id, close, reopen),
         (id) => helperInfo(id, reopen),
       ),
       primary('Close', close),
@@ -573,12 +575,16 @@ function showPick() {
 function showGrow() {
   if (!run) return
   const s = run
+  // Like the pick screen: ignore clicks meant for the volley that just ended.
+  const shownAt = performance.now()
   const choose = (axis: 'col' | 'row') => {
+    if (performance.now() - shownAt < PICK_GRACE_MS) return
     growBoard(s, axis)
     checkpoint()
     if (s.phase !== 'pick') show(null)
   }
   const col = button(`+1 column (${s.cols} → ${s.cols + 1})`, () => choose('col'), 'primary wide')
+  col.autofocus = true
   col.disabled = s.cols >= MAX_COLS
   const row = button(`+1 row (${s.rows} → ${s.rows + 1})`, () => choose('row'), 'wide')
   row.disabled = s.rows >= MAX_ROWS

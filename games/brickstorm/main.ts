@@ -18,13 +18,15 @@ import { BoardRenderer } from './render'
 import { ARENAS, type ArenaId } from './arenas'
 import { bankRun, clearRun, loadSave, recordRun, spend, writeSave } from './save'
 import { shopPanel } from './shop-ui'
-import { applyHelpers, revive, reviveCost } from './sim/meta'
+import { applyHelpers, revive, reviveCost, useHelper } from './sim/meta'
+import { GUIDE, newlySeen } from './guide'
+import { boostsPanel, guidePanel, helpersPanel, statsPanel } from './panels'
 import { BOOST_ICONS } from './icons'
 import { BOOSTS, isSynergy, pickBoost, reroll, rerollCost } from './sim/boosts'
 import { AIM_MIN, BOARD_H, BOARD_W, TICK } from './sim/config'
 import { aimFromPointer } from './sim/physics'
 import { canRecall, createRun, drainEvents, fire, recall, speedMultiplier, step } from './sim/run'
-import type { RunState } from './sim/types'
+import type { ActiveHelper, RunState } from './sim/types'
 
 const CONTROLS = 'Drag to aim and release to launch. Keys: ←/→ aim, Space launch, F fast, Esc pause.'
 const AIM_STEP = (1.5 * Math.PI) / 180
@@ -47,12 +49,21 @@ pauseBtn.setAttribute('aria-label', 'Pause')
 const home = h('a', { class: 'pf-btn icon', href: '../../index.html', title: 'All games' })
 home.setAttribute('aria-label', 'All games')
 home.append(icon(icons.home))
+const BAG_ICON =
+  '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1 12H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>'
+const shopBarBtn = button('', () => openShopFromBar(), 'icon')
+shopBarBtn.append(icon(BAG_ICON))
+shopBarBtn.title = 'Shop'
+shopBarBtn.setAttribute('aria-label', 'Shop')
+const guideBtn = button('?', () => openGuideFromBar(), 'icon bs-guide-btn')
+guideBtn.title = 'Guide'
+guideBtn.setAttribute('aria-label', 'Guide: what bricks and pickups do')
 const bar = h(
   'header',
   { class: 'pf-bar' },
   home,
   h('h1', { class: 'pf-bar-title', textContent: 'Brickstorm' }),
-  h('div', { class: 'pf-bar-actions' }, pauseBtn, audioMenu()),
+  h('div', { class: 'pf-bar-actions' }, guideBtn, shopBarBtn, pauseBtn, audioMenu()),
 )
 
 const boardEl = h('div', { class: 'bs-board' })
@@ -68,8 +79,18 @@ const recallBtn = button('Recall', () => {
   }
   recallBtn.blur()
 })
-const controls = h('div', { class: 'bs-controls' }, fastBtn, recallBtn)
-const stage = h('main', { class: 'pf-stage bs-stage' }, boardEl, controls)
+const drawerBtn = button('Boosts & helpers', () => openDrawer())
+drawerBtn.classList.add('bs-drawer-btn')
+const controls = h('div', { class: 'bs-controls' }, fastBtn, recallBtn, drawerBtn)
+const leftSide = h('aside', { class: 'bs-side left' })
+const rightSide = h('aside', { class: 'bs-side right' })
+const stage = h(
+  'main',
+  { class: 'pf-stage bs-stage' },
+  leftSide,
+  h('div', { class: 'bs-center' }, boardEl, controls),
+  rightSide,
+)
 const overlay = h('div', { class: 'pf-overlay' })
 document.body.append(h('div', { class: 'pf-shell' }, bar, stage), overlay)
 
@@ -205,7 +226,7 @@ function confirmNewRun() {
   )
 }
 
-function showShop() {
+function showShop(onBack: () => void = showHome) {
   show(
     shopPanel(
       () => save,
@@ -214,10 +235,116 @@ function showShop() {
         persist()
         applyCosmetics()
       },
-      showHome,
+      onBack,
     ),
     'shop',
   )
+}
+
+function inRun() {
+  return !!run && (run.phase === 'aim' || run.phase === 'volley')
+}
+
+/** Top-bar shop: during a run, pause first and come back to the pause screen. */
+function openShopFromBar() {
+  if (inRun()) {
+    pause()
+    showShop(showPaused)
+  } else if (!run) showShop(showHome)
+}
+
+function showGuide(onBack: () => void) {
+  show(guidePanel(onBack), 'guide')
+}
+
+function openGuideFromBar() {
+  if (inRun()) {
+    pause()
+    showGuide(showPaused)
+  } else if (!run) showGuide(showHome)
+}
+
+/** Phone: stats, boosts and helpers in a drawer over the paused game. */
+function openDrawer() {
+  if (!run) return
+  const wasPaused = paused
+  if (inRun()) {
+    paused = true
+    acc = 0
+    dragging = false
+  }
+  const close = () => {
+    paused = wasPaused
+    show(null)
+  }
+  const s = run
+  show(
+    h(
+      'div',
+      { class: 'pf-panel wide bs-shop' },
+      statsPanel(s, save.bestTurn),
+      boostsPanel(s),
+      helpersPanel(save.helpers, s.phase === 'aim', (id) => {
+        useActiveHelper(id)
+        close()
+      }),
+      primary('Close', close),
+    ),
+    'drawer',
+  )
+}
+
+function useActiveHelper(id: ActiveHelper) {
+  if (!run || save.helpers[id] <= 0 || !useHelper(run, id)) return
+  save.helpers = { ...save.helpers, [id]: save.helpers[id] - 1 }
+  checkpoint()
+  persist()
+  panelsKey = ''
+}
+
+let panelsKey = ''
+let panelsAt = 0
+/** Keeps the wide-screen side panels in step with the run (throttled). */
+function renderPanels(s: RunState | null, time: number) {
+  const key = s
+    ? [
+        s.turn,
+        s.phase,
+        s.combo,
+        s.coins,
+        s.level,
+        Math.floor(s.xp),
+        s.ballCount,
+        JSON.stringify(s.boosts),
+        JSON.stringify(save.helpers),
+        paused,
+      ].join('|')
+    : 'none'
+  if (key === panelsKey || time - panelsAt < 0.15) return
+  panelsKey = key
+  panelsAt = time
+  if (!s) {
+    leftSide.replaceChildren()
+    rightSide.replaceChildren()
+    return
+  }
+  leftSide.replaceChildren(statsPanel(s, save.bestTurn))
+  rightSide.replaceChildren(
+    boostsPanel(s),
+    helpersPanel(save.helpers, s.phase === 'aim' && !paused, useActiveHelper),
+  )
+}
+
+/** Tells the player about brick and pickup kinds the first time they appear. */
+function announceNewKinds(s: RunState) {
+  const fresh = newlySeen(s, save.seen)
+  if (!fresh.length) return
+  for (const id of fresh) {
+    const g = GUIDE.find((e) => e.id === id)
+    if (g) toast(`New: ${g.name}. ${g.text}`)
+  }
+  save = { ...save, seen: [...save.seen, ...fresh] }
+  persist()
 }
 
 /** Before a run: switch on owned helpers (Head Start, Lucky Start). */
@@ -359,6 +486,10 @@ function pause() {
   acc = 0
   dragging = false
   checkpoint()
+  showPaused()
+}
+
+function showPaused() {
   show(
     h(
       'div',
@@ -366,6 +497,8 @@ function pause() {
       h('h2', { class: 'pf-heading', textContent: 'Paused' }),
       h('p', { class: 'pf-lede', textContent: CONTROLS }),
       primary('Resume', resume),
+      button('Shop', () => showShop(showPaused), 'wide'),
+      button('Guide', () => showGuide(showPaused), 'wide'),
       button('Quit (your run is saved)', showHome, 'quiet'),
     ),
     'paused',
@@ -469,6 +602,8 @@ startRenderLoop((dt, time) => {
   particles.update(dt)
   shake.update(dt)
   juice.update(dt)
+  if (s && s.phase === 'aim') announceNewKinds(s)
+  renderPanels(s, time)
   renderer.draw(s, juice, s && s.phase === 'aim' && !paused ? aim : null, time)
 })
 

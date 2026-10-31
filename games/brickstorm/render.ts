@@ -22,10 +22,120 @@ import {
 } from './sim/config'
 import { traceGuide } from './sim/physics'
 import { brickRect, cellCenter } from './sim/rows'
-import type { BrickKind, Rect, RunState } from './sim/types'
+import type { BrickKind, PickupKind, Rect, RunState } from './sim/types'
 
 const GUIDE_LENGTH = 260
 const TRAIL = 4
+
+/** A glyph in the corner (or frame) that tells special bricks apart. */
+export function drawKindGlyph(ctx: CanvasRenderingContext2D, kind: BrickKind, r: Rect, time: number): void {
+  if (kind === 'normal') return
+  const cx = r.x + r.w - 10
+  const cy = r.y + 11
+  ctx.save()
+  switch (kind) {
+    case 'bomb':
+      ctx.fillStyle = theme.night
+      ctx.beginPath()
+      ctx.arc(cx, cy + 1, 6, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = Math.sin(time * 12) > 0 ? theme.coral : theme.yolk
+      ctx.fillRect(cx + 3, cy - 7, 3, 3)
+      break
+    case 'gold':
+      ctx.strokeStyle = '#fff3b0'
+      ctx.lineWidth = 2
+      ctx.globalAlpha = 0.6 + 0.4 * Math.sin(time * 5)
+      ctx.beginPath()
+      ctx.roundRect(r.x + 3, r.y + 3, r.w - 6, r.h - 6, 7)
+      ctx.stroke()
+      break
+    case 'lightning':
+      ctx.fillStyle = '#eaf6ff'
+      ctx.beginPath()
+      ctx.moveTo(cx + 2, cy - 8)
+      ctx.lineTo(cx - 5, cy + 1)
+      ctx.lineTo(cx, cy + 1)
+      ctx.lineTo(cx - 2, cy + 8)
+      ctx.lineTo(cx + 5, cy - 1)
+      ctx.lineTo(cx, cy - 1)
+      ctx.closePath()
+      ctx.fill()
+      break
+    case 'mystery':
+      ctx.fillStyle = theme.night
+      ctx.font = `700 14px ${FONT}`
+      ctx.fillText('?', cx, cy + 1)
+      break
+    case 'armored':
+      ctx.strokeStyle = '#d6dbe8'
+      ctx.lineWidth = 4
+      ctx.beginPath()
+      ctx.roundRect(r.x + 2, r.y + 2, r.w - 4, r.h - 4, 8)
+      ctx.stroke()
+      break
+    case 'splitter':
+      ctx.strokeStyle = theme.night
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo(r.x + r.w / 2, r.y + 4)
+      ctx.lineTo(r.x + r.w / 2 - 4, r.y + r.h / 2 - 8)
+      ctx.lineTo(r.x + r.w / 2 + 3, r.y + r.h / 2 + 8)
+      ctx.lineTo(r.x + r.w / 2, r.y + r.h - 4)
+      ctx.stroke()
+      break
+  }
+  ctx.restore()
+}
+
+/** One pickup, centred at (x, y). */
+export function drawPickupGlyph(
+  ctx: CanvasRenderingContext2D,
+  kind: PickupKind,
+  x: number,
+  y: number,
+  time: number,
+): void {
+  if (kind === 'ball') {
+    ctx.strokeStyle = theme.chalk
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.arc(x, y, PICKUP_R, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.fillStyle = theme.chalk
+    ctx.fillRect(x - 6, y - 1.5, 12, 3)
+    ctx.fillRect(x - 1.5, y - 6, 3, 12)
+  } else if (kind === 'fire') {
+    ctx.fillStyle = '#ff9f43'
+    ctx.globalAlpha = 0.35
+    ctx.beginPath()
+    ctx.arc(x, y, PICKUP_R + 4, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.globalAlpha = 1
+    drawBall(ctx, 'ball:flame', x, y, PICKUP_R - 3, time, 0, -1)
+  } else if (kind === 'laser') {
+    ctx.strokeStyle = '#ff6fb5'
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.moveTo(x - PICKUP_R, y)
+    ctx.lineTo(x + PICKUP_R, y)
+    ctx.moveTo(x + PICKUP_R - 5, y - 5)
+    ctx.lineTo(x + PICKUP_R, y)
+    ctx.lineTo(x + PICKUP_R - 5, y + 5)
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.arc(x, y, PICKUP_R, 0, Math.PI * 2)
+    ctx.stroke()
+  } else {
+    ctx.fillStyle = theme.yolk
+    ctx.beginPath()
+    ctx.arc(x, y, PICKUP_R - 2, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = theme.yolkEdge
+    ctx.lineWidth = 2
+    ctx.stroke()
+  }
+}
 
 export class BoardRenderer {
   /** Recent positions per ball, for the fever trail. */
@@ -100,67 +210,6 @@ export class BoardRenderer {
     ctx.globalAlpha = 1
   }
 
-  /** A glyph in the corner (or frame) that tells special bricks apart. */
-  private drawKind(ctx: CanvasRenderingContext2D, kind: BrickKind, r: Rect, time: number): void {
-    if (kind === 'normal') return
-    const cx = r.x + r.w - 10
-    const cy = r.y + 11
-    ctx.save()
-    switch (kind) {
-      case 'bomb':
-        ctx.fillStyle = theme.night
-        ctx.beginPath()
-        ctx.arc(cx, cy + 1, 6, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.fillStyle = Math.sin(time * 12) > 0 ? theme.coral : theme.yolk
-        ctx.fillRect(cx + 3, cy - 7, 3, 3)
-        break
-      case 'gold':
-        ctx.strokeStyle = '#fff3b0'
-        ctx.lineWidth = 2
-        ctx.globalAlpha = 0.6 + 0.4 * Math.sin(time * 5)
-        ctx.beginPath()
-        ctx.roundRect(r.x + 3, r.y + 3, r.w - 6, r.h - 6, 7)
-        ctx.stroke()
-        break
-      case 'lightning':
-        ctx.fillStyle = '#eaf6ff'
-        ctx.beginPath()
-        ctx.moveTo(cx + 2, cy - 8)
-        ctx.lineTo(cx - 5, cy + 1)
-        ctx.lineTo(cx, cy + 1)
-        ctx.lineTo(cx - 2, cy + 8)
-        ctx.lineTo(cx + 5, cy - 1)
-        ctx.lineTo(cx, cy - 1)
-        ctx.closePath()
-        ctx.fill()
-        break
-      case 'mystery':
-        ctx.fillStyle = theme.night
-        ctx.font = `700 14px ${FONT}`
-        ctx.fillText('?', cx, cy + 1)
-        break
-      case 'armored':
-        ctx.strokeStyle = '#d6dbe8'
-        ctx.lineWidth = 4
-        ctx.beginPath()
-        ctx.roundRect(r.x + 2, r.y + 2, r.w - 4, r.h - 4, 8)
-        ctx.stroke()
-        break
-      case 'splitter':
-        ctx.strokeStyle = theme.night
-        ctx.lineWidth = 2
-        ctx.beginPath()
-        ctx.moveTo(r.x + r.w / 2, r.y + 4)
-        ctx.lineTo(r.x + r.w / 2 - 4, r.y + r.h / 2 - 8)
-        ctx.lineTo(r.x + r.w / 2 + 3, r.y + r.h / 2 + 8)
-        ctx.lineTo(r.x + r.w / 2, r.y + r.h - 4)
-        ctx.stroke()
-        break
-    }
-    ctx.restore()
-  }
-
   private drawBricks(ctx: CanvasRenderingContext2D, s: RunState, time: number): void {
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
@@ -172,7 +221,7 @@ export class BoardRenderer {
       ctx.fill()
       ctx.fillStyle = 'rgb(255 255 255 / 0.18)'
       ctx.fillRect(r.x + 6, r.y + 4, r.w - 12, 4)
-      this.drawKind(ctx, b.kind, r, time)
+      drawKindGlyph(ctx, b.kind, r, time)
       const hp = Math.ceil(b.hp)
       ctx.fillStyle = theme.night
       ctx.font = `700 ${hp >= 1000 ? 15 : 20}px ${FONT}`
@@ -183,46 +232,7 @@ export class BoardRenderer {
   private drawPickups(ctx: CanvasRenderingContext2D, s: RunState, time: number): void {
     for (const p of s.pickups) {
       const { x, y } = cellCenter(p.col, p.row)
-      const bob = Math.sin(time * 4 + p.id) * 3
-      if (p.kind === 'ball') {
-        ctx.strokeStyle = theme.chalk
-        ctx.lineWidth = 3
-        ctx.beginPath()
-        ctx.arc(x, y + bob, PICKUP_R, 0, Math.PI * 2)
-        ctx.stroke()
-        ctx.fillStyle = theme.chalk
-        ctx.fillRect(x - 6, y + bob - 1.5, 12, 3)
-        ctx.fillRect(x - 1.5, y + bob - 6, 3, 12)
-      } else if (p.kind === 'fire') {
-        ctx.fillStyle = '#ff9f43'
-        ctx.globalAlpha = 0.35
-        ctx.beginPath()
-        ctx.arc(x, y + bob, PICKUP_R + 4, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.globalAlpha = 1
-        drawBall(ctx, 'ball:flame', x, y + bob, PICKUP_R - 3, time, 0, -1)
-      } else if (p.kind === 'laser') {
-        ctx.strokeStyle = '#ff6fb5'
-        ctx.lineWidth = 3
-        ctx.beginPath()
-        ctx.moveTo(x - PICKUP_R, y + bob)
-        ctx.lineTo(x + PICKUP_R, y + bob)
-        ctx.moveTo(x + PICKUP_R - 5, y + bob - 5)
-        ctx.lineTo(x + PICKUP_R, y + bob)
-        ctx.lineTo(x + PICKUP_R - 5, y + bob + 5)
-        ctx.stroke()
-        ctx.beginPath()
-        ctx.arc(x, y + bob, PICKUP_R, 0, Math.PI * 2)
-        ctx.stroke()
-      } else {
-        ctx.fillStyle = theme.yolk
-        ctx.beginPath()
-        ctx.arc(x, y + bob, PICKUP_R - 2, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.strokeStyle = theme.yolkEdge
-        ctx.lineWidth = 2
-        ctx.stroke()
-      }
+      drawPickupGlyph(ctx, p.kind, x, y + Math.sin(time * 4 + p.id) * 3, time)
     }
   }
 

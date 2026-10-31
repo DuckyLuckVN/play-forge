@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_SAVE, loadSave, recordRun, SAVE_KEY, writeSave } from './save'
+import {
+  bankRun,
+  clearRun,
+  DEFAULT_SAVE,
+  loadSave,
+  recordRun,
+  SAVE_KEY,
+  SIM_VERSION,
+  spend,
+  writeSave,
+  type Save,
+} from './save'
+import { createRun } from './sim/run'
 
 function memoryStorage(): Storage {
   const data = new Map<string, string>()
@@ -15,29 +27,60 @@ function memoryStorage(): Storage {
   }
 }
 
+const fresh = (): Save => structuredClone(DEFAULT_SAVE)
+
 describe('save', () => {
-  it('round-trips', () => {
+  it('round-trips, including a run', () => {
     const storage = memoryStorage()
-    const save = { version: 1 as const, bestTurn: 12, bestCombo: 40 }
-    writeSave(save, storage)
-    expect(loadSave(storage)).toEqual({ save, corrupted: false })
+    const save = { ...fresh(), bestTurn: 12, coins: 90 }
+    const banked = bankRun(save, createRun(4), 0).save
+    writeSave(banked, storage)
+    expect(loadSave(storage)).toEqual({ save: banked, corrupted: false, droppedRun: false })
   })
 
   it('starts from defaults when nothing is saved', () => {
-    expect(loadSave(memoryStorage())).toEqual({ save: DEFAULT_SAVE, corrupted: false })
+    expect(loadSave(memoryStorage())).toEqual({ save: DEFAULT_SAVE, corrupted: false, droppedRun: false })
+  })
+
+  it('migrates a v1 save', () => {
+    const storage = memoryStorage()
+    storage.setItem(SAVE_KEY, JSON.stringify({ version: 1, bestTurn: 12, bestCombo: 40 }))
+    const { save, corrupted } = loadSave(storage)
+    expect(corrupted).toBe(false)
+    expect(save).toEqual({ ...DEFAULT_SAVE, bestTurn: 12, bestCombo: 40 })
   })
 
   it('backs up corrupt data instead of losing it', () => {
     const storage = memoryStorage()
     storage.setItem(SAVE_KEY, '{oops')
-    expect(loadSave(storage)).toEqual({ save: DEFAULT_SAVE, corrupted: true })
+    expect(loadSave(storage)).toEqual({ save: DEFAULT_SAVE, corrupted: true, droppedRun: false })
     expect(storage.getItem(SAVE_KEY + ':backup')).toBe('{oops')
   })
 
   it('treats a wrong shape as corrupt', () => {
     const storage = memoryStorage()
-    storage.setItem(SAVE_KEY, '{"version":1,"bestTurn":"lots"}')
+    storage.setItem(SAVE_KEY, '{"version":2,"bestTurn":"lots"}')
     expect(loadSave(storage).corrupted).toBe(true)
+  })
+
+  it('drops a run from another sim version but keeps the wallet', () => {
+    const storage = memoryStorage()
+    const save = bankRun({ ...fresh(), coins: 70 }, createRun(1), 0).save
+    save.run!.simVersion = SIM_VERSION - 1
+    storage.setItem(SAVE_KEY, JSON.stringify(save))
+    const loaded = loadSave(storage)
+    expect(loaded.droppedRun).toBe(true)
+    expect(loaded.save.run).toBeNull()
+    expect(loaded.save.coins).toBe(70)
+  })
+
+  it('drops a malformed run but keeps the wallet', () => {
+    const storage = memoryStorage()
+    const save = { ...fresh(), coins: 33, run: { simVersion: SIM_VERSION, banked: 0, state: 'nope' } }
+    storage.setItem(SAVE_KEY, JSON.stringify(save))
+    const loaded = loadSave(storage)
+    expect(loaded).toMatchObject({ corrupted: false, droppedRun: true })
+    expect(loaded.save.coins).toBe(33)
   })
 
   it('falls back when storage throws', () => {
@@ -49,7 +92,7 @@ describe('save', () => {
         throw new Error('blocked')
       },
     } as unknown as Storage
-    expect(loadSave(broken)).toEqual({ save: DEFAULT_SAVE, corrupted: false })
+    expect(loadSave(broken).save).toEqual(DEFAULT_SAVE)
     expect(() => writeSave(DEFAULT_SAVE, broken)).not.toThrow()
   })
 
@@ -58,7 +101,37 @@ describe('save', () => {
   })
 
   it('records only new bests', () => {
-    const save = { version: 1 as const, bestTurn: 10, bestCombo: 50 }
-    expect(recordRun(save, 8, 70)).toEqual({ version: 1, bestTurn: 10, bestCombo: 70 })
+    const save = { ...fresh(), bestTurn: 10, bestCombo: 50 }
+    expect(recordRun(save, 8, 70)).toMatchObject({ bestTurn: 10, bestCombo: 70 })
+  })
+})
+
+describe('wallet', () => {
+  it('banks only coins not banked before', () => {
+    const s = createRun(2)
+    s.coins = 30
+    const first = bankRun(fresh(), s, 0)
+    expect(first.save.coins).toBe(30)
+    expect(first.banked).toBe(30)
+    s.coins = 45
+    const save = bankRun(first.save, s, first.banked).save
+    expect(save.coins).toBe(45)
+    expect(save.run).toMatchObject({ simVersion: SIM_VERSION, banked: 45 })
+  })
+
+  it('stores a copy of the run, not a live reference', () => {
+    const s = createRun(2)
+    const { save } = bankRun(fresh(), s, 0)
+    s.turn = 99
+    expect(save.run!.state.turn).toBe(1)
+  })
+
+  it('clears the run', () => {
+    expect(clearRun(bankRun(fresh(), createRun(1), 0).save).run).toBeNull()
+  })
+
+  it('refuses to overdraw', () => {
+    expect(spend({ ...fresh(), coins: 10 }, 11)).toBeNull()
+    expect(spend({ ...fresh(), coins: 10 }, 10)!.coins).toBe(0)
   })
 })

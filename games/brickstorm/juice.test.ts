@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { playSound } from '@forge/audio/sound'
 import { theme } from '@forge/ui/theme'
 import { comboPitch, hpColor, Juice } from './juice'
 
@@ -46,5 +47,16 @@ describe('Juice', () => {
     j.update(5)
     expect(j.banner).toBeNull()
     expect(j.flash).toBe(0)
+  })
+
+  it('rate-limits repeated sounds of the same kind', () => {
+    const j = juice()
+    vi.mocked(playSound).mockClear()
+    for (let i = 0; i < 20; i++) {
+      j.handle({ type: 'wall' })
+      j.handle({ type: 'kill', x: 0, y: 0, maxHp: 1 })
+      j.handle({ type: 'pickup', kind: 'coin', x: 0, y: 0 })
+    }
+    expect(playSound).toHaveBeenCalledTimes(3)
   })
 })

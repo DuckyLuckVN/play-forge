@@ -25,6 +25,8 @@ const CONTROLS = 'Drag to aim and release to launch. Keys: ←/→ aim, Space la
 const AIM_STEP = (1.5 * Math.PI) / 180
 /** Never simulate more than this many ticks in one frame. */
 const MAX_STEPS = 1200
+/** Card clicks are ignored this long after the pick screen opens. */
+const PICK_GRACE_MS = 250
 
 applyTheme()
 document.title = 'Brickstorm · Play Forge'
@@ -153,6 +155,10 @@ function startRun() {
 function showPick() {
   if (!run) return
   const s = run
+  // Keys or clicks meant for the volley that just ended must not pick a card
+  // the player hasn't seen yet.
+  const shownAt = performance.now()
+  const settled = () => performance.now() - shownAt >= PICK_GRACE_MS
   const cards = s.choices.map((id) => {
     const b = BOOSTS[id]
     const card = h(
@@ -161,6 +167,7 @@ function showPick() {
         class: `pf-btn bs-card ${b.rarity}`,
         type: 'button',
         onclick: () => {
+          if (!settled()) return
           pickBoost(s, id)
           if (s.phase === 'pick') showPick()
           else show(null)
@@ -172,17 +179,23 @@ function showPick() {
     )
     return card
   })
-  cards[0].autofocus = true
+  const heading = h('h2', {
+    class: 'pf-heading',
+    textContent: 'Level up! Pick a boost',
+    tabIndex: -1,
+    autofocus: true,
+  })
   show(
     h(
       'div',
       { class: 'pf-panel wide' },
-      h('h2', { class: 'pf-heading', textContent: 'Level up! Pick a boost' }),
+      heading,
       h('div', { class: 'bs-cards' }, ...cards),
       s.rerolls > 0 &&
         button(
           `Reroll (${s.rerolls})`,
           () => {
+            if (!settled()) return
             reroll(s)
             showPick()
           },

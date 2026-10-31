@@ -136,4 +136,17 @@ describe('xp in a run', () => {
     while (second.hp === 100) step(s)
     expect(first.hp).toBe(99)
   })
+
+  it('does not trap a piercing ball between stacked bricks', () => {
+    const s = empty()
+    s.boosts = { pierce: 1 }
+    brick(s, 3, 4, 1000)
+    brick(s, 3, 3, 1000)
+    fire(s, Math.PI / 2)
+    let hits = 0
+    runVolley(s, (x) => {
+      hits += drainEvents(x).filter((e) => e.type === 'hit').length
+    })
+    expect(hits).toBeLessThanOrEqual(3)
+  })
 })

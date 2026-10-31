@@ -37,7 +37,11 @@ export function createCanvas2D(parent: HTMLElement, width: number, height: numbe
   }
 
   function fit() {
-    const scale = Math.min(parent.clientWidth / view.width, parent.clientHeight / view.height) || 1
+    // Fit inside the parent's content box (clientWidth includes padding).
+    const cs = getComputedStyle(parent)
+    const availW = parent.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)
+    const availH = parent.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)
+    const scale = Math.max(0, Math.min(availW / view.width, availH / view.height)) || 1
     const cssW = Math.floor(view.width * scale)
     const cssH = Math.floor(view.height * scale)
     const dpr = window.devicePixelRatio || 1

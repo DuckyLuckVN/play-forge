@@ -18,6 +18,9 @@ export interface Snake {
   score: number
 }
 
+/** One-tick events, for sounds and effects on every peer. */
+export type SnakeEvent = { type: 'eat' | 'die'; player: string }
+
 export interface SnakeState {
   width: number
   height: number
@@ -28,6 +31,8 @@ export interface SnakeState {
   over: boolean
   /** Id of the last snake standing in multiplayer; null for a draw or solo. */
   winner: string | null
+  /** What happened during the last tick. */
+  events: SnakeEvent[]
 }
 
 export const SNAKE_INPUTS: Direction[] = ['up', 'down', 'left', 'right']
@@ -51,11 +56,10 @@ const FOOD_GROWTH = 2
 export function createState(players: PlayerInfo[], seed: number, width = 32, height = 24): SnakeState {
   const n = players.length
   const snakes = players.map((p, i): Snake => {
-    // Alternate sides, spread evenly down the board, facing inwards.
+    // Alternate sides, facing inwards, each on its own row so no two
+    // snakes start on a head-on collision course.
     const leftSide = i % 2 === 0
-    const rows = Math.ceil(n / 2)
-    const row = Math.floor(i / 2)
-    const y = Math.floor(((row + 1) * height) / (rows + 1))
+    const y = Math.floor(((i + 1) * height) / (n + 1))
     const x = leftSide ? START_LENGTH + 1 : width - START_LENGTH - 2
     const dir: Direction = leftSide ? 'right' : 'left'
     const [dx] = DELTA[dir]
@@ -71,6 +75,7 @@ export function createState(players: PlayerInfo[], seed: number, width = 32, hei
     food: [],
     over: false,
     winner: null,
+    events: [],
   }
   refillFood(state)
   return state
@@ -104,6 +109,7 @@ function queueTurn(snake: Snake, dir: Direction) {
 
 function kill(state: SnakeState, snake: Snake) {
   snake.alive = false
+  state.events.push({ type: 'die', player: snake.id })
   // Leave a trail of food behind; skip the head, which may be out of bounds
   // or overlapping another snake.
   snake.body.slice(1).forEach((p, i) => i % 2 === 0 && state.food.push(p))
@@ -111,6 +117,7 @@ function kill(state: SnakeState, snake: Snake) {
 
 export function step(state: SnakeState, inputs: InputEvent<Direction>[]): SnakeState {
   if (state.over) return state
+  state.events = []
   const byId = new Map(state.snakes.map((s) => [s.id, s]))
   for (const { player, input } of inputs) {
     const snake = byId.get(player)
@@ -130,6 +137,7 @@ export function step(state: SnakeState, inputs: InputEvent<Direction>[]): SnakeS
       state.food.splice(foodIndex, 1)
       s.grow += FOOD_GROWTH
       s.score++
+      state.events.push({ type: 'eat', player: s.id })
     }
     if (s.grow > 0) s.grow--
     else s.body.pop()

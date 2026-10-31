@@ -1,0 +1,531 @@
+/* Play Forge shared styles. Colours come from theme.ts via applyTheme(). */
+
+@font-face {
+  font-family: 'Fredoka';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 300 700;
+  src: url('@fontsource-variable/fredoka/files/fredoka-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308,
+    U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Fredoka';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 300 700;
+  src: url('@fontsource-variable/fredoka/files/fredoka-latin-ext-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+:root {
+  color-scheme: dark;
+  --pf-font: 'Fredoka', ui-rounded, system-ui, sans-serif;
+  --pf-radius-lg: 22px;
+  --pf-radius: 12px;
+  --pf-edge: 4px; /* depth of chunky buttons and tokens */
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--pf-night);
+  color: var(--pf-chalk);
+  font: 400 16px/1.45 var(--pf-font);
+  -webkit-font-smoothing: antialiased;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+:focus-visible {
+  outline: 3px solid var(--pf-yolk);
+  outline-offset: 2px;
+}
+
+/* ---------- Game shell: top bar + stage ---------- */
+
+.pf-shell {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.pf-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  min-height: 60px;
+}
+.pf-bar-title {
+  font-size: 22px;
+  font-weight: 650;
+  margin: 0 6px 0 2px;
+  white-space: nowrap;
+}
+.pf-bar-scores {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.pf-bar-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.pf-stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px 16px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ---------- Buttons ---------- */
+
+.pf-btn {
+  --face: var(--pf-felt);
+  --edge: var(--pf-rim);
+  --text: var(--pf-chalk);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font: 600 17px/1 var(--pf-font);
+  color: var(--text);
+  background: var(--face);
+  border: 2px solid var(--edge);
+  border-radius: var(--pf-radius);
+  box-shadow: 0 var(--pf-edge) 0 var(--edge);
+  padding: 13px 18px 12px;
+  margin-bottom: var(--pf-edge);
+  cursor: pointer;
+  transition: transform 60ms, box-shadow 60ms;
+  white-space: nowrap;
+}
+.pf-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.pf-btn:active:not(:disabled) {
+  transform: translateY(var(--pf-edge));
+  box-shadow: 0 0 0 var(--edge);
+}
+.pf-btn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.pf-btn.primary {
+  --face: var(--pf-yolk);
+  --edge: var(--pf-yolk-edge);
+  --text: var(--pf-ink);
+}
+.pf-btn.quiet {
+  background: none;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--pf-haze);
+  padding: 8px 12px;
+  margin-bottom: 0;
+}
+.pf-btn.quiet:hover {
+  color: var(--pf-chalk);
+}
+.pf-btn.icon {
+  padding: 8px;
+  width: 44px;
+  height: 44px;
+  --pf-edge: 3px;
+}
+.pf-btn.wide {
+  width: 100%;
+}
+.pf-icon {
+  display: inline-flex;
+}
+
+/* ---------- Panels & forms ---------- */
+
+.pf-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgb(10 12 30 / 0.6);
+  z-index: 10;
+  overflow-y: auto;
+}
+.pf-overlay[hidden] {
+  display: none;
+}
+
+.pf-panel {
+  width: min(420px, 100%);
+  background: var(--pf-felt);
+  border: 2px solid var(--pf-rim);
+  border-radius: var(--pf-radius-lg);
+  padding: 26px 24px 20px;
+  display: grid;
+  gap: 16px;
+  box-shadow: 0 8px 0 var(--pf-rim), 0 30px 80px rgb(0 0 0 / 0.35);
+}
+.pf-panel.wide {
+  width: min(560px, 100%);
+}
+
+.pf-heading {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.05;
+}
+.pf-lede {
+  margin: -6px 0 0;
+  color: var(--pf-haze);
+}
+
+.pf-field {
+  display: grid;
+  gap: 6px;
+  font-weight: 500;
+  color: var(--pf-haze);
+}
+.pf-input {
+  font: 500 18px/1.2 var(--pf-font);
+  color: var(--pf-chalk);
+  background: var(--pf-pit);
+  border: 2px solid var(--pf-rim);
+  border-radius: var(--pf-radius);
+  padding: 12px 14px;
+  outline: none;
+  width: 100%;
+}
+.pf-input:focus {
+  border-color: var(--pf-yolk);
+}
+.pf-input.code {
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  font-weight: 650;
+  text-align: center;
+}
+.pf-input.code::placeholder {
+  letter-spacing: 0.3em;
+  color: var(--pf-rim);
+}
+
+.pf-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.pf-row > * {
+  flex: 1;
+  min-width: 0;
+}
+
+.pf-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--pf-haze);
+  font-size: 14px;
+}
+.pf-or::before,
+.pf-or::after {
+  content: '';
+  flex: 1;
+  border-top: 2px dashed var(--pf-rim);
+}
+
+.pf-note {
+  margin: 0;
+  color: var(--pf-haze);
+  text-align: center;
+  font-size: 15px;
+}
+.pf-note.error {
+  color: var(--pf-coral);
+}
+
+.pf-headline {
+  margin: 0;
+  text-align: center;
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.05;
+}
+
+/* ---------- Room code ---------- */
+
+.pf-room {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 10px 10px 16px;
+  background: var(--pf-pit);
+  border-radius: var(--pf-radius);
+}
+.pf-room-code {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+}
+.pf-room small {
+  display: block;
+  color: var(--pf-haze);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: normal;
+}
+
+/* ---------- Seats: the lobby table ---------- */
+
+.pf-seats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px 8px;
+  margin: 4px 0;
+}
+.pf-seat {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  text-align: center;
+  min-width: 0;
+}
+.pf-token {
+  --c: var(--pf-rim);
+  position: relative;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow:
+    inset 0 -5px 0 rgb(0 0 0 / 0.22),
+    0 var(--pf-edge) 0 color-mix(in srgb, var(--c) 55%, black);
+  display: grid;
+  place-items: center;
+  font-size: 26px;
+  font-weight: 700;
+  color: rgb(0 0 0 / 0.55);
+  animation: pf-pop 320ms cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+/* Your own seat: a chalk ring around the token. */
+.pf-seat.self .pf-token {
+  outline: 3px solid var(--pf-chalk);
+  outline-offset: 4px;
+}
+.pf-seat.empty .pf-token {
+  background: none;
+  box-shadow: none;
+  border: 3px dashed var(--pf-rim);
+  animation: none;
+}
+.pf-seat.out .pf-token {
+  filter: grayscale(0.7) brightness(0.7);
+}
+.pf-badge {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--pf-chalk);
+  color: var(--pf-night);
+  border: 3px solid var(--pf-felt);
+  animation: pf-pop 260ms cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+.pf-badge svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 3.2;
+}
+.pf-badge.host {
+  background: var(--pf-yolk);
+  color: var(--pf-ink);
+}
+.pf-seat-name {
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pf-seat-status {
+  font-size: 13px;
+  color: var(--pf-haze);
+  margin-top: -4px;
+}
+.pf-seat-status.ok {
+  color: var(--pf-chalk);
+}
+.pf-seat.empty .pf-seat-name {
+  color: var(--pf-haze);
+  opacity: 0.6;
+  font-weight: 500;
+}
+
+@keyframes pf-pop {
+  from {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+}
+
+/* ---------- Score chips in the bar ---------- */
+
+.pf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 6px;
+  border-radius: 999px;
+  background: var(--pf-felt);
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.pf-chip .dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--c);
+}
+.pf-chip.out {
+  opacity: 0.4;
+}
+.pf-chip.self {
+  box-shadow: inset 0 0 0 2px var(--c);
+}
+
+/* ---------- Countdown ---------- */
+
+.pf-countdown {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 11;
+}
+.pf-countdown span {
+  font-size: min(34vw, 260px);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--pf-yolk);
+  text-shadow: 0 10px 0 var(--pf-yolk-edge), 0 30px 60px rgb(0 0 0 / 0.5);
+  animation: pf-count 1s ease-out both;
+}
+@keyframes pf-count {
+  0% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+  15% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+}
+
+/* ---------- Toasts ---------- */
+
+.pf-toasts {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  z-index: 20;
+  pointer-events: none;
+}
+.pf-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--pf-chalk);
+  color: var(--pf-night);
+  font-weight: 600;
+  animation: pf-pop 240ms cubic-bezier(0.3, 1.6, 0.5, 1);
+  transition: opacity 300ms;
+}
+.pf-toast::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--pf-toast-dot, var(--pf-yolk));
+}
+.pf-toast.out {
+  opacity: 0;
+}
+
+/* ---------- Small screens & motion ---------- */
+
+@media (max-width: 520px) {
+  .pf-bar {
+    padding: 8px 12px;
+    gap: 6px;
+  }
+  .pf-bar-title {
+    display: none;
+  }
+  .pf-seats {
+    gap: 12px 4px;
+  }
+  .pf-token {
+    width: 50px;
+    height: 50px;
+    font-size: 22px;
+  }
+  .pf-seat-name {
+    font-size: 15px;
+  }
+  .pf-headline {
+    font-size: 32px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition: none !important;
+  }
+}

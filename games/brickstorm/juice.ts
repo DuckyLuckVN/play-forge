@@ -53,6 +53,11 @@ const ANNOUNCER = [
   [200, 'INSANE!', 'stinger4'],
 ] as const
 
+/** A sound with every tone's pitch scaled, for rising chain reactions. */
+export function pitched(sound: Tone[], factor: number): Tone[] {
+  return sound.map((t) => ({ ...t, freq: t.freq * factor, to: t.to && t.to * factor }))
+}
+
 /** Seconds between links of a chain reaction. */
 const RIPPLE = 0.06
 const HITSTOP = 0.04
@@ -207,7 +212,7 @@ export class Juice {
       })
       this.shake.add(0.25)
       // Rising boom pitch along the chain.
-      playSound(BRICK_SOUNDS.explode, 1)
+      playSound(pitched(BRICK_SOUNDS.explode, 1 + 0.12 * Math.min(e.depth, 6)))
       if (e.depth >= 2) this.hitstop = Math.max(this.hitstop, HITSTOP)
     } else {
       this.zaps.push({ x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, life: 0.18 })

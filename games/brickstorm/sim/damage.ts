@@ -41,13 +41,14 @@ export function killBrick(s: RunState, brick: Brick, depth: number): void {
   s.bricks.splice(i, 1)
   const mods = modsOf(s.boosts)
   // Only some bricks drop a coin; gold always pays, triple.
-  const coins = Math.max(1, Math.round(comboMultiplier(s.combo) * mods.coinMult))
-  if (brick.kind === 'gold') s.coins += coins * 2
-  else if (random(s.rng) < COIN_DROP) s.coins += coins
-  s.coins += mods.midas
+  const base = Math.max(1, Math.round(comboMultiplier(s.combo) * mods.coinMult))
+  let coins = mods.midas
+  if (brick.kind === 'gold') coins += base * 2
+  else if (random(s.rng) < COIN_DROP) coins += base
+  s.coins += coins
   gainXp(s, mods.xpMult)
   const { x, y } = cellCenter(brick.col, brick.row)
-  s.events.push({ type: 'kill', id: brick.id, x, y, maxHp: brick.maxHp, kind: brick.kind })
+  s.events.push({ type: 'kill', id: brick.id, x, y, maxHp: brick.maxHp, kind: brick.kind, coins })
   onDeath(s, brick, depth)
   if (mods.aftershock) {
     const near = s.bricks.filter((b) => Math.abs(b.col - brick.col) + Math.abs(b.row - brick.row) === 1)

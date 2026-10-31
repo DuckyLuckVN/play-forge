@@ -81,7 +81,7 @@ export type SimEvent =
   | { type: 'fire' }
   | { type: 'launch' }
   | { type: 'hit'; x: number; y: number; combo: number; crit: boolean }
-  | { type: 'kill'; id: number; x: number; y: number; maxHp: number; kind: BrickKind }
+  | { type: 'kill'; id: number; x: number; y: number; maxHp: number; kind: BrickKind; coins: number }
   | { type: 'pickup'; kind: PickupKind; x: number; y: number }
   | { type: 'wall' }
   | { type: 'land' }

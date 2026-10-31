@@ -43,6 +43,8 @@ export function hpColor(hp: number, turn: number): string {
   return '#' + ((mix(16) << 16) | (mix(8) << 8) | mix(0)).toString(16).padStart(6, '0')
 }
 
+const MYSTERY_TEXT = { balls: '+3 BALLS', pick: 'FREE BOOST', coins: '+50 COINS', fire: 'FIREBALLS!' }
+
 const BANNER_LIFE = 1.4
 const SOUND_GAP_MS = 30
 
@@ -55,6 +57,8 @@ export class Juice {
   turn = 1
   /** Lightning arcs to draw; the renderer reads this list. */
   zaps: Array<{ x1: number; y1: number; x2: number; y2: number; life: number }> = []
+  /** Laser beams to draw across a row. */
+  lasers: Array<{ y: number; life: number }> = []
   /** Equipped brick-break effect id. */
   impact = 'impact:shards'
   /** When each kind of sound last played, so big volleys don't stack hundreds of tones. */
@@ -77,7 +81,20 @@ export class Juice {
         return
       }
       case 'kill':
-        this.particles.burst(e.x, e.y, { color: hpColor(e.maxHp, this.turn), ...IMPACT_STYLE[this.impact] })
+        this.particles.burst(e.x, e.y, {
+          color: e.kind === 'gold' ? theme.yolk : hpColor(e.maxHp, this.turn),
+          ...IMPACT_STYLE[this.impact],
+        })
+        if (e.kind === 'gold') {
+          this.particles.burst(e.x, e.y, {
+            count: 14,
+            color: theme.yolk,
+            speed: 260,
+            gravity: 600,
+            shape: 'circle',
+          })
+          this.play('coin', BRICK_SOUNDS.coin)
+        }
         this.shake.add(0.08)
         return this.play('kill', BRICK_SOUNDS.kill, 0.8)
       case 'pickup':
@@ -117,6 +134,16 @@ export class Juice {
       case 'zap':
         this.zaps.push({ x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, life: 0.18 })
         return this.play('zap', BRICK_SOUNDS.zap)
+      case 'jackpot':
+        this.show('JACKPOT ROW!', 0.4)
+        return playSound(BRICK_SOUNDS.jackpot)
+      case 'laser':
+        this.lasers.push({ y: e.y, life: 0.3 })
+        this.shake.add(0.2)
+        return this.play('laser', BRICK_SOUNDS.laser)
+      case 'mystery':
+        this.particles.text(e.x, e.y, MYSTERY_TEXT[e.reward], { color: theme.yolk, size: 18, rise: 40 })
+        return playSound(BRICK_SOUNDS.mystery)
       case 'secondWind':
         this.show('SECOND WIND!', 1)
         this.shake.add(0.4)
@@ -132,6 +159,8 @@ export class Juice {
   update(dt: number): void {
     for (const z of this.zaps) z.life -= dt
     this.zaps = this.zaps.filter((z) => z.life > 0)
+    for (const l of this.lasers) l.life -= dt
+    this.lasers = this.lasers.filter((l) => l.life > 0)
     this.flash = Math.max(0, this.flash - dt * 2.5)
     if (this.banner) {
       this.banner.age += dt

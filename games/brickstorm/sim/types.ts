@@ -9,15 +9,20 @@ export interface Rect {
   h: number
 }
 
+export type BrickKind = 'normal' | 'bomb' | 'gold' | 'lightning' | 'mystery' | 'armored' | 'splitter'
+
 export interface Brick {
   id: number
   col: number
   row: number
   hp: number
   maxHp: number
+  kind: BrickKind
+  /** A half from a splitter; never splits again. */
+  split: boolean
 }
 
-export type PickupKind = 'ball' | 'coin'
+export type PickupKind = 'ball' | 'coin' | 'fire' | 'laser'
 
 export interface Pickup {
   id: number
@@ -73,7 +78,7 @@ export type SimEvent =
   | { type: 'fire' }
   | { type: 'launch' }
   | { type: 'hit'; x: number; y: number; combo: number; crit: boolean }
-  | { type: 'kill'; x: number; y: number; maxHp: number }
+  | { type: 'kill'; id: number; x: number; y: number; maxHp: number; kind: BrickKind }
   | { type: 'pickup'; kind: PickupKind; x: number; y: number }
   | { type: 'wall' }
   | { type: 'land' }
@@ -86,6 +91,9 @@ export type SimEvent =
   | { type: 'over' }
   | { type: 'revive' }
   | { type: 'secondWind' }
+  | { type: 'jackpot' }
+  | { type: 'laser'; y: number }
+  | { type: 'mystery'; x: number; y: number; reward: 'balls' | 'pick' | 'coins' | 'fire' }
   | { type: 'explode'; x: number; y: number; depth: number }
   | { type: 'zap'; x1: number; y1: number; x2: number; y2: number; depth: number }
 

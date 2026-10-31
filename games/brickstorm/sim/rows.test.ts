@@ -5,7 +5,7 @@ import type { RunState } from './types'
 
 /** Just the fields spawnRow reads and writes. */
 function blank(seed: number, turn: number): RunState {
-  return { rng: { seed }, turn, bricks: [], pickups: [], nextId: 1 } as unknown as RunState
+  return { rng: { seed }, turn, bricks: [], pickups: [], nextId: 1, events: [] } as unknown as RunState
 }
 
 const spawned = (seed: number, turn: number) => {

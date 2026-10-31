@@ -40,7 +40,10 @@ const shelf = h(
         { class: 'lc-game-body' },
         h('h2', { textContent: g.title }),
         h('p', { textContent: g.description }),
-        h('span', { class: 'lc-players', textContent: `${g.players} players` }),
+        h('span', {
+          class: 'lc-players',
+          textContent: `${g.players} ${g.players === '1' ? 'player' : 'players'}`,
+        }),
       ),
       h('span', { class: 'pf-btn primary', textContent: 'Play' }),
     )

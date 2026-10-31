@@ -1,4 +1,4 @@
-import { playSound } from '@forge/audio/sound'
+import { playSound, type Sound } from '@forge/audio/sound'
 import { celebrate } from '@forge/fx/confetti'
 import type { Particles } from '@forge/fx/particles'
 import type { Shake } from '@forge/fx/shake'
@@ -34,6 +34,7 @@ export function hpColor(hp: number, turn: number): string {
 }
 
 const BANNER_LIFE = 1.4
+const SOUND_GAP_MS = 30
 
 /** Turns simulation events into particles, shake, flashes, banners and sound. */
 export class Juice {
@@ -42,7 +43,8 @@ export class Juice {
   banner: { text: string; age: number } | null = null
   /** Current turn, for colouring kill bursts like the bricks. */
   turn = 1
-  private lastHitSound = -Infinity
+  /** When each kind of sound last played, so big volleys don't stack hundreds of tones. */
+  private lastPlayed = new Map<string, number>()
 
   constructor(
     private particles: Particles,
@@ -54,23 +56,19 @@ export class Juice {
       case 'fire':
         return playSound(BRICK_SOUNDS.fire)
       case 'hit': {
-        const now = performance.now()
-        if (now - this.lastHitSound >= 30) {
-          this.lastHitSound = now
-          playSound({ freq: comboPitch(e.combo), dur: 0.06, wave: 'square', vol: 0.25 })
-        }
+        this.play('hit', { freq: comboPitch(e.combo), dur: 0.06, wave: 'square', vol: 0.25 })
         if (e.crit) this.particles.text(e.x, e.y, 'CRIT', { color: theme.yolk, size: 16 })
         return
       }
       case 'kill':
         this.particles.burst(e.x, e.y, { count: 10, color: hpColor(e.maxHp, this.turn), speed: 160 })
         this.shake.add(0.08)
-        return playSound(BRICK_SOUNDS.kill, 0.6)
+        return this.play('kill', BRICK_SOUNDS.kill, 0.6)
       case 'pickup':
         this.particles.burst(e.x, e.y, { count: 8, color: e.kind === 'ball' ? theme.chalk : theme.yolk })
-        return playSound(e.kind === 'ball' ? BRICK_SOUNDS.pickupBall : BRICK_SOUNDS.pickupCoin)
+        return this.play(e.kind, e.kind === 'ball' ? BRICK_SOUNDS.pickupBall : BRICK_SOUNDS.pickupCoin)
       case 'wall':
-        return playSound(BRICK_SOUNDS.wall)
+        return this.play('wall', BRICK_SOUNDS.wall)
       case 'fever':
         this.show('FEVER!', 0.6)
         return playSound(BRICK_SOUNDS.fever)
@@ -102,6 +100,13 @@ export class Juice {
       this.banner.age += dt
       if (this.banner.age > BANNER_LIFE) this.banner = null
     }
+  }
+
+  private play(key: string, sound: Sound, volume = 1): void {
+    const now = performance.now()
+    if (now - (this.lastPlayed.get(key) ?? -Infinity) < SOUND_GAP_MS) return
+    this.lastPlayed.set(key, now)
+    playSound(sound, volume)
   }
 
   private show(text: string, flash: number): void {

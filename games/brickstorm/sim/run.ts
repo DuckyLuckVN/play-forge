@@ -19,7 +19,7 @@ import {
 } from './config'
 import { random } from '@forge/core/rng'
 import { modsOf, rollChoices, xpToNext, type Mods } from './boosts'
-import { antiStall, bounceWalls, deepestContact, reflect } from './physics'
+import { antiStall, bounceWalls, circleRect, deepestContact, reflect } from './physics'
 import { brickRect, cellCenter, spawnRow } from './rows'
 import type { Ball, RunState, SimEvent } from './types'
 
@@ -132,22 +132,22 @@ function moveBall(s: RunState, ball: Ball, mods: Mods): void {
       s.events.push({ type: 'wall' })
     }
 
-    const contact = deepestContact(ball.x, ball.y, s.bricks.map(brickRect))
-    if (!contact) {
-      ball.lastBrick = -1
-    } else {
-      const brick = s.bricks[contact.index]
-      if (brick.id !== ball.lastBrick) {
-        hitBrick(s, ball, contact.index, mods)
-        if (ball.pierceLeft > 0) {
-          ball.pierceLeft--
-          ball.lastBrick = brick.id
-        } else {
-          ball.x += contact.nx * contact.depth
-          ball.y += contact.ny * contact.depth
-          ;[ball.vx, ball.vy] = antiStall(...reflect(ball.vx, ball.vy, contact.nx, contact.ny))
-          ball.lastBrick = -1
-        }
+    // A pierced brick is ignored until the ball has fully left it, so a
+    // bounce off the next brick can't push the ball back into it for a re-hit.
+    const pierced = s.bricks.find((b) => b.id === ball.lastBrick)
+    if (!pierced || !circleRect(ball.x, ball.y, BALL_R, brickRect(pierced))) ball.lastBrick = -1
+    const solid = s.bricks.filter((b) => b.id !== ball.lastBrick)
+    const contact = deepestContact(ball.x, ball.y, solid.map(brickRect))
+    if (contact) {
+      const brick = solid[contact.index]
+      hitBrick(s, ball, s.bricks.indexOf(brick), mods)
+      if (ball.pierceLeft > 0) {
+        ball.pierceLeft--
+        ball.lastBrick = brick.id
+      } else {
+        ball.x += contact.nx * contact.depth
+        ball.y += contact.ny * contact.depth
+        ;[ball.vx, ball.vy] = antiStall(...reflect(ball.vx, ball.vy, contact.nx, contact.ny))
       }
     }
 

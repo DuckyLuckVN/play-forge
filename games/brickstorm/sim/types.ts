@@ -44,6 +44,7 @@ export type BoostId = 'damage' | 'balls' | 'coins' | 'speed' | 'pierce' | 'crit'
 
 export type SimEvent =
   | { type: 'fire' }
+  | { type: 'launch' }
   | { type: 'hit'; x: number; y: number; combo: number; crit: boolean }
   | { type: 'kill'; x: number; y: number; maxHp: number }
   | { type: 'pickup'; kind: PickupKind; x: number; y: number }

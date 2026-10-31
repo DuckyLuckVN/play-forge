@@ -444,7 +444,7 @@ function showResults(s: RunState) {
 // ---------- Loop ----------
 startRenderLoop((dt, time) => {
   const s = run
-  if (s && !paused && s.phase === 'volley') {
+  if (s && !paused && s.phase === 'volley' && juice.hitstop === 0) {
     acc += dt * speedMultiplier(s, fast)
     for (let n = 0; acc >= TICK && n < MAX_STEPS && s.phase === 'volley'; n++) {
       step(s)
@@ -457,6 +457,7 @@ startRenderLoop((dt, time) => {
   }
   if (s) {
     for (const e of drainEvents(s)) juice.handle(e)
+    juice.setCoins(s.coins)
     if (s.phase === 'pick' && !panel.startsWith('pick')) showPick()
     if (s.phase === 'over' && !overShown) {
       overShown = true

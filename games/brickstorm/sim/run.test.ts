@@ -150,4 +150,19 @@ describe('turn loop', () => {
       }
     }
   })
+
+  it('pays a milestone bonus on reaching turn 25', () => {
+    const s = empty()
+    s.turn = 24
+    brick(s, 0, 0, 1e6) // not a board wipe
+    fire(s, Math.PI / 2)
+    runVolley(s)
+    expect(s.turn).toBe(25)
+    expect(s.coins).toBe(50)
+    expect(drainEvents(s).find((e) => e.type === 'milestone')).toEqual({
+      type: 'milestone',
+      turn: 25,
+      coins: 50,
+    })
+  })
 })

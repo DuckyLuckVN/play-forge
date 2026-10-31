@@ -92,6 +92,7 @@ export type SimEvent =
   | { type: 'revive' }
   | { type: 'secondWind' }
   | { type: 'jackpot' }
+  | { type: 'milestone'; turn: number; coins: number }
   | { type: 'laser'; y: number }
   | { type: 'mystery'; x: number; y: number; reward: 'balls' | 'pick' | 'coins' | 'fire' }
   | { type: 'explode'; x: number; y: number; depth: number }

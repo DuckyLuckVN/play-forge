@@ -5,7 +5,7 @@ import type { Canvas2D } from '@forge/render2d/canvas'
 import { FONT, theme } from '@forge/ui/theme'
 import { ArenaPainter, type ArenaId } from './arenas'
 import { drawBall, TRAIL_STYLE } from './cosmetics'
-import { hpColor, type Juice } from './juice'
+import { COIN_FLY, hpColor, type Juice } from './juice'
 import { xpToNext } from './sim/boosts'
 import {
   BALL_R,
@@ -64,9 +64,10 @@ export class BoardRenderer {
     this.particles.draw(ctx)
     ctx.restore()
     if (s) {
-      this.drawHud(ctx, s)
+      this.drawHud(ctx, s, juice)
       this.drawCombo(ctx, s)
     }
+    this.drawCoinFlyers(ctx, juice)
     this.drawBanner(ctx, juice)
     if (juice.flash > 0) {
       ctx.fillStyle = `rgb(255 255 255 / ${juice.flash * 0.45})`
@@ -326,7 +327,7 @@ export class BoardRenderer {
     }
   }
 
-  private drawHud(ctx: CanvasRenderingContext2D, s: RunState): void {
+  private drawHud(ctx: CanvasRenderingContext2D, s: RunState, juice: Juice): void {
     ctx.textBaseline = 'middle'
     ctx.font = `700 20px ${FONT}`
     ctx.fillStyle = theme.chalk
@@ -334,7 +335,7 @@ export class BoardRenderer {
     ctx.fillText(`Turn ${s.turn}`, 12, TOP / 2 - 4)
     ctx.textAlign = 'right'
     ctx.fillStyle = theme.yolk
-    ctx.fillText(`● ${s.coins}`, BOARD_W - 12, TOP / 2 - 4)
+    ctx.fillText(`● ${Math.floor(juice.shownCoins)}`, BOARD_W - 12, TOP / 2 - 4)
 
     const need = xpToNext(s.level)
     const w = BOARD_W - 24
@@ -358,6 +359,22 @@ export class BoardRenderer {
     ctx.globalAlpha = 0.85
     ctx.fillText(`x${s.combo}${s.combo >= 25 ? '!' : ''}`, BOARD_W / 2, TOP + 6)
     ctx.globalAlpha = 1
+  }
+
+  private drawCoinFlyers(ctx: CanvasRenderingContext2D, juice: Juice): void {
+    const tx = BOARD_W - 50
+    const ty = TOP / 2 - 4
+    ctx.fillStyle = theme.yolk
+    for (const c of juice.coinFlyers) {
+      const t = (c.age - c.delay) / COIN_FLY
+      if (t < 0) continue
+      const k = ease.inCubic(Math.min(1, t))
+      const x = c.x0 + (tx - c.x0) * k
+      const y = c.y0 + (ty - c.y0) * k - Math.sin(k * Math.PI) * 60
+      ctx.beginPath()
+      ctx.arc(x, y, 5, 0, Math.PI * 2)
+      ctx.fill()
+    }
   }
 
   private drawBanner(ctx: CanvasRenderingContext2D, juice: Juice): void {

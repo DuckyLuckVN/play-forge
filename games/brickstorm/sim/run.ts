@@ -24,6 +24,8 @@ import { brickRect, cellCenter, spawnRow } from './rows'
 import type { Ball, Brick, RunState, SimEvent } from './types'
 
 const COIN_PICKUP = 5
+/** Turn reached → coin bonus. */
+const MILESTONES: Record<number, number> = { 25: 50, 50: 150, 100: 500 }
 
 export function createRun(seed: number): RunState {
   const s: RunState = {
@@ -272,6 +274,8 @@ function endTurn(s: RunState): void {
 /** Advances to the next turn: a new row at the top, then aim (or a pending boost pick). */
 export function startNextTurn(s: RunState): void {
   s.turn++
+  const milestone = MILESTONES[s.turn]
+  if (milestone) bonus(s, { type: 'milestone', turn: s.turn, coins: milestone })
   spawnRow(s)
   s.events.push({ type: 'turn', turn: s.turn })
   if (s.bricks.some((b) => b.row === DANGER_ROW - 1)) s.events.push({ type: 'danger' })

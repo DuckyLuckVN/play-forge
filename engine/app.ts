@@ -1,14 +1,22 @@
 import './ui/base.css'
-import { isMuted, onMutedChange, playSound, setMuted, UI_SOUNDS } from './audio/sound'
+import { playMusic, type Track } from './audio/music'
+import { playSound, UI_SOUNDS } from './audio/sound'
+import { ARCADE, LOUNGE } from './audio/tracks'
+import { celebrate } from './fx/confetti'
 import { createBroadcastTransport } from './net/broadcast'
-import { Session, type GameDefinition, type LobbyState, type PlayerInfo } from './net/session'
-import { createOfflineTransport, type Transport } from './net/transport'
+import {
+  Session,
+  type GameDefinition,
+  type LobbyState,
+  type PlayerInfo,
+  type RoomSnapshot,
+} from './net/session'
+import { createOfflineTransport, randomId, type Transport } from './net/transport'
 import { createTrysteroTransport } from './net/trystero'
+import { audioMenu } from './ui/audio-menu'
 import { h, icon, toast } from './ui/dom'
 import { icons } from './ui/icons'
 import { applyTheme, playerColor } from './ui/theme'
-
-export { PLAYER_COLORS, playerColor } from './ui/theme'
 
 export interface Scoreline {
   id: string
@@ -19,7 +27,7 @@ export interface Scoreline {
 
 export interface Outcome {
   headline: string
-  /** Picks the end-of-match sound. */
+  /** Picks the end-of-match sound (and confetti for a win). */
   result: 'win' | 'lose' | 'draw' | 'done'
 }
 
@@ -30,6 +38,8 @@ export interface GameAppOptions<S, I> {
   tagline?: string
   /** How to play, shown on the start and pause screens. */
   controls?: string
+  /** Gameplay music. Menus and lobbies use the shared lounge track. */
+  music?: Track
   /**
    * Called once per session with the stage element to render into. Set up
    * rendering, input and sounds here and return a cleanup function.
@@ -67,23 +77,66 @@ function storedName(value?: string): string {
   }
 }
 
+// ---------- Tab identity & reload recovery ----------
+// sessionStorage is per tab and survives reloads, which is exactly the scope
+// of "this player in this room". A duplicated tab copies sessionStorage, so
+// saved state is only reused when this page load is a reload.
+
+interface SavedRoom {
+  playerId: string
+  room: string
+  host: boolean
+  snapshot?: RoomSnapshot
+}
+
+const isReload = (() => {
+  try {
+    const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+    return nav?.type === 'reload'
+  } catch {
+    return false
+  }
+})()
+
+function roomStore(gameId: string) {
+  const key = `play-forge:room:${gameId}`
+  return {
+    load(): SavedRoom | null {
+      try {
+        return JSON.parse(sessionStorage.getItem(key) ?? 'null')
+      } catch {
+        return null
+      }
+    },
+    save(value: SavedRoom | null) {
+      try {
+        if (value) sessionStorage.setItem(key, JSON.stringify(value))
+        else sessionStorage.removeItem(key)
+      } catch {
+        // storage unavailable: reload recovery just won't happen
+      }
+    },
+  }
+}
+
 const initial = (name: string) => [...name.trim()][0]?.toUpperCase() ?? '?'
 
 /**
  * Standard shell for a game: top bar, start screen (solo / create / join),
- * lobby with seats and ready-up, countdown, pause and results, all wired to
- * a {@link Session}. Every game gets the same flow, look and sounds.
+ * lobby with seats and ready-up, countdown, pause, results, music and
+ * reconnection, all wired to a {@link Session}. Every game gets the same flow,
+ * look and sounds.
  */
 export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   const { def } = opts
   const appId = `play-forge/${def.id}`
+  const store = roomStore(def.id)
   applyTheme()
   document.title = `${opts.title} · Play Forge`
 
   // ---------- Shell ----------
   const scoresEl = h('div', { class: 'pf-bar-scores' })
   const pauseBtn = barButton(icons.pause, 'Pause', () => session?.setPaused(true))
-  const soundBtn = barButton('', '', () => setMuted(!isMuted()))
   const leaveBtn = barButton(icons.leave, 'Leave', () => leave())
   const home = h('a', { class: 'pf-btn icon', href: LAUNCHER_URL, title: 'All games' })
   home.setAttribute('aria-label', 'All games')
@@ -94,7 +147,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     home,
     h('h1', { class: 'pf-bar-title', textContent: opts.title }),
     scoresEl,
-    h('div', { class: 'pf-bar-actions' }, pauseBtn, soundBtn, leaveBtn),
+    h('div', { class: 'pf-bar-actions' }, pauseBtn, audioMenu(), leaveBtn),
   )
   const stage = h('main', { class: 'pf-stage' })
   const overlay = h('div', { class: 'pf-overlay' })
@@ -102,44 +155,53 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   countdownEl.setAttribute('aria-live', 'assertive')
   document.body.append(h('div', { class: 'pf-shell' }, bar, stage), overlay, countdownEl)
 
-  const syncSound = () => {
-    soundBtn.replaceChildren(icon(isMuted() ? icons.soundOff : icons.soundOn))
-    const label = isMuted() ? 'Turn sound on' : 'Turn sound off'
-    soundBtn.title = label
-    soundBtn.setAttribute('aria-label', label)
-  }
-  syncSound()
-  onMutedChange(syncSound)
-
-  // Every button in the shell clicks.
+  // Every button clicks.
   document.addEventListener('click', (e) => {
     if ((e.target as Element).closest?.('.pf-btn')) playSound(UI_SOUNDS.click)
   })
+
+  playMusic(LOUNGE)
 
   // ---------- Session lifecycle ----------
   let session: Session<S, I> | null = null
   let cleanup: (() => void) | null = null
   let room = ''
   let joinedAt = 0
-  type LobbySnapshot = { hostId: string; phase: string; countdown: number; players: PlayerInfo[] }
-  let lastLobby: LobbySnapshot | null = null
-  const snapshot = (l: LobbyState): LobbySnapshot => ({ ...l, players: l.players.map((p) => ({ ...p })) })
+  let playerId = (isReload && store.load()?.playerId) || randomId()
+  let lastLobby: LobbyState | null = null
+  const snapshot = (l: LobbyState): LobbyState => ({ ...l, players: l.players.map((p) => ({ ...p })) })
 
-  function begin(transport: Transport, host: boolean, offline = false) {
+  function begin(transport: Transport, host: boolean, extra: { offline?: boolean; restore?: RoomSnapshot } = {}) {
     const name = storedName() || 'Player'
-    const s = (session = new Session(def, transport, { host, name, offline }))
+    const s = (session = new Session(def, transport, { host, name, playerId, ...extra }))
     joinedAt = performance.now()
     lastLobby = snapshot(s.lobby)
+    seenTokens.clear()
+    seenReady.clear()
+    if (!extra.offline) store.save({ playerId, room, host, snapshot: host ? s.snapshot() : undefined })
     const unmount = opts.mount(s, stage)
     const offs = [
       s.on('lobby', (lobby) => {
         react(s, lobby)
+        if (s.isHost && !s.offline) store.save({ playerId, room, host: true, snapshot: s.snapshot() })
         render()
       }),
-      s.on('state', () => renderScores()),
-      s.on('hostLeft', () => {
+      s.on('state', () => {
+        renderScores()
+        // A late first state (after rejoining) completes the results screen.
+        if (s.phase === 'finished' && !overlay.querySelector('.pf-headline')) render()
+      }),
+      s.on('hostLost', () => {
         playSound(UI_SOUNDS.leave)
-        showMessage('The host left', 'The room closed because the host left. Create a new room to keep playing.')
+        render()
+      }),
+      s.on('hostBack', () => {
+        playSound(UI_SOUNDS.join)
+        toast('The host is back')
+      }),
+      s.on('hostGone', () => {
+        store.save(null)
+        showMessage('The host left', 'The host did not come back, so the room closed. Create a new room to keep playing.')
       }),
     ]
     // Re-render to show the "still looking" hint if the host never answers.
@@ -149,7 +211,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       offs.forEach((off) => off())
       unmount()
     }
-    if (offline) s.start()
+    if (extra.offline) s.start()
     render()
   }
 
@@ -158,32 +220,47 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     session?.dispose()
     session = cleanup = null
     room = ''
+    store.save(null)
     countdownEl.replaceChildren()
     history.replaceState(null, '', location.pathname + location.search)
+    syncMusic()
     showMenu()
   }
 
-  /** Sounds and toasts for lobby changes. */
+  function syncMusic() {
+    const phase = session?.phase
+    playMusic(phase === 'countdown' || phase === 'playing' ? (opts.music ?? ARCADE) : LOUNGE)
+  }
+
+  /** Sounds, toasts and effects for lobby changes. */
   function react(s: Session<S, I>, lobby: LobbyState) {
     const prev = lastLobby!
     lastLobby = snapshot(lobby)
+    syncMusic()
 
     // Skip toasts for the people already there when we first connect.
     if (!s.offline && prev.hostId) {
-      for (const p of lobby.players)
-        if (p.id !== s.selfId && !prev.players.some((q) => q.id === p.id)) {
+      for (const p of lobby.players) {
+        if (p.id === s.selfId) continue
+        const before = prev.players.find((q) => q.id === p.id)
+        if (!before) {
           playSound(UI_SOUNDS.join)
           toast(`${p.name} joined`, playerColor(p.slot))
+        } else if (before.connected && !p.connected) {
+          playSound(UI_SOUNDS.leave)
+          toast(`${p.name} lost connection`, playerColor(p.slot))
+        } else if (!before.connected && p.connected) {
+          playSound(UI_SOUNDS.join)
+          toast(`${p.name} is back`, playerColor(p.slot))
+        } else if (!before.ready && p.ready) {
+          playSound(UI_SOUNDS.ready)
         }
+      }
       for (const p of prev.players)
         if (p.id !== s.selfId && !lobby.players.some((q) => q.id === p.id)) {
           playSound(UI_SOUNDS.leave)
           toast(`${p.name} left`, playerColor(p.slot))
         }
-      for (const p of lobby.players) {
-        const before = prev.players.find((q) => q.id === p.id)
-        if (p.id !== s.selfId && before && !before.ready && p.ready) playSound(UI_SOUNDS.ready)
-      }
     }
 
     if (lobby.phase === 'countdown' && (prev.phase !== 'countdown' || prev.countdown !== lobby.countdown)) {
@@ -197,6 +274,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     if (lobby.phase === 'finished' && prev.phase !== 'finished' && s.state) {
       const result = opts.outcome?.(s.state, s.selfId).result ?? 'done'
       playSound(result === 'win' ? UI_SOUNDS.win : result === 'lose' ? UI_SOUNDS.lose : UI_SOUNDS.join)
+      if (result === 'win') celebrate()
     }
   }
 
@@ -205,13 +283,21 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     countdownEl.replaceChildren(h('span', { textContent: text }))
   }
 
-  // Pause solo games when the tab is hidden, and on Esc / P.
+  // Solo games pause when the tab is hidden, and on Esc / P.
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) session?.setPaused(true)
   })
   window.addEventListener('keydown', (e) => {
     if ((e.code === 'Escape' || e.code === 'KeyP') && session?.offline && session.phase === 'playing')
       session.setPaused(!session.lobby.paused)
+  })
+  window.addEventListener('offline', () => {
+    if (session && !session.offline) toast('You are offline. Reconnecting when the network is back.')
+    render()
+  })
+  window.addEventListener('online', () => {
+    if (session && !session.offline) toast('Back online')
+    render()
   })
 
   // ---------- Rendering ----------
@@ -225,6 +311,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     renderScores()
     if (!s) return
     if (!s.isHost && !s.lobby.hostId) return showJoining()
+    if (!s.isHost && !s.hostConnected) return showHostLost()
     switch (s.phase) {
       case 'countdown':
         return show(null)
@@ -238,6 +325,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   }
 
   let scoresKey = ''
+  let lastScores = new Map<string, number>()
   function renderScores() {
     const s = session
     const playing = s && (s.phase === 'playing' || s.phase === 'countdown')
@@ -248,9 +336,11 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     scoresEl.replaceChildren(
       ...lines.map((line) => {
         const p = s!.lobby.players.find((q) => q.id === line.id)
+        const bumped = line.score > (lastScores.get(line.id) ?? line.score)
+        const cls = ['pf-chip', line.out && 'out', line.id === s!.selfId && 'self', bumped && 'bump']
         const chip = h(
           'span',
-          { class: `pf-chip${line.out ? ' out' : ''}${line.id === s!.selfId ? ' self' : ''}` },
+          { class: cls.filter(Boolean).join(' ') },
           h('span', { class: 'dot' }),
           `${p?.name ?? 'Gone'} ${line.score}`,
         )
@@ -258,15 +348,25 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         return chip
       }),
     )
+    lastScores = new Map(lines.map((l) => [l.id, l.score]))
   }
 
-  function show(panel: HTMLElement | null) {
+  let panelKey = ''
+  /** Show a panel; it animates in only when the kind of panel changes. */
+  function show(panel: HTMLElement | null, key = '') {
     overlay.hidden = !panel
-    overlay.replaceChildren(...(panel ? [panel] : []))
-    if (panel) {
-      countdownEl.replaceChildren()
-      panel.querySelector<HTMLElement>('[autofocus]')?.focus()
+    if (!panel) {
+      panelKey = ''
+      overlay.replaceChildren()
+      return
     }
+    const fresh = key !== panelKey
+    if (fresh) panel.classList.add('enter')
+    panelKey = key
+    const keepFocus = !fresh && overlay.contains(document.activeElement)
+    overlay.replaceChildren(panel)
+    countdownEl.replaceChildren()
+    if (!keepFocus) panel.querySelector<HTMLElement>('[autofocus]')?.focus({ preventScroll: true })
   }
 
   function showMenu(error = '') {
@@ -274,13 +374,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     const fromLink = /room=([A-Z0-9]+)/i.exec(location.hash)?.[1]?.toUpperCase() ?? ''
     const name = h('input', { class: 'pf-input', value: storedName() || 'Player', maxLength: 16, id: 'pf-name' })
     const saveName = () => storedName(name.value.trim() || 'Player')
-    const code = h('input', {
-      class: 'pf-input code',
-      placeholder: 'CODE',
-      maxLength: 5,
-      value: fromLink,
-      spellcheck: false,
-    })
+    const code = h('input', { class: 'pf-input code', placeholder: 'CODE', maxLength: 5, value: fromLink, spellcheck: false })
     code.setAttribute('aria-label', 'Room code')
     code.setAttribute('autocapitalize', 'characters')
     const join = () => {
@@ -291,6 +385,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       }
       saveName()
       room = c
+      playerId = randomId()
       history.replaceState(null, '', `#room=${room}`)
       begin(createTransport(appId, room), false)
     }
@@ -300,13 +395,14 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
 
     const solo = button('Play solo', () => {
       saveName()
-      begin(createOfflineTransport(), true, true)
+      begin(createOfflineTransport(), true, { offline: true })
     })
     const create = button(
       'Create room',
       () => {
         saveName()
         room = newRoomCode()
+        playerId = randomId()
         history.replaceState(null, '', `#room=${room}`)
         begin(createTransport(appId, room), true)
       },
@@ -328,7 +424,18 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         error && h('p', { class: 'pf-note error', textContent: error }),
         opts.controls && h('p', { class: 'pf-note', textContent: opts.controls }),
       ),
+      'menu',
     )
+  }
+
+  function offlineNote() {
+    return !navigator.onLine && h('p', { class: 'pf-note error', textContent: 'You are offline. Check your connection.' })
+  }
+
+  function waitingDots() {
+    const dots = h('div', { class: 'pf-dots' }, h('i'), h('i'), h('i'))
+    dots.setAttribute('aria-hidden', 'true')
+    return dots
   }
 
   function showJoining() {
@@ -344,8 +451,26 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
             ? "Still looking for this room. Check the code, and make sure the host's game is open."
             : 'Finding the host. This usually takes a few seconds.',
         }),
+        waitingDots(),
+        offlineNote(),
         button('Cancel', leave, 'quiet'),
       ),
+      'joining',
+    )
+  }
+
+  function showHostLost() {
+    show(
+      h(
+        'div',
+        { class: 'pf-panel' },
+        h('h2', { class: 'pf-heading', textContent: 'Host disconnected' }),
+        h('p', { class: 'pf-lede', textContent: 'Waiting for them to come back. If they reloaded, this takes a few seconds.' }),
+        waitingDots(),
+        offlineNote(),
+        button('Leave room', leave, 'quiet'),
+      ),
+      'host-lost',
     )
   }
 
@@ -369,6 +494,10 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     )
   }
 
+  // Tokens and badges pop in only the first time they appear.
+  const seenTokens = new Set<string>()
+  const seenReady = new Set<string>()
+
   function seats(s: Session<S, I>) {
     const { players, hostId, phase } = s.lobby
     const scores = phase === 'finished' && s.state && opts.scores ? opts.scores(s.state) : []
@@ -386,26 +515,31 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
             h('div', { class: 'pf-seat-name', textContent: 'Open' }),
           )
         const isHost = p.id === hostId
+        const isSelf = p.id === s.selfId
         const score = scores.find((l) => l.id === p.id)
-        const token = h('div', { class: 'pf-token', textContent: score ? String(score.score) : initial(p.name) })
+        const token = h('div', {
+          class: `pf-token${seenTokens.has(p.id) ? '' : ' pop'}`,
+          textContent: score ? String(score.score) : initial(p.name),
+        })
+        seenTokens.add(p.id)
         token.style.setProperty('--c', playerColor(p.slot))
         if (isHost || p.ready) {
-          const badge = h('span', { class: `pf-badge${isHost ? ' host' : ''}` })
+          const badge = h('span', { class: `pf-badge${isHost ? ' host' : ''}${seenReady.has(p.id) ? '' : ' pop'}` })
           badge.append(icon(isHost ? icons.crown : icons.check))
           token.append(badge)
-        }
-        const isSelf = p.id === s.selfId
-        const seat = h(
+          seenReady.add(p.id)
+        } else seenReady.delete(p.id)
+        const status = !p.connected ? 'Reconnecting…' : isHost ? 'Host' : p.ready ? 'Ready' : 'Not ready'
+        return h(
           'div',
-          { class: `pf-seat${isSelf ? ' self' : ''}`, title: isSelf ? `${p.name} (you)` : p.name },
+          {
+            class: `pf-seat${isSelf ? ' self' : ''}${p.connected ? '' : ' away'}`,
+            title: isSelf ? `${p.name} (you)` : p.name,
+          },
           token,
           h('div', { class: 'pf-seat-name', textContent: p.name }),
-          h('div', {
-            class: `pf-seat-status${isHost || p.ready ? ' ok' : ''}`,
-            textContent: isHost ? 'Host' : p.ready ? 'Ready' : 'Not ready',
-          }),
+          h('div', { class: `pf-seat-status${p.connected && (isHost || p.ready) ? ' ok' : ''}`, textContent: status }),
         )
-        return seat
       }),
     )
   }
@@ -415,6 +549,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     const outcome = finished && s.state && opts.outcome?.(s.state, s.selfId)
     const self = s.self
     const waiting = s.waitingFor
+    const away = s.reconnecting
     const tooFew = s.lobby.players.length < def.minPlayers
 
     let note: string
@@ -424,11 +559,13 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     } else if (s.isHost) {
       note = tooFew
         ? `Waiting for players. ${opts.title} needs at least ${def.minPlayers}.`
-        : waiting.length
-          ? `Waiting for ${listNames(waiting)} to get ready.`
-          : s.lobby.players.length === 1
-            ? 'Invite friends with the code, or start on your own.'
-            : 'Everyone is ready.'
+        : away.length
+          ? `Waiting for ${listNames(away)} to reconnect.`
+          : waiting.length
+            ? `Waiting for ${listNames(waiting)} to get ready.`
+            : s.lobby.players.length === 1
+              ? 'Invite friends with the code, or start on your own.'
+              : 'Everyone is ready.'
       action = button(finished ? 'Start rematch' : 'Start game', () => s.start(), 'primary wide')
       action.disabled = !s.canStart
       action.autofocus = s.canStart
@@ -456,9 +593,11 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         roomCodeBox(),
         seats(s),
         h('p', { class: 'pf-note', textContent: note }),
+        offlineNote(),
         action,
         button('Leave room', leave, 'quiet'),
       ),
+      finished ? `results-${s.lobby.round}` : 'room',
     )
   }
 
@@ -474,6 +613,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         again,
         button('Back to menu', leave, 'quiet'),
       ),
+      `solo-result-${s.lobby.round}`,
     )
   }
 
@@ -489,6 +629,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         resume,
         button('Quit to menu', leave, 'quiet'),
       ),
+      'paused',
     )
   }
 
@@ -503,10 +644,21 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         h('p', { class: 'pf-lede', textContent: text }),
         back,
       ),
+      `message-${title}`,
     )
   }
 
-  showMenu()
+  // After a reload, go straight back into the room this tab was in.
+  const saved = store.load()
+  const hashRoom = /room=([A-Z0-9]+)/i.exec(location.hash)?.[1]?.toUpperCase()
+  if (isReload && saved && saved.room === hashRoom) {
+    room = saved.room
+    toast(saved.host ? `Reopening room ${room}` : `Rejoining room ${room}`)
+    begin(createTransport(appId, room), saved.host, { restore: saved.host ? saved.snapshot : undefined })
+  } else {
+    store.save(null)
+    showMenu()
+  }
 }
 
 function button(text: string, onclick: () => void, variant = ''): HTMLButtonElement {
@@ -515,11 +667,9 @@ function button(text: string, onclick: () => void, variant = ''): HTMLButtonElem
 
 function barButton(svg: string, label: string, onclick: () => void): HTMLButtonElement {
   const b = button('', onclick, 'icon')
-  if (svg) b.append(icon(svg))
-  if (label) {
-    b.title = label
-    b.setAttribute('aria-label', label)
-  }
+  b.append(icon(svg))
+  b.title = label
+  b.setAttribute('aria-label', label)
   return b
 }
 

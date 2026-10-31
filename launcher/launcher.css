@@ -1,3 +1,10 @@
+.lc-bar {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  z-index: 15;
+}
+
 .lc {
   max-width: 880px;
   margin: 0 auto;
@@ -15,6 +22,30 @@
   letter-spacing: -0.02em;
   color: var(--pf-yolk);
   text-shadow: 0 6px 0 var(--pf-yolk-edge);
+  animation: lc-drop 700ms cubic-bezier(0.3, 1.5, 0.5, 1) both;
+}
+
+/* One orchestrated entrance: the title drops in, then the games rise. */
+@keyframes lc-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-40px) scale(0.9);
+  }
+}
+@keyframes lc-rise {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+}
+.lc-lede {
+  animation: lc-rise 500ms 200ms ease-out both;
+}
+.lc-game {
+  animation: lc-rise 500ms calc(300ms + var(--i, 0) * 90ms) cubic-bezier(0.2, 1.2, 0.4, 1) both;
+}
+.lc-steps {
+  animation: lc-rise 500ms 600ms ease-out both;
 }
 .lc-lede {
   margin: 18px 0 0;
@@ -43,7 +74,17 @@
   transition: transform 120ms;
 }
 .lc-game:hover {
-  transform: translateY(-3px);
+  transform: translateY(-4px) rotate(-0.6deg);
+}
+.lc-game:hover .lc-cover svg {
+  transform: scale(1.03);
+}
+.lc-cover {
+  overflow: hidden;
+  border-radius: 16px;
+}
+.lc-cover svg {
+  transition: transform 300ms cubic-bezier(0.2, 1.3, 0.4, 1);
 }
 .lc-game:hover .pf-btn {
   filter: brightness(1.08);

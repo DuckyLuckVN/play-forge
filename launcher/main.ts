@@ -1,5 +1,9 @@
 import '@forge/ui/base.css'
 import './launcher.css'
+import { playMusic } from '@forge/audio/music'
+import { playSound, UI_SOUNDS } from '@forge/audio/sound'
+import { LOUNGE } from '@forge/audio/tracks'
+import { audioMenu } from '@forge/ui/audio-menu'
 import { h } from '@forge/ui/dom'
 import { applyTheme } from '@forge/ui/theme'
 import games from '../games/games.json'
@@ -14,14 +18,16 @@ interface GameEntry {
 const covers = import.meta.glob<string>('../games/*/cover.svg', { eager: true, query: '?raw', import: 'default' })
 
 applyTheme()
+// Music starts with the first click or key press (browsers block autoplay).
+playMusic(LOUNGE)
 
 const shelf = h(
   'div',
   { class: 'lc-shelf' },
-  ...(games as GameEntry[]).map((g) => {
+  ...(games as GameEntry[]).map((g, i) => {
     const cover = h('div', { class: 'lc-cover' })
     cover.innerHTML = covers[`../games/${g.id}/cover.svg`] ?? ''
-    return h(
+    const card = h(
       'a',
       { class: 'lc-game', href: `games/${g.id}/index.html` },
       cover,
@@ -34,6 +40,9 @@ const shelf = h(
       ),
       h('span', { class: 'pf-btn primary', textContent: 'Play' }),
     )
+    card.style.setProperty('--i', String(i))
+    card.addEventListener('click', () => playSound(UI_SOUNDS.click))
+    return card
   }),
 )
 
@@ -44,6 +53,7 @@ const steps = [
 ]
 
 document.body.append(
+  h('div', { class: 'lc-bar' }, audioMenu()),
   h(
     'main',
     { class: 'lc' },

@@ -33,9 +33,21 @@ export function specialChance(turn: number): number {
 const MAX_SPECIALS_PER_ROW = 2
 const JACKPOT_GOLD = 4
 
-/** Typical brick hp on a turn: grows faster than the turn so ball count can't keep up forever. */
+/** Brick hp holds for this many turns, then steps up a little. */
+export const HP_STEP = 3
+
+const HP_CURVE = 40
+/** From this turn hp also compounds, so even a snowballing run ends. */
+const LATE_FROM = 60
+const LATE_GROWTH = 1.025
+
+/**
+ * Typical brick hp on a turn. It rises in steps (flat for HP_STEP turns, then
+ * a small bump), a little faster than the turn, and compounds late in a run.
+ */
 export function hpScale(turn: number): number {
-  return turn * (1 + turn / 25)
+  const t = turn - ((turn - 1) % HP_STEP)
+  return t * (1 + t / HP_CURVE) * LATE_GROWTH ** Math.max(0, t - LATE_FROM)
 }
 
 function brickHp(state: RunState): number {
@@ -67,7 +79,12 @@ export function spawnRow(state: RunState): void {
   const unlocked = (Object.keys(UNLOCK) as Array<keyof typeof UNLOCK>).filter((k) => turn >= UNLOCK[k])
   const chance = specialChance(turn)
   let specials = 0
-  const count = Math.min(7, Math.max(2, 2 + randomInt(rng, 3) + Math.floor(turn / 12) + (turn >= 10 ? 1 : 0)))
+  // Always leave a column free, for the row's ball pickup.
+  const count = Math.min(
+    7,
+    state.cols - 1,
+    Math.max(2, 1 + randomInt(rng, 3) + Math.floor(turn / 15) + (turn >= 20 ? 1 : 0)),
+  )
   for (let i = 0; i < count; i++) {
     let kind: BrickKind = 'normal'
     if (unlocked.length && specials < MAX_SPECIALS_PER_ROW && random(rng) < chance) {
@@ -79,7 +96,7 @@ export function spawnRow(state: RunState): void {
   const pickup = (kind: PickupKind, p: number) => {
     if (free.length && random(rng) < p) state.pickups.push({ id: state.nextId++, col: take(), row: 0, kind })
   }
-  pickup('ball', 0.6)
+  pickup('ball', 1)
   pickup('coin', 0.1)
   if (turn >= 4) {
     pickup('fire', 0.06)

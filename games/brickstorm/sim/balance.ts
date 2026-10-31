@@ -5,11 +5,13 @@ import { pickBoost } from './boosts'
 import { AIM_MIN } from './config'
 import { dims } from './dims'
 import { growBoard } from './meta'
-import { spawnRow, specialChance } from './rows'
+import { aimFromPointer } from './physics'
+import { cellCenter, spawnRow, specialChance } from './rows'
 import { canRecall, createRun, drainEvents, fire, recall, step } from './run'
 import type { BoostId, RunState } from './types'
 
-export type Bot = 'random' | 'greedy'
+/** random: blind aim · aimer: aims at the lowest brick, like a typical player · greedy: tries 6 angles ahead. */
+export type Bot = 'random' | 'aimer' | 'greedy'
 
 export interface RunResult {
   turns: number
@@ -71,7 +73,22 @@ function greedyAngle(s: RunState): number {
   return best
 }
 
-export function simulateRun(seed: number, bot: Bot, maxTurns = 80): RunResult {
+/** Aims at the lowest brick (the most dangerous one), with a few degrees of wobble. */
+function aimerAngle(s: RunState, rng: { seed: number }): number {
+  const low = s.bricks.reduce<RunState['bricks'][number] | null>(
+    (a, b) => (!a || b.row > a.row ? b : a),
+    null,
+  )
+  if (!low) return Math.PI / 2
+  const { x, y } = cellCenter(low.col, low.row)
+  const wobble = ((random(rng) - 0.5) * 10 * Math.PI) / 180
+  return Math.max(
+    AIM_MIN,
+    Math.min(Math.PI - AIM_MIN, aimFromPointer(s.launchX, x, y, dims(s).floorY) + wobble),
+  )
+}
+
+export function simulateRun(seed: number, bot: Bot, maxTurns = 150): RunResult {
   const s = createRun(seed)
   const aimRng = { seed: seed ^ 0x9e3779b9 }
   let firstLevelTurn: number | null = null
@@ -84,7 +101,12 @@ export function simulateRun(seed: number, bot: Bot, maxTurns = 80): RunResult {
       pickBoost(s, PREFER.find((id) => s.choices.includes(id)) ?? s.choices[0])
       continue
     }
-    const angle = bot === 'random' ? AIM_MIN + random(aimRng) * (Math.PI - 2 * AIM_MIN) : greedyAngle(s)
+    const angle =
+      bot === 'random'
+        ? AIM_MIN + random(aimRng) * (Math.PI - 2 * AIM_MIN)
+        : bot === 'aimer'
+          ? aimerAngle(s, aimRng)
+          : greedyAngle(s)
     fire(s, angle)
     playVolley(s)
     drainEvents(s)
@@ -113,9 +135,9 @@ export function specialShare(turn: number, rows = 2000): number {
   return special / all
 }
 
-export function balanceReport(seeds: number): string {
+export function balanceReport(seeds: number, bots: Bot[] = ['random', 'aimer', 'greedy']): string {
   const lines = [`Brickstorm balance — ${seeds} seeds per bot`]
-  for (const bot of ['random', 'greedy'] as const) {
+  for (const bot of bots) {
     const runs = Array.from({ length: seeds }, (_, i) => simulateRun(i + 1, bot))
     lines.push(
       `${bot.padEnd(7)} turns ${median(runs.map((r) => r.turns))}` +

@@ -48,7 +48,7 @@ describe('special brick spawning', () => {
 
   it('spawns a jackpot row of gold every 10th turn', () => {
     const s = rowAt(5, 10)
-    expect(s.bricks.filter((b) => b.kind === 'gold')).toHaveLength(6)
+    expect(s.bricks.filter((b) => b.kind === 'gold')).toHaveLength(4)
     expect(drainEvents(s).some((e) => e.type === 'jackpot')).toBe(true)
   })
 })

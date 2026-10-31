@@ -13,11 +13,16 @@ describe('balance harness', () => {
     }
   })
 
-  // `npm run balance` prints the full report against the targets.
+  // `npm run balance` writes the full report to BALANCE_OUT (default balance-report.txt).
   it.runIf(env.BALANCE)(
-    'prints the balance report',
-    () => {
-      console.warn(balanceReport(Number(env.BALANCE_SEEDS ?? 20)))
+    'writes the balance report',
+    async () => {
+      const report = balanceReport(Number(env.BALANCE_SEEDS ?? 20))
+      // Node-only: this test runs only under `npm run balance`.
+      const fs = (await import(/* @vite-ignore */ 'node:fs' as string)) as {
+        writeFileSync(path: string, data: string): void
+      }
+      fs.writeFileSync(env.BALANCE_OUT ?? 'balance-report.txt', report + '\n')
     },
     600_000,
   )

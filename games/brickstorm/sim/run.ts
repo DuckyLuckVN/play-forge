@@ -251,7 +251,7 @@ function endTurn(s: RunState): void {
   s.balls = []
   if (s.doubleVolleys > 0) s.doubleVolleys--
 
-  if (s.bricks.length === 0) bonus(s, { type: 'allClear', coins: s.turn * 3 })
+  if (s.bricks.length === 0) bonus(s, { type: 'allClear', coins: s.turn })
   if (s.dangerAtStart && !s.bricks.some((b) => b.row === DANGER_ROW - 1)) {
     bonus(s, { type: 'closeOne', coins: s.turn * 5 })
   }

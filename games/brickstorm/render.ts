@@ -7,20 +7,9 @@ import { ArenaPainter, type ArenaId } from './arenas'
 import { drawBall, TRAIL_STYLE } from './cosmetics'
 import { COIN_FLY, hpColor, type Juice } from './juice'
 import { xpToNext } from './sim/boosts'
-import {
-  BALL_R,
-  BOARD_H,
-  BOARD_W,
-  CELL,
-  COLS,
-  COMBO_TIERS,
-  DANGER_ROW,
-  FLOOR_Y,
-  PICKUP_R,
-  ROWS,
-  TOP,
-} from './sim/config'
+import { BALL_R, boardSize, CELL, COLS, COMBO_TIERS, PICKUP_R, ROWS, TOP } from './sim/config'
 import { traceGuide } from './sim/physics'
+import { dims, type Dims } from './sim/dims'
 import { brickRect, cellCenter } from './sim/rows'
 import type { BrickKind, PickupKind, Rect, RunState } from './sim/types'
 
@@ -153,10 +142,14 @@ export class BoardRenderer {
     private shake: Shake,
   ) {}
 
+  /** Board geometry for the frame being drawn. */
+  private d: Dims = boardSize(COLS, ROWS)
+
   draw(s: RunState | null, juice: Juice, aim: number | null, time: number): void {
+    this.d = s ? dims(s) : boardSize(COLS, ROWS)
     const { ctx } = this.view
     ctx.save()
-    this.arenaPainter.draw(ctx, this.arena, s?.turn ?? 1, s?.fever ?? false, time)
+    this.arenaPainter.draw(ctx, this.arena, s?.turn ?? 1, s?.fever ?? false, time, this.d)
     this.shake.apply(ctx)
     this.drawBoard(ctx, s, time)
     if (s) {
@@ -168,7 +161,7 @@ export class BoardRenderer {
     for (const l of juice.lasers) {
       ctx.fillStyle = '#ff6fb5'
       ctx.globalAlpha = l.life / 0.3
-      ctx.fillRect(0, l.y - 6 * (l.life / 0.3), BOARD_W, 12 * (l.life / 0.3))
+      ctx.fillRect(0, l.y - 6 * (l.life / 0.3), this.d.boardW, 12 * (l.life / 0.3))
       ctx.globalAlpha = 1
     }
     this.particles.draw(ctx)
@@ -181,7 +174,7 @@ export class BoardRenderer {
     this.drawBanner(ctx, juice)
     if (juice.flash > 0) {
       ctx.fillStyle = `rgb(255 255 255 / ${juice.flash * 0.45})`
-      ctx.fillRect(0, 0, BOARD_W, BOARD_H)
+      ctx.fillRect(0, 0, this.d.boardW, this.d.boardH)
     }
   }
 
@@ -189,14 +182,15 @@ export class BoardRenderer {
     // A translucent well, so the arena shows through the board.
     ctx.fillStyle = 'rgb(0 0 0 / 0.35)'
     ctx.beginPath()
-    ctx.roundRect(0, TOP, BOARD_W, FLOOR_Y + BALL_R - TOP, 10)
+    ctx.roundRect(0, TOP, this.d.boardW, this.d.floorY + BALL_R - TOP, 10)
     ctx.fill()
     ctx.fillStyle = 'rgb(255 255 255 / 0.025)'
-    for (let r = 0; r < ROWS; r++) {
-      for (let c = (r % 2) as number; c < COLS; c += 2) ctx.fillRect(c * CELL, TOP + r * CELL, CELL, CELL)
+    for (let r = 0; r < this.d.rows; r++) {
+      for (let c = (r % 2) as number; c < this.d.cols; c += 2)
+        ctx.fillRect(c * CELL, TOP + r * CELL, CELL, CELL)
     }
-    const y = TOP + DANGER_ROW * CELL
-    const danger = s?.bricks.some((b) => b.row === DANGER_ROW - 1) ?? false
+    const y = TOP + this.d.dangerRow * CELL
+    const danger = s?.bricks.some((b) => b.row === this.d.dangerRow - 1) ?? false
     const pulse = danger ? 0.55 + 0.45 * Math.sin(time * 8) : 0.25
     ctx.strokeStyle = theme.coral
     ctx.globalAlpha = pulse
@@ -204,7 +198,7 @@ export class BoardRenderer {
     ctx.setLineDash([10, 8])
     ctx.beginPath()
     ctx.moveTo(0, y)
-    ctx.lineTo(BOARD_W, y)
+    ctx.lineTo(this.d.boardW, y)
     ctx.stroke()
     ctx.setLineDash([])
     ctx.globalAlpha = 1
@@ -237,7 +231,15 @@ export class BoardRenderer {
   }
 
   private drawGuide(ctx: CanvasRenderingContext2D, s: RunState, aim: number): void {
-    const pts = traceGuide(s.launchX, FLOOR_Y - BALL_R, aim, GUIDE_LENGTH, s.bricks.map(brickRect))
+    const pts = traceGuide(
+      s.launchX,
+      this.d.floorY - BALL_R,
+      aim,
+      GUIDE_LENGTH,
+      s.bricks.map(brickRect),
+      this.d.boardW,
+      this.d.floorY,
+    )
     ctx.strokeStyle = 'rgb(244 241 255 / 0.7)'
     ctx.lineWidth = 3
     ctx.lineCap = 'round'
@@ -323,9 +325,9 @@ export class BoardRenderer {
     const home = s.phase === 'volley' ? (s.nextLaunchX ?? s.launchX) : s.launchX
     const waiting = s.phase === 'volley' ? s.balls.some((b) => b.status !== 'flying') : true
     if (waiting)
-      drawBall(ctx, this.ball, s.phase === 'volley' ? s.launchX : home, FLOOR_Y - BALL_R, BALL_R, time)
+      drawBall(ctx, this.ball, s.phase === 'volley' ? s.launchX : home, this.d.floorY - BALL_R, BALL_R, time)
     if (s.phase === 'volley' && s.nextLaunchX !== null) {
-      drawBall(ctx, this.ball, s.nextLaunchX, FLOOR_Y - BALL_R, BALL_R, time)
+      drawBall(ctx, this.ball, s.nextLaunchX, this.d.floorY - BALL_R, BALL_R, time)
     }
     if (s.phase === 'aim') {
       const n = s.doubleVolleys > 0 ? s.ballCount * 2 : s.ballCount
@@ -333,7 +335,7 @@ export class BoardRenderer {
       ctx.font = `600 14px ${FONT}`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'top'
-      ctx.fillText(`×${n}`, home, FLOOR_Y + 4)
+      ctx.fillText(`×${n}`, home, this.d.floorY + 4)
     }
   }
 
@@ -345,10 +347,10 @@ export class BoardRenderer {
     ctx.fillText(`Turn ${s.turn}`, 12, TOP / 2 - 4)
     ctx.textAlign = 'right'
     ctx.fillStyle = theme.yolk
-    ctx.fillText(`● ${Math.floor(juice.shownCoins)}`, BOARD_W - 12, TOP / 2 - 4)
+    ctx.fillText(`● ${Math.floor(juice.shownCoins)}`, this.d.boardW - 12, TOP / 2 - 4)
 
     const need = xpToNext(s.level)
-    const w = BOARD_W - 24
+    const w = this.d.boardW - 24
     ctx.fillStyle = 'rgb(255 255 255 / 0.1)'
     ctx.beginPath()
     ctx.roundRect(12, TOP - 12, w, 6, 3)
@@ -367,12 +369,12 @@ export class BoardRenderer {
     ctx.textBaseline = 'top'
     ctx.fillStyle = s.fever ? theme.yolk : theme.chalk
     ctx.globalAlpha = 0.85
-    ctx.fillText(`x${s.combo}${s.combo >= 25 ? '!' : ''}`, BOARD_W / 2, TOP + 6)
+    ctx.fillText(`x${s.combo}${s.combo >= 25 ? '!' : ''}`, this.d.boardW / 2, TOP + 6)
     ctx.globalAlpha = 1
   }
 
   private drawCoinFlyers(ctx: CanvasRenderingContext2D, juice: Juice): void {
-    const tx = BOARD_W - 50
+    const tx = this.d.boardW - 50
     const ty = TOP / 2 - 4
     ctx.fillStyle = theme.yolk
     for (const c of juice.coinFlyers) {
@@ -393,7 +395,7 @@ export class BoardRenderer {
     const grow = ease.outBack(Math.min(1, b.age / 0.3))
     const fade = Math.min(1, Math.max(0, (1.4 - b.age) / 0.4))
     ctx.save()
-    ctx.translate(BOARD_W / 2, BOARD_H * 0.42)
+    ctx.translate(this.d.boardW / 2, this.d.boardH * 0.42)
     ctx.scale(grow, grow)
     ctx.globalAlpha = fade
     ctx.font = `700 46px ${FONT}`

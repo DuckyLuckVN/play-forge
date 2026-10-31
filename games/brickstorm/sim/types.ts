@@ -1,6 +1,6 @@
 import type { RngState } from '@forge/core/rng'
 
-export type Phase = 'aim' | 'volley' | 'pick' | 'over'
+export type Phase = 'aim' | 'volley' | 'pick' | 'grow' | 'over'
 
 /** Helpers the player can spend mid-run, while aiming. */
 export type ActiveHelper = 'pushBack' | 'rowBomb' | 'freeze' | 'firePack' | 'surge'
@@ -95,6 +95,7 @@ export type SimEvent =
   | { type: 'revive' }
   | { type: 'secondWind' }
   | { type: 'jackpot' }
+  | { type: 'grow'; axis: 'col' | 'row' }
   | { type: 'helper'; id: ActiveHelper }
   | { type: 'milestone'; turn: number; coins: number }
   | { type: 'laser'; y: number }
@@ -104,6 +105,9 @@ export type SimEvent =
 
 export interface RunState {
   rng: RngState
+  /** Board size; grows every GROW_EVERY turns by the player's choice. */
+  cols: number
+  rows: number
   seed: number
   turn: number
   phase: Phase
@@ -136,6 +140,8 @@ export interface RunState {
   doubleVolleys: number
   /** Next volley's first balls that will be fireballs. */
   fireCharges: number
+  /** The board may grow once the current turn starts (every GROW_EVERY turns). */
+  growPending: boolean
   /** Freeze helper: skip the next descend. */
   freezeNext: boolean
   /** Ball Surge helper: +50% balls next volley. */

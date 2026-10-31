@@ -1,5 +1,5 @@
 import { random, randomInt } from '@forge/core/rng'
-import { BRICK_INSET, CELL, COLS, TOP } from './config'
+import { BRICK_INSET, CELL, TOP } from './config'
 import type { BrickKind, PickupKind, Rect, RunState } from './types'
 
 export function brickRect(b: { col: number; row: number }): Rect {
@@ -49,7 +49,7 @@ function brickHp(state: RunState): number {
 /** Adds a new row of bricks and pickups at row 0 for `state.turn`. */
 export function spawnRow(state: RunState): void {
   const { rng, turn } = state
-  const free = Array.from({ length: COLS }, (_, i) => i)
+  const free = Array.from({ length: state.cols }, (_, i) => i)
   const take = () => free.splice(randomInt(rng, free.length), 1)[0]
   const add = (kind: BrickKind) => {
     const hp = brickHp(state)

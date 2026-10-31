@@ -18,12 +18,13 @@ import { BoardRenderer } from './render'
 import { ARENAS, type ArenaId } from './arenas'
 import { bankRun, clearRun, loadSave, recordRun, spend, writeSave } from './save'
 import { shopPanel } from './shop-ui'
-import { applyHelpers, revive, reviveCost, useHelper } from './sim/meta'
+import { applyHelpers, growBoard, revive, reviveCost, useHelper } from './sim/meta'
+import { dims } from './sim/dims'
 import { GUIDE, newlySeen } from './guide'
 import { boostsPanel, guidePanel, helpersPanel, statsPanel } from './panels'
 import { BOOST_ICONS } from './icons'
 import { BOOSTS, isSynergy, pickBoost, reroll, rerollCost } from './sim/boosts'
-import { AIM_MIN, BOARD_H, BOARD_W, TICK } from './sim/config'
+import { AIM_MIN, BOARD_H, BOARD_W, boardSize, COLS, MAX_COLS, MAX_ROWS, ROWS, TICK } from './sim/config'
 import { aimFromPointer } from './sim/physics'
 import { canRecall, createRun, drainEvents, fire, recall, speedMultiplier, step } from './sim/run'
 import type { ActiveHelper, RunState } from './sim/types'
@@ -480,6 +481,35 @@ function showPick() {
   )
 }
 
+/** Every 50 turns: the player chooses how the board grows. */
+function showGrow() {
+  if (!run) return
+  const s = run
+  const choose = (axis: 'col' | 'row') => {
+    growBoard(s, axis)
+    checkpoint()
+    if (s.phase !== 'pick') show(null)
+  }
+  const col = button(`+1 column (${s.cols} → ${s.cols + 1})`, () => choose('col'), 'primary wide')
+  col.disabled = s.cols >= MAX_COLS
+  const row = button(`+1 row (${s.rows} → ${s.rows + 1})`, () => choose('row'), 'wide')
+  row.disabled = s.rows >= MAX_ROWS
+  show(
+    h(
+      'div',
+      { class: 'pf-panel' },
+      h('h2', { class: 'pf-heading', textContent: 'The storm grows!' }),
+      h('p', {
+        class: 'pf-lede',
+        textContent: 'Make the board bigger. A column gives your balls more room; a row gives you more time.',
+      }),
+      col,
+      row,
+    ),
+    'grow',
+  )
+}
+
 function pause() {
   if (!run || paused || (run.phase !== 'aim' && run.phase !== 'volley')) return
   paused = true
@@ -592,6 +622,7 @@ startRenderLoop((dt, time) => {
     for (const e of drainEvents(s)) juice.handle(e)
     juice.setCoins(s.coins)
     if (s.phase === 'pick' && !panel.startsWith('pick')) showPick()
+    if (s.phase === 'grow' && panel !== 'grow') showGrow()
     if (s.phase === 'over' && !overShown) {
       overShown = true
       finish(s)
@@ -604,11 +635,15 @@ startRenderLoop((dt, time) => {
   juice.update(dt)
   if (s && s.phase === 'aim') announceNewKinds(s)
   renderPanels(s, time)
+  const d = s ? dims(s) : boardSize(COLS, ROWS)
+  if (view.width !== d.boardW || view.height !== d.boardH) view.setSize(d.boardW, d.boardH)
   renderer.draw(s, juice, s && s.phase === 'aim' && !paused ? aim : null, time)
 })
 
 // ---------- Input ----------
-const boardPoint = (e: PointerEvent) => toBoard(view.canvas.getBoundingClientRect(), e.clientX, e.clientY)
+const boardPoint = (e: PointerEvent) =>
+  toBoard(view.canvas.getBoundingClientRect(), e.clientX, e.clientY, view.width, view.height)
+const aimAt = (e: PointerEvent) => aimFromPointer(run!.launchX, ...boardPoint(e), dims(run!).floorY)
 
 const aiming = () => !!run && !paused && run.phase === 'aim'
 
@@ -619,17 +654,17 @@ const UI = '.pf-overlay, .pf-bar, .bs-controls, button, a, input'
 window.addEventListener('pointerdown', (e) => {
   if (!aiming() || (e.target as Element).closest?.(UI)) return
   dragging = true
-  aim = aimFromPointer(run!.launchX, ...boardPoint(e))
+  aim = aimAt(e)
 })
 window.addEventListener('pointermove', (e) => {
   if (!aiming() || (!dragging && e.pointerType !== 'mouse')) return
-  aim = aimFromPointer(run!.launchX, ...boardPoint(e))
+  aim = aimAt(e)
 })
 window.addEventListener('pointerup', (e) => {
   if (!dragging) return
   dragging = false
   if (!aiming()) return
-  aim = aimFromPointer(run!.launchX, ...boardPoint(e))
+  aim = aimAt(e)
   fire(run!, aim)
 })
 window.addEventListener('pointercancel', () => (dragging = false))

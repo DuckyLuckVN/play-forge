@@ -57,6 +57,7 @@ export type SimEvent =
   | { type: 'levelUp' }
   | { type: 'turn'; turn: number }
   | { type: 'over' }
+  | { type: 'revive' }
 
 export interface RunState {
   rng: RngState
@@ -85,7 +86,9 @@ export interface RunState {
   level: number
   pendingPicks: number
   choices: BoostId[]
-  rerolls: number
+  rerollsUsed: number
+  revivesUsed: number
+  secondWindUsed: boolean
   boosts: Partial<Record<BoostId, number>>
   doubleVolleys: number
   nextId: number

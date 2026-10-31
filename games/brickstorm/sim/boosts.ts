@@ -62,8 +62,14 @@ export function pickBoost(s: RunState, id: BoostId): void {
   }
 }
 
+/** Coins for the next reroll this run: 25, 50, 100… */
+export function rerollCost(s: RunState): number {
+  return 25 * 2 ** s.rerollsUsed
+}
+
+/** Rerolls the offered boosts. The caller has already paid (coins or a token). */
 export function reroll(s: RunState): void {
-  if (s.phase !== 'pick' || s.rerolls <= 0) return
-  s.rerolls--
+  if (s.phase !== 'pick') return
+  s.rerollsUsed++
   s.choices = rollChoices(s)
 }

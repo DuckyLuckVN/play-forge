@@ -50,7 +50,9 @@ export function createRun(seed: number): RunState {
     level: 0,
     pendingPicks: 0,
     choices: [],
-    rerolls: 1,
+    rerollsUsed: 0,
+    revivesUsed: 0,
+    secondWindUsed: false,
     boosts: {},
     doubleVolleys: 0,
     nextId: 1,
@@ -224,6 +226,11 @@ function endTurn(s: RunState): void {
     s.events.push({ type: 'over' })
     return
   }
+  startNextTurn(s)
+}
+
+/** Advances to the next turn: a new row at the top, then aim (or a pending boost pick). */
+export function startNextTurn(s: RunState): void {
   s.turn++
   spawnRow(s)
   s.events.push({ type: 'turn', turn: s.turn })

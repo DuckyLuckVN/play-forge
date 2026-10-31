@@ -16,7 +16,7 @@ import { toBoard } from './input'
 import { Juice } from './juice'
 import { BoardRenderer } from './render'
 import { loadSave, recordRun, writeSave } from './save'
-import { BOOSTS, pickBoost, reroll } from './sim/boosts'
+import { BOOSTS, pickBoost, reroll, rerollCost } from './sim/boosts'
 import { AIM_MIN, BOARD_H, BOARD_W, TICK } from './sim/config'
 import { aimFromPointer } from './sim/physics'
 import { canRecall, createRun, drainEvents, fire, recall, speedMultiplier, step } from './sim/run'
@@ -192,18 +192,17 @@ function showPick() {
       { class: 'pf-panel wide' },
       heading,
       h('div', { class: 'bs-cards' }, ...cards),
-      s.rerolls > 0 &&
-        button(
-          `Reroll (${s.rerolls})`,
-          () => {
-            if (!settled()) return
-            reroll(s)
-            showPick()
-          },
-          'quiet',
-        ),
+      button(
+        `Reroll (${rerollCost(s)} coins)`,
+        () => {
+          if (!settled()) return
+          reroll(s)
+          showPick()
+        },
+        'quiet',
+      ),
     ),
-    `pick-${s.level}-${s.pendingPicks}-${s.rerolls}`,
+    `pick-${s.level}-${s.pendingPicks}-${s.rerollsUsed}`,
   )
 }
 

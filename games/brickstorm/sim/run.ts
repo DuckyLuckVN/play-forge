@@ -18,14 +18,10 @@ import {
   TICK,
 } from './config'
 import { random } from '@forge/core/rng'
+import { modsOf, rollChoices, xpToNext, type Mods } from './boosts'
 import { antiStall, bounceWalls, deepestContact, reflect } from './physics'
 import { brickRect, cellCenter, spawnRow } from './rows'
-import type { Ball, BoostId, RunState, SimEvent } from './types'
-
-/** Stat modifiers from the run's boosts. Replaced by boosts.ts in a later task. */
-function modsOf(_boosts: Partial<Record<BoostId, number>>) {
-  return { damageMult: 1, coinMult: 1, speedMult: 1, pierce: 0, critChance: 0, bouncy: false }
-}
+import type { Ball, RunState, SimEvent } from './types'
 
 const COIN_PICKUP = 5
 
@@ -122,8 +118,6 @@ export function step(s: RunState): void {
   if (s.balls.every((b) => b.status === 'landed')) endTurn(s)
 }
 
-type Mods = ReturnType<typeof modsOf>
-
 function moveBall(s: RunState, ball: Ball, mods: Mods): void {
   const dist = Math.hypot(ball.vx, ball.vy) * TICK
   const n = Math.max(1, Math.ceil(dist / (BALL_R / 2)))
@@ -187,6 +181,12 @@ function hitBrick(s: RunState, ball: Ball, index: number, mods: Mods): void {
   s.bricks.splice(index, 1)
   s.coins += Math.max(1, Math.round(comboMultiplier(s.combo) * mods.coinMult))
   s.xp += 1
+  while (s.xp >= xpToNext(s.level)) {
+    s.xp -= xpToNext(s.level)
+    s.level++
+    s.pendingPicks++
+    s.events.push({ type: 'levelUp' })
+  }
   s.events.push({ type: 'kill', x, y, maxHp: brick.maxHp })
 }
 
@@ -227,7 +227,12 @@ function endTurn(s: RunState): void {
   spawnRow(s)
   s.events.push({ type: 'turn', turn: s.turn })
   if (s.bricks.some((b) => b.row === DANGER_ROW - 1)) s.events.push({ type: 'danger' })
-  s.phase = s.pendingPicks > 0 ? 'pick' : 'aim'
+  if (s.pendingPicks > 0) {
+    s.phase = 'pick'
+    s.choices = rollChoices(s)
+  } else {
+    s.phase = 'aim'
+  }
 }
 
 function bonus(s: RunState, e: SimEvent & { coins: number }): void {

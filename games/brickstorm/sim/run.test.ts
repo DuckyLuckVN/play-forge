@@ -101,11 +101,13 @@ describe('turn loop', () => {
   it('ramps the speed multiplier', () => {
     const s = empty()
     fire(s, Math.PI / 2)
-    s.volleyTime = 0
+    s.volleyTime = 1
     expect(speedMultiplier(s, false)).toBe(1)
-    s.volleyTime = 3.1
+    s.volleyTime = 5.9
+    expect(speedMultiplier(s, false)).toBe(1)
+    s.volleyTime = 6.1
     expect(speedMultiplier(s, false)).toBe(2)
-    s.volleyTime = 8.1
+    s.volleyTime = 12.1
     expect(speedMultiplier(s, false)).toBe(3)
     s.volleyTime = 0
     expect(speedMultiplier(s, true)).toBe(3)

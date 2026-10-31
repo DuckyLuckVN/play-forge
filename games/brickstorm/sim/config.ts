@@ -3,7 +3,7 @@
 
 export const CELL = 56
 export const COLS = 7
-export const ROWS = 10
+export const ROWS = 12
 /** HUD band above row 0. */
 export const TOP = 56
 export const BOARD_W = COLS * CELL
@@ -36,9 +36,9 @@ export const COMBO_TIERS = [
 ] as const
 
 /** Volley time (s) after which the game runs at 2× and 3×. */
-export const AUTO_2X = 3
-export const AUTO_3X = 8
-export const RECALL_AFTER = 5
+export const AUTO_2X = 6
+export const AUTO_3X = 12
+export const RECALL_AFTER = 6
 export const SLOWMO = 0.3
 
 /** A brick entering this row ends the run. */

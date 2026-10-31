@@ -42,7 +42,7 @@ export function killBrick(s: RunState, brick: Brick, depth: number): void {
   const mods = modsOf(s.boosts)
   // Only some bricks drop a coin; gold always pays, triple.
   const coins = Math.max(1, Math.round(comboMultiplier(s.combo) * mods.coinMult))
-  if (brick.kind === 'gold') s.coins += coins * 3
+  if (brick.kind === 'gold') s.coins += coins * 2
   else if (random(s.rng) < COIN_DROP) s.coins += coins
   s.coins += mods.midas
   gainXp(s, mods.xpMult)

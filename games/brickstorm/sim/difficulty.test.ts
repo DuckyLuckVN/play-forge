@@ -14,8 +14,8 @@ function rowAt(seed: number, turn: number): RunState {
 
 describe('difficulty', () => {
   it('scales brick hp faster than the turn', () => {
-    expect(hpScale(10)).toBeCloseTo(12.5)
-    expect(hpScale(40)).toBeCloseTo(80)
+    expect(hpScale(10)).toBeCloseTo(14)
+    expect(hpScale(40)).toBeCloseTo(104)
   })
 
   it('spawns 2..7 bricks, at least 3 from turn 10', () => {
@@ -28,11 +28,11 @@ describe('difficulty', () => {
     }
   })
 
-  it('offers a ball pickup in about 65% of rows', () => {
+  it('offers a ball pickup in about 60% of rows', () => {
     let rows = 0
     for (let seed = 1; seed <= 1000; seed++) if (rowAt(seed, 3).pickups.some((p) => p.kind === 'ball')) rows++
-    expect(rows / 1000).toBeGreaterThan(0.58)
-    expect(rows / 1000).toBeLessThan(0.72)
+    expect(rows / 1000).toBeGreaterThan(0.53)
+    expect(rows / 1000).toBeLessThan(0.67)
   })
 })
 
@@ -44,18 +44,18 @@ describe('coins', () => {
     expect(s.coins / 2000).toBeLessThan(0.35)
   })
 
-  it('always pays gold, 3×', () => {
+  it('always pays gold, 2×', () => {
     const s = empty()
     killBrick(s, Object.assign(brick(s, 0, 0, 1), { kind: 'gold' as const }), 0)
-    expect(s.coins).toBe(3)
+    expect(s.coins).toBe(2)
   })
 
-  it('pays turn × 3 for a board wipe', () => {
+  it('pays turn × 1 for a board wipe', () => {
     const s = empty()
     s.turn = 7
     brick(s, 3, 5, 1)
     fire(s, Math.PI / 2)
     runVolley(s)
-    expect(drainEvents(s).find((e) => e.type === 'allClear')).toEqual({ type: 'allClear', coins: 21 })
+    expect(drainEvents(s).find((e) => e.type === 'allClear')).toEqual({ type: 'allClear', coins: 7 })
   })
 })

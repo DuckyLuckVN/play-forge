@@ -31,10 +31,11 @@ export function specialChance(turn: number): number {
 }
 
 const MAX_SPECIALS_PER_ROW = 2
+const JACKPOT_GOLD = 4
 
 /** Typical brick hp on a turn: grows faster than the turn so ball count can't keep up forever. */
 export function hpScale(turn: number): number {
-  return turn * (1 + turn / 40)
+  return turn * (1 + turn / 25)
 }
 
 function brickHp(state: RunState): number {
@@ -56,7 +57,7 @@ export function spawnRow(state: RunState): void {
 
   if (turn % 10 === 0) {
     // Jackpot row: all gold, plus a ball.
-    for (let i = 0; i < COLS - 1; i++) add('gold')
+    for (let i = 0; i < JACKPOT_GOLD; i++) add('gold')
     state.pickups.push({ id: state.nextId++, col: take(), row: 0, kind: 'ball' })
     state.events.push({ type: 'jackpot' })
     return
@@ -77,7 +78,7 @@ export function spawnRow(state: RunState): void {
   const pickup = (kind: PickupKind, p: number) => {
     if (free.length && random(rng) < p) state.pickups.push({ id: state.nextId++, col: take(), row: 0, kind })
   }
-  pickup('ball', 0.65)
+  pickup('ball', 0.6)
   pickup('coin', 0.12)
   if (turn >= 4) {
     pickup('fire', 0.06)

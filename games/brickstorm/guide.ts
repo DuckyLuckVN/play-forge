@@ -16,7 +16,7 @@ export const GUIDE: GuideEntry[] = [
     name: 'Brick',
     text: 'Break it before it reaches the red line. The number is its health.',
   },
-  { id: 'brick:gold', name: 'Gold brick', text: 'Always drops 3× coins.' },
+  { id: 'brick:gold', name: 'Gold brick', text: 'Always drops 2× coins.' },
   {
     id: 'brick:bomb',
     name: 'Bomb brick',

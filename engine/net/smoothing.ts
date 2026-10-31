@@ -20,12 +20,12 @@ export interface Smoothed<S> {
  * ticks. Works identically on the host and on clients.
  */
 export function smoothState<S>(session: Session<S, any>): Smoothed<S> {
-  const interval = 1000 / session.def.tickRate
   let receivedAt = 0
   const smoothed: Smoothed<S> = {
     prev: null,
     curr: null,
-    alpha: () => clamp01((performance.now() - receivedAt) / interval),
+    // Read the rate each time: it can change between matches (speed options).
+    alpha: () => clamp01(((performance.now() - receivedAt) * session.tickRate) / 1000),
     dispose: () => off(),
   }
   const take = (state: S) => {

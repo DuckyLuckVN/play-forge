@@ -188,6 +188,46 @@ describe('Session', () => {
     expect(watcher.self).toBeUndefined()
   })
 
+  it('shares host-chosen options and applies them to the match', async () => {
+    const r = room()
+    const def: GameDefinition<Counter, number> = {
+      ...counter,
+      options: [
+        {
+          id: 'mode',
+          label: 'Mode',
+          default: 'calm',
+          choices: [
+            { value: 'calm', label: 'Calm' },
+            { value: 'wild', label: 'Wild' },
+          ],
+        },
+      ],
+      tickRate: (o) => (o.mode === 'wild' ? 50 : 25),
+      setup: (players, _seed, options) =>
+        ({ ...counter.setup(players, 0, options), mode: options.mode }) as Counter,
+    }
+    const host = join(r, { host: true, playerId: 'host', options: { mode: 'nonsense' } }, def)
+    const guest = join(r, { playerId: 'guest' }, def)
+    expect(host.lobby.options).toEqual({ mode: 'calm' }) // invalid values fall back to the default
+    expect(host.tickRate).toBe(25)
+
+    await until(() => guest.lobby.players.length === 2)
+    guest.setOption('mode', 'wild') // guests can't change options
+    host.setOption('mode', 'wild')
+    await until(() => guest.lobby.options.mode === 'wild')
+    expect(guest.tickRate).toBe(50)
+    expect(host.snapshot().options).toEqual({ mode: 'wild' })
+
+    guest.setReady(true)
+    await until(() => host.canStart)
+    host.start()
+    await until(() => guest.state !== null)
+    expect((guest.state as unknown as { mode: string }).mode).toBe('wild')
+    host.setOption('mode', 'calm') // locked during a match
+    expect(host.lobby.options.mode).toBe('wild')
+  })
+
   it('counts down before the match starts', async () => {
     const solo = new Session({ ...counter, minPlayers: 1, countdown: 1 }, createOfflineTransport(), {
       host: true,

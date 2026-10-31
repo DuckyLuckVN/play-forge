@@ -169,9 +169,25 @@ export function step(state: SnakeState, inputs: InputEvent<Direction>[]): SnakeS
   return state
 }
 
+/** Moves per second for each speed option. */
+export const SPEEDS: Record<string, number> = { slow: 6, normal: 8, fast: 11, turbo: 14 }
+
 export const snakeGame: GameDefinition<SnakeState, Direction> = {
   id: 'snake',
-  tickRate: 10,
+  tickRate: (options) => SPEEDS[options.speed] ?? SPEEDS.normal,
+  options: [
+    {
+      id: 'speed',
+      label: 'Speed',
+      default: 'normal',
+      choices: [
+        { value: 'slow', label: 'Slow' },
+        { value: 'normal', label: 'Normal' },
+        { value: 'fast', label: 'Fast' },
+        { value: 'turbo', label: 'Turbo' },
+      ],
+    },
+  ],
   minPlayers: 1,
   maxPlayers: 8,
   setup: (players, seed) => createState(players, seed),

@@ -32,18 +32,45 @@ export interface InputEvent<I> {
 export interface GameDefinition<S, I> {
   /** Unique id; also namespaces the game's P2P rooms. */
   id: string
-  /** Simulation steps per second. */
-  tickRate: number
+  /** Simulation steps per second; can depend on the chosen options. */
+  tickRate: number | ((options: GameOptions) => number)
+  /** Settings the host picks before a match (speed, board size, …). */
+  options?: OptionDef[]
   minPlayers: number
   maxPlayers: number
   /** Seconds of "3, 2, 1" before each match. Default 3; 0 starts at once. */
   countdown?: number
-  setup(players: PlayerInfo[], seed: number): S
+  setup(players: PlayerInfo[], seed: number, options: GameOptions): S
   /** Advance one step. May mutate and return `state`. */
   tick(state: S, inputs: InputEvent<I>[]): S
   isFinished(state: S): boolean
   /** Called on the host when a player is gone for good mid-game. */
   removePlayer?(state: S, playerId: string): void
+}
+
+/** Chosen value for each option id. */
+export type GameOptions = Record<string, string>
+
+export interface OptionDef {
+  id: string
+  label: string
+  choices: { value: string; label: string }[]
+  default: string
+}
+
+/** Fill in defaults and drop unknown or invalid values. */
+export function resolveOptions(defs: OptionDef[] = [], chosen: Partial<GameOptions> = {}): GameOptions {
+  const out: GameOptions = {}
+  for (const d of defs) {
+    const v = chosen[d.id]
+    out[d.id] = d.choices.some((c) => c.value === v) ? v! : d.default
+  }
+  return out
+}
+
+/** The tick rate a game runs at with the given options. */
+export function tickRateOf(def: GameDefinition<any, any>, options: GameOptions): number {
+  return typeof def.tickRate === 'function' ? def.tickRate(options) : def.tickRate
 }
 
 /**
@@ -62,12 +89,15 @@ export interface LobbyState {
   paused: boolean
   /** Number of matches started in this room. */
   round: number
+  /** Settings for the next match; only the host changes them. */
+  options: GameOptions
 }
 
 /** What a host persists so a reload can reopen the same room. */
 export interface RoomSnapshot {
   players: PlayerInfo[]
   round: number
+  options?: GameOptions
 }
 
 export interface SessionOptions {
@@ -79,6 +109,8 @@ export interface SessionOptions {
   offline?: boolean
   /** Host only: reopen a room after a reload. */
   restore?: RoomSnapshot
+  /** Host only: starting options (e.g. the player's last choice). */
+  options?: Partial<GameOptions>
   /** How long a dropped player keeps their seat. Default 20s. */
   graceMs?: number
   /** How long guests wait for a dropped host. Default 30s. */
@@ -157,6 +189,7 @@ export class Session<S, I> {
       countdown: 0,
       paused: false,
       round: opts.restore?.round ?? 0,
+      options: resolveOptions(def.options, opts.restore?.options ?? opts.options),
     }
     const t = transport
 
@@ -260,7 +293,26 @@ export class Session<S, I> {
 
   /** What the host should save to reopen this room after a reload. */
   snapshot(): RoomSnapshot {
-    return { players: this.lobby.players.map((p) => ({ ...p })), round: this.lobby.round }
+    return {
+      players: this.lobby.players.map((p) => ({ ...p })),
+      round: this.lobby.round,
+      options: { ...this.lobby.options },
+    }
+  }
+
+  /** Steps per second for the current options. */
+  get tickRate(): number {
+    return tickRateOf(this.def, this.lobby.options)
+  }
+
+  /** Host only, between matches: change a game option for everyone. */
+  setOption(id: string, value: string): void {
+    const { phase } = this.lobby
+    if (!this.isHost || (phase !== 'lobby' && phase !== 'finished')) return
+    const next = resolveOptions(this.def.options, { ...this.lobby.options, [id]: value })
+    if (next[id] === this.lobby.options[id]) return
+    this.lobby.options = next
+    this.broadcastLobby()
   }
 
   /** Mark the local player ready (or not) for the next match. */
@@ -284,7 +336,7 @@ export class Session<S, I> {
     if (!this.canStart) return
     this.pending = []
     this.lobby.round++
-    this.setState(this.def.setup(this.lobby.players, randomSeed()))
+    this.setState(this.def.setup(this.lobby.players, randomSeed(), this.lobby.options))
     this.broadcastState()
     this.lobby.paused = false
     this.lobby.countdown = this.def.countdown ?? DEFAULT_COUNTDOWN
@@ -434,7 +486,7 @@ export class Session<S, I> {
   }
 
   private startSimulation() {
-    this.stopTicker = startTicker(this.def.tickRate, () => this.step())
+    this.stopTicker = startTicker(this.tickRate, () => this.step())
   }
 
   private stopSimulation() {

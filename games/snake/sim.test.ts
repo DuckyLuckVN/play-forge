@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { createState, step, type SnakeState } from './sim'
+import { resolveOptions, tickRateOf } from '@forge/net/session'
+import { createState, snakeGame, SPEEDS, step, type SnakeState } from './sim'
 
 const players = (n: number) =>
   Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: `P${i}`, slot: i, ready: true, connected: true }))
@@ -63,6 +64,15 @@ describe('snake simulation', () => {
     for (let i = 0; i < state.height && !state.over; i++) step(state, [])
     expect(state.over).toBe(true)
     expect(state.winner).toBe('p1')
+  })
+
+  it('defaults to normal speed, a little slower than before, with faster and slower choices', () => {
+    const rate = (speed?: string) => tickRateOf(snakeGame, resolveOptions(snakeGame.options, { speed }))
+    expect(rate()).toBe(8)
+    expect(rate('slow')).toBeLessThan(rate())
+    expect(rate('fast')).toBeGreaterThan(rate())
+    expect(rate('turbo')).toBeGreaterThan(rate('fast'))
+    expect(rate('bogus')).toBe(SPEEDS.normal)
   })
 
   it('never spawns two snakes on the same row', () => {

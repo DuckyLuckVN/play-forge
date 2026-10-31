@@ -90,3 +90,17 @@ test('guests see the room close when the host leaves', async ({ context }) => {
   await host.locator('.pf-panel').getByRole('button', { name: 'Leave room' }).click()
   await expect(guest.getByRole('heading', { name: 'The room closed' })).toBeVisible()
 })
+
+test('the host picks the speed; guests see it but cannot change it', async ({ context }) => {
+  const host = await openSnake(context, 'Alice')
+  const guest = await openSnake(context, 'Bob')
+  await hostAndGuest(host, guest)
+
+  const guestSpeed = guest.getByRole('radiogroup', { name: 'Speed' })
+  await expect(guestSpeed.getByRole('radio', { name: 'Normal' })).toHaveAttribute('aria-checked', 'true')
+  await expect(guestSpeed.getByRole('radio', { name: 'Fast' })).toBeDisabled()
+
+  await host.getByRole('radiogroup', { name: 'Speed' }).getByRole('radio', { name: 'Fast' }).click()
+  await expect(guestSpeed.getByRole('radio', { name: 'Fast' })).toHaveAttribute('aria-checked', 'true')
+  await expect(guest.locator('.pf-toast', { hasText: 'Speed: Fast' })).toBeVisible()
+})

@@ -5,13 +5,19 @@ import {
   BALL_R,
   BALL_SPEED,
   BOARD_W,
+  CELL,
+  COMBO_GAP,
+  COMBO_TIERS,
   DANGER_ROW,
+  FEVER_AT,
   FIRE_GAP,
   FLOOR_Y,
   PICKUP_R,
   RECALL_AFTER,
+  SLOWMO,
   TICK,
 } from './config'
+import { random } from '@forge/core/rng'
 import { antiStall, bounceWalls, deepestContact, reflect } from './physics'
 import { brickRect, cellCenter, spawnRow } from './rows'
 import type { Ball, BoostId, RunState, SimEvent } from './types'
@@ -99,6 +105,7 @@ export function step(s: RunState): void {
   const mods = modsOf(s.boosts)
   s.volleyTime += TICK
   s.sinceHit += TICK
+  if (s.sinceHit > COMBO_GAP) s.combo = 0
 
   s.fireTimer -= TICK
   while (s.fireTimer <= 0) {
@@ -164,13 +171,21 @@ function moveBall(s: RunState, ball: Ball, mods: Mods): void {
 
 function hitBrick(s: RunState, ball: Ball, index: number, mods: Mods): void {
   const brick = s.bricks[index]
-  const damage = 1 * mods.damageMult + ball.bounceBonus
+  s.combo++
+  s.sinceHit = 0
+  s.bestCombo = Math.max(s.bestCombo, s.combo)
+  if (s.combo >= FEVER_AT && !s.fever) {
+    s.fever = true
+    s.events.push({ type: 'fever' })
+  }
+  const crit = mods.critChance > 0 && random(s.rng) < mods.critChance
+  const damage = (1 * mods.damageMult + ball.bounceBonus) * (s.fever ? 2 : 1) * (crit ? 3 : 1)
   brick.hp -= damage
   const { x, y } = cellCenter(brick.col, brick.row)
-  s.events.push({ type: 'hit', x, y, combo: s.combo, crit: false })
+  s.events.push({ type: 'hit', x, y, combo: s.combo, crit })
   if (brick.hp > 0) return
   s.bricks.splice(index, 1)
-  s.coins += Math.max(1, Math.round(1 * mods.coinMult))
+  s.coins += Math.max(1, Math.round(comboMultiplier(s.combo) * mods.coinMult))
   s.xp += 1
   s.events.push({ type: 'kill', x, y, maxHp: brick.maxHp })
 }
@@ -194,6 +209,11 @@ function endTurn(s: RunState): void {
   s.balls = []
   if (s.doubleVolleys > 0) s.doubleVolleys--
 
+  if (s.bricks.length === 0) bonus(s, { type: 'allClear', coins: s.turn * 10 })
+  if (s.dangerAtStart && !s.bricks.some((b) => b.row === DANGER_ROW - 1)) {
+    bonus(s, { type: 'closeOne', coins: s.turn * 5 })
+  }
+
   for (const b of s.bricks) b.row++
   for (const p of s.pickups) p.row++
   s.pickups = s.pickups.filter((p) => p.row < DANGER_ROW)
@@ -210,6 +230,29 @@ function endTurn(s: RunState): void {
   s.phase = s.pendingPicks > 0 ? 'pick' : 'aim'
 }
 
+function bonus(s: RunState, e: SimEvent & { coins: number }): void {
+  s.coins += e.coins
+  s.events.push(e)
+}
+
+export function comboMultiplier(combo: number): number {
+  return COMBO_TIERS.find(([min]) => combo >= min)![1]
+}
+
+/** One brick left, low on hp, with a ball closing in: play it in slow motion. */
+export function slowMoActive(s: RunState): boolean {
+  if (s.phase !== 'volley' || s.bricks.length !== 1) return false
+  const brick = s.bricks[0]
+  if (brick.hp > 1 * modsOf(s.boosts).damageMult) return false
+  const c = cellCenter(brick.col, brick.row)
+  return s.balls.some((b) => {
+    if (b.status !== 'flying') return false
+    const dx = c.x - b.x
+    const dy = c.y - b.y
+    return Math.hypot(dx, dy) < 2 * CELL && dx * b.vx + dy * b.vy > 0
+  })
+}
+
 export function canRecall(s: RunState): boolean {
   return s.phase === 'volley' && s.volleyTime >= RECALL_AFTER
 }
@@ -223,7 +266,6 @@ export function recall(s: RunState): void {
 }
 
 export function speedMultiplier(s: RunState, forced: boolean): number {
-  if (forced || s.volleyTime > AUTO_3X) return 3
-  if (s.volleyTime > AUTO_2X) return 2
-  return 1
+  const base = forced || s.volleyTime > AUTO_3X ? 3 : s.volleyTime > AUTO_2X ? 2 : 1
+  return slowMoActive(s) ? base * SLOWMO : base
 }

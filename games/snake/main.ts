@@ -1,5 +1,13 @@
-import { bindInput, createCanvas2D, createGameApp, playSound, startRenderLoop, type Direction } from '@forge'
-import { CELL, render } from './render'
+import {
+  bindInput,
+  createCanvas2D,
+  createGameApp,
+  playSound,
+  smoothState,
+  startRenderLoop,
+  type Direction,
+} from '@forge'
+import { CELL, SnakeRenderer } from './render'
 import { snakeGame, type SnakeState } from './sim'
 import { SNAKE_SOUNDS } from './sounds'
 
@@ -10,16 +18,18 @@ createGameApp<SnakeState, Direction>({
   controls: 'Steer with the arrow keys or WASD. On a phone, swipe.',
   mount(session, stage) {
     const view = createCanvas2D(stage, 32 * CELL, 24 * CELL)
+    const smooth = smoothState(session)
+    const renderer = new SnakeRenderer(view, smooth, session.selfId)
     const offState = session.on('state', (s) => {
       if (view.width !== s.width * CELL || view.height !== s.height * CELL)
         view.setSize(s.width * CELL, s.height * CELL)
+      renderer.onState(s)
       for (const e of s.events) {
-        const mine = e.player === session.selfId
         // Your own sounds are loud; everyone else's are quieter.
-        playSound(SNAKE_SOUNDS[e.type], mine ? 1 : 0.35)
+        playSound(SNAKE_SOUNDS[e.type], e.player === session.selfId ? 1 : 0.35)
       }
     })
-    const stopRender = startRenderLoop((_dt, time) => render(view, session.state, session.selfId, time))
+    const stopRender = startRenderLoop((dt) => renderer.frame(dt))
     const stopInput = bindInput<Direction>(
       {
         keys: {
@@ -35,6 +45,7 @@ createGameApp<SnakeState, Direction>({
     )
     return () => {
       offState()
+      smooth.dispose()
       stopRender()
       stopInput()
       view.destroy()
@@ -44,7 +55,7 @@ createGameApp<SnakeState, Direction>({
   outcome(state, selfId) {
     if (state.snakes.length === 1) {
       const n = state.snakes[0].score
-      return { headline: `You ate ${n} ${n === 1 ? 'apple' : 'apples'}`, result: 'done' }
+      return { headline: `You ate ${n} ${n === 1 ? 'apple' : 'apples'}`, result: n > 0 ? 'done' : 'lose' }
     }
     const winner = state.snakes.find((s) => s.id === state.winner)
     if (!winner) return { headline: 'Draw!', result: 'draw' }

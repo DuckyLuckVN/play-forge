@@ -16,7 +16,10 @@ export function createBroadcastTransport(appId: string, roomId: string): Transpo
   const peers = new Set<string>()
   const events = new Emitter<{ join: [string]; leave: [string] }>()
   const channels = new Emitter<Record<string, [unknown, string]>>()
-  const post = (p: Packet) => bc.postMessage(p)
+  let closed = false
+  const post = (p: Packet) => {
+    if (!closed) bc.postMessage(p)
+  }
 
   const addPeer = (id: string) => {
     if (peers.has(id)) return
@@ -29,8 +32,10 @@ export function createBroadcastTransport(appId: string, roomId: string): Transpo
     if (p.from === selfId || (p.to && p.to !== selfId)) return
     switch (p.k) {
       case 'hello':
-        addPeer(p.from)
+        // Announce ourselves before handlers run, so anything they send
+        // arrives after the newcomer knows who we are.
         post({ k: 'here', from: selfId, to: p.from })
+        addPeer(p.from)
         break
       case 'here':
         addPeer(p.from)
@@ -45,7 +50,9 @@ export function createBroadcastTransport(appId: string, roomId: string): Transpo
   }
 
   const leave = () => {
+    if (closed) return
     post({ k: 'bye', from: selfId })
+    closed = true
     bc.close()
     events.clear()
     channels.clear()

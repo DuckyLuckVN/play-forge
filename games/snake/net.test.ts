@@ -14,8 +14,8 @@ const until = async (cond: () => boolean, ms = 5000) => {
 it('steers a guest snake through the host', async () => {
   const room = Math.random().toString(36).slice(2)
   const def = { ...snakeGame, countdown: 0 }
-  const host = new Session(def, createBroadcastTransport('test', room), { host: true, name: 'A' })
-  const guest = new Session(def, createBroadcastTransport('test', room), { host: false, name: 'B' })
+  const host = new Session(def, createBroadcastTransport('test', room), { host: true, name: 'A', playerId: 'a' })
+  const guest = new Session(def, createBroadcastTransport('test', room), { host: false, name: 'B', playerId: 'b' })
   try {
     await until(() => guest.lobby.players.length === 2)
     guest.setReady(true)

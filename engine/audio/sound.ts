@@ -1,17 +1,20 @@
 /**
- * Tiny Web Audio synthesiser. Sounds are generated, not loaded, so games stay
- * single-file and work offline. Mute state is shared by every game.
+ * Tiny Web Audio synthesiser. Sounds and music are generated, not loaded, so
+ * games stay single-file and work offline.
+ *
+ * Signal path: sources → sfx / music bus → master → speakers.
+ * Volume settings are shared by every game and remembered in localStorage.
  */
 
 export interface Tone {
-  /** Start frequency in Hz. */
+  /** Start frequency in Hz (for 'noise', the low-pass cutoff). */
   freq: number
   /** Slide to this frequency over the tone's duration. */
   to?: number
   /** Seconds. */
   dur: number
   wave?: OscillatorType | 'noise'
-  /** 0..1, before the master volume. */
+  /** 0..1, before the effects volume. */
   vol?: number
   /** Start offset in seconds, for building short phrases. */
   at?: number
@@ -19,47 +22,102 @@ export interface Tone {
 
 export type Sound = Tone | Tone[]
 
-const MUTE_KEY = 'play-forge:muted'
-const MASTER = 0.35
+export interface AudioSettings {
+  /** 0..1 */
+  music: number
+  /** 0..1 */
+  sfx: number
+  muted: boolean
+}
+
+const SETTINGS_KEY = 'play-forge:audio'
+const DEFAULTS: AudioSettings = { music: 0.45, sfx: 0.8, muted: false }
 
 let ctx: AudioContext | null = null
 let master: GainNode | null = null
-let muted = readMuted()
-const listeners = new Set<(muted: boolean) => void>()
+let sfxBus: GainNode | null = null
+let musicBus: GainNode | null = null
+let settings = readSettings()
+let unlocked = false
+const settingsListeners = new Set<(s: AudioSettings) => void>()
+const unlockListeners = new Set<() => void>()
 
-function readMuted() {
+function readSettings(): AudioSettings {
   try {
-    return localStorage.getItem(MUTE_KEY) === '1'
+    const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}')
+    const num = (v: unknown, d: number) => (typeof v === 'number' && v >= 0 && v <= 1 ? v : d)
+    return {
+      music: num(raw.music, DEFAULTS.music),
+      sfx: num(raw.sfx, DEFAULTS.sfx),
+      muted: raw.muted === true,
+    }
   } catch {
-    return false
+    return { ...DEFAULTS }
   }
 }
 
-function audio(): AudioContext | null {
+// Perceived loudness is roughly logarithmic; squaring makes sliders feel even.
+const curve = (v: number) => v * v
+
+function applyLevels() {
+  if (!ctx || !master || !sfxBus || !musicBus) return
+  const t = ctx.currentTime
+  master.gain.setTargetAtTime(settings.muted ? 0 : 1, t, 0.03)
+  sfxBus.gain.setTargetAtTime(curve(settings.sfx) * 0.5, t, 0.03)
+  musicBus.gain.setTargetAtTime(curve(settings.music) * 0.35, t, 0.03)
+}
+
+/** The shared AudioContext, created on first use. Null if unsupported. */
+export function audioContext(): AudioContext | null {
   if (typeof AudioContext === 'undefined') return null
   if (!ctx) {
     ctx = new AudioContext()
     master = ctx.createGain()
-    master.gain.value = muted ? 0 : MASTER
+    sfxBus = ctx.createGain()
+    musicBus = ctx.createGain()
+    sfxBus.connect(master)
+    musicBus.connect(master)
     master.connect(ctx.destination)
+    applyLevels()
   }
-  if (ctx.state === 'suspended') void ctx.resume()
+  if (ctx.state === 'suspended' && unlocked) void ctx.resume()
   return ctx
 }
 
-// Browsers only allow audio after a user gesture; warm up on the first one.
+/** Output node for music; null until audio exists. */
+export function musicOutput(): GainNode | null {
+  audioContext()
+  return musicBus
+}
+
+export function isUnlocked(): boolean {
+  return unlocked
+}
+
+/** Runs `fn` once audio is allowed (immediately if it already is). */
+export function whenUnlocked(fn: () => void): void {
+  if (unlocked) fn()
+  else unlockListeners.add(fn)
+}
+
+// Browsers only allow audio after a user gesture; unlock on the first one.
 if (typeof window !== 'undefined') {
   const unlock = () => {
-    audio()
-    window.removeEventListener('pointerdown', unlock)
-    window.removeEventListener('keydown', unlock)
+    unlocked = true
+    const ac = audioContext()
+    void ac?.resume()
+    window.removeEventListener('pointerdown', unlock, true)
+    window.removeEventListener('keydown', unlock, true)
+    unlockListeners.forEach((fn) => fn())
+    unlockListeners.clear()
   }
-  window.addEventListener('pointerdown', unlock)
-  window.addEventListener('keydown', unlock)
+  window.addEventListener('pointerdown', unlock, true)
+  window.addEventListener('keydown', unlock, true)
 }
 
 let noiseBuffer: AudioBuffer | null = null
-function noise(ac: AudioContext) {
+/** A looping white-noise source (shared buffer). */
+export function noiseSource(ac: AudioContext): AudioBufferSourceNode {
   if (!noiseBuffer) {
     noiseBuffer = ac.createBuffer(1, ac.sampleRate, ac.sampleRate)
     const data = noiseBuffer.getChannelData(0)
@@ -67,13 +125,14 @@ function noise(ac: AudioContext) {
   }
   const src = ac.createBufferSource()
   src.buffer = noiseBuffer
+  src.loop = true
   return src
 }
 
 export function playSound(sound: Sound, volume = 1): void {
-  if (muted) return
-  const ac = audio()
-  if (!ac || !master) return
+  if (settings.muted || !unlocked) return
+  const ac = audioContext()
+  if (!ac || !sfxBus) return
   const now = ac.currentTime + 0.01
   for (const t of Array.isArray(sound) ? sound : [sound]) {
     const start = now + (t.at ?? 0)
@@ -81,12 +140,12 @@ export function playSound(sound: Sound, volume = 1): void {
     const gain = ac.createGain()
     // Short attack and exponential release avoid clicks.
     gain.gain.setValueAtTime(0.0001, start)
-    gain.gain.exponentialRampToValueAtTime((t.vol ?? 0.6) * volume, start + 0.008)
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, (t.vol ?? 0.6) * volume), start + 0.008)
     gain.gain.exponentialRampToValueAtTime(0.0001, end)
-    gain.connect(master)
+    gain.connect(sfxBus)
     let src: AudioScheduledSourceNode
     if (t.wave === 'noise') {
-      const n = noise(ac)
+      const n = noiseSource(ac)
       const filter = ac.createBiquadFilter()
       filter.type = 'lowpass'
       filter.frequency.setValueAtTime(t.freq, start)
@@ -106,25 +165,28 @@ export function playSound(sound: Sound, volume = 1): void {
   }
 }
 
-export function isMuted(): boolean {
-  return muted
+export function getAudioSettings(): AudioSettings {
+  return { ...settings }
 }
 
-export function setMuted(value: boolean): void {
-  muted = value
+export function setAudioSettings(patch: Partial<AudioSettings>): void {
+  settings = { ...settings, ...patch }
   try {
-    localStorage.setItem(MUTE_KEY, value ? '1' : '0')
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
   } catch {
-    // storage unavailable: mute still applies for this page
+    // storage unavailable: settings still apply to this page
   }
-  if (master && ctx) master.gain.setTargetAtTime(value ? 0 : MASTER, ctx.currentTime, 0.02)
-  listeners.forEach((l) => l(value))
+  applyLevels()
+  settingsListeners.forEach((l) => l({ ...settings }))
 }
 
-export function onMutedChange(listener: (muted: boolean) => void): () => void {
-  listeners.add(listener)
-  return () => listeners.delete(listener)
+export function onAudioSettingsChange(listener: (s: AudioSettings) => void): () => void {
+  settingsListeners.add(listener)
+  return () => settingsListeners.delete(listener)
 }
+
+export const isMuted = () => settings.muted
+export const setMuted = (muted: boolean) => setAudioSettings({ muted })
 
 /** Shared interface sounds, so every game sounds like part of one set. */
 export const UI_SOUNDS = {

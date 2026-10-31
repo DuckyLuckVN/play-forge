@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createState, step, type SnakeState } from './sim'
 
 const players = (n: number) =>
-  Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: `P${i}`, slot: i, ready: true }))
+  Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: `P${i}`, slot: i, ready: true, connected: true }))
 
 function solo(): SnakeState {
   const state = createState(players(1), 42)

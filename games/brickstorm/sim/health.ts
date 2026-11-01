@@ -12,6 +12,11 @@ export const BREACH_BASE = 8
 /** Crash damage doubles by this turn, then keeps climbing faster (early runs forgive, late ones don't). */
 export const BREACH_DOUBLE_AT = 40
 const BREACH_CURVE = 2
+/**
+ * One crashing brick hurts at most this much (before the hero's resistance and
+ * missiles): late crashes stay painful without one-shotting the hero.
+ */
+export const BREACH_CAP = 40
 /** A brick worn down to nothing deals this share of a full brick's crash damage. */
 const BREACH_FLOOR = 0.5
 /** A boss crashing hurts like this many full bricks, then rises back to the top. */
@@ -33,11 +38,16 @@ export function breachUnit(turn: number): number {
   return BREACH_BASE * (1 + (Math.max(0, turn) / BREACH_DOUBLE_AT) ** BREACH_CURVE)
 }
 
+/** A full brick's crash on `turn`, capped at BREACH_CAP. */
+function cappedUnit(turn: number): number {
+  return Math.min(BREACH_CAP, breachUnit(turn))
+}
+
 /** What one brick crashing would cost the hero: worn-down bricks hurt less. */
 export function brickBreach(s: RunState, b: Brick): number {
   const left = Math.max(0, Math.min(1, b.hp / b.maxHp))
   const missile = b.role === 'missile' ? MISSILE_BREACH : 1
-  return breachUnit(s.turn) * (BREACH_FLOOR + (1 - BREACH_FLOOR) * left) * missile * (heroOf(s).breach ?? 1)
+  return cappedUnit(s.turn) * (BREACH_FLOOR + (1 - BREACH_FLOOR) * left) * missile * (heroOf(s).breach ?? 1)
 }
 
 /** Health the given bricks would take if they crashed now (a boss counts once). */
@@ -46,7 +56,7 @@ export function breachDamage(s: RunState, bricks: readonly Brick[]): number {
   const boss = bricks.some((b) => b.kind === 'boss')
   // Later bosses crash harder: 4 bricks' worth for the first, 5, then 6.
   const tier = s.boss?.tier ?? 1
-  const bossHit = boss ? breachUnit(s.turn) * (BOSS_BREACH - 3 + tier) * (heroOf(s).breach ?? 1) : 0
+  const bossHit = boss ? cappedUnit(s.turn) * (BOSS_BREACH - 3 + tier) * (heroOf(s).breach ?? 1) : 0
   return Math.round(plain.reduce((sum, b) => sum + brickBreach(s, b), 0) + bossHit)
 }
 

@@ -13,12 +13,13 @@ import { langMenu } from '@forge/ui/lang-menu'
 import { h, icon, toast } from '@forge/ui/dom'
 import { icons } from '@forge/ui/icons'
 import { applyTheme } from '@forge/ui/theme'
+import { coinAmount, shortCoins } from './coin'
 import { rarityName, t } from './i18n'
 import { toBoard } from './input'
 import { Juice } from './juice'
 import { BoardRenderer } from './render'
 import { ARENAS, type ArenaId } from './arenas'
-import { bankRun, canBank, clearRun, loadSave, recordRun, spend, writeSave } from './save'
+import { bankRun, canBank, clearRun, loadSave, recordRun, spend, walletTotal, writeSave } from './save'
 import { shopPanel } from './shop-ui'
 import { applyHelpers, growBoard, revive, reviveCost, useHelper } from './sim/meta'
 import { dims } from './sim/dims'
@@ -26,7 +27,7 @@ import { boostDetail, GUIDE, newlySeen } from './guide'
 import { NoticeQueue } from './notices'
 import { ACTIVE_HELPERS, boostsPanel, guidePanel, helpersPanel, navPanel, sample, statsPanel } from './panels'
 import { BOOST_ICONS } from './icons'
-import { BOOSTS, isSynergy, pickBoost, reroll, rerollCost, xpToNext } from './sim/boosts'
+import { BOOSTS, isSynergy, pickBoost, reroll, rerollCost, xpToNext, xpTotal } from './sim/boosts'
 import { AIM_MIN, BOARD_H, BOARD_W, boardSize, COLS, MAX_COLS, MAX_ROWS, ROWS, TICK } from './sim/config'
 import { aimFromPointer } from './sim/physics'
 import { canRecall, createRun, drainEvents, fire, recall, speedMultiplier, step } from './sim/run'
@@ -56,9 +57,18 @@ home.append(icon(icons.home))
 const BAG_ICON =
   '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1 12H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>'
 const shopBarBtn = button('', () => openShopFromBar(), 'icon')
-shopBarBtn.append(icon(BAG_ICON))
+// The wallet rides on the shop button, so players always know what they can spend.
+const shopCoins = h('span', { class: 'bs-bar-coins' })
+shopBarBtn.append(icon(BAG_ICON), shopCoins)
 shopBarBtn.title = t('Shop')
-shopBarBtn.setAttribute('aria-label', t('Shop'))
+let shownWallet = -1
+function updateShopCoins() {
+  const total = walletTotal(save, run, banked)
+  if (total === shownWallet) return
+  shownWallet = total
+  shopCoins.textContent = shortCoins(total)
+  shopBarBtn.setAttribute('aria-label', t('Shop ({n} coins)', { n: total }))
+}
 const guideBtn = button('?', () => openGuideFromBar(), 'icon bs-guide-btn')
 guideBtn.title = t('Guide')
 guideBtn.setAttribute('aria-label', t('Guide: what bricks and pickups do'))
@@ -134,6 +144,8 @@ let dragging = false
 let acc = 0
 let panel = ''
 let overShown = false
+/** The run's total XP last frame, for the "+N XP" tally. */
+let xpSeen = 0
 /** The level-up celebration for the current pick has started. */
 let pickIntro = false
 /** How many of the current run's coins are already in the wallet. */
@@ -188,7 +200,7 @@ function primary(text: string, onclick: () => void) {
   return b
 }
 
-const wallet = () => h('span', { class: 'bs-wallet', textContent: `● ${save.coins}` })
+const wallet = () => coinAmount(walletTotal(save, run, banked), 'bs-wallet')
 
 function leaveRun() {
   run = null
@@ -422,6 +434,7 @@ function renderPanels(s: RunState | null, time: number) {
         s.ballCount,
         JSON.stringify(s.boosts),
         JSON.stringify(save.helpers),
+        walletTotal(save, s, banked),
         paused,
       ].join('|')
     : 'none'
@@ -433,7 +446,10 @@ function renderPanels(s: RunState | null, time: number) {
     rightSide.replaceChildren()
     return
   }
-  leftSide.replaceChildren(navPanel(openShopFromBar, openGuideFromBar), statsPanel(s, save.bestTurn))
+  leftSide.replaceChildren(
+    navPanel(openShopFromBar, openGuideFromBar, walletTotal(save, s, banked)),
+    statsPanel(s, save.bestTurn),
+  )
   rightSide.replaceChildren(
     boostsPanel(s, (id) => boostInfo(id)),
     helpersPanel(
@@ -509,6 +525,7 @@ function beginRun(s: RunState) {
   overShown = false
   juice.turn = s.turn
   juice.setXp(s.level, s.xp / xpToNext(s.level), true)
+  xpSeen = xpTotal(s.level, s.xp)
   paused = false
   acc = 0
   aim = Math.PI / 2
@@ -581,7 +598,7 @@ function showPick() {
   const token = save.helpers.reroll > 0
   const cost = rerollCost(s)
   const rerollBtn = button(
-    token ? t('Reroll (use 1 of {n} tokens)', { n: save.helpers.reroll }) : t('Reroll (● {cost})', { cost }),
+    token ? t('Reroll (use 1 of {n} tokens)', { n: save.helpers.reroll }) : t('Reroll'),
     () => {
       if (!settled()) return
       checkpoint() // bank this run's coins so they can be spent
@@ -598,6 +615,7 @@ function showPick() {
     },
     'quiet',
   )
+  if (!token) rerollBtn.append(' ', coinAmount(cost))
   rerollBtn.disabled = !token && save.coins + (s.coins - banked) < cost
   show(
     h(
@@ -692,6 +710,25 @@ function finish(s: RunState) {
   const token = save.helpers.revive > 0
   const cost = reviveCost(s)
   if (!token && save.coins < cost) return showResults(s)
+  const reviveBtn = primary(
+    token ? t('Revive (use 1 of {n} tokens)', { n: save.helpers.revive }) : t('Revive'),
+    () => {
+      if (save.helpers.revive > 0) save.helpers = { ...save.helpers, revive: save.helpers.revive - 1 }
+      else {
+        const paid = spend(save, cost)
+        if (!paid) return showResults(s)
+        save = paid
+      }
+      revive(s)
+      overShown = false
+      controls.hidden = false
+      pauseBtn.hidden = false
+      playMusic(ARCADE)
+      checkpoint()
+      show(null)
+    },
+  )
+  if (!token) reviveBtn.append(' ', coinAmount(cost))
   show(
     h(
       'div',
@@ -699,26 +736,7 @@ function finish(s: RunState) {
       h('h2', { class: 'pf-heading', textContent: t('Continue?') }),
       h('p', { class: 'pf-lede', textContent: t('Clear the 3 lowest rows and keep going.') }),
       h('div', { class: 'bs-shop-head' }, h('span', { textContent: t('Turn {n}', { n: s.turn }) }), wallet()),
-      primary(
-        token
-          ? t('Revive (use 1 of {n} tokens)', { n: save.helpers.revive })
-          : t('Revive (● {cost})', { cost }),
-        () => {
-          if (save.helpers.revive > 0) save.helpers = { ...save.helpers, revive: save.helpers.revive - 1 }
-          else {
-            const paid = spend(save, cost)
-            if (!paid) return showResults(s)
-            save = paid
-          }
-          revive(s)
-          overShown = false
-          controls.hidden = false
-          pauseBtn.hidden = false
-          playMusic(ARCADE)
-          checkpoint()
-          show(null)
-        },
-      ),
+      reviveBtn,
       button(t('No thanks'), () => showResults(s), 'quiet'),
     ),
     'revive',
@@ -743,9 +761,7 @@ function showResults(s: RunState) {
         { class: 'bs-stats' },
         h('span', { textContent: t('Best turn {n}', { n: save.bestTurn }) }),
         h('span', { textContent: t('Best combo {n}', { n: save.bestCombo }) }),
-        h('span', {
-          textContent: t('Coins earned {n} · wallet ● {wallet}', { n: s.coins, wallet: save.coins }),
-        }),
+        h('span', {}, t('Coins earned {n} · wallet', { n: s.coins }), ' ', coinAmount(save.coins)),
       ),
       primary(t('Play again'), showHelpers),
       button(t('Shop'), () => showShop(showHome), 'wide'),
@@ -773,6 +789,9 @@ startRenderLoop((dt, time) => {
     for (const e of drainEvents(s)) juice.handle(e)
     juice.setCoins(s.coins)
     juice.setXp(s.level, s.xp / xpToNext(s.level))
+    const xpNow = xpTotal(s.level, s.xp)
+    juice.gainXp(xpNow - xpSeen)
+    xpSeen = xpNow
     // Level up: celebrate for a beat, then open the pick screen.
     if (s.phase !== 'pick') pickIntro = false
     else if (!panel.startsWith('pick')) {
@@ -794,6 +813,7 @@ startRenderLoop((dt, time) => {
   juice.update(dt)
   if (s && s.phase === 'aim') announceNewKinds(s)
   updateNotice(dt)
+  updateShopCoins()
   renderPanels(s, time)
   const d = s ? dims(s) : boardSize(COLS, ROWS)
   if (view.width !== d.boardW || view.height !== d.boardH) view.setSize(d.boardW, d.boardH)

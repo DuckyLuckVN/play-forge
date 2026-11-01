@@ -184,6 +184,11 @@ export function bankRun(save: Save, s: RunState, banked: number): { save: Save; 
 }
 
 /** Runs are saved only at turn boundaries, never mid-volley or after game over. */
+/** Coins the player has right now: the wallet plus this run's coins not banked yet. */
+export function walletTotal(save: Save, run: RunState | null, banked: number): number {
+  return save.coins + (run ? Math.max(0, run.coins - banked) : 0)
+}
+
 export function canBank(phase: RunState['phase']): boolean {
   return phase === 'aim' || phase === 'pick' || phase === 'grow'
 }

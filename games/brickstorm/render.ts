@@ -1,12 +1,13 @@
 import type { Particles } from '@forge/fx/particles'
 import type { Shake } from '@forge/fx/shake'
-import { ease } from '@forge/fx/tween'
+import { ease, prefersReducedMotion } from '@forge/fx/tween'
 import type { Canvas2D } from '@forge/render2d/canvas'
 import { FONT, theme } from '@forge/ui/theme'
 import { ArenaPainter, type ArenaId } from './arenas'
+import { drawCoin } from './coin'
 import { drawBall, TRAIL_STYLE } from './cosmetics'
 import { t } from './i18n'
-import { COIN_FLY, hpColor, type Juice } from './juice'
+import { COIN_FLY, hpColor, type Juice, TOUGHER_LIFE } from './juice'
 import { modsOf } from './sim/boosts'
 import { BALL_R, boardSize, CELL, COLS, COMBO_TIERS, PICKUP_R, ROWS, TOP } from './sim/config'
 import { traceGuide } from './sim/physics'
@@ -16,6 +17,8 @@ import type { BrickKind, PickupKind, Rect, RunState } from './sim/types'
 
 const TRAIL = 4
 const XP_COLOR = '#4be3a0'
+/** XP bar colour by heat: calm, glowing, on fire, white-hot. */
+const XP_HEAT_COLOR = [XP_COLOR, XP_COLOR, '#ffc83d', '#fff6d6']
 
 /** A glyph in the corner (or frame) that tells special bricks apart. */
 export function drawKindGlyph(ctx: CanvasRenderingContext2D, kind: BrickKind, r: Rect, time: number): void {
@@ -117,13 +120,7 @@ export function drawPickupGlyph(
     ctx.arc(x, y, PICKUP_R, 0, Math.PI * 2)
     ctx.stroke()
   } else {
-    ctx.fillStyle = theme.yolk
-    ctx.beginPath()
-    ctx.arc(x, y, PICKUP_R - 2, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.strokeStyle = theme.yolkEdge
-    ctx.lineWidth = 2
-    ctx.stroke()
+    drawCoin(ctx, x, y, PICKUP_R - 1, time * 3)
   }
 }
 
@@ -172,6 +169,7 @@ export class BoardRenderer {
       this.drawCombo(ctx, s)
     }
     this.drawCoinFlyers(ctx, juice)
+    this.drawTougher(ctx, juice)
     this.drawBanner(ctx, juice)
     if (juice.flash > 0) {
       ctx.fillStyle = `rgb(255 255 255 / ${juice.flash * 0.45})`
@@ -348,12 +346,17 @@ export class BoardRenderer {
     ctx.fillText(t('Turn {n}', { n: s.turn }), 12, TOP / 2 - 4)
     ctx.textAlign = 'right'
     ctx.fillStyle = theme.yolk
-    ctx.fillText(`● ${Math.floor(juice.shownCoins)}`, this.d.boardW - 12, TOP / 2 - 4)
+    const coins = String(Math.floor(juice.shownCoins))
+    ctx.fillText(coins, this.d.boardW - 12, TOP / 2 - 4)
+    drawCoin(ctx, this.d.boardW - 24 - ctx.measureText(coins).width, TOP / 2 - 4, 10)
 
-    // XP bar: eases toward the real XP, glows during a rush and flashes when it fills.
+    // XP bar: eases toward the real XP, heats up during a rush (glow, fire,
+    // white-hot) and flashes when it fills.
     const w = this.d.boardW - 24
     const fill = juice.shownXp % 1
-    const grow = juice.xpGlow * 3
+    const heat = juice.xpHeat
+    const color = XP_HEAT_COLOR[heat]
+    const grow = juice.xpGlow * 3 + (heat >= 3 ? 3 : 0)
     const y = TOP - 12 - grow / 2
     ctx.fillStyle = 'rgb(255 255 255 / 0.1)'
     ctx.beginPath()
@@ -361,10 +364,10 @@ export class BoardRenderer {
     ctx.fill()
     ctx.save()
     if (juice.xpGlow > 0) {
-      ctx.shadowColor = XP_COLOR
-      ctx.shadowBlur = 14 * juice.xpGlow
+      ctx.shadowColor = heat >= 2 ? '#ff9f43' : XP_COLOR
+      ctx.shadowBlur = (heat >= 3 ? 26 : 14) * juice.xpGlow
     }
-    ctx.fillStyle = XP_COLOR
+    ctx.fillStyle = color
     ctx.beginPath()
     ctx.roundRect(12, y, Math.max(6, w * fill), 6 + grow, 3)
     ctx.fill()
@@ -375,6 +378,22 @@ export class BoardRenderer {
       ctx.roundRect(12, y, w, 6 + grow, 3)
       ctx.fill()
     }
+    // On fire: flames lick up from the filled part of the bar.
+    if (heat >= 2 && !prefersReducedMotion()) {
+      for (let i = 0; i < heat; i++) {
+        this.particles.burst(12 + Math.random() * Math.max(6, w * fill), y, {
+          count: 1,
+          color: heat >= 3 ? ['#ffffff', '#fff3b0', '#ffc83d'] : ['#ff9f43', '#ffc83d', '#ff6b6b'],
+          speed: 70,
+          angle: -Math.PI / 2,
+          spread: 0.7,
+          life: 0.45,
+          size: 3,
+          gravity: -160,
+          shape: 'circle',
+        })
+      }
+    }
     for (; juice.xpSparks > 0; juice.xpSparks--) {
       this.particles.burst(12 + Math.max(6, w * fill), y + 3, {
         count: 6,
@@ -384,6 +403,26 @@ export class BoardRenderer {
         size: 3,
         gravity: 300,
       })
+    }
+    // "+N XP" in the HUD, popping as it grows.
+    const tally = juice.xpTally
+    if (tally) {
+      const pop = tally.age < 0.15 ? 1 + 0.35 * (1 - tally.age / 0.15) : 1
+      ctx.save()
+      ctx.globalAlpha = Math.min(1, Math.max(0, (1.2 - tally.age) / 0.4))
+      // Centre of the HUD row, between the turn and the coins.
+      ctx.translate(this.d.boardW / 2, TOP / 2 - 4)
+      ctx.scale(pop, pop)
+      ctx.font = `700 ${heat >= 2 ? 20 : 17}px ${FONT}`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.lineWidth = 4
+      ctx.strokeStyle = theme.night
+      const text = `+${Math.round(tally.amount)} XP`
+      ctx.strokeText(text, 0, 0)
+      ctx.fillStyle = heat >= 2 ? XP_HEAT_COLOR[heat] : XP_COLOR
+      ctx.fillText(text, 0, 0)
+      ctx.restore()
     }
   }
 
@@ -402,17 +441,36 @@ export class BoardRenderer {
   private drawCoinFlyers(ctx: CanvasRenderingContext2D, juice: Juice): void {
     const tx = this.d.boardW - 50
     const ty = TOP / 2 - 4
-    ctx.fillStyle = theme.yolk
     for (const c of juice.coinFlyers) {
       const t = (c.age - c.delay) / COIN_FLY
       if (t < 0) continue
       const k = ease.inCubic(Math.min(1, t))
       const x = c.x0 + (tx - c.x0) * k
       const y = c.y0 + (ty - c.y0) * k - Math.sin(k * Math.PI) * 60
-      ctx.beginPath()
-      ctx.arc(x, y, 5, 0, Math.PI * 2)
-      ctx.fill()
+      drawCoin(ctx, x, y, 7, c.age * 14)
     }
+  }
+
+  /** "▲ Tougher bricks" under the HUD on the turn a new hp stretch starts. */
+  private drawTougher(ctx: CanvasRenderingContext2D, juice: Juice): void {
+    const age = juice.tougherAge
+    if (age === null) return
+    const text = t('▲ Tougher bricks')
+    ctx.save()
+    ctx.globalAlpha = Math.min(1, age / 0.2, (TOUGHER_LIFE - age) / 0.5)
+    ctx.font = `700 14px ${FONT}`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    const w = ctx.measureText(text).width + 24
+    const x = this.d.boardW / 2
+    const y = TOP + 16 + Math.min(0, (age - 0.25) * 40)
+    ctx.fillStyle = 'rgb(255 107 107 / 0.92)'
+    ctx.beginPath()
+    ctx.roundRect(x - w / 2, y - 12, w, 24, 12)
+    ctx.fill()
+    ctx.fillStyle = theme.chalk
+    ctx.fillText(text, x, y + 1)
+    ctx.restore()
   }
 
   private drawBanner(ctx: CanvasRenderingContext2D, juice: Juice): void {

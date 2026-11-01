@@ -2,6 +2,7 @@
 import { h } from '@forge/ui/dom'
 import { theme } from '@forge/ui/theme'
 import { drawBall } from './cosmetics'
+import { coinAmount, shortCoins } from './coin'
 import { GUIDE, runStats } from './guide'
 import { t } from './i18n'
 import { BOOST_ICONS } from './icons'
@@ -34,12 +35,19 @@ export function statsPanel(s: RunState, bestTurn: number): HTMLElement {
   )
 }
 
-/** Shop and Guide, at the top of the left panel. */
-export function navPanel(onShop: () => void, onGuide: () => void): HTMLElement {
+/** Shop (with the wallet) and Guide, at the top of the left panel. */
+export function navPanel(onShop: () => void, onGuide: () => void, coins: number): HTMLElement {
+  const shop = h(
+    'button',
+    { class: 'pf-btn primary bs-shop-btn', type: 'button', onclick: onShop },
+    h('span', { textContent: t('Shop') }),
+    coinAmount(shortCoins(coins)),
+  )
+  shop.setAttribute('aria-label', t('Shop ({n} coins)', { n: coins }))
   return h(
     'div',
     { class: 'bs-side-nav' },
-    h('button', { class: 'pf-btn primary', type: 'button', textContent: t('Shop'), onclick: onShop }),
+    shop,
     h('button', { class: 'pf-btn', type: 'button', textContent: t('? Guide'), onclick: onGuide }),
   )
 }

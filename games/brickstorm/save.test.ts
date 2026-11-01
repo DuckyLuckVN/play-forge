@@ -9,6 +9,7 @@ import {
   SAVE_KEY,
   SIM_VERSION,
   spend,
+  walletTotal,
   writeSave,
   type Save,
 } from './save'
@@ -125,6 +126,15 @@ describe('save', () => {
 })
 
 describe('wallet', () => {
+  it('counts coins earned this run that are not banked yet', () => {
+    const save = { ...fresh(), coins: 100 }
+    const s = createRun(2)
+    s.coins = 30
+    expect(walletTotal(save, null, 0)).toBe(100)
+    expect(walletTotal(save, s, 0)).toBe(130)
+    expect(walletTotal(save, s, 30)).toBe(100)
+  })
+
   it('banks only coins not banked before', () => {
     const s = createRun(2)
     s.coins = 30

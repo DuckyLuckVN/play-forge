@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { playSound } from '@forge/audio/sound'
 import { theme } from '@forge/ui/theme'
 import { comboPitch, hitSound, hpColor, Juice, pitched } from './juice'
+import { BRICK_SOUNDS } from './sounds'
 
 vi.mock('@forge/audio/sound', () => ({ playSound: vi.fn() }))
 vi.mock('@forge/fx/confetti', () => ({ celebrate: vi.fn() }))
@@ -215,7 +216,8 @@ describe('XP bar', () => {
       j.setXp(i, 0.9)
       j.update(1 / 60)
     }
-    expect(vi.mocked(playSound).mock.calls.length).toBeLessThanOrEqual(8)
+    const ticks = vi.mocked(playSound).mock.calls.filter(([s]) => s !== BRICK_SOUNDS.whoosh)
+    expect(ticks.length).toBeLessThanOrEqual(8)
   })
 })
 
@@ -246,5 +248,48 @@ describe('level-up intro', () => {
     j.handle({ type: 'mystery', x: 0, y: 0, reward: 'pick' })
     j.startLevelUp()
     expect(j.banner?.text).toBe('FREE BOOST!')
+  })
+})
+
+describe('XP tally and heat', () => {
+  it('adds up XP gained in a burst, then clears', () => {
+    const j = juice()
+    j.gainXp(3)
+    j.update(0.5)
+    j.gainXp(4)
+    expect(j.xpTally?.amount).toBe(7)
+    j.update(0.5)
+    expect(j.xpTally?.amount).toBe(7)
+    j.update(2)
+    expect(j.xpTally).toBeNull()
+    j.gainXp(2)
+    expect(j.xpTally?.amount).toBe(2)
+  })
+
+  it('heats up the bar in tiers with the size of the rush', () => {
+    const rush = (levels: number) => {
+      const j = juice()
+      j.setXp(0, 0)
+      j.setXp(Math.floor(levels), levels % 1)
+      j.update(0.05)
+      return j
+    }
+    expect(rush(0.1).xpHeat).toBe(0)
+    expect(rush(0.4).xpHeat).toBe(1)
+    expect(rush(0.9).xpHeat).toBe(2)
+    expect(rush(1.5).xpHeat).toBe(3)
+  })
+
+  it('whooshes once when the bar goes white-hot', () => {
+    const j = juice()
+    vi.mocked(playSound).mockClear()
+    j.setXp(2, 0)
+    j.update(0.05)
+    const calls = vi.mocked(playSound).mock.calls.length
+    j.setXp(2, 0.5)
+    j.update(0.05)
+    const whooshes = vi.mocked(playSound).mock.calls.filter(([s]) => s === BRICK_SOUNDS.whoosh)
+    expect(whooshes).toHaveLength(1)
+    expect(calls).toBeGreaterThan(0)
   })
 })

@@ -82,12 +82,16 @@ const BANNER_LIFE = 1.4
 const SOUND_GAP_MS = 30
 /** XP gained within this many seconds counts toward a rush. */
 const RUSH_WINDOW = 1
-/** A rush is at least this much of a level within the window. */
-const RUSH_AT = 0.3
+/** Bar heat by how much of a level was gained within the window: glow, fire, white-hot. */
+const HEAT_AT = [0.3, 0.8, 1] as const
+/** Seconds the "+N XP" tally stays after the last gain. */
+const TALLY_HOLD = 1.2
 /** Seconds between XP ticks (at most 8 a second). */
 const XP_TICK_GAP = 0.125
 /** Seconds the level-up celebration plays before the pick screen opens. */
 export const LEVEL_UP_INTRO = 1.2
+/** Seconds the "bricks are tougher" notice shows. */
+export const TOUGHER_LIFE = 2.2
 
 /** A short XP tick whose pitch climbs an octave as the bar fills. */
 export function xpTick(fill: number): Tone[] {
@@ -114,11 +118,17 @@ export class Juice {
   private targetCoins = 0
   /** Coins flying from a broken brick to the HUD counter. */
   coinFlyers: Array<{ x0: number; y0: number; age: number; delay: number }> = []
+  /** Seconds since bricks got tougher (a new hp stretch), for the "▲" notice; null when not showing. */
+  tougherAge: number | null = null
   /** XP as drawn, in levels (1.5 = halfway through the second level); eases toward the real value. */
   shownXp = 0
   private targetXp = 0
   /** 0..1 glow on the XP bar during a rush of XP; decays in `update`. */
   xpGlow = 0
+  /** How hot the XP bar is: 0 calm, 1 glowing, 2 on fire, 3 white-hot. */
+  xpHeat = 0
+  /** XP gained in the current burst, shown as "+N XP" by the bar; `age` is seconds since the last gain. */
+  xpTally: { amount: number; age: number } | null = null
   /** 0..1 flash on the XP bar when it fills up. */
   xpFlash = 0
   /** Spark bursts waiting to be thrown off the end of the XP bar (the renderer takes them). */
@@ -204,6 +214,9 @@ export class Juice {
       case 'turn':
         this.turn = e.turn
         return
+      case 'tougher':
+        this.tougherAge = 0
+        return
       case 'explode':
       case 'zap':
         // Chains ripple outward: each link plays a beat after the one before.
@@ -261,6 +274,15 @@ export class Juice {
     this.targetXp = total
   }
 
+  /** XP points just earned, for the "+N XP" tally. */
+  gainXp(points: number): void {
+    if (points <= 0) return
+    if (this.xpTally) {
+      this.xpTally.amount += points
+      this.xpTally.age = 0
+    } else this.xpTally = { amount: points, age: 0 }
+  }
+
   /** Starts the level-up celebration that plays before the pick screen. */
   startLevelUp(): void {
     this.levelUp = { age: 0 }
@@ -288,7 +310,14 @@ export class Juice {
     this.xpFlash = Math.max(0, this.xpFlash - dt * 2)
     this.xpGains = this.xpGains.filter((g) => this.clock - g.at < RUSH_WINDOW)
     const recent = this.xpGains.reduce((sum, g) => sum + g.amount, 0)
-    this.xpGlow = recent >= RUSH_AT ? 1 : Math.max(0, this.xpGlow - dt * 2)
+    const heat = HEAT_AT.filter((at) => recent >= at).length
+    if (heat === 3 && this.xpHeat < 3) playSound(BRICK_SOUNDS.whoosh)
+    this.xpHeat = heat
+    this.xpGlow = heat > 0 ? 1 : Math.max(0, this.xpGlow - dt * 2)
+    if (this.xpTally) {
+      this.xpTally.age += dt
+      if (this.xpTally.age > TALLY_HOLD) this.xpTally = null
+    }
     const gap = this.targetXp - this.shownXp
     if (gap > 0) {
       const before = this.shownXp
@@ -330,6 +359,8 @@ export class Juice {
 
   update(dt: number): void {
     this.clock += dt
+    if (this.tougherAge !== null)
+      this.tougherAge = this.tougherAge + dt > TOUGHER_LIFE ? null : this.tougherAge + dt
     this.updateXp(dt)
     this.hitstop = Math.max(0, this.hitstop - dt)
     for (const q of this.queue) q.at -= dt

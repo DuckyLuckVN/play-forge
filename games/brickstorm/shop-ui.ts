@@ -3,6 +3,7 @@ import { playSound } from '@forge/audio/sound'
 import { h } from '@forge/ui/dom'
 import { FONT, theme } from '@forge/ui/theme'
 import { ArenaPainter, type ArenaId } from './arenas'
+import { coinAmount } from './coin'
 import { drawBall, IMPACT_STYLE, TRAIL_STYLE } from './cosmetics'
 import { t } from './i18n'
 import type { Save } from './save'
@@ -148,7 +149,6 @@ export function shopPanel(getSave: () => Save, setSave: (s: Save) => void, onBac
         action = h('button', {
           class: 'pf-btn primary',
           type: 'button',
-          textContent: `● ${it.price}`,
           disabled: save.coins < it.price,
           onclick: () => {
             const res = buy(getSave(), it.id)
@@ -160,6 +160,7 @@ export function shopPanel(getSave: () => Save, setSave: (s: Save) => void, onBac
             render()
           },
         })
+        action.append(coinAmount(it.price))
         action.setAttribute(
           'aria-label',
           t('Buy {name} for {price} coins', { name: t(it.name), price: it.price }),
@@ -181,7 +182,7 @@ export function shopPanel(getSave: () => Save, setSave: (s: Save) => void, onBac
         'div',
         { class: 'bs-shop-head' },
         h('h2', { class: 'pf-heading', textContent: t('Shop') }),
-        h('span', { class: 'bs-wallet', textContent: `● ${save.coins}` }),
+        coinAmount(save.coins, 'bs-wallet'),
       ),
       tabs,
       h('div', { class: 'bs-items' }, ...items),

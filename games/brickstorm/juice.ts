@@ -178,6 +178,13 @@ export class Juice {
           color: e.kind === 'gold' ? theme.yolk : hpColor(e.maxHp, this.turn),
           ...IMPACT_STYLE[this.impact],
         })
+        // Comic impacts pop a word now and then.
+        if (IMPACT_STYLE[this.impact]?.text && Math.random() < 0.3)
+          this.particles.text(e.x, e.y, IMPACT_STYLE[this.impact].text!, {
+            color: theme.yolk,
+            size: 16,
+            rise: 30,
+          })
         this.flyCoins(e.x, e.y, Math.min(e.coins, 5))
         if (e.kind === 'gold') {
           this.particles.burst(e.x, e.y, {

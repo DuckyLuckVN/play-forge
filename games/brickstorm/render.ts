@@ -11,6 +11,7 @@ import { COIN_FLY, hpColor, type Juice, TOUGHER_LIFE } from './juice'
 import { modsOf } from './sim/boosts'
 import { BALL_R, boardSize, CELL, COLS, COMBO_TIERS, PICKUP_R, ROWS, TOP } from './sim/config'
 import { traceGuide } from './sim/physics'
+import { restingBall } from './sim/run'
 import { dims, type Dims } from './sim/dims'
 import { brickRect, cellCenter } from './sim/rows'
 import type { BrickKind, PickupKind, Rect, RunState } from './sim/types'
@@ -230,14 +231,16 @@ export class BoardRenderer {
   }
 
   private drawGuide(ctx: CanvasRenderingContext2D, s: RunState, aim: number): void {
+    const rest = restingBall(s)
     const pts = traceGuide(
       s.launchX,
-      this.d.floorY - BALL_R,
+      rest.y,
       aim,
       modsOf(s.boosts).guideLength,
       s.bricks.map(brickRect),
       this.d.boardW,
       this.d.floorY,
+      rest.r,
     )
     ctx.strokeStyle = 'rgb(244 241 255 / 0.7)'
     ctx.lineWidth = 3
@@ -320,13 +323,13 @@ export class BoardRenderer {
       ctx.globalAlpha = 1
     }
 
+    const rest = restingBall(s)
     // Balls waiting at the launch point, and balls that already landed.
     const home = s.phase === 'volley' ? (s.nextLaunchX ?? s.launchX) : s.launchX
     const waiting = s.phase === 'volley' ? s.balls.some((b) => b.status !== 'flying') : true
-    if (waiting)
-      drawBall(ctx, this.ball, s.phase === 'volley' ? s.launchX : home, this.d.floorY - BALL_R, BALL_R, time)
+    if (waiting) drawBall(ctx, this.ball, s.phase === 'volley' ? s.launchX : home, rest.y, rest.r, time)
     if (s.phase === 'volley' && s.nextLaunchX !== null) {
-      drawBall(ctx, this.ball, s.nextLaunchX, this.d.floorY - BALL_R, BALL_R, time)
+      drawBall(ctx, this.ball, s.nextLaunchX, rest.y, rest.r, time)
     }
     if (s.phase === 'aim') {
       const n = s.doubleVolleys > 0 ? s.ballCount * 2 : s.ballCount

@@ -70,4 +70,11 @@ describe('traceGuide', () => {
     const pts = traceGuide(BOARD_W / 2, FLOOR_Y - BALL_R, Math.PI / 2, 2000, [wall])
     expect(pts[1][1]).toBeCloseTo(320 + BALL_R, 0)
   })
+
+  it('bounces where a bigger ball would', () => {
+    const wall = { x: 0, y: 300, w: BOARD_W, h: 20 }
+    const r = BALL_R * 1.6
+    const pts = traceGuide(BOARD_W / 2, FLOOR_Y - r, Math.PI / 2, 2000, [wall], BOARD_W, FLOOR_Y, r)
+    expect(pts[1][1]).toBeCloseTo(320 + r, 0)
+  })
 })

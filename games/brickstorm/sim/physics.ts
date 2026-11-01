@@ -103,6 +103,7 @@ export function traceGuide(
   rects: Rect[],
   width = BOARD_W,
   floorY = FLOOR_Y,
+  r = BALL_R,
 ): Array<[number, number]> {
   const step = BALL_R / 2
   const b = { x, y, vx: Math.cos(angle) * step, vy: -Math.sin(angle) * step }
@@ -110,15 +111,15 @@ export function traceGuide(
   for (let travelled = 0; travelled < length; travelled += step) {
     b.x += b.vx
     b.y += b.vy
-    let bounced = bounceWalls(b, BALL_R, width)
-    const c = deepestContact(b.x, b.y, rects)
+    let bounced = bounceWalls(b, r, width)
+    const c = deepestContact(b.x, b.y, rects, r)
     if (c) {
       b.x += c.nx * c.depth
       b.y += c.ny * c.depth
       ;[b.vx, b.vy] = reflect(b.vx, b.vy, c.nx, c.ny)
       bounced = true
     }
-    if (b.y >= floorY - BALL_R && b.vy > 0) break
+    if (b.y >= floorY - r && b.vy > 0) break
     if (bounced) pts.push([b.x, b.y])
   }
   pts.push([b.x, b.y])

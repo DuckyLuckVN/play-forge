@@ -80,6 +80,12 @@ export function drainEvents(s: RunState): SimEvent[] {
   return events
 }
 
+/** The ball waiting on the floor: as big as the balls the run will fire. */
+export function restingBall(s: RunState): { y: number; r: number } {
+  const r = modsOf(s.boosts).radius
+  return { y: dims(s).floorY - r, r }
+}
+
 /** Starts a volley in direction (cos a, -sin a). Only valid while aiming. */
 export function fire(s: RunState, angle: number): void {
   if (s.phase !== 'aim') return
@@ -99,7 +105,7 @@ export function fire(s: RunState, angle: number): void {
   }
   s.balls = Array.from({ length: n }, (_, i): Ball => ({
     x: s.launchX,
-    y: dims(s).floorY - mods.radius,
+    y: restingBall(s).y,
     vx,
     vy,
     status: 'queued',

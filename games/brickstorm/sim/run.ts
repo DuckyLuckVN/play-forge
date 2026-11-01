@@ -24,7 +24,7 @@ import { damageBrick, explode, zap } from './damage'
 import { dims } from './dims'
 export { comboMultiplier } from './damage'
 import { antiStall, bounceWalls, circleRect, deepestContact, reflect } from './physics'
-import { brickRect, cellCenter, spawnRow } from './rows'
+import { brickRect, cellCenter, hpStepStart, spawnRow } from './rows'
 import type { Ball, Brick, RunState, SimEvent } from './types'
 
 const COIN_PICKUP = 5
@@ -299,6 +299,7 @@ export function startNextTurn(s: RunState, spawn = true): void {
   if (spawn) spawnRow(s)
   if (s.turn % GROW_EVERY === 0) s.growPending = true
   s.events.push({ type: 'turn', turn: s.turn })
+  if (hpStepStart(s.turn) === s.turn) s.events.push({ type: 'tougher' })
   if (s.bricks.some((b) => b.row === dims(s).dangerRow - 1)) s.events.push({ type: 'danger' })
   openPickOrAim(s)
 }

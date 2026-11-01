@@ -16,6 +16,7 @@ import {
 import { createOfflineTransport, randomId, type Transport } from './net/transport'
 import { createTrysteroTransport } from './net/trystero'
 import { audioMenu } from './ui/audio-menu'
+import { langMenu } from './ui/lang-menu'
 import { h, icon, toast } from './ui/dom'
 import { icons } from './ui/icons'
 import { optionPickers } from './ui/options'
@@ -150,7 +151,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     home,
     h('h1', { class: 'pf-bar-title', textContent: opts.title }),
     scoresEl,
-    h('div', { class: 'pf-bar-actions' }, pauseBtn, audioMenu(), leaveBtn),
+    h('div', { class: 'pf-bar-actions' }, pauseBtn, langMenu(), audioMenu(), leaveBtn),
   )
   const stage = h('main', { class: 'pf-stage' })
   const overlay = h('div', { class: 'pf-overlay' })

@@ -16,6 +16,17 @@ export {
 } from './audio/sound'
 export { ARCADE, LOUNGE } from './audio/tracks'
 export { Emitter } from './core/emitter'
+export {
+  detectLang,
+  format,
+  getLang,
+  LANGS,
+  setLang,
+  translator,
+  type Dictionary,
+  type Lang,
+  type Params,
+} from './core/i18n'
 export { bindInput, type Direction, type InputBindings } from './core/input'
 export { startRenderLoop, startTicker } from './core/loop'
 export { random, randomInt, randomSeed, type RngState } from './core/rng'
@@ -39,6 +50,7 @@ export { createOfflineTransport, randomId, type Transport } from './net/transpor
 export { createTrysteroTransport } from './net/trystero'
 export { createCanvas2D, type Canvas2D } from './render2d/canvas'
 export { audioMenu } from './ui/audio-menu'
+export { langMenu } from './ui/lang-menu'
 export { h, icon, toast } from './ui/dom'
 export { icons } from './ui/icons'
 export { applyTheme, FONT, PLAYER_COLORS, playerColor, theme } from './ui/theme'

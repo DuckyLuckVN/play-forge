@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { playSound } from '@forge/audio/sound'
 import { theme } from '@forge/ui/theme'
 import { comboPitch, hitSound, hpColor, Juice, pitched } from './juice'
+import { BRICK_SOUNDS } from './sounds'
 
 vi.mock('@forge/audio/sound', () => ({ playSound: vi.fn() }))
 vi.mock('@forge/fx/confetti', () => ({ celebrate: vi.fn() }))
@@ -145,5 +146,150 @@ describe('Juice', () => {
     expect(j.coinFlyers).toHaveLength(0)
     j.handle({ type: 'kill', id: 2, x: 50, y: 300, maxHp: 1, kind: 'normal', coins: 2 })
     expect(j.coinFlyers).toHaveLength(2)
+  })
+})
+
+describe('XP bar', () => {
+  it('eases the bar toward the real XP', () => {
+    const j = juice()
+    j.setXp(0, 0.5)
+    expect(j.shownXp).toBe(0)
+    for (let i = 0; i < 120; i++) j.update(1 / 60)
+    expect(j.shownXp).toBeCloseTo(0.5, 2)
+  })
+
+  it('fills the bar and flashes when a level is crossed', () => {
+    const j = juice()
+    j.setXp(1, 0.2)
+    while (j.shownXp < 1) j.update(1 / 60)
+    expect(j.xpFlash).toBe(1)
+    for (let i = 0; i < 120; i++) j.update(1 / 60)
+    expect(j.shownXp).toBeCloseTo(1.2, 2)
+  })
+
+  it('snaps back for a new run', () => {
+    const j = juice()
+    j.setXp(2, 0.5)
+    j.setXp(0, 0)
+    expect(j.shownXp).toBe(0)
+  })
+
+  it('jumps straight to a resumed run without a rush', () => {
+    const j = juice()
+    vi.mocked(playSound).mockClear()
+    j.setXp(4, 0.5, true)
+    j.update(0.1)
+    expect(j.shownXp).toBe(4.5)
+    expect(j.xpGlow).toBe(0)
+    expect(playSound).not.toHaveBeenCalled()
+  })
+
+  it('glows, sparks and ticks with a rising pitch on a quick rush of XP', () => {
+    const j = juice()
+    vi.mocked(playSound).mockClear()
+    for (let i = 0; i < 6; i++) {
+      j.setXp(0, (i + 1) * 0.08)
+      j.update(0.1)
+    }
+    expect(j.xpGlow).toBeGreaterThan(0)
+    expect(j.xpSparks).toBeGreaterThan(0)
+    const ticks = vi.mocked(playSound).mock.calls.map(([s]) => (s as { freq: number }[])[0].freq)
+    expect(ticks.length).toBeGreaterThan(1)
+    expect(ticks.at(-1)!).toBeGreaterThan(ticks[0])
+  })
+
+  it('stays calm on a slow trickle of XP', () => {
+    const j = juice()
+    vi.mocked(playSound).mockClear()
+    for (let i = 0; i < 10; i++) {
+      j.setXp(0, (i + 1) * 0.02)
+      j.update(0.5)
+    }
+    expect(j.xpGlow).toBe(0)
+    expect(playSound).not.toHaveBeenCalled()
+  })
+
+  it('ticks at most 8 times a second', () => {
+    const j = juice()
+    vi.mocked(playSound).mockClear()
+    for (let i = 0; i < 60; i++) {
+      j.setXp(i, 0.9)
+      j.update(1 / 60)
+    }
+    const ticks = vi.mocked(playSound).mock.calls.filter(([s]) => s !== BRICK_SOUNDS.whoosh)
+    expect(ticks.length).toBeLessThanOrEqual(8)
+  })
+})
+
+describe('level-up intro', () => {
+  it('celebrates, then lets the pick screen open after a beat', () => {
+    const j = juice()
+    vi.mocked(playSound).mockClear()
+    j.handle({ type: 'levelUp' })
+    j.startLevelUp()
+    expect(j.banner).toMatchObject({ text: 'LEVEL UP!', big: true })
+    expect(playSound).toHaveBeenCalledTimes(2)
+    expect(j.levelUpDone).toBe(false)
+    j.update(1)
+    expect(j.levelUpDone).toBe(false)
+    j.update(0.3)
+    expect(j.levelUpDone).toBe(true)
+  })
+
+  it('can be skipped', () => {
+    const j = juice()
+    j.startLevelUp()
+    j.skipLevelUp()
+    expect(j.levelUpDone).toBe(true)
+  })
+
+  it('says FREE BOOST for a pick from a mystery brick', () => {
+    const j = juice()
+    j.handle({ type: 'mystery', x: 0, y: 0, reward: 'pick' })
+    j.startLevelUp()
+    expect(j.banner?.text).toBe('FREE BOOST!')
+  })
+})
+
+describe('XP tally and heat', () => {
+  it('adds up XP gained in a burst, then clears', () => {
+    const j = juice()
+    j.gainXp(3)
+    j.update(0.5)
+    j.gainXp(4)
+    expect(j.xpTally?.amount).toBe(7)
+    j.update(0.5)
+    expect(j.xpTally?.amount).toBe(7)
+    j.update(2)
+    expect(j.xpTally).toBeNull()
+    j.gainXp(2)
+    expect(j.xpTally?.amount).toBe(2)
+  })
+
+  it('heats up the bar in tiers with the size of the rush', () => {
+    const rush = (levels: number) => {
+      const j = juice()
+      j.setXp(0, 0)
+      j.setXp(Math.floor(levels), levels % 1)
+      j.update(0.05)
+      return j
+    }
+    expect(rush(0.1).xpHeat).toBe(0)
+    expect(rush(0.4).xpHeat).toBe(1)
+    expect(rush(0.9).xpHeat).toBe(2)
+    expect(rush(1.5).xpHeat).toBe(3)
+  })
+
+  it('whooshes once when the bar goes white-hot', () => {
+    const j = juice()
+    vi.mocked(playSound).mockClear()
+    j.setXp(2, 0)
+    j.update(0.05)
+    const calls = vi.mocked(playSound).mock.calls.length
+    j.setXp(2, 0.5)
+    j.update(0.05)
+    const whooshes = vi.mocked(playSound).mock.calls.filter(([s]) => s === BRICK_SOUNDS.whoosh)
+    expect(whooshes).toHaveLength(1)
+    expect(calls).toBeGreaterThan(0)
   })
 })

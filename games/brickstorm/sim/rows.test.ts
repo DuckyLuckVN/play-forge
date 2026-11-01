@@ -14,6 +14,8 @@ function blank(seed: number, turn: number): RunState {
     pickups: [],
     nextId: 1,
     events: [],
+    ballCount: 999,
+    boosts: {},
   } as unknown as RunState
 }
 
@@ -48,10 +50,10 @@ describe('spawnRow', () => {
     let doubled = false
     for (let seed = 1; seed <= 500; seed++) {
       for (const b of spawned(seed, 50).bricks) {
-        expect(b.hp).toBeGreaterThanOrEqual(120) // hpScale(50) = 150, ×0.8
-        expect(b.hp).toBeLessThanOrEqual(360) // ×1.2, doubled
+        expect(b.hp).toBeGreaterThanOrEqual(96) // hpScale(50) ≈ 107, ×0.9
+        expect(b.hp).toBeLessThanOrEqual(236) // ×1.1, doubled
         expect(b.maxHp).toBe(b.hp)
-        if (b.hp > 180) doubled = true
+        if (b.hp > 118) doubled = true
       }
     }
     expect(doubled).toBe(true)

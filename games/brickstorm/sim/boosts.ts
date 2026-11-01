@@ -1,5 +1,5 @@
 import { random } from '@forge/core/rng'
-import { BALL_R, CELL, COMBO_GAP, MAX_COLS, MAX_ROWS } from './config'
+import { BALL_R, CELL, COMBO_GAP, GUIDE_LENGTH, MAX_COLS, MAX_ROWS } from './config'
 import type { BoostId, RunState } from './types'
 
 export type Rarity = 'common' | 'rare' | 'epic'
@@ -39,6 +39,7 @@ export const BOOSTS: Record<BoostId, { name: string; text: string; rarity: Rarit
     rarity: 'epic',
     max: 1,
   },
+  eagle: { name: 'Eagle Eye', text: '+50% aim guide length', rarity: 'rare', max: 3 },
   secondWind: {
     name: 'Second Wind',
     text: 'Once per run, a brick reaching the bottom wipes its row instead',
@@ -95,12 +96,18 @@ export function modsOf(boosts: Partial<Record<BoostId, number>>) {
     xpMult: 1 + 0.3 * n('brain'),
     glass: n('glass') > 0,
     secondWind: n('secondWind') > 0,
+    guideLength: GUIDE_LENGTH * (1 + 0.5 * n('eagle')),
   }
 }
 
 /** XP needed to go from `level` to the next one. */
 export function xpToNext(level: number): number {
   return 8 + 6 * level
+}
+
+/** All XP earned in a run: every finished level plus `xp` into the current one. */
+export function xpTotal(level: number, xp: number): number {
+  return 8 * level + 3 * level * (level - 1) + xp
 }
 
 /** Up to 3 distinct boosts that aren't maxed out, weighted by rarity. */

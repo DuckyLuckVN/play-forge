@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BOOSTS, modsOf, pickBoost, reroll, rollChoices, xpToNext } from './boosts'
+import { BOOSTS, modsOf, pickBoost, reroll, rollChoices, xpToNext, xpTotal } from './boosts'
 import { drainEvents, fire, step } from './run'
 import { brick, empty, runVolley } from './testing'
 import type { BoostId } from './types'
@@ -144,5 +144,13 @@ describe('xp in a run', () => {
       hits += drainEvents(x).filter((e) => e.type === 'hit').length
     })
     expect(hits).toBeLessThanOrEqual(3)
+  })
+})
+
+describe('xpTotal', () => {
+  it('counts all XP earned across levels', () => {
+    expect(xpTotal(0, 5)).toBe(5)
+    expect(xpTotal(1, 0)).toBe(xpToNext(0))
+    expect(xpTotal(3, 2)).toBe(xpToNext(0) + xpToNext(1) + xpToNext(2) + 2)
   })
 })

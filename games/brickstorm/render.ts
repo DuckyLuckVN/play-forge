@@ -6,6 +6,7 @@ import { compactNumber, fillFitText, fitScale } from '@forge/ui/text'
 import { FONT, theme } from '@forge/ui/theme'
 import { ArenaPainter, type ArenaId } from './arenas'
 import { drawBoss, drawRoleBrick } from './boss-art'
+import { BossGlide } from './boss-glide'
 import { bossHidesGuide } from './sim/boss'
 import { drawCoin } from './coin'
 import { drawBall, TRAIL_STYLE } from './cosmetics'
@@ -152,6 +153,8 @@ export class BoardRenderer {
 
   /** Board geometry for the frame being drawn. */
   private d: Dims = boardSize(COLS, ROWS)
+  private glide = new BossGlide()
+  private lastTime = 0
 
   draw(s: RunState | null, juice: Juice, aim: number | null, time: number): void {
     this.d = s ? dims(s) : boardSize(COLS, ROWS)
@@ -163,7 +166,7 @@ export class BoardRenderer {
     if (s) {
       this.drawPickups(ctx, s, time)
       this.drawBricks(ctx, s, time)
-      drawBoss(ctx, s, time, { hit: juice.bossHit, look: bossLook(s), cast: juice.bossCast })
+      this.drawMovingBoss(ctx, s, time, juice)
       if (s.phase === 'aim' && aim !== null) this.drawGuide(ctx, s, aim)
       this.drawBalls(ctx, s, time, juice.zaps)
     }
@@ -471,6 +474,40 @@ export class BoardRenderer {
       const y = c.y0 + (ty - c.y0) * k - Math.sin(k * Math.PI) * 60
       drawCoin(ctx, x, y, 7, c.age * 14)
     }
+  }
+
+  /** The boss, eased from where it was when it moves, with dust (or a teleport puff) as it goes. */
+  private drawMovingBoss(ctx: CanvasRenderingContext2D, s: RunState, time: number, juice: Juice): void {
+    this.glide.update(Math.min(0.1, Math.max(0, time - this.lastTime)))
+    this.lastTime = time
+    const parts = s.bricks.filter((b) => b.kind === 'boss')
+    if (!s.boss || !parts.length) return
+    const col = Math.min(...parts.map((b) => b.col))
+    const row = Math.min(...parts.map((b) => b.row))
+    const fromX = this.glide.x
+    const { dc, dr } = this.glide.track(s.boss, col, row)
+    if (dc || dr > 1 || dr < 0) {
+      const xs = parts.map((b) => cellCenter(b.col, b.row))
+      const cx = xs.reduce((a, p) => a + p.x, 0) / xs.length
+      const cy = xs.reduce((a, p) => a + p.y, 0) / xs.length
+      if (s.boss.traits.includes('blink') && Math.abs(dc) > 0) {
+        // Teleport: a puff where it was and where it lands.
+        for (const x of [cx + fromX - dc * CELL, cx]) {
+          this.particles.burst(x, cy, { count: 24, color: ['#d68cff', '#ffffff'], speed: 260, life: 0.5 })
+        }
+        this.glide.x = 0 // a teleport snaps, the puffs sell it
+      } else {
+        this.particles.burst(cx - Math.sign(dc) * 60, cy + 30, {
+          count: 14,
+          color: ['#b9b3d9', '#ffffff'],
+          speed: 120,
+        })
+      }
+    }
+    ctx.save()
+    ctx.translate(this.glide.x, this.glide.y)
+    drawBoss(ctx, s, time, { hit: juice.bossHit, look: bossLook(s), cast: juice.bossCast })
+    ctx.restore()
   }
 
   /** The column or row the board just gained: a glow that fades, a light sweeping along it, sparks at its edge. */

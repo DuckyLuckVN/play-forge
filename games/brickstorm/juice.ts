@@ -265,6 +265,7 @@ export class Juice {
         return playSound(pitched(BRICK_SOUNDS.kill, 1.6))
       case 'bossDown':
         this.show(t('BOSS DOWN! +{coins}', { coins: e.coins }), 1)
+        this.particles.text(e.x, e.y + 40, t('+1 BOOST SLOT!'), { color: '#4be3a0', size: 22, rise: 60 })
         this.banner!.big = true
         this.shake.add(0.8)
         celebrate()

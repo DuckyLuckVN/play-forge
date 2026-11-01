@@ -318,6 +318,7 @@ export const BOSS_SKILLS: Record<BossSkillId, BossSkill> = {
   },
   barrier: {
     tier: 2,
+    spawn: (s, boss) => setMem(boss, 'barrier', Math.max(2, Math.ceil(s.ballCount / 5))),
     launch: (s, boss) => setMem(boss, 'barrier', Math.max(2, Math.ceil(s.ballCount / 5))),
     damage: (_s, boss, amount, hit) => {
       if (hit.source !== 'ball' || mem(boss, 'barrier') <= 0) return amount

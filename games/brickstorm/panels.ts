@@ -74,41 +74,57 @@ function infoButton(label: string, onInfo: () => void): HTMLButtonElement {
   return b
 }
 
-/** Owned boosts as tiles; tapping one (or its ⓘ) shows what it does. */
+/**
+ * Owned boosts as tiles, then an empty socket for each free slot, then the
+ * one-off boosts (+2 balls, Double Down) that take no slot. Tapping a boost
+ * (or its ⓘ) shows what it does.
+ */
 export function boostsPanel(s: RunState, onInfo: (id: BoostId) => void): HTMLElement {
-  const owned = (Object.keys(s.boosts) as BoostId[]).filter((id) => (s.boosts[id] ?? 0) > 0)
+  const slotted = slottedBoosts(s.boosts)
+  const instant = (Object.keys(s.boosts) as BoostId[]).filter(
+    (id) => (s.boosts[id] ?? 0) > 0 && !slotted.includes(id),
+  )
+  const free = Math.max(0, boostSlots(s) - slotted.length)
+  const sockets = Array.from({ length: free }, () => {
+    const socket = h(
+      'div',
+      { class: 'bs-tile bs-socket' },
+      h('span', { class: 'bs-socket-ring' }),
+      h('span', { class: 'bs-tile-name', textContent: t('Empty slot') }),
+    )
+    socket.setAttribute('aria-label', t('Empty boost slot'))
+    return socket
+  })
   return h(
     'div',
     { class: 'bs-side-block' },
-    h('h3', {
-      textContent: t('Boosts · {n}/{max} slots', { n: slottedBoosts(s.boosts).length, max: boostSlots(s) }),
-    }),
-    owned.length
-      ? h(
-          'div',
-          { class: 'bs-tiles' },
-          ...owned.map((id) => {
-            const b = BOOSTS[id]
-            const name = t(b.name)
-            const art = h('span', { class: 'bs-tile-icon' })
-            art.innerHTML = BOOST_ICONS[id]
-            const tile = h(
-              'button',
-              { class: `bs-tile ${b.rarity}`, type: 'button', onclick: () => onInfo(id) },
-              art,
-              h('span', { class: 'bs-tile-name', textContent: name }),
-              h('span', { class: 'bs-badge', textContent: `×${s.boosts[id]}` }),
-              infoButton(name, () => onInfo(id)),
-            )
-            tile.setAttribute(
-              'aria-label',
-              t('{name} level {n}. Show details', { name, n: s.boosts[id] ?? 0 }),
-            )
-            return tile
-          }),
-        )
-      : h('p', { class: 'bs-side-empty', textContent: t('Level up to pick boosts.') }),
+    h('h3', { textContent: t('Boosts') }),
+    h(
+      'div',
+      { class: 'bs-tiles' },
+      ...slotted.map((id) => boostTile(s, id, onInfo)),
+      ...sockets,
+      ...instant.map((id) => boostTile(s, id, onInfo)),
+    ),
+    !slotted.length && h('p', { class: 'bs-side-empty', textContent: t('Level up to pick boosts.') }),
   )
+}
+
+function boostTile(s: RunState, id: BoostId, onInfo: (id: BoostId) => void): HTMLElement {
+  const b = BOOSTS[id]
+  const name = t(b.name)
+  const art = h('span', { class: 'bs-tile-icon' })
+  art.innerHTML = BOOST_ICONS[id]
+  const tile = h(
+    'button',
+    { class: `bs-tile ${b.rarity}`, type: 'button', onclick: () => onInfo(id) },
+    art,
+    h('span', { class: 'bs-tile-name', textContent: name }),
+    h('span', { class: 'bs-badge', textContent: `×${s.boosts[id]}` }),
+    infoButton(name, () => onInfo(id)),
+  )
+  tile.setAttribute('aria-label', t('{name} level {n}. Show details', { name, n: s.boosts[id] ?? 0 }))
+  return tile
 }
 
 /** Owned mid-run helpers as tiles: tap to use (with a confirm), ⓘ for details. */

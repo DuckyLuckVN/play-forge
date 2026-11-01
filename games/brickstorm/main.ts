@@ -169,6 +169,8 @@ let panel = ''
 let overShown = false
 /** The boss the notice card last explained. */
 let bossAnnounced: object | null = null
+/** Boost slots the player has been shown; more means a boss just gave one. */
+let slotsSeen = 0
 /** The run's total XP last frame, for the "+N XP" tally. */
 let xpSeen = 0
 /** The level-up celebration for the current pick has started. */
@@ -547,6 +549,7 @@ function showHelpers() {
 function beginRun(s: RunState) {
   run = s
   overShown = false
+  slotsSeen = boostSlots(s)
   juice.turn = s.turn
   juice.setXp(s.level, s.xp / xpToNext(s.level), true)
   xpSeen = xpTotal(s.level, s.xp)
@@ -578,6 +581,24 @@ function resumeRun() {
   if (!save.run) return
   banked = save.run.banked
   beginRun(structuredClone(save.run.state))
+}
+
+/** After a boss: a callout on the pick screen that a boost slot was unlocked (shown once). */
+function slotCallout(s: RunState): HTMLElement | null {
+  const slots = boostSlots(s)
+  if (slots <= slotsSeen) return null
+  slotsSeen = slots
+  return h(
+    'div',
+    { class: 'bs-slot-callout', role: 'status' },
+    h('span', { class: 'bs-socket-ring' }),
+    h(
+      'div',
+      {},
+      h('strong', { textContent: t('New boost slot!') }),
+      h('span', { textContent: t('Boss beaten: you can now hold {n} boosts.', { n: slots }) }),
+    ),
+  )
 }
 
 /** Takes an offered boost (dropping `replace` for it when slots are full), then the next screen. */
@@ -659,6 +680,13 @@ function showPick() {
       synergy && h('em', { class: 'bs-ribbon', textContent: t('SYNERGY') }),
       art,
       h('small', { textContent: rarityName(b.rarity) }),
+      // Taking a boost you have levels it up; say so, so it never reads as a new slot.
+      h('span', {
+        class: `bs-tag ${s.boosts[id] ? 'up' : 'new'}`,
+        textContent: s.boosts[id]
+          ? t('UPGRADE · Lv {from} → {to}', { from: s.boosts[id] ?? 0, to: (s.boosts[id] ?? 0) + 1 })
+          : t('NEW'),
+      }),
       h('strong', { textContent: t(b.name) }),
       h('span', { textContent: t(b.text) }),
       needsReplace(s, id) && h('small', { class: 'bs-swap', textContent: t('Slots full: swap one out') }),
@@ -698,6 +726,7 @@ function showPick() {
       'div',
       { class: 'pf-panel wide' },
       h('div', { class: 'bs-shop-head' }, heading, wallet()),
+      slotCallout(s),
       h('div', { class: 'bs-cards' }, ...cards),
       rerollBtn,
     ),

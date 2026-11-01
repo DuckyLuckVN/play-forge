@@ -709,15 +709,31 @@ function drawSkill(
         }
         break
       case 'charge':
-        if (!m('charging')) break
-        ctx.lineWidth = 4
-        ctx.globalAlpha = 0.5 + 0.5 * Math.sin(time * 20)
-        ctx.stroke(outline(g, 8 + 4 * Math.sin(time * 10)))
+        // Faint crackle while idle; a pulsing ring while it charges.
+        ctx.lineWidth = m('charging') ? 4 : 1.5
+        ctx.globalAlpha = m('charging') ? 0.5 + 0.5 * Math.sin(time * 20) : 0.25 + 0.15 * Math.sin(time * 3)
+        ctx.stroke(outline(g, m('charging') ? 8 + 4 * Math.sin(time * 10) : 10))
         break
+      case 'retreat': {
+        // Chevrons pointing up: brighter once it's about to back off.
+        ctx.globalAlpha = m('retreat') ? 0.6 + 0.4 * Math.sin(time * 12) : 0.25
+        for (const dx of [-0.3, 0.3]) {
+          const ax = cx + dx * box.w
+          const ay = box.y - 8 - ((time * 20) % 10)
+          ctx.beginPath()
+          ctx.moveTo(ax - 7, ay + 8)
+          ctx.lineTo(ax, ay)
+          ctx.lineTo(ax + 7, ay + 8)
+          ctx.lineTo(ax + 7, ay + 11)
+          ctx.lineTo(ax, ay + 3)
+          ctx.lineTo(ax - 7, ay + 11)
+          ctx.fill()
+        }
+        break
+      }
       case 'lunge':
-        if (!m('lunge')) break
-        // Arrows warning of the extra drop.
-        ctx.globalAlpha = 0.6 + 0.4 * Math.sin(time * 12)
+        // Arrows under it: faint while idle, flashing when it's about to lunge.
+        ctx.globalAlpha = m('lunge') ? 0.6 + 0.4 * Math.sin(time * 12) : 0.2
         for (const dx of [-0.25, 0, 0.25]) {
           const ax = cx + dx * box.w
           const ay = box.y + box.h + 10 + ((time * 30) % 12)
@@ -738,9 +754,8 @@ function drawSkill(
         }
         break
       case 'frenzy':
-        if (life >= 0.5) break
-        ctx.lineWidth = 3
-        ctx.globalAlpha = 0.4 + 0.4 * Math.sin(time * 14)
+        ctx.lineWidth = life < 0.5 ? 3 : 1.5
+        ctx.globalAlpha = life < 0.5 ? 0.4 + 0.4 * Math.sin(time * 14) : 0.2
         ctx.stroke(outline(g, 6))
         break
     }
@@ -942,13 +957,41 @@ function drawSkill(
         ctx.stroke()
       }
       break
-    case 'lastStand':
-      if (s.turn === undefined || s.turn >= m('immuneUntil')) break
-      ctx.lineWidth = 4
+    case 'spikes':
+      // Thorns along its outer edges.
+      ctx.fillStyle = color
+      g.parts.forEach((b, i) => {
+        const r = g.rects[i]
+        if (g.has(b.col, b.row + 1)) return
+        for (let x = r.x + 8; x < r.x + r.w - 6; x += 14) {
+          ctx.beginPath()
+          ctx.moveTo(x - 4, r.y + r.h)
+          ctx.lineTo(x, r.y + r.h + 7 + Math.sin(time * 4 + x) * 1.5)
+          ctx.lineTo(x + 4, r.y + r.h)
+          ctx.fill()
+        }
+      })
+      break
+    case 'enrage':
+      // Embers rising off it; it boils over below half health.
+      for (let i = 0; i < (life < 0.5 ? 10 : 4); i++) {
+        const k = (time * 0.9 + i / 7) % 1
+        ctx.globalAlpha = (1 - k) * 0.8
+        ctx.beginPath()
+        ctx.arc(box.x + ((i * 43) % box.w), box.y - k * 30, 2.5, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      break
+    case 'lastStand': {
+      const immune = s.turn !== undefined && s.turn < m('immuneUntil')
+      if (m('stood') && !immune) break
+      ctx.lineWidth = immune ? 4 : 1.5
+      ctx.globalAlpha = immune ? 1 : 0.3
       ctx.shadowColor = color
-      ctx.shadowBlur = 16
+      ctx.shadowBlur = immune ? 16 : 4
       ctx.stroke(outline(g, 5))
       break
+    }
     case 'fortify':
       edgeGlow(ctx, g, 'bottom', color, time)
       break
@@ -961,7 +1004,6 @@ function drawSkill(
         ctx.fillText('+', box.x + ((i * 47) % box.w), box.y - k * 24)
       }
       break
-    case 'enrage':
     case 'hover':
     case 'drifter':
     case 'weaver':
@@ -975,7 +1017,6 @@ function drawSkill(
     case 'charge':
     case 'lunge':
     case 'retreat':
-    case 'spikes':
     case 'guards':
     case 'mirror':
     case 'totem':

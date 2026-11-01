@@ -13,7 +13,9 @@ import { langMenu } from '@forge/ui/lang-menu'
 import { h, icon, toast } from '@forge/ui/dom'
 import { icons } from '@forge/ui/icons'
 import { applyTheme } from '@forge/ui/theme'
+import { bossName, TRAIT_TEXT } from './boss-ui'
 import { coinAmount, shortCoins } from './coin'
+import { BOSS } from './music'
 import { rarityName, t } from './i18n'
 import { toBoard } from './input'
 import { Juice } from './juice'
@@ -153,6 +155,8 @@ let dragging = false
 let acc = 0
 let panel = ''
 let overShown = false
+/** The boss the notice card last explained. */
+let bossAnnounced: object | null = null
 /** The run's total XP last frame, for the "+N XP" tally. */
 let xpSeen = 0
 /** The level-up celebration for the current pick has started. */
@@ -787,6 +791,17 @@ startRenderLoop((dt, time) => {
   }
   if (s) {
     for (const e of drainEvents(s)) juice.handle(e)
+    juice.setBossHp(s.boss?.hp ?? null)
+    // Boss fights get their own music and a card explaining the boss.
+    if (s.phase !== 'over') playMusic(s.boss ? BOSS : ARCADE)
+    if (s.boss && s.boss !== bossAnnounced) {
+      bossAnnounced = s.boss
+      notices.push({
+        id: 'brick:boss',
+        title: t('Boss: {name}', { name: bossName(s.boss) }),
+        text: s.boss.traits.map((k) => TRAIT_TEXT[k]).join(' '),
+      })
+    }
     juice.setCoins(s.coins)
     juice.setXp(s.level, s.xp / xpToNext(s.level))
     const xpNow = xpTotal(s.level, s.xp)

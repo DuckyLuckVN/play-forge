@@ -118,6 +118,9 @@ export class Juice {
   private targetCoins = 0
   /** Coins flying from a broken brick to the HUD counter. */
   coinFlyers: Array<{ x0: number; y0: number; age: number; delay: number }> = []
+  /** 0..1 white flash on the boss after it takes damage. */
+  bossHit = 0
+  private bossHp: number | null = null
   /** Seconds since bricks got tougher (a new hp stretch), for the "▲" notice; null when not showing. */
   tougherAge: number | null = null
   /** XP as drawn, in levels (1.5 = halfway through the second level); eases toward the real value. */
@@ -217,6 +220,28 @@ export class Juice {
       case 'tougher':
         this.tougherAge = 0
         return
+      case 'boss':
+        this.show(t('BOSS FIGHT!'), 0.8)
+        this.banner!.big = true
+        this.shake.add(0.6)
+        playSound(BRICK_SOUNDS.danger)
+        return playSound(pitched(BRICK_SOUNDS.explode, 0.6))
+      case 'bossDown':
+        this.show(t('BOSS DOWN! +{coins}', { coins: e.coins }), 1)
+        this.banner!.big = true
+        this.shake.add(0.8)
+        celebrate()
+        this.flyCoins(e.x, e.y, 20)
+        for (let i = 0; i < 3; i++) {
+          this.particles.burst(e.x, e.y, {
+            count: 30,
+            color: ['#ff9f43', '#ffc83d', '#b48cff', '#ffffff'],
+            speed: 260 + i * 120,
+            life: 0.8,
+          })
+        }
+        playSound(BRICK_SOUNDS.allClear)
+        return playSound(BRICK_SOUNDS.jackpot)
       case 'explode':
       case 'zap':
         // Chains ripple outward: each link plays a beat after the one before.
@@ -272,6 +297,12 @@ export class Juice {
     }
     if (total > this.targetXp) this.xpGains.push({ at: this.clock, amount: total - this.targetXp })
     this.targetXp = total
+  }
+
+  /** The boss's hp each frame (null: no boss), so a hit flashes its body. */
+  setBossHp(hp: number | null): void {
+    if (hp !== null && this.bossHp !== null && hp < this.bossHp) this.bossHit = 1
+    this.bossHp = hp
   }
 
   /** XP points just earned, for the "+N XP" tally. */
@@ -359,6 +390,7 @@ export class Juice {
 
   update(dt: number): void {
     this.clock += dt
+    this.bossHit = Math.max(0, this.bossHit - dt * 6)
     if (this.tougherAge !== null)
       this.tougherAge = this.tougherAge + dt > TOUGHER_LIFE ? null : this.tougherAge + dt
     this.updateXp(dt)

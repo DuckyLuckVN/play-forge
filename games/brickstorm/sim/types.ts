@@ -12,7 +12,23 @@ export interface Rect {
   h: number
 }
 
-export type BrickKind = 'normal' | 'bomb' | 'gold' | 'lightning' | 'mystery' | 'armored' | 'splitter'
+export type BrickKind = 'normal' | 'bomb' | 'gold' | 'lightning' | 'mystery' | 'armored' | 'splitter' | 'boss'
+
+/** What makes a boss different: shield heals, minions summon, drifter slides, armored halves ball hits, enrage drops faster. */
+export type BossTrait = 'shield' | 'minions' | 'drifter' | 'armored' | 'enrage'
+
+/** The boss on the board; its parts are bricks of kind 'boss' sharing this hp. */
+export interface Boss {
+  hp: number
+  maxHp: number
+  traits: BossTrait[]
+  /** Name noun ('Golem'…); the first trait gives the adjective. */
+  noun: string
+  /** Turn it arrived. */
+  turn: number
+  /** Drifter: which way it slides next (1 right, -1 left). */
+  dir: 1 | -1
+}
 
 export interface Brick {
   id: number
@@ -92,6 +108,8 @@ export type SimEvent =
   | { type: 'danger' }
   | { type: 'levelUp' }
   | { type: 'turn'; turn: number }
+  | { type: 'boss'; noun: string; traits: BossTrait[] }
+  | { type: 'bossDown'; x: number; y: number; coins: number }
   /** A new, tougher hp stretch starts this turn. */
   | { type: 'tougher' }
   | { type: 'over' }
@@ -149,6 +167,8 @@ export interface RunState {
   freezeNext: boolean
   /** Ball Surge helper: +50% balls next volley. */
   surgeNext: boolean
+  /** The boss fight in progress, if any (absent in runs saved before bosses). */
+  boss?: Boss | null
   nextId: number
   events: SimEvent[]
 }

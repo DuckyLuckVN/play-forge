@@ -18,6 +18,9 @@ export interface RunResult {
   coins: number
   levels: number
   firstLevelTurn: number | null
+  /** Bosses met and beaten. */
+  bossesMet: number
+  bossesBeaten: number
 }
 
 /** Boosts the bots take first; anything else in the offer otherwise. */
@@ -92,6 +95,8 @@ export function simulateRun(seed: number, bot: Bot, maxTurns = 150): RunResult {
   const s = createRun(seed)
   const aimRng = { seed: seed ^ 0x9e3779b9 }
   let firstLevelTurn: number | null = null
+  let bossesMet = 0
+  let bossesBeaten = 0
   while (s.phase !== 'over' && s.turn < maxTurns) {
     if (s.phase === 'grow') {
       growBoard(s, s.cols < MAX_COLS ? 'col' : 'row')
@@ -109,12 +114,16 @@ export function simulateRun(seed: number, bot: Bot, maxTurns = 150): RunResult {
           : greedyAngle(s)
     fire(s, angle)
     playVolley(s)
-    drainEvents(s)
+    for (const e of drainEvents(s)) {
+      if (e.type === 'boss') bossesMet++
+      if (e.type === 'bossDown') bossesBeaten++
+    }
     if (firstLevelTurn === null && s.level > 0) firstLevelTurn = s.turn
   }
-  return { turns: s.turn, coins: s.coins, levels: s.level, firstLevelTurn }
+  return { turns: s.turn, coins: s.coins, levels: s.level, firstLevelTurn, bossesMet, bossesBeaten }
 }
 
+const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
 const median = (xs: number[]) => {
   const v = [...xs].sort((a, b) => a - b)
   return v.length ? v[Math.floor(v.length / 2)] : NaN
@@ -145,6 +154,7 @@ export function balanceReport(seeds: number, bots: Bot[] = ['random', 'aimer', '
         ` | coins ${median(runs.map((r) => r.coins))}` +
         ` | level-ups ${median(runs.map((r) => r.levels))}` +
         ` | first level-up turn ${median(runs.map((r) => r.firstLevelTurn ?? 999))}` +
+        ` | bosses beaten ${sum(runs.map((r) => r.bossesBeaten))}/${sum(runs.map((r) => r.bossesMet))}` +
         ` | turns min/max ${Math.min(...runs.map((r) => r.turns))}/${Math.max(...runs.map((r) => r.turns))}`,
     )
   }

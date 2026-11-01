@@ -24,6 +24,7 @@ import { damageBrick, explode, zap } from './damage'
 import { dims } from './dims'
 export { comboMultiplier } from './damage'
 import { antiStall, bounceWalls, circleRect, deepestContact, reflect } from './physics'
+import { BOSS_EVERY, bossTurn, liftBoss, spawnBoss } from './boss'
 import { brickRect, cellCenter, hpStepStart, spawnRow } from './rows'
 import type { Ball, Brick, RunState, SimEvent } from './types'
 
@@ -285,6 +286,7 @@ function endTurn(s: RunState): void {
 
   if (mods.secondWind && !s.secondWindUsed && s.bricks.some((b) => b.row >= dangerRow)) {
     s.secondWindUsed = true
+    liftBoss(s)
     s.bricks = s.bricks.filter((b) => b.row < dangerRow)
     s.events.push({ type: 'secondWind' })
   }
@@ -302,7 +304,11 @@ export function startNextTurn(s: RunState, spawn = true): void {
   s.turn++
   const milestone = MILESTONES[s.turn]
   if (milestone) bonus(s, { type: 'milestone', turn: s.turn, coins: milestone })
-  if (spawn) spawnRow(s)
+  if (s.boss) bossTurn(s)
+  else if (spawn) {
+    if (s.turn % BOSS_EVERY === 0) spawnBoss(s)
+    else spawnRow(s)
+  }
   if (s.turn % GROW_EVERY === 0) s.growPending = true
   s.events.push({ type: 'turn', turn: s.turn })
   if (hpStepStart(s.turn) === s.turn) s.events.push({ type: 'tougher' })

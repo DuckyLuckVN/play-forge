@@ -4,6 +4,7 @@ import { modsOf, xpToNext } from './boosts'
 import { random, randomInt } from '@forge/core/rng'
 import { CELL, COMBO_TIERS } from './config'
 import { dims } from './dims'
+import { bigHit, damageBoss } from './boss'
 import { cellCenter } from './rows'
 import type { Brick, RunState } from './types'
 
@@ -21,6 +22,7 @@ export function damageBrick(
   depth = 0,
 ): void {
   if (!s.bricks.includes(brick)) return // already destroyed earlier in this chain
+  if (brick.kind === 'boss') return damageBoss(s, amount, source)
   // Armour shrugs off plain ball hits; fire, explosions, lightning and lasers get through.
   brick.hp -= brick.kind === 'armored' && source === 'ball' ? Math.min(amount, 1) : amount
   if (brick.hp <= 0) killBrick(s, brick, depth)
@@ -39,6 +41,7 @@ export function gainXp(s: RunState, amount: number): void {
 export function killBrick(s: RunState, brick: Brick, depth: number): void {
   const i = s.bricks.indexOf(brick)
   if (i < 0) return
+  if (brick.kind === 'boss') return bigHit(s)
   s.bricks.splice(i, 1)
   const mods = modsOf(s.boosts)
   // Only some bricks drop a coin; gold always pays, triple.

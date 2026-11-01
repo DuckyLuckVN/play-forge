@@ -35,6 +35,11 @@ export const GUIDE: GuideEntry[] = [
     text: 'Plain balls only chip 1 per hit. Fire, bombs and lasers hit it fully.',
   },
   { id: 'brick:splitter', name: 'Splitter brick', text: 'Splits into two half-health bricks when broken.' },
+  {
+    id: 'brick:boss',
+    name: 'Boss',
+    text: 'Every 30 turns. One big health bar, 1–2 special traits, and no new rows until it falls. Beat it for coins and a free boost.',
+  },
   { id: 'pickup:ball', name: '+1 Ball', text: 'Touch it to add a ball for the rest of the run.' },
   { id: 'pickup:coin', name: 'Coin', text: 'Touch it for 5 coins to spend in the shop.' },
   { id: 'pickup:fire', name: 'Fire charge', text: 'Your next volley starts with 3 fireballs.' },
@@ -50,7 +55,8 @@ export const GUIDE: GuideEntry[] = [
 /** Special brick and pickup kinds on the board that the player hasn't been told about yet. */
 export function newlySeen(s: RunState, seen: string[]): string[] {
   const ids = [
-    ...s.bricks.filter((b) => b.kind !== 'normal').map((b) => `brick:${b.kind}`),
+    // Bosses get their own card each fight.
+    ...s.bricks.filter((b) => b.kind !== 'normal' && b.kind !== 'boss').map((b) => `brick:${b.kind}`),
     ...s.pickups.map((p) => `pickup:${p.kind}`),
   ]
   return [...new Set(ids)].filter((id) => !seen.includes(id))

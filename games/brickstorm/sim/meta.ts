@@ -2,6 +2,7 @@
 import { rollChoices } from './boosts'
 import { MAX_COLS, MAX_ROWS } from './config'
 import { dims } from './dims'
+import { liftBoss } from './boss'
 import { killBrick } from './damage'
 import { openPickOrAim } from './run'
 import type { ActiveHelper, RunState } from './types'
@@ -15,6 +16,7 @@ export function reviveCost(s: RunState): number {
 export function revive(s: RunState): void {
   if (s.phase !== 'over') return
   const { dangerRow } = dims(s)
+  liftBoss(s)
   s.bricks = s.bricks.filter((b) => b.row < dangerRow - 2)
   s.pickups = s.pickups.filter((p) => p.row < dangerRow - 2)
   s.revivesUsed++
@@ -41,12 +43,16 @@ export function useHelper(s: RunState, id: ActiveHelper): boolean {
   if (s.phase !== 'aim') return false
   s.combo = 0 // helper kills pay the base coin rate, not the last volley's combo
   switch (id) {
-    case 'pushBack':
-      s.bricks = s.bricks.filter((b) => b.row > 0)
+    case 'pushBack': {
+      // The boss only moves up if it has room; it never loses a piece.
+      const bossStuck = s.bricks.some((b) => b.kind === 'boss' && b.row === 0)
+      const moves = (b: { kind: string }) => b.kind !== 'boss' || !bossStuck
+      s.bricks = s.bricks.filter((b) => b.row > 0 || !moves(b))
       s.pickups = s.pickups.filter((p) => p.row > 0)
-      for (const b of s.bricks) b.row--
+      for (const b of s.bricks) if (moves(b)) b.row--
       for (const p of s.pickups) p.row--
       break
+    }
     case 'rowBomb': {
       const lowest = Math.max(-1, ...s.bricks.map((b) => b.row))
       for (const b of s.bricks.filter((b) => b.row === lowest)) killBrick(s, b, 0)

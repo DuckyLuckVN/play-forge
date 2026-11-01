@@ -18,7 +18,7 @@ export function cellCenter(col: number, row: number): { x: number; y: number } {
 }
 
 /** Turn each special brick kind starts appearing. */
-export const UNLOCK: Record<Exclude<BrickKind, 'normal'>, number> = {
+export const UNLOCK: Record<Exclude<BrickKind, 'normal' | 'boss'>, number> = {
   gold: 3,
   bomb: 5,
   mystery: 6,

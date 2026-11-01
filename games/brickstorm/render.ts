@@ -4,6 +4,7 @@ import { ease, prefersReducedMotion } from '@forge/fx/tween'
 import type { Canvas2D } from '@forge/render2d/canvas'
 import { FONT, theme } from '@forge/ui/theme'
 import { ArenaPainter, type ArenaId } from './arenas'
+import { drawBoss } from './boss-ui'
 import { drawCoin } from './coin'
 import { drawBall, TRAIL_STYLE } from './cosmetics'
 import { t } from './i18n'
@@ -154,6 +155,7 @@ export class BoardRenderer {
     if (s) {
       this.drawPickups(ctx, s, time)
       this.drawBricks(ctx, s, time)
+      drawBoss(ctx, s, time, juice.bossHit)
       if (s.phase === 'aim' && aim !== null) this.drawGuide(ctx, s, aim)
       this.drawBalls(ctx, s, time, juice.zaps)
     }
@@ -208,6 +210,7 @@ export class BoardRenderer {
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     for (const b of s.bricks) {
+      if (b.kind === 'boss') continue // drawn as one body by drawBoss
       const r = brickRect(b)
       ctx.fillStyle = b.kind === 'gold' ? '#ffc83d' : hpColor(b.hp, s.turn)
       ctx.beginPath()
@@ -488,6 +491,9 @@ export class BoardRenderer {
     ctx.font = `700 ${b.big ? 60 : 46}px ${FONT}`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
+    // Long banners shrink to fit the board.
+    const fit = Math.min(1, (this.d.boardW - 32) / ctx.measureText(b.text).width)
+    ctx.scale(fit, fit)
     ctx.lineWidth = b.big ? 10 : 8
     ctx.strokeStyle = theme.night
     ctx.strokeText(b.text, 0, 0)

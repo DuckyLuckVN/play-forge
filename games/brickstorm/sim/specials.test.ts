@@ -10,6 +10,7 @@ import type { BrickKind, RunState } from './types'
 function rowAt(seed: number, turn: number): RunState {
   const s = empty(seed)
   s.turn = turn
+  s.ballCount = 999
   spawnRow(s)
   return s
 }

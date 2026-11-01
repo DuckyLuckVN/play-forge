@@ -5,14 +5,15 @@ import { drainEvents } from './run'
 import { brick, empty } from './testing'
 
 describe('brick hp tracks the turn', () => {
-  it('keeps turn 5 bricks at 4–5 with no doubles', () => {
+  it('keeps turn 5 bricks at 3–4 with no doubles', () => {
     for (let seed = 1; seed <= 500; seed++) {
       const s = empty(seed)
+      s.ballCount = 999
       s.turn = 5
       spawnRow(s)
       for (const b of s.bricks) {
-        expect(b.hp).toBeGreaterThanOrEqual(4)
-        expect(b.hp).toBeLessThanOrEqual(5)
+        expect(b.hp).toBeGreaterThanOrEqual(3) // hpScale(5) ≈ 3.2 (turns 1–5 use turn 3)
+        expect(b.hp).toBeLessThanOrEqual(4)
       }
     }
   })
@@ -22,6 +23,7 @@ describe('brick hp tracks the turn', () => {
     let doubled = 0
     for (let seed = 1; seed <= 1000; seed++) {
       const s = empty(seed)
+      s.ballCount = 999
       s.turn = 21
       spawnRow(s)
       for (const b of s.bricks) {

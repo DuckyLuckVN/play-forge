@@ -92,6 +92,8 @@ export type SimEvent =
   | { type: 'danger' }
   | { type: 'levelUp' }
   | { type: 'turn'; turn: number }
+  /** A new, tougher hp stretch starts this turn. */
+  | { type: 'tougher' }
   | { type: 'over' }
   | { type: 'revive' }
   | { type: 'secondWind' }

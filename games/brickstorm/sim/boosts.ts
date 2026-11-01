@@ -105,6 +105,11 @@ export function xpToNext(level: number): number {
   return 8 + 6 * level
 }
 
+/** All XP earned in a run: every finished level plus `xp` into the current one. */
+export function xpTotal(level: number, xp: number): number {
+  return 8 * level + 3 * level * (level - 1) + xp
+}
+
 /** Up to 3 distinct boosts that aren't maxed out, weighted by rarity. */
 export function rollChoices(s: RunState): BoostId[] {
   const pool = (Object.keys(BOOSTS) as BoostId[]).filter((id) => (s.boosts[id] ?? 0) < BOOSTS[id].max)

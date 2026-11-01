@@ -128,6 +128,7 @@ export function specialShare(turn: number, rows = 2000): number {
     const s = createRun(seed)
     s.bricks = []
     s.turn = turn
+    s.ballCount = 999
     spawnRow(s)
     all += s.bricks.length
     special += s.bricks.filter((b) => b.kind !== 'normal').length

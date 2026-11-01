@@ -5,7 +5,7 @@ import type { Canvas2D } from '@forge/render2d/canvas'
 import { compactNumber, fillFitText, fitScale } from '@forge/ui/text'
 import { FONT, theme } from '@forge/ui/theme'
 import { ArenaPainter, type ArenaId } from './arenas'
-import { drawBoss } from './boss-ui'
+import { drawBoss } from './boss-art'
 import { drawCoin } from './coin'
 import { drawBall, TRAIL_STYLE } from './cosmetics'
 import { t } from './i18n'
@@ -127,6 +127,12 @@ export function drawPickupGlyph(
   }
 }
 
+/** Where a boss looks: the first ball in flight, else the ball waiting to launch. */
+function bossLook(s: RunState): { x: number; y: number } {
+  const ball = s.balls.find((b) => b.status === 'flying')
+  return ball ? { x: ball.x, y: ball.y } : { x: s.launchX, y: dims(s).floorY }
+}
+
 export class BoardRenderer {
   /** Recent positions per ball, for the fever trail. */
   private trails: Array<Array<[number, number]>> = []
@@ -156,7 +162,7 @@ export class BoardRenderer {
     if (s) {
       this.drawPickups(ctx, s, time)
       this.drawBricks(ctx, s, time)
-      drawBoss(ctx, s, time, juice.bossHit)
+      drawBoss(ctx, s, time, { hit: juice.bossHit, look: bossLook(s) })
       if (s.phase === 'aim' && aim !== null) this.drawGuide(ctx, s, aim)
       this.drawBalls(ctx, s, time, juice.zaps)
     }

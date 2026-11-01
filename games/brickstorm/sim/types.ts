@@ -30,21 +30,37 @@ export interface Rect {
 
 export type BrickKind = 'normal' | 'bomb' | 'gold' | 'lightning' | 'mystery' | 'armored' | 'splitter' | 'boss'
 
-/** What makes a boss different: shield heals, minions summon, drifter slides, armored halves ball hits, enrage drops faster. */
-export type BossTrait = 'shield' | 'minions' | 'drifter' | 'armored' | 'enrage'
+/** A boss skill (see sim/boss-skills.ts). The first five were the original "traits". */
+export type BossSkillId = 'shield' | 'minions' | 'drifter' | 'armored' | 'enrage'
+/** @deprecated Old name for BossSkillId, kept for saved runs and older code. */
+export type BossTrait = BossSkillId
+
+/** How hard a boss is: 1 at turn 30, 2 at turn 60, 3 from turn 90. Sets its size and skills. */
+export type BossTier = 1 | 2 | 3
 
 /** The boss on the board; its parts are bricks of kind 'boss' sharing this hp. */
 export interface Boss {
   hp: number
   maxHp: number
-  traits: BossTrait[]
-  /** Name noun ('Golem'…); the first trait gives the adjective. */
+  /** Its skills (named "traits" before skills existed; kept for saved runs). */
+  traits: BossSkillId[]
+  /** Name noun ('Golem'…); the first skill gives the adjective. */
   noun: string
   /** Turn it arrived. */
   turn: number
   /** Drifter: which way it slides next (1 right, -1 left). */
   dir: 1 | -1
+  /** Body shape id (sim/boss-shapes.ts); older saves have none and are a 3×2 block. */
+  shape?: string
+  /** Face style, for drawing only. */
+  face?: number
+  tier?: BossTier
+  /** Per-skill counters and flags, by name (cooldowns, damage this volley…). */
+  mem?: Record<string, number>
 }
+
+/** What a brick summoned by a boss skill does (drawn and handled specially). */
+export type BossRole = 'minion'
 
 export interface Brick {
   id: number
@@ -55,6 +71,10 @@ export interface Brick {
   kind: BrickKind
   /** A half from a splitter; never splits again. */
   split: boolean
+  /** Summoned by a boss skill. */
+  role?: BossRole
+  /** Turns left before a timed brick acts (hatches, melts…). */
+  timer?: number
 }
 
 export type PickupKind = 'ball' | 'coin' | 'fire' | 'laser'

@@ -27,10 +27,24 @@ export function bossBody(bricks: readonly { col: number; row: number; kind: stri
   }
 }
 
-/** The rect each brick collides with: its own, or the whole body for a boss part. */
+/**
+ * The rect each brick collides with. A boss part reaches all the way to any
+ * neighbouring part, so the body is solid with no seams but keeps its shape.
+ */
 export function hitRects(bricks: readonly { col: number; row: number; kind: string }[]): Rect[] {
-  const body = bossBody(bricks)
-  return bricks.map((b) => (b.kind === 'boss' && body ? body : brickRect(b)))
+  const boss = new Set(bricks.filter((b) => b.kind === 'boss').map((b) => `${b.col},${b.row}`))
+  return bricks.map((b) => {
+    if (b.kind !== 'boss') return brickRect(b)
+    const gap = (dc: number, dr: number) => (boss.has(`${b.col + dc},${b.row + dr}`) ? 0 : BRICK_INSET)
+    const l = gap(-1, 0)
+    const t = gap(0, -1)
+    return {
+      x: b.col * CELL + l,
+      y: TOP + b.row * CELL + t,
+      w: CELL - l - gap(1, 0),
+      h: CELL - t - gap(0, 1),
+    }
+  })
 }
 
 export function cellCenter(col: number, row: number): { x: number; y: number } {

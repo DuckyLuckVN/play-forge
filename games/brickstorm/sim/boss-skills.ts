@@ -19,6 +19,7 @@ import {
 } from './boss-kit'
 import { CELL } from './config'
 import { dims } from './dims'
+import { breachUnit, hurtHero } from './health'
 import { cellCenter } from './rows'
 import type { DamageSource } from './damage'
 import type { Ball, Boss, BossSkillId, BossTier, Brick, RunState } from './types'
@@ -68,9 +69,21 @@ export interface BossSkill {
   roleHit?(s: RunState, boss: Boss, brick: Brick, amount: number, source: DamageSource): void
   /** A brick it summoned was destroyed. */
   roleKill?(s: RunState, boss: Boss, brick: Brick): void
+  /** The hero lost `amount` health (a crash or an attack). */
+  heroHurt?(s: RunState, boss: Boss, amount: number): void
 }
 
 // Tuning, one place.
+/** Ward hp, × a summoned brick's. */
+const WARD_HP = 1
+/** A ball hit on a thorn hurts the hero this share of a crashing brick… */
+const THORN_HIT = 0.12
+/** …but thorns take at most this share of max health per volley. */
+const THORN_CAP = 0.15
+/** A slam hurts like this many crashing bricks (if anything is near the line). */
+const SLAM_HIT = 1.5
+/** Drain: the boss heals this share of its max hp for each 100% of the hero's health it takes. */
+const DRAIN_SHARE = 0.6
 const SHIELD_HEAL = 0.08
 const TOTEM_HEAL = 0.05
 const GLUTTON_HEAL = 0.05
@@ -78,6 +91,8 @@ const RALLY_HEAL = 0.2
 const GUARDED = 0.5
 const POWERED = 0.4
 const CORE_HIT = 0.05
+/** Weak points take at most this share of the boss per volley. */
+const WEAK_CAP = 0.15
 const ROD_ZAP = 0.03
 const RUNES_BREAK = 0.15
 const STONE_CAP = 0.25
@@ -105,6 +120,57 @@ const open = (s: RunState, fromRow = 0) => {
 }
 const minions = (s: RunState, n: number, cells = freeCells(s, (_, r) => r === 0)) =>
   summon(s, pickCells(s, cells, n), minionHp(s), { role: 'minion' })
+/**
+ * Spots tucked against the boss (beside it, or just above it): hard to reach,
+ * so a weak point there takes a banked shot, not a lucky one.
+ */
+const tucked = (s: RunState) => {
+  const { left, right, top, bottom } = bossBounds(s)
+  const cells = freeCells(
+    s,
+    (c, r) =>
+      (r >= top - 1 && r <= bottom && (c === left - 1 || c === right + 1)) ||
+      (r === top - 1 && c >= left && c <= right),
+  )
+  return cells.length ? cells : open(s, 1)
+}
+/** Stone wards on a weak point's open sides (below, left, right): you must break in, or bank around. */
+const fortify = (s: RunState, bricks: Brick[]) => {
+  const line = dims(s).dangerRow
+  const taken = (c: number, r: number) => s.bricks.some((b) => b.col === c && b.row === r)
+  for (const b of bricks)
+    for (const [c, r] of [
+      [b.col, b.row + 1],
+      [b.col - 1, b.row],
+      [b.col + 1, b.row],
+    ])
+      if (c >= 0 && c < s.cols && r >= 0 && r < line - 1 && !taken(c, r))
+        summon(s, [[c, r]], minionHp(s, WARD_HP), { role: 'ward' })
+}
+/**
+ * A weak point was hit: only a real hit (a ball or a fireball) counts, never
+ * splash (blasts, aftershock, lightning), and it can take at most WEAK_CAP of
+ * the boss per volley, so no build melts a boss through it. Returns whether it hurt.
+ */
+const weakHit = (s: RunState, boss: Boss, source: DamageSource, share: number): boolean => {
+  if (source !== 'ball' && source !== 'fire') return false
+  const room = WEAK_CAP - mem(boss, 'weakHurt')
+  if (room <= 0) return false
+  const dealt = Math.min(share, room)
+  setMem(boss, 'weakHurt', mem(boss, 'weakHurt') + dealt)
+  hurtBy(s, boss, dealt)
+  return true
+}
+
+/** Like respawn, but the weak point goes somewhere hard to reach and is walled in. */
+const respawnGuarded = (s: RunState, boss: Boss, role: Brick['role'], n: number, hp: number) => {
+  if (roleBricks(s, role!).length) return
+  fortify(s, summon(s, pickCells(s, tucked(s), n), hp, { role }))
+  announce(s, boss.traits.find((id) => SKILL_ROLE[id] === role) ?? boss.traits[0])
+}
+/** Free cells in the lower half of the board, away from the boss: where its attacks land. */
+const low = (s: RunState) => open(s, Math.max(1, bossBounds(s).bottom + 1))
+
 /** A share of max hp, as damage that skips the skills (it comes from the boss's own weak points). */
 const hurtBy = (s: RunState, boss: Boss, share: number) => {
   boss.hp -= boss.maxHp * share
@@ -429,12 +495,13 @@ export const BOSS_SKILLS: Record<BossSkillId, BossSkill> = {
   // ---------- Weak points ----------
   core: {
     tier: 1,
-    spawn: (s, boss) => respawn(s, boss, 'core', 1, () => open(s, 2), minionHp(s, 2)),
+    spawn: (s, boss) => respawnGuarded(s, boss, 'core', 1, minionHp(s, 2)),
     turn: (s, boss) => {
-      if (every(s, boss, 4)) respawn(s, boss, 'core', 1, () => open(s, 2), minionHp(s, 2))
+      if (every(s, boss, 4)) respawnGuarded(s, boss, 'core', 1, minionHp(s, 2))
     },
-    roleHit: (s, boss, brick) => {
-      if (brick.role === 'core') hurtBy(s, boss, CORE_HIT)
+    launch: (_s, boss) => setMem(boss, 'weakHurt', 0),
+    roleHit: (s, boss, brick, _amount, source) => {
+      if (brick.role === 'core') weakHit(s, boss, source, CORE_HIT)
     },
   },
   heart: {
@@ -450,12 +517,12 @@ export const BOSS_SKILLS: Record<BossSkillId, BossSkill> = {
   runes: {
     tier: 2,
     spawn: (s) => {
-      summon(s, pickCells(s, open(s, 1), 3), minionHp(s), { role: 'rune' })
+      fortify(s, summon(s, pickCells(s, tucked(s), 3), minionHp(s), { role: 'rune' }))
     },
     turn: (s, boss) => {
       if (mem(boss, 'runesAt') && s.turn >= mem(boss, 'runesAt')) {
         setMem(boss, 'runesAt', 0)
-        summon(s, pickCells(s, open(s, 1), 3), minionHp(s), { role: 'rune' })
+        fortify(s, summon(s, pickCells(s, tucked(s), 3), minionHp(s), { role: 'rune' }))
         announce(s, 'runes')
       }
     },
@@ -498,13 +565,13 @@ export const BOSS_SKILLS: Record<BossSkillId, BossSkill> = {
   },
   rod: {
     tier: 1,
-    spawn: (s, boss) => respawn(s, boss, 'rod', 1, () => open(s, 2), minionHp(s, 2.5)),
+    spawn: (s, boss) => respawnGuarded(s, boss, 'rod', 1, minionHp(s, 2.5)),
     turn: (s, boss) => {
-      if (every(s, boss, 5)) respawn(s, boss, 'rod', 1, () => open(s, 2), minionHp(s, 2.5))
+      if (every(s, boss, 5)) respawnGuarded(s, boss, 'rod', 1, minionHp(s, 2.5))
     },
-    roleHit: (s, boss, brick) => {
-      if (brick.role !== 'rod') return
-      hurtBy(s, boss, ROD_ZAP)
+    launch: (_s, boss) => setMem(boss, 'weakHurt', 0),
+    roleHit: (s, boss, brick, _amount, source) => {
+      if (brick.role !== 'rod' || !weakHit(s, boss, source, ROD_ZAP)) return
       const from = cellCenter(brick.col, brick.row)
       const to = bossCenter(s)
       s.events.push({ type: 'zap', x1: from.x, y1: from.y, x2: to.x, y2: to.y, depth: 0 })
@@ -670,6 +737,99 @@ export const BOSS_SKILLS: Record<BossSkillId, BossSkill> = {
     turn: (s) => {
       for (const b of s.bricks) if (b.kind !== 'boss') b.hp = Math.min(b.maxHp, b.hp + b.maxHp * RALLY_HEAL)
     },
+  },
+
+  // ---------- Attacks: they hurt the hero, not just the board ----------
+  thorns: {
+    tier: 1,
+    // Spiky bricks across the lower board: every ball hit on one costs health.
+    // Fire, bombs and lasers break them safely.
+    spawn: (s) => {
+      summon(s, pickCells(s, low(s), 3), minionHp(s, 0.8), { role: 'thorn' })
+      s.events.push({ type: 'bossAttack', id: 'thorns', ...bossCenter(s) })
+    },
+    turn: (s, boss) => {
+      const missing = 3 - roleBricks(s, 'thorn').length
+      if (missing > 0 && every(s, boss, 3)) {
+        summon(s, pickCells(s, low(s), missing), minionHp(s, 0.8), { role: 'thorn' })
+        announce(s, 'thorns')
+      }
+    },
+    launch: (_s, boss) => setMem(boss, 'thornHurt', 0),
+    roleHit: (s, boss, brick, _amount, source) => {
+      if (brick.role !== 'thorn' || source !== 'ball') return
+      const done = mem(boss, 'thornHurt')
+      const dmg = Math.min(breachUnit(s.turn) * THORN_HIT, s.maxHp * THORN_CAP - done)
+      if (dmg <= 0) return
+      setMem(boss, 'thornHurt', done + dmg)
+      hurtHero(s, dmg, cellCenter(brick.col, brick.row), 'thorn')
+    },
+  },
+  barrage: {
+    tier: 1,
+    // Every 2 turns (3 for a first boss) it fires 2 missiles from under itself; they fall 2 rows a
+    // turn and hurt double if they reach the line. Shoot them down.
+    turn: (s, boss) => {
+      const line = dims(s).dangerRow
+      const taken = (c: number, r: number) => s.bricks.some((b) => b.col === c && b.row === r)
+      for (const m of roleBricks(s, 'missile').sort((a, b) => b.row - a.row))
+        if (m.row + 1 < line && !taken(m.col, m.row + 1)) m.row++
+      if (every(s, boss, (boss.tier ?? 1) === 1 ? 3 : 2)) {
+        const { left, right, bottom } = bossBounds(s)
+        const cells = freeCells(s, (c, r) => r === bottom + 1 && c >= left - 1 && c <= right + 1)
+        summon(s, pickCells(s, cells, 2), minionHp(s, 0.35), { role: 'missile' })
+        s.events.push({ type: 'bossAttack', id: 'barrage', ...bossCenter(s) })
+      }
+    },
+  },
+  slam: {
+    tier: 2,
+    // Every 3 turns it slams the ground (warning the turn before): every brick
+    // drops a row, and the hero is hurt if anything is near the line.
+    turn: (s, boss) => {
+      const a = age(s, boss)
+      if (a > 0 && a % 3 === 2) s.events.push({ type: 'bossWarn', id: 'slam' })
+      if (a <= 0 || a % 3 !== 0) return
+      const parts = new Set(bossParts(s).map((b) => `${b.col},${b.row}`))
+      const taken = new Set(s.bricks.map((b) => `${b.col},${b.row}`))
+      // Lowest first, so a column moves down together.
+      for (const b of s.bricks.filter((b) => b.kind !== 'boss').sort((x, y) => y.row - x.row)) {
+        const to = `${b.col},${b.row + 1}`
+        if (parts.has(to) || taken.has(to)) continue
+        taken.delete(`${b.col},${b.row}`)
+        b.row++
+        taken.add(to)
+      }
+      for (const p of s.pickups) p.row++
+      s.pickups = s.pickups.filter((p) => p.row < dims(s).dangerRow)
+      s.events.push({ type: 'bossAttack', id: 'slam', ...bossCenter(s) })
+      if (s.bricks.some((b) => b.kind !== 'boss' && b.row >= dims(s).dangerRow - 2))
+        hurtHero(s, breachUnit(s.turn) * SLAM_HIT, bossCenter(s), 'slam')
+    },
+  },
+  hex: {
+    tier: 2,
+    // Every 4 turns it curses the 2 lowest plain bricks into thorns.
+    turn: (s, boss) => {
+      if (!every(s, boss, 4)) return
+      const plain = s.bricks.filter((b) => b.kind === 'normal' && !b.role).sort((a, b) => b.row - a.row)
+      for (const b of plain.slice(0, 2)) b.role = 'thorn'
+      if (plain.length) s.events.push({ type: 'bossAttack', id: 'hex', ...bossCenter(s) })
+    },
+    launch: (_s, boss) => setMem(boss, 'thornHurt', 0),
+    roleHit: (s, boss, brick, _amount, source) => {
+      if (brick.role !== 'thorn' || source !== 'ball' || boss.traits.includes('thorns')) return
+      const done = mem(boss, 'thornHurt')
+      const dmg = Math.min(breachUnit(s.turn) * THORN_HIT, s.maxHp * THORN_CAP - done)
+      if (dmg <= 0) return
+      setMem(boss, 'thornHurt', done + dmg)
+      hurtHero(s, dmg, cellCenter(brick.col, brick.row), 'thorn')
+    },
+  },
+  drain: {
+    tier: 3,
+    // Whatever health the hero loses, it drinks.
+    heroHurt: (s, boss, amount) => healBoss(s, boss, boss.maxHp * (amount / s.maxHp) * DRAIN_SHARE),
   },
 }
 

@@ -1,4 +1,5 @@
 import type { RngState } from '@forge/core/rng'
+import type { HeroId } from './heroes'
 
 export type Phase = 'aim' | 'volley' | 'pick' | 'grow' | 'over'
 
@@ -17,6 +18,7 @@ export type ActiveHelper =
   | 'overcharge'
   | 'vacuum'
   | 'pierceShot'
+  | 'potion'
 
 /** Helpers switched on before a run starts. */
 export type StartHelper = 'headStart' | 'luckyStart' | 'powerStart' | 'goldStart' | 'eagleStart'
@@ -88,6 +90,12 @@ export type BossSkillId =
   | 'shatter'
   | 'charge'
   | 'rally'
+  // Attacks: they hurt the hero directly
+  | 'thorns'
+  | 'barrage'
+  | 'slam'
+  | 'hex'
+  | 'drain'
 /** @deprecated Old name for BossSkillId, kept for saved runs and older code. */
 export type BossTrait = BossSkillId
 
@@ -117,7 +125,23 @@ export interface Boss {
 
 /** What a brick summoned by a boss skill does (drawn and handled specially). */
 export type BossRole =
-  'minion' | 'guard' | 'egg' | 'decoy' | 'spike' | 'totem' | 'rune' | 'cell' | 'rod' | 'core' | 'ice'
+  | 'minion'
+  | 'guard'
+  | 'egg'
+  | 'decoy'
+  | 'spike'
+  | 'totem'
+  | 'rune'
+  | 'cell'
+  | 'rod'
+  | 'core'
+  | 'ice'
+  /** Hurts the hero when a ball hits it. */
+  | 'thorn'
+  /** Falls fast; hurts double if it crashes. */
+  | 'missile'
+  /** A stone block guarding a weak point. */
+  | 'ward'
 
 export interface Brick {
   id: number
@@ -132,9 +156,13 @@ export interface Brick {
   role?: BossRole
   /** Turns left before a timed brick acts (hatches, melts…). */
   timer?: number
+  /** Not a square: a triangle (named by its right-angle corner) or a round orb. Missing = square. */
+  shape?: BrickShape
 }
 
-export type PickupKind = 'ball' | 'coin' | 'fire' | 'laser'
+export type BrickShape = 'tri-tl' | 'tri-tr' | 'tri-bl' | 'tri-br' | 'orb'
+
+export type PickupKind = 'ball' | 'coin' | 'fire' | 'laser' | 'heart'
 
 export interface Pickup {
   id: number
@@ -194,7 +222,8 @@ export type BoostId =
 export type SimEvent =
   | { type: 'fire' }
   | { type: 'launch' }
-  | { type: 'hit'; x: number; y: number; combo: number; crit: boolean }
+  /** `power` is the combo as it counts (scaled by the ball count, see comboPower). */
+  | { type: 'hit'; x: number; y: number; combo: number; power: number; crit: boolean }
   | { type: 'kill'; id: number; x: number; y: number; maxHp: number; kind: BrickKind; coins: number }
   | { type: 'pickup'; kind: PickupKind; x: number; y: number }
   | { type: 'wall' }
@@ -206,7 +235,8 @@ export type SimEvent =
   | { type: 'levelUp' }
   | { type: 'turn'; turn: number }
   | { type: 'boss'; noun: string; traits: BossTrait[] }
-  | { type: 'bossDown'; x: number; y: number; coins: number }
+  /** The boss fell. `ghost` is its body as it was, so the death can be shown after the sim removed it. */
+  | { type: 'bossDown'; x: number; y: number; coins: number; ghost?: { boss: Boss; parts: Brick[] } }
   /** A boss skill went off (or warns it will), at the boss. */
   | { type: 'bossSkill'; id: BossSkillId; x: number; y: number }
   /** The boss took damage at (x, y); `life` is the share of hp it has left. */
@@ -228,6 +258,28 @@ export type SimEvent =
   | { type: 'mystery'; x: number; y: number; reward: 'balls' | 'pick' | 'coins' | 'fire' }
   | { type: 'explode'; x: number; y: number; depth: number }
   | { type: 'zap'; x1: number; y1: number; x2: number; y2: number; depth: number }
+  /** Bricks crashed into the line: the hero lost `damage` health. `at` are the crash points. */
+  | { type: 'breach'; damage: number; at: Array<{ x: number; y: number }>; boss: boolean }
+  /** The hero regained health. */
+  | { type: 'heal'; amount: number; source: HealSource }
+  /** A storm turn: a special wave arrives. */
+  | { type: 'storm'; kind: StormKind }
+  /** A boss attack hurt the hero directly (thorns, a slam…), at (x, y). */
+  | { type: 'heroHit'; damage: number; x: number; y: number; source: 'thorn' | 'slam' }
+  /** A boss attack lands now (the ground slams, missiles launch, a hex curses), at (x, y). */
+  | { type: 'bossAttack'; id: 'slam' | 'barrage' | 'hex' | 'thorns'; x: number; y: number }
+  /** A boss attack is coming next turn. */
+  | { type: 'bossWarn'; id: 'slam' }
+  /** The board grew for a boss fight (or shrank back after it). */
+  | { type: 'arena'; grow: boolean }
+  /** The next turn is a storm turn. */
+  | { type: 'stormSoon' }
+  /** The hero's signature trait went off (Frost Witch's freeze, Necromancer's ball…). */
+  | { type: 'heroSkill'; hero: HeroId; x?: number; y?: number }
+
+export type HealSource = 'heart' | 'boss' | 'regen' | 'life' | 'revive' | 'potion'
+/** A storm turn's wave (see sim/storm.ts). */
+export type StormKind = 'wall' | 'iron' | 'gold' | 'bombs'
 
 export interface RunState {
   rng: RngState
@@ -291,8 +343,17 @@ export interface RunState {
   pierceNext?: boolean
   /** The boss fight in progress, if any (absent in runs saved before bosses). */
   boss?: Boss | null
+  /** Rows the board gained for the boss fight; they shrink away after it. Missing = 0. */
+  bossRoom?: number
   /** Bosses beaten this run; each adds a boost slot. Missing in older saves. */
   bossesBeaten?: number
+  /** The hero this run is played with. */
+  hero: HeroId
+  /** Hero health: bricks crashing into the line take it; at 0 the run is over. May be fractional. */
+  hp: number
+  maxHp: number
+  /** Bricks destroyed this run (Necromancer's souls). */
+  kills: number
   nextId: number
   events: SimEvent[]
 }

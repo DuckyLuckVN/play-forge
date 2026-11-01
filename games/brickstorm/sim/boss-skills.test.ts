@@ -8,15 +8,22 @@ import {
   bossLaunch,
   bossParts,
   bossVolleyEnd,
+  ATTACKS,
+  BOSS_ROOM,
+  bossTurn,
   rollTraits,
+  shrinkArena,
   spawnBoss,
 } from './boss'
-import { roleBricks } from './boss-kit'
+import { bossBounds, roleBricks } from './boss-kit'
+import { dims } from './dims'
+import { brickBreach, hurtHero } from './health'
 import { BOSS_SKILLS, SKILL_IDS } from './boss-skills'
 import { CELL } from './config'
 import { damageBrick } from './damage'
 import { cellCenter } from './rows'
-import { drainEvents, fire, startNextTurn, step } from './run'
+import { canRecall, drainEvents, fire, recall, startNextTurn, step } from './run'
+import { useHelper } from './meta'
 import { brick, empty } from './testing'
 import type { Ball, BossSkillId, RunState } from './types'
 
@@ -509,7 +516,7 @@ describe('boss skills: rage', () => {
 
 describe('boss skills: all', () => {
   it('every skill has a tier, a name and a text', () => {
-    expect(SKILL_IDS).toHaveLength(50)
+    expect(SKILL_IDS).toHaveLength(55)
     for (const id of SKILL_IDS) {
       expect([1, 2, 3]).toContain(BOSS_SKILLS[id].tier)
       expect(SKILL_INFO[id].adj).toBeTruthy()
@@ -530,7 +537,7 @@ describe('boss skills: all', () => {
       for (const tier of [1, 2, 3] as const) {
         const s = empty(seed)
         const skills = rollTraits(s, tier)
-        expect(skills).toHaveLength(tier + 1)
+        expect(skills).toHaveLength(tier === 1 ? 2 : tier + 2)
         expect(BOSS_SKILLS[skills[0]].tier).toBe(tier)
         for (const id of skills) expect(BOSS_SKILLS[id].tier).toBeLessThanOrEqual(tier)
         const has = (...ids: BossSkillId[]) => ids.filter((id) => skills.includes(id)).length
@@ -546,9 +553,161 @@ describe('boss skills: all', () => {
       const phase = (): string => s.phase
       for (let t = 0; t < 12 && phase() === 'aim'; t++) {
         fire(s, Math.PI / 2 - 0.3 + (t % 3) * 0.3)
-        for (let k = 0; k < 120 * 60 && phase() === 'volley'; k++) step(s)
+        // Like a player, recall a volley that drags on (a ball can bounce over the boss for ever).
+        for (let k = 0; k < 120 * 60 && phase() === 'volley'; k++) {
+          step(s)
+          if (s.volleyTime > 15 && canRecall(s)) recall(s)
+        }
       }
       expect(['aim', 'over', 'pick', 'grow']).toContain(s.phase)
     }
   }, 20_000) // many full fights: ~2 s alone, slower when the whole suite runs in parallel
+})
+
+describe('boss attacks: they hurt the hero', () => {
+  it('thorns hurt the hero on a ball hit, but fire, bombs and lasers break them safely', () => {
+    const s = fight(['thorns'])
+    const thorns = roleBricks(s, 'thorn')
+    expect(thorns.length).toBeGreaterThan(0)
+    const hp = s.hp
+    damageBrick(s, thorns[0], 1, 'ball')
+    expect(s.hp).toBeLessThan(hp)
+    expect(drainEvents(s).some((e) => e.type === 'heroHit')).toBe(true)
+    const after = s.hp
+    damageBrick(s, thorns[0], 1, 'fire')
+    damageBrick(s, thorns[0], 1, 'blast')
+    expect(s.hp).toBe(after)
+  })
+
+  it('thorns take at most 15% of max health in one volley', () => {
+    const s = fight(['thorns'])
+    const t = roleBricks(s, 'thorn')[0]
+    t.hp = t.maxHp = 1e9
+    for (let i = 0; i < 500; i++) damageBrick(s, t, 1, 'ball')
+    expect(s.maxHp - s.hp).toBeLessThanOrEqual(s.maxHp * 0.15 + 1e-6)
+  })
+
+  it('barrage fires missiles that fall two rows a turn and hurt double when they crash', () => {
+    const s = fight(['barrage'])
+    s.boss!.tier = 2
+    s.boss!.turn = s.turn - 2 // due this turn
+    bossTurn(s)
+    const missiles = roleBricks(s, 'missile')
+    expect(missiles).toHaveLength(2)
+    const row = missiles[0].row
+    bossTurn(s)
+    expect(missiles[0].row).toBe(row + 1) // plus the board's own drop each turn: 2 a turn
+    const plain = brick(s, 0, dims(s).dangerRow, 10)
+    const missile = { ...plain, id: 9999, col: 1, role: 'missile' as const }
+    expect(brickBreach(s, missile)).toBeCloseTo(2 * brickBreach(s, plain))
+  })
+
+  it('slam warns the turn before, drops every brick a row, and hurts if bricks are close', () => {
+    const s = fight(['slam'])
+    const b = brick(s, 0, dims(s).dangerRow - 3, 50)
+    s.boss!.turn = s.turn - 2
+    bossTurn(s)
+    expect(drainEvents(s).some((e) => e.type === 'bossWarn' && e.id === 'slam')).toBe(true)
+    expect(b.row).toBe(dims(s).dangerRow - 3)
+    s.boss!.turn = s.turn - 3
+    const hp = s.hp
+    bossTurn(s)
+    expect(b.row).toBe(dims(s).dangerRow - 2)
+    expect(s.hp).toBeLessThan(hp)
+  })
+
+  it('hex curses the lowest plain bricks into thorns', () => {
+    const s = fight(['hex'])
+    const low = brick(s, 0, dims(s).dangerRow - 2, 50)
+    s.boss!.turn = s.turn - 4
+    bossTurn(s)
+    expect(low.role).toBe('thorn')
+  })
+
+  it('drain heals the boss from health the hero loses', () => {
+    const s = fight(['drain'])
+    s.boss!.hp = s.boss!.maxHp / 2
+    const before = s.boss!.hp
+    hurtHero(s, 20, { x: 0, y: 0 }, 'thorn')
+    expect(s.boss!.hp).toBeGreaterThan(before)
+  })
+
+  it('every boss rolls at least one attack', () => {
+    for (let seed = 1; seed <= 200; seed++)
+      for (const tier of [1, 2, 3] as const)
+        expect(rollTraits(empty(seed), tier).some((id) => ATTACKS.includes(id))).toBe(true)
+  })
+
+  it('weak points spawn tucked against the boss and walled in by wards', () => {
+    const s = fight(['core'])
+    const core = roleBricks(s, 'core')[0]
+    expect(core).toBeTruthy()
+    const { left, right, top, bottom } = bossBounds(s)
+    const near =
+      (core.col === left - 1 || core.col === right + 1) && core.row >= top - 1 && core.row <= bottom
+    const above = core.row === top - 1 && core.col >= left && core.col <= right
+    expect(near || above).toBe(true)
+    expect(roleBricks(s, 'ward').length).toBeGreaterThan(0)
+  })
+})
+
+describe('boss arena', () => {
+  it('grows 2 rows when a boss arrives and shrinks back once the rows are empty', () => {
+    const s = empty()
+    const rows = s.rows
+    spawnBoss(s, ['minions'], 'block')
+    expect(s.rows).toBe(rows + BOSS_ROOM)
+    s.boss = null
+    s.bricks = []
+    shrinkArena(s)
+    shrinkArena(s)
+    expect(s.rows).toBe(rows)
+    expect(s.bossRoom).toBe(0)
+  })
+
+  it('never shrinks onto a brick (that would make it crash)', () => {
+    const s = empty()
+    spawnBoss(s, ['minions'], 'block')
+    s.boss = null
+    s.bricks = []
+    brick(s, 0, s.rows - 2, 10)
+    const rows = s.rows
+    shrinkArena(s)
+    expect(s.rows).toBe(rows)
+  })
+})
+
+describe('bomb exploits on bosses (regressions)', () => {
+  it('Row Bomb hits the boss once (20%), however many parts sit in the lowest row', () => {
+    const s = fight(['minions'], 'giant') // 4 parts wide
+    s.bricks = s.bricks.filter((b) => b.kind === 'boss')
+    const boss = s.boss!
+    useHelper(s, 'rowBomb')
+    expect(boss.hp).toBeCloseTo(boss.maxHp * 0.8)
+  })
+
+  it('Column Bomb hits the boss once (20%), even down a tall column of parts', () => {
+    const s = fight(['minions'], 'giant') // 3 parts tall
+    s.bricks = s.bricks.filter((b) => b.kind === 'boss')
+    const boss = s.boss!
+    useHelper(s, 'colBomb')
+    expect(boss.hp).toBeCloseTo(boss.maxHp * 0.8)
+  })
+
+  it('a core only feels real hits (balls and fireballs), at most 15% of the boss a volley', () => {
+    const s = fight(['core'])
+    const boss = s.boss!
+    const core = roleBricks(s, 'core')[0]
+    core.hp = core.maxHp = 1e9
+    // Splash (blasts, aftershock, lightning) does nothing to the boss through the core.
+    for (const src of ['blast', 'bomb', 'zap'] as const) damageBrick(s, core, 1, src)
+    expect(boss.hp).toBe(boss.maxHp)
+    // Ball hits do, but capped per volley.
+    for (let i = 0; i < 50; i++) damageBrick(s, core, 1, 'ball')
+    expect(boss.maxHp - boss.hp).toBeCloseTo(boss.maxHp * 0.15)
+    // A new volley resets the cap.
+    bossLaunch(s)
+    damageBrick(s, core, 1, 'ball')
+    expect(boss.maxHp - boss.hp).toBeCloseTo(boss.maxHp * 0.2)
+  })
 })

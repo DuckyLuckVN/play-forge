@@ -68,7 +68,8 @@ describe('row patterns', () => {
       spawnRow(s)
       trimmed++
       expect(s.bricks.length).toBeLessThanOrEqual(2)
-      for (const b of s.bricks) expect(b.hp).toBeGreaterThan(hpScale(45) * 1.2)
+      // Square bricks (shaped ones have less health by design, see shapes.test.ts).
+      for (const b of s.bricks.filter((b) => !b.shape)) expect(b.hp).toBeGreaterThan(hpScale(45) * 1.2)
     }
     expect(trimmed).toBeGreaterThan(10)
   })

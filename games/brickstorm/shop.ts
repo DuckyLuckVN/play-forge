@@ -1,6 +1,7 @@
 import { spend, type Helpers, type Save } from './save'
+import { HERO_IDS, HEROES } from './sim/heroes'
 
-export type ItemKind = 'ball' | 'trail' | 'arena' | 'impact' | 'music' | 'helper'
+export type ItemKind = 'ball' | 'trail' | 'arena' | 'impact' | 'music' | 'hero' | 'helper'
 
 export interface ShopItem {
   id: string
@@ -143,6 +144,9 @@ export const CATALOG: ShopItem[] = [
     ['meteor', 'Meteor Storm', 3600],
     ['overdrive', 'Overdrive', 4000],
   ]),
+  // Heroes, cheapest first (the order of HERO_IDS).
+  ...HERO_IDS.map((id) => item('hero', id, HEROES[id].name, HEROES[id].price)),
+  helper('potion', 'Potion', 200, 'Mid-run: heal half your health'),
   helper('headStart', 'Head Start', 150, 'Start a run with +5 balls'),
   helper('luckyStart', 'Lucky Start', 200, 'Start a run with a free skill pick'),
   helper('reroll', 'Reroll Token', 100, 'One free skill reroll'),

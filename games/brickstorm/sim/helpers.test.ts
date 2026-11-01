@@ -35,6 +35,7 @@ describe('on-demand helpers', () => {
     runVolley(s)
     expect(s.phase).toBe('aim')
     expect(b.row).toBe(DANGER_ROW - 1)
+    s.hp = 1
     fire(s, Math.PI / 2)
     runVolley(s)
     expect(s.phase).toBe('over')

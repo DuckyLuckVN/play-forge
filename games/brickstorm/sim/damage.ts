@@ -1,15 +1,29 @@
 // The one damage pipeline: every way a brick can lose hp goes through here, so
 // kills, coins, XP and on-death effects are counted exactly once.
-import { modsOf, xpToNext } from './boosts'
+import { runMods, xpToNext } from './boosts'
 import { random, randomInt } from '@forge/core/rng'
 import { CELL, COMBO_TIERS, KILL_XP, XP_COMBO_TIERS, XP_PER_BRICK } from './config'
 import { dims } from './dims'
 import { bigHit, bossRoleHit, bossRoleKill, damageBoss } from './boss'
 import type { BossHit } from './boss-skills'
+import { heroOnKill } from './health'
 import { cellCenter } from './rows'
 import type { Brick, RunState } from './types'
 
 export type DamageSource = 'ball' | 'fire' | 'bomb' | 'blast' | 'zap' | 'laser'
+
+/** Up to this many balls a combo counts in full; past it, milestones slowly need more hits. */
+export const COMBO_BALLS = 30
+
+/**
+ * The combo as it counts for rewards and fever. With a huge late volley,
+ * milestones need more hits, but gently (square root): 2× the hits at 120
+ * balls, 3× at 270. So combos stay easy to get and fun, without every late
+ * volley sitting at the top tier.
+ */
+export function comboPower(s: Pick<RunState, 'combo' | 'ballCount'>): number {
+  return s.combo / Math.sqrt(Math.max(1, s.ballCount / COMBO_BALLS))
+}
 
 export function comboMultiplier(combo: number): number {
   return COMBO_TIERS.find(([min]) => combo >= min)![1]
@@ -21,7 +35,7 @@ export function xpComboMultiplier(combo: number): number {
 
 /** XP for `base` points of work, scaled by the combo and Brain. */
 function earnXp(s: RunState, base: number): void {
-  if (base > 0) gainXp(s, base * xpComboMultiplier(s.combo) * modsOf(s.boosts).xpMult)
+  if (base > 0) gainXp(s, base * xpComboMultiplier(comboPower(s)) * runMods(s).xpMult)
 }
 
 export function damageBrick(
@@ -63,19 +77,22 @@ export function killBrick(s: RunState, brick: Brick, depth: number): void {
   if (brick.kind === 'boss') return bigHit(s)
   s.bricks.splice(i, 1)
   if (brick.role) bossRoleKill(s, brick)
-  const mods = modsOf(s.boosts)
+  const mods = runMods(s)
   // Only some bricks drop a coin; gold always pays, triple.
-  const base = Math.max(1, Math.round(comboMultiplier(s.combo) * mods.coinMult))
+  const base = Math.max(1, Math.round(comboMultiplier(comboPower(s)) * mods.coinMult))
   let coins = mods.midas
   if (brick.kind === 'gold') coins += base * 2
   else if (random(s.rng) < COIN_DROP) coins += base
   s.coins += coins
   earnXp(s, KILL_XP)
+  heroOnKill(s, brick)
   const { x, y } = cellCenter(brick.col, brick.row)
   s.events.push({ type: 'kill', id: brick.id, x, y, maxHp: brick.maxHp, kind: brick.kind, coins })
   onDeath(s, brick, depth)
   if (mods.aftershock) {
-    const near = s.bricks.filter((b) => Math.abs(b.col - brick.col) + Math.abs(b.row - brick.row) === 1)
+    const near = oncePerBoss(
+      s.bricks.filter((b) => Math.abs(b.col - brick.col) + Math.abs(b.row - brick.row) === 1),
+    )
     for (const b of near) damageBrick(s, b, mods.aftershock * mods.damageMult, 'blast', depth + 1)
   }
 }
@@ -93,7 +110,7 @@ function onDeath(s: RunState, brick: Brick, depth: number): void {
       explode(s, brick.col, brick.row, 0.5 * brick.maxHp, depth)
       return
     case 'lightning': {
-      const row = s.bricks.filter((b) => b.row === brick.row)
+      const row = oncePerBoss(s.bricks.filter((b) => b.row === brick.row))
       for (const b of row) {
         const t = cellCenter(b.col, b.row)
         s.events.push({ type: 'zap', x1: x, y1: y, x2: t.x, y2: t.y, depth })
@@ -134,7 +151,16 @@ function onDeath(s: RunState, brick: Brick, depth: number): void {
   }
 }
 
-/** Damages every brick in the 3×3 around a cell. */
+/**
+ * The bricks an area effect hits, with the boss counted once: its parts share
+ * one health pool, so a blast over several parts must not hit it several times.
+ */
+export function oncePerBoss<T extends Brick>(bricks: readonly T[]): T[] {
+  let boss = false
+  return bricks.filter((b) => b.kind !== 'boss' || (!boss && (boss = true)))
+}
+
+/** Damages every brick in the 3×3 around a cell (the boss once). */
 export function explode(
   s: RunState,
   col: number,
@@ -145,7 +171,7 @@ export function explode(
 ): void {
   const { x, y } = cellCenter(col, row)
   s.events.push({ type: 'explode', x, y, depth })
-  const hit = s.bricks.filter((b) => Math.abs(b.col - col) <= 1 && Math.abs(b.row - row) <= 1)
+  const hit = oncePerBoss(s.bricks.filter((b) => Math.abs(b.col - col) <= 1 && Math.abs(b.row - row) <= 1))
   for (const b of hit) damageBrick(s, b, amount, source, depth + 1)
 }
 

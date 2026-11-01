@@ -85,3 +85,13 @@ describe('slow-mo', () => {
     expect(cellCenter(3, 2).y).toBeLessThan(s.balls[0].y)
   })
 })
+
+describe('combo power', () => {
+  it('counts in full up to 30 balls, then gently needs more hits (2× at 120 balls)', async () => {
+    const { comboPower } = await import('./damage')
+    expect(comboPower({ combo: 50, ballCount: 10 })).toBe(50)
+    expect(comboPower({ combo: 50, ballCount: 30 })).toBe(50)
+    expect(comboPower({ combo: 100, ballCount: 120 })).toBeCloseTo(50)
+    expect(comboPower({ combo: 150, ballCount: 270 })).toBeCloseTo(50)
+  })
+})

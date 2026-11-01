@@ -32,8 +32,8 @@ describe('boss hp', () => {
     s.turn = 300
     // Raw hpScale(300) is near a million; real bricks are capped by your firepower.
     expect(hpScale(300)).toBeGreaterThan(500_000)
-    expect(bossHp(s)).toBeLessThanOrEqual(12 * hpCap(s))
-    expect(bossHp(s)).toBeGreaterThanOrEqual(3 * Math.min(hpScale(300), hpCap(s)))
+    expect(bossHp(s)).toBeLessThanOrEqual(18 * hpCap(s))
+    expect(bossHp(s)).toBeGreaterThanOrEqual(4 * Math.min(hpScale(300), hpCap(s)))
   })
 
   it('counts the damage bonus from levels, so levelling does not trivialise bosses', () => {
@@ -56,11 +56,15 @@ describe('boss', () => {
     expect(BOSS_SHAPES[s.boss!.shape!].tier).toBe(1)
     expect(parts).toHaveLength(BOSS_SHAPES[s.boss!.shape!].cells.length)
     expect(Math.min(...parts.map((b) => b.row))).toBe(0)
-    expect(s.bricks.filter((b) => b.kind !== 'boss')).toHaveLength(0)
-    expect(drainEvents(s).some((e) => e.type === 'boss')).toBe(true)
+    // Only what its skills summon (thorns, wards…) shares the board with it.
+    expect(s.bricks.filter((b) => b.kind !== 'boss' && !b.role)).toHaveLength(0)
+    const events = drainEvents(s)
+    expect(events.some((e) => e.type === 'boss')).toBe(true)
+    // The board grows for the fight.
+    expect(events.some((e) => e.type === 'arena' && e.grow)).toBe(true)
   })
 
-  it('grows with each boss: bigger bodies and 2, 3, then 4 skills', () => {
+  it('grows with each boss: bigger bodies and 2, 4, then 5 skills', () => {
     for (const [turn, tier] of [
       [30, 1],
       [60, 2],
@@ -74,7 +78,7 @@ describe('boss', () => {
         spawnBoss(s)
         expect(s.boss!.tier).toBe(tier)
         expect(BOSS_SHAPES[s.boss!.shape!].tier).toBe(tier)
-        expect(s.boss!.traits.length).toBe(Math.min(tier + 1, SKILL_IDS.length))
+        expect(s.boss!.traits.length).toBe(Math.min(tier === 1 ? 2 : tier + 2, SKILL_IDS.length))
         expect(new Set(s.boss!.traits).size).toBe(s.boss!.traits.length)
       }
     }
@@ -113,11 +117,11 @@ describe('boss', () => {
     const strong = beforeBoss(1, 60)
     weak.turn = strong.turn = BOSS_EVERY
     expect(bossHp(strong)).toBeGreaterThan(bossHp(weak))
-    // Between 3 and 12 of the bricks this run actually faces (capped by its firepower).
+    // Between 4 and 18 of the bricks this run actually faces (capped by its firepower).
     for (const s of [weak, strong]) {
       const typical = Math.min(hpScale(s.turn), hpCap(s))
-      expect(bossHp(s)).toBeGreaterThanOrEqual(typical * 3)
-      expect(bossHp(s)).toBeLessThanOrEqual(typical * 12)
+      expect(bossHp(s)).toBeGreaterThanOrEqual(typical * 4)
+      expect(bossHp(s)).toBeLessThanOrEqual(typical * 18)
     }
   })
 

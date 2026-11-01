@@ -9,6 +9,7 @@ import {
   COLS,
   FEVER_AT,
   FIRE_GAP,
+  LAUNCH_LIFT,
   GROW_EVERY,
   MAX_COLS,
   MAX_ROWS,
@@ -19,11 +20,11 @@ import {
   TICK,
 } from './config'
 import { random } from '@forge/core/rng'
-import { levelPower, modsOf, rollChoices, type Mods } from './boosts'
-import { damageBrick, explode, zap } from './damage'
-import { dims } from './dims'
+import { levelPower, rollChoices, runMods, type Mods } from './boosts'
+import { comboPower, damageBrick, explode, oncePerBoss, zap } from './damage'
+import { baseRows, dims } from './dims'
 export { comboMultiplier } from './damage'
-import { antiStall, bounceWalls, circleRect, deepestContact, reflect } from './physics'
+import { antiStall, bounceWalls, circleShape, deepestContact, reflect } from './physics'
 import {
   BOSS_EVERY,
   bossContact,
@@ -33,17 +34,22 @@ import {
   bossTurn,
   bossVolleyEnd,
   liftBoss,
+  shrinkArena,
   spawnBoss,
 } from './boss'
 import type { Face } from './boss-skills'
-import { brickRect, cellCenter, hitRects, hpStepStart, spawnRow } from './rows'
+import { brickShape, cellCenter, hitShapes, hpStepStart, spawnRow } from './rows'
+import { HEART_HEAL, heal, heroFreezes, heroHitMult, heroTurnStart, resolveBreaches } from './health'
+import { DEFAULT_HERO, HEROES, heroOf, type HeroId } from './heroes'
+import { isStormTurn, stormWave } from './storm'
 import type { Ball, Brick, Pickup, RunState, SimEvent } from './types'
 
 const COIN_PICKUP = 5
 /** Turn reached → coin bonus. */
 const MILESTONES: Record<number, number> = { 25: 50, 50: 150, 100: 500 }
 
-export function createRun(seed: number): RunState {
+export function createRun(seed: number, hero: HeroId = DEFAULT_HERO): RunState {
+  const def = HEROES[hero] ?? HEROES[DEFAULT_HERO]
   const s: RunState = {
     rng: { seed },
     seed,
@@ -53,7 +59,7 @@ export function createRun(seed: number): RunState {
     rows: ROWS,
     launchX: BOARD_W / 2,
     nextLaunchX: null,
-    ballCount: 1,
+    ballCount: 1 + (def.startBalls ?? 0),
     pendingBalls: 0,
     bricks: [],
     pickups: [],
@@ -79,6 +85,10 @@ export function createRun(seed: number): RunState {
     growPending: false,
     freezeNext: false,
     surgeNext: false,
+    hero: def.id,
+    hp: def.hp,
+    maxHp: def.hp,
+    kills: 0,
     nextId: 1,
     events: [],
   }
@@ -94,14 +104,15 @@ export function drainEvents(s: RunState): SimEvent[] {
 
 /** The ball waiting on the floor: as big as the balls the run will fire. */
 export function restingBall(s: RunState): { y: number; r: number } {
-  const r = modsOf(s.boosts).radius
-  return { y: dims(s).floorY - r, r }
+  const r = runMods(s).radius
+  // Held in the hero's hand, a little above the floor; balls still land on the floor.
+  return { y: dims(s).floorY - r - LAUNCH_LIFT, r }
 }
 
 /** Starts a volley in direction (cos a, -sin a). Only valid while aiming. */
 export function fire(s: RunState, angle: number): void {
   if (s.phase !== 'aim') return
-  const mods = modsOf(s.boosts)
+  const mods = runMods(s)
   const a = Math.max(AIM_MIN, Math.min(Math.PI - AIM_MIN, angle))
   const speed = BALL_SPEED * mods.speedMult
   const [vx, vy] = antiStall(Math.cos(a) * speed, -Math.sin(a) * speed)
@@ -114,12 +125,13 @@ export function fire(s: RunState, angle: number): void {
   s.overchargeNext = false
   const pierceShot = s.pierceNext ? 2 : 0
   s.pierceNext = false
-  const every = (n: number, i: number) => n > 0 && (i + 1) % n === 0
+  // Special balls are rolled per ball (seeded), so each volley's mix is a little surprise.
+  const roll = (chance: number) => chance >= 1 || (chance > 0 && random(s.rng) < chance)
   const charges = Math.min(n, s.fireCharges)
   s.fireCharges -= charges
   const kindOf = (i: number): Ball['kind'] => {
-    if (i < charges || (mods.fireEvery && (i + 1) % mods.fireEvery === 0)) return 'fire'
-    if (mods.bombEvery && (i + 1) % mods.bombEvery === 0) return 'bomb'
+    if (i < charges || roll(mods.fireChance)) return 'fire'
+    if (roll(mods.bombChance)) return 'bomb'
     return 'normal'
   }
   s.balls = Array.from({ length: n }, (_, i): Ball => ({
@@ -131,9 +143,9 @@ export function fire(s: RunState, angle: number): void {
     kind: kindOf(i),
     r: mods.radius,
     // Twin Shot and Piercing work on every Nth ball, more of them each level.
-    split: !every(mods.twinEvery, i),
+    split: !roll(mods.twinChance),
     inside: [],
-    pierceLeft: (every(mods.pierceEvery, i) ? 1 : 0) + pierceShot,
+    pierceLeft: (roll(mods.pierceChance) ? 1 : 0) + pierceShot,
     bounceBonus: 0,
     lastBrick: -1,
   }))
@@ -149,10 +161,21 @@ export function fire(s: RunState, angle: number): void {
   s.events.push({ type: 'fire' })
 }
 
+/** A bomb ball's blast hits every brick in the 3×3 for this many of the ball's own hits. */
+export const BOMB_BALL_HITS = 4
+
+/**
+ * A bomb ball's blast: a few of its own hits, spread over the 3×3. It grows
+ * with the build like any ball, never with the bricks (that made it wipe boards late).
+ */
+export function bombBlast(s: RunState, mods = runMods(s)): number {
+  return BOMB_BALL_HITS * mods.damageMult * levelPower(s.level) * (s.overcharged ? 2 : 1)
+}
+
 /** Advances the volley by one fixed tick. */
 export function step(s: RunState): void {
   if (s.phase !== 'volley') return
-  const mods = modsOf(s.boosts)
+  const mods = runMods(s)
   s.volleyTime += TICK
   s.sinceHit += TICK
   if (s.sinceHit > mods.comboGap) s.combo = 0
@@ -218,7 +241,7 @@ function moveBall(s: RunState, ball: Ball, mods: Mods): void {
 /** A fire ball never bounces off bricks: it burns each one it passes through, once per pass. A boss is too big to burn through. */
 function burnThrough(s: RunState, ball: Ball, mods: Mods): void {
   const touching = s.bricks.filter(
-    (b) => b.kind !== 'boss' && circleRect(ball.x, ball.y, ball.r, brickRect(b)),
+    (b) => b.kind !== 'boss' && circleShape(ball.x, ball.y, ball.r, brickShape(b)),
   )
   ball.inside = ball.inside.filter((id) => touching.some((b) => b.id === id))
   for (const brick of touching) {
@@ -242,9 +265,9 @@ function bounceOffBricks(s: RunState, ball: Ball, mods: Mods, bricks: Brick[]): 
   // A pierced brick is ignored until the ball has fully left it, so a
   // bounce off the next brick can't push the ball back into it for a re-hit.
   const pierced = s.bricks.find((b) => b.id === ball.lastBrick)
-  if (!pierced || !circleRect(ball.x, ball.y, ball.r, brickRect(pierced))) ball.lastBrick = -1
+  if (!pierced || !circleShape(ball.x, ball.y, ball.r, brickShape(pierced))) ball.lastBrick = -1
   const solid = bricks.filter((b) => b.id !== ball.lastBrick)
-  const contact = deepestContact(ball.x, ball.y, hitRects(solid), ball.r)
+  const contact = deepestContact(ball.x, ball.y, hitShapes(solid), ball.r)
   if (!contact) return false
   const brick = solid[contact.index]
   const { col, row } = brick
@@ -268,7 +291,7 @@ function bounceOffBricks(s: RunState, ball: Ball, mods: Mods, bricks: Brick[]): 
   }
   if (ball.kind === 'bomb') {
     ball.kind = 'normal'
-    explode(s, col, row, s.turn, 0, 'bomb')
+    explode(s, col, row, bombBlast(s, mods), 0, 'bomb')
   }
   if (!ball.split) {
     // The twin leaves mirrored across the contact normal, so it also heads away from the brick.
@@ -286,7 +309,7 @@ function hitBrick(s: RunState, ball: Ball, brick: Brick, mods: Mods, power: numb
   s.combo++
   s.sinceHit = 0
   s.bestCombo = Math.max(s.bestCombo, s.combo)
-  if (s.combo >= FEVER_AT && !s.fever) {
+  if (comboPower(s) >= (heroOf(s).feverAt ?? FEVER_AT) && !s.fever) {
     s.fever = true
     s.events.push({ type: 'fever' })
   }
@@ -295,9 +318,10 @@ function hitBrick(s: RunState, ball: Ball, brick: Brick, mods: Mods, power: numb
     (power * mods.damageMult * levelPower(s.level) + ball.bounceBonus) *
     (s.fever ? 2 : 1) *
     (crit ? 3 : 1) *
-    (s.overcharged ? 2 : 1)
+    (s.overcharged ? 2 : 1) *
+    heroHitMult(s, brick.kind === 'boss')
   const { x, y } = cellCenter(brick.col, brick.row)
-  s.events.push({ type: 'hit', x, y, combo: s.combo, crit })
+  s.events.push({ type: 'hit', x, y, combo: s.combo, power: comboPower(s), crit })
   const from = { col: brick.col, row: brick.row }
   damageBrick(s, brick, damage, ball.kind === 'fire' ? 'fire' : 'ball', 0, { face, crit })
   if (mods.zapChance > 0 && random(s.rng) < mods.zapChance) zap(s, from, mods.zapArcs, 1 * mods.damageMult, 0)
@@ -324,12 +348,13 @@ function collectPickups(s: RunState, ball: Ball, mods: Mods): void {
 }
 
 /** What a pickup does once collected (by a ball, or the Vacuum helper). Remove it from the board first. */
-export function applyPickup(s: RunState, p: Pickup, mods = modsOf(s.boosts)): void {
+export function applyPickup(s: RunState, p: Pickup, mods = runMods(s)): void {
   const { x, y } = cellCenter(p.col, p.row)
   s.events.push({ type: 'pickup', kind: p.kind, x, y })
   if (p.kind === 'ball') s.pendingBalls++
   else if (p.kind === 'coin') s.coins += Math.round(COIN_PICKUP * mods.coinMult)
   else if (p.kind === 'fire') s.fireCharges += 3
+  else if (p.kind === 'heart') heal(s, s.maxHp * HEART_HEAL, 'heart')
   else laserRow(s, p.row)
 }
 
@@ -339,7 +364,7 @@ const LASER_POWER = 2
 /** A laser across a row: every brick in it takes `damage` (the turn's worth unless told). */
 export function laserRow(s: RunState, row: number, damage = s.turn): void {
   s.events.push({ type: 'laser', y: cellCenter(0, row).y })
-  for (const b of s.bricks.filter((b) => b.row === row)) damageBrick(s, b, damage, 'laser')
+  for (const b of oncePerBoss(s.bricks.filter((b) => b.row === row))) damageBrick(s, b, damage, 'laser')
 }
 
 function endTurn(s: RunState): void {
@@ -358,8 +383,10 @@ function endTurn(s: RunState): void {
     bonus(s, { type: 'closeOne', coins: s.turn * 5 })
   }
 
-  const mods = modsOf(s.boosts)
-  const frozen = s.freezeNext
+  const mods = runMods(s)
+  const heroFrost = !s.freezeNext && heroFreezes(s)
+  if (heroFrost) s.events.push({ type: 'heroSkill', hero: s.hero })
+  const frozen = s.freezeNext || heroFrost
   const drops = frozen ? 0 : mods.glass && s.turn % 10 === 0 ? 2 : 1
   s.freezeNext = false
   for (const b of s.bricks) b.row += drops
@@ -373,7 +400,9 @@ function endTurn(s: RunState): void {
     s.bricks = s.bricks.filter((b) => b.row < dangerRow)
     s.events.push({ type: 'secondWind' })
   }
-  if (s.bricks.some((b) => b.row >= dangerRow)) {
+  // Bricks that reach the line crash into the hero; the run ends only when health runs out
+  // (boss attacks can also take the last of it mid-volley).
+  if (resolveBreaches(s) || s.hp <= 0) {
     s.phase = 'over'
     s.events.push({ type: 'over' })
     return
@@ -387,14 +416,20 @@ export function startNextTurn(s: RunState, spawn = true): void {
   s.turn++
   const milestone = MILESTONES[s.turn]
   if (milestone) bonus(s, { type: 'milestone', turn: s.turn, coins: milestone })
+  heroTurnStart(s)
+  if (!s.boss) shrinkArena(s)
   if (s.boss) bossTurn(s)
   else if (spawn) {
     if (s.turn % BOSS_EVERY === 0) spawnBoss(s)
-    else spawnRow(s)
+    else {
+      spawnRow(s)
+      if (isStormTurn(s.turn)) stormWave(s)
+    }
   }
   if (s.turn % GROW_EVERY === 0) s.growPending = true
   s.events.push({ type: 'turn', turn: s.turn })
   if (hpStepStart(s.turn) === s.turn) s.events.push({ type: 'tougher' })
+  if (isStormTurn(s.turn + 1) && !s.boss) s.events.push({ type: 'stormSoon' })
   if (s.bricks.some((b) => b.row === dims(s).dangerRow - 1)) s.events.push({ type: 'danger' })
   openPickOrAim(s)
 }
@@ -404,7 +439,7 @@ export function openPickOrAim(s: RunState): void {
   if (s.pendingPicks > 0) {
     s.phase = 'pick'
     s.choices = rollChoices(s)
-  } else if (s.growPending && (s.cols < MAX_COLS || s.rows < MAX_ROWS)) {
+  } else if (s.growPending && (s.cols < MAX_COLS || baseRows(s) < MAX_ROWS)) {
     s.phase = 'grow'
   } else {
     s.growPending = false
@@ -421,7 +456,7 @@ function bonus(s: RunState, e: SimEvent & { coins: number }): void {
 export function slowMoActive(s: RunState): boolean {
   if (s.phase !== 'volley' || s.bricks.length !== 1) return false
   const brick = s.bricks[0]
-  if (brick.hp > 1 * modsOf(s.boosts).damageMult) return false
+  if (brick.hp > 1 * runMods(s).damageMult) return false
   const c = cellCenter(brick.col, brick.row)
   return s.balls.some((b) => {
     if (b.status !== 'flying') return false

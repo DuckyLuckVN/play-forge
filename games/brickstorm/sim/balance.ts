@@ -7,7 +7,8 @@ import { dims } from './dims'
 import { growBoard } from './meta'
 import { aimFromPointer } from './physics'
 import { cellCenter, spawnRow, specialChance } from './rows'
-import { canRecall, createRun, drainEvents, fire, recall, step } from './run'
+import { canRecall, createRun, drainEvents, fire, recall, restingBall, step } from './run'
+import { HERO_IDS, type HeroId } from './heroes'
 import type { BoostId, RunState } from './types'
 
 /** random: blind aim · aimer: aims at the lowest brick, like a typical player · greedy: tries 6 angles ahead. */
@@ -84,6 +85,7 @@ function score(s: RunState): number {
     else if (e.type === 'hit') v += 1
     else if (e.type === 'pickup') v += 15
     else if (e.type === 'over') v -= 10_000
+    else if (e.type === 'breach') v -= 40 * e.damage
   }
   return v - 50 * s.bricks.filter((b) => b.row >= dims(s).dangerRow - 2).length
 }
@@ -108,24 +110,30 @@ function greedyAngle(s: RunState): number {
 
 /** Aims at the lowest brick (the most dangerous one), with a few degrees of wobble. */
 function aimerAngle(s: RunState, rng: { seed: number }): number {
-  const low = s.bricks.reduce<RunState['bricks'][number] | null>(
-    (a, b) => (!a || b.row > a.row ? b : a),
-    null,
-  )
+  // Like a player, it doesn't aim at thorns (they hurt) or at a weak point's stone wards.
+  const targets = s.bricks.filter((b) => b.role !== 'thorn' && b.role !== 'ward')
+  const low = targets.reduce<RunState['bricks'][number] | null>((a, b) => (!a || b.row > a.row ? b : a), null)
   if (!low) return Math.PI / 2
   const { x, y } = cellCenter(low.col, low.row)
   const wobble = ((random(rng) - 0.5) * 10 * Math.PI) / 180
   return Math.max(
     AIM_MIN,
-    Math.min(Math.PI - AIM_MIN, aimFromPointer(s.launchX, x, y, dims(s).floorY) + wobble),
+    Math.min(Math.PI - AIM_MIN, aimFromPointer(s.launchX, x, y, restingBall(s).y) + wobble),
   )
 }
 
 /** Turns the report samples the level at, to show the pace of level-ups. */
 const LEVEL_CHECKS = [10, 30, 60, 90] as const
+/** Runs stop here, to keep the report fast. */
+const MAX_TURNS = 300
 
-export function simulateRun(seed: number, bot: Bot, maxTurns = 150): RunResult {
-  const s = createRun(seed)
+export function simulateRun(
+  seed: number,
+  bot: Bot,
+  maxTurns = MAX_TURNS,
+  hero: HeroId = 'rookie',
+): RunResult {
+  const s = createRun(seed, hero)
   const aimRng = { seed: seed ^ 0x9e3779b9 }
   let firstLevelTurn: number | null = null
   let bossesMet = 0
@@ -181,7 +189,11 @@ export function specialShare(turn: number, rows = 2000): number {
   return special / all
 }
 
-export function balanceReport(seeds: number, bots: Bot[] = ['random', 'aimer', 'greedy']): string {
+export function balanceReport(
+  seeds: number,
+  bots: Bot[] = ['random', 'aimer', 'greedy'],
+  heroes = false,
+): string {
   const lines = [`Brickstorm balance — ${seeds} seeds per bot`]
   for (const bot of bots) {
     const runs = Array.from({ length: seeds }, (_, i) => simulateRun(i + 1, bot))
@@ -195,8 +207,27 @@ export function balanceReport(seeds: number, bots: Bot[] = ['random', 'aimer', '
         ` | turns min/max ${Math.min(...runs.map((r) => r.turns))}/${Math.max(...runs.map((r) => r.turns))}`,
     )
   }
+  if (heroes) for (const bot of bots) lines.push(heroReport(seeds, bot))
   lines.push(
     `special share at turn 31: ${(specialShare(31) * 100).toFixed(1)}% (chance ${specialChance(31)})`,
   )
+  return lines.join('\n')
+}
+
+/** Median turns per hero for one bot, so no hero is far stronger or weaker than the rest. */
+export function heroReport(
+  seeds: number,
+  bot: Bot,
+  only: readonly HeroId[] = HERO_IDS,
+  maxTurns = MAX_TURNS,
+): string {
+  const lines = [`heroes (${bot}, median turns · p25 · p75):`]
+  for (const hero of only) {
+    const turns = Array.from({ length: seeds }, (_, i) => simulateRun(i + 1, bot, maxTurns, hero).turns).sort(
+      (a, b) => a - b,
+    )
+    const at = (q: number) => turns[Math.min(turns.length - 1, Math.floor(turns.length * q))]
+    lines.push(`  ${hero.padEnd(10)} ${String(median(turns)).padStart(4)} · ${at(0.25)} · ${at(0.75)}`)
+  }
   return lines.join('\n')
 }

@@ -12,6 +12,35 @@ export interface SkillInfo {
 }
 
 export const SKILL_INFO: Record<BossSkillId, SkillInfo> = {
+  thorns: {
+    adj: t('Thorned'),
+    text: t(
+      'Cursed Thorns: thorn bricks hurt you for every ball that hits them. Fire, bombs and lasers break them safely.',
+    ),
+    color: '#c77dff',
+  },
+  barrage: {
+    adj: t('Bombarding'),
+    text: t(
+      'Barrage: fires 2 missiles every 2 turns. They fall fast and hurt double if they reach the line. Shoot them down!',
+    ),
+    color: '#ff922b',
+  },
+  slam: {
+    adj: t('Quaking'),
+    text: t('Ground Slam: every 3 turns all bricks drop a row, and you get hurt if any are near the line.'),
+    color: '#e8590c',
+  },
+  hex: {
+    adj: t('Hexing'),
+    text: t('Hex: every 4 turns turns the 2 lowest bricks into thorns that hurt you when hit.'),
+    color: '#9d4edd',
+  },
+  drain: {
+    adj: t('Vampiric'),
+    text: t('Life Drain: heals itself from every bit of health you lose.'),
+    color: '#e03131',
+  },
   minions: { adj: t('Hive'), text: t('Minions: summons 2 small bricks every turn.'), color: '#4be3a0' },
   mason: {
     adj: t('Mason'),
@@ -221,7 +250,7 @@ export const SKILL_INFO: Record<BossSkillId, SkillInfo> = {
 }
 
 /** The kind of skill: picks its cast sound and burst. */
-export type SkillGroup = 'summon' | 'defense' | 'movement' | 'weak' | 'tricks' | 'rage'
+export type SkillGroup = 'summon' | 'defense' | 'movement' | 'weak' | 'tricks' | 'rage' | 'attack'
 
 const GROUPS: Record<SkillGroup, BossSkillId[]> = {
   summon: ['minions', 'mason', 'guards', 'brood', 'eggs', 'mirror', 'spikes', 'splitters', 'totem', 'swarm'],
@@ -241,6 +270,7 @@ const GROUPS: Record<SkillGroup, BossSkillId[]> = {
   weak: ['core', 'heart', 'runes', 'powerCells', 'rod', 'volatile', 'icebound', 'cracked'],
   tricks: ['glutton', 'frost', 'leech', 'mire', 'shroud', 'taxman', 'gravity', 'repulse'],
   rage: ['frenzy', 'lastStand', 'fortify', 'shatter', 'charge', 'rally'],
+  attack: ['thorns', 'barrage', 'slam', 'hex', 'drain'],
 }
 
 export function skillGroup(id: string): SkillGroup {

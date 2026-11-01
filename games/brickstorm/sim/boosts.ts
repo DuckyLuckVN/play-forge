@@ -10,6 +10,8 @@ import {
   XP_BASE,
   XP_STEP,
 } from './config'
+import { baseRows } from './dims'
+import { HEROES, heroOf, type HeroId } from './heroes'
 import type { BoostId, RunState } from './types'
 
 export type Rarity = 'common' | 'rare' | 'epic'
@@ -19,18 +21,18 @@ export const BOOSTS: Record<BoostId, { name: string; text: string; rarity: Rarit
   balls: { name: 'Reinforcements', text: '+2 balls', rarity: 'common', max: 99 },
   coins: { name: 'Gold Rush', text: '+30% coins', rarity: 'common', max: 99 },
   speed: { name: 'Tailwind', text: '+15% ball speed', rarity: 'common', max: 5 },
-  pierce: { name: 'Piercing', text: 'Every 3rd ball passes through its first brick', rarity: 'rare', max: 3 },
+  pierce: { name: 'Piercing', text: '33% of balls pass through their first brick', rarity: 'rare', max: 3 },
   crit: { name: 'Lucky Strike', text: '+5% crit chance (crits deal 3×)', rarity: 'rare', max: 3 },
   bouncy: { name: 'Rubber Walls', text: '+0.5 damage per wall bounce, stacking', rarity: 'epic', max: 2 },
   double: { name: 'Double Down', text: 'Double your balls for the next 3 volleys', rarity: 'epic', max: 99 },
   fireball: {
     name: 'Fireball',
-    text: 'Every 12th ball is a fireball that burns through bricks',
+    text: '8% of balls are fireballs that burn through bricks',
     rarity: 'rare',
     max: 3,
   },
-  bombball: { name: 'Bomb Ball', text: 'Every 16th ball explodes on its first hit', rarity: 'epic', max: 3 },
-  twin: { name: 'Twin Shot', text: 'Every 3rd ball splits in two on its first hit', rarity: 'rare', max: 3 },
+  bombball: { name: 'Bomb Ball', text: '6% of balls explode on their first hit', rarity: 'epic', max: 3 },
+  twin: { name: 'Twin Shot', text: '33% of balls split in two on their first hit', rarity: 'rare', max: 3 },
   big: { name: 'Big Balls', text: '+20% ball size', rarity: 'common', max: 3 },
   lightning: { name: 'Chain Lightning', text: '5% of hits arc to a nearby brick', rarity: 'rare', max: 3 },
   aftershock: {
@@ -94,28 +96,38 @@ const FALLBACK: Record<Rarity, Rarity[]> = {
 /** A card's tier: epic (more likely the longer since the last epic), rare, or common. */
 function rollTier(s: RunState): Rarity {
   const roll = random(s.rng)
-  const epic = TIER_CHANCE.epic + EPIC_PITY * (s.epicDry ?? 0)
+  const epic = (TIER_CHANCE.epic + EPIC_PITY * (s.epicDry ?? 0)) * (heroOf(s).epicLuck ?? 1)
   return roll < epic ? 'epic' : roll < epic + TIER_CHANCE.rare ? 'rare' : 'common'
 }
 
 export type Mods = ReturnType<typeof modsOf>
 
-export function modsOf(boosts: Partial<Record<BoostId, number>>) {
-  const n = (id: BoostId) => boosts[id] ?? 0
+/** The run's stats: its skills and its hero. */
+export function runMods(s: Pick<RunState, 'boosts'> & { hero?: HeroId }): Mods {
+  return modsOf(s.boosts, s.hero)
+}
+
+/**
+ * Ball and run stats from the skills owned, plus the hero's: its free skill
+ * levels stack with picked ones, and its multipliers apply on top.
+ */
+export function modsOf(boosts: Partial<Record<BoostId, number>>, heroId?: HeroId) {
+  const hero = heroId ? HEROES[heroId] : undefined
+  const n = (id: BoostId) => (boosts[id] ?? 0) + (hero?.innate?.[id] ?? 0)
   return {
-    damageMult: (1 + 0.2 * n('damage')) * (n('glass') ? 2 : 1),
-    coinMult: 1 + 0.3 * n('coins'),
-    speedMult: 1 + 0.15 * n('speed'),
+    damageMult: (1 + 0.2 * n('damage')) * (n('glass') ? 2 : 1) * (hero?.damage ?? 1),
+    coinMult: (1 + 0.3 * n('coins')) * (hero?.coins ?? 1),
+    speedMult: (1 + 0.15 * n('speed')) * (hero?.speed ?? 1),
     // Skills start weak and grow with each level, so a build is worth investing in.
-    /** Every Nth ball pierces / splits (0 = never; 1 = every ball). */
-    pierceEvery: [0, 3, 2, 1][n('pierce')] ?? 1,
-    twinEvery: [0, 3, 2, 1][n('twin')] ?? 1,
-    critChance: 0.05 * n('crit'),
+    /** Chance each ball pierces / splits (0 = never; 1 = every ball). Rolled per ball, so volleys vary. */
+    pierceChance: [0, 0.33, 0.5, 1][n('pierce')] ?? 1,
+    twinChance: [0, 0.33, 0.5, 1][n('twin')] ?? 1,
+    critChance: 0.05 * n('crit') + (hero?.crit ?? 0),
     /** Damage a ball gains per wall bounce. */
     bounceStep: 0.5 * n('bouncy'),
-    /** Every Nth ball is a fireball / bomb (0 = never). */
-    fireEvery: [0, 12, 8, 5][n('fireball')] ?? 5,
-    bombEvery: [0, 16, 11, 7][n('bombball')] ?? 7,
+    /** Chance each ball is a fireball / bomb (0 = never): the old every-12th/8th/5th and 16th/11th/7th on average. */
+    fireChance: [0, 0.08, 0.125, 0.2][n('fireball')] ?? 0.2,
+    bombChance: [0, 0.06, 0.09, 0.14][n('bombball')] ?? 0.14,
     radius: BALL_R * (1 + 0.2 * n('big')),
     zapChance: [0, 0.05, 0.09, 0.14][n('lightning')] ?? 0.14,
     /** Bricks each lightning arc jumps to. */
@@ -124,8 +136,8 @@ export function modsOf(boosts: Partial<Record<BoostId, number>>) {
     aftershock: 0.5 * n('aftershock'),
     pickupReach: n('magnet') ? CELL : 0,
     midas: n('midas'),
-    comboGap: COMBO_GAP + n('keeper'),
-    xpMult: 1 + 0.3 * n('brain'),
+    comboGap: COMBO_GAP + n('keeper') + (hero?.comboGap ?? 0),
+    xpMult: (1 + 0.3 * n('brain')) * (hero?.xp ?? 1),
     glass: n('glass') > 0,
     secondWind: n('secondWind') > 0,
     guideLength: GUIDE_LENGTH * (1 + 0.5 * n('eagle')),
@@ -154,8 +166,8 @@ const OWNED_LEAN = 0.3
 /** Boosts that pay out once when picked (+2 balls, Double Down), so they take no slot. */
 const INSTANT: readonly BoostId[] = ['balls', 'double']
 
-export function boostSlots(s: Pick<RunState, 'bossesBeaten'>): number {
-  return BASE_SLOTS + (s.bossesBeaten ?? 0)
+export function boostSlots(s: Pick<RunState, 'bossesBeaten'> & { hero?: HeroId }): number {
+  return BASE_SLOTS + (s.bossesBeaten ?? 0) + (heroOf(s).slots ?? 0)
 }
 
 /** The boosts that fill slots, in the order they were first picked. */
@@ -169,7 +181,10 @@ export function slottedBoosts(boosts: RunState['boosts']): BoostId[] {
 }
 
 /** Taking `id` would need a free slot and there is none: the player must drop a boost for it. */
-export function needsReplace(s: Pick<RunState, 'boosts' | 'bossesBeaten'>, id: BoostId): boolean {
+export function needsReplace(
+  s: Pick<RunState, 'boosts' | 'bossesBeaten'> & { hero?: HeroId },
+  id: BoostId,
+): boolean {
   if (INSTANT.includes(id) || (s.boosts[id] ?? 0) > 0) return false
   return slottedBoosts(s.boosts).length >= boostSlots(s)
 }
@@ -298,7 +313,7 @@ function finishPick(s: RunState): void {
   } else {
     s.choices = []
     // A board growth due this turn comes right after the pick.
-    const canGrow = s.cols < MAX_COLS || s.rows < MAX_ROWS
+    const canGrow = s.cols < MAX_COLS || baseRows(s) < MAX_ROWS
     if (!canGrow) s.growPending = false
     s.phase = s.growPending ? 'grow' : 'aim'
   }

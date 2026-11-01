@@ -20,7 +20,8 @@ import { coinAmount } from './coin'
 import { BOSS, trackFor } from './music'
 import { rarityName, t } from './i18n'
 import { toBoard } from './input'
-import { Juice } from './juice'
+import { ATTACK_TEXT, Juice, STORM_EXPLAIN, STORM_TEXT } from './juice'
+import { skillInfo } from './boss-skill-ui'
 import { BoardRenderer } from './render'
 import { ARENAS, type ArenaId } from './arenas'
 import {
@@ -37,8 +38,12 @@ import {
   type Save,
 } from './save'
 import { isPreviewingMusic, shopPanel } from './shop-ui'
+import { equippedHero, heroBrowser } from './hero-ui'
+import { HeroAvatar, type AvatarContext } from './hero-avatar'
+import type { HeroId } from './sim/heroes'
+import { breachDamage } from './sim/health'
 import { applyHelpers, growBoard, revive, reviveCost, useHelper } from './sim/meta'
-import { dims } from './sim/dims'
+import { baseRows, dims } from './sim/dims'
 import { boostDetail, GUIDE, newlySeen } from './guide'
 import { NoticeQueue } from './notices'
 import {
@@ -71,9 +76,18 @@ import {
   xpTotal,
 } from './sim/boosts'
 import { AIM_MIN, BOARD_H, BOARD_W, boardSize, COLS, MAX_COLS, MAX_ROWS, ROWS, TICK } from './sim/config'
-import { xpComboMultiplier } from './sim/damage'
+import { comboPower, xpComboMultiplier } from './sim/damage'
 import { aimFromPointer } from './sim/physics'
-import { canRecall, createRun, drainEvents, fire, recall, speedMultiplier, step } from './sim/run'
+import {
+  canRecall,
+  createRun,
+  drainEvents,
+  fire,
+  recall,
+  restingBall,
+  speedMultiplier,
+  step,
+} from './sim/run'
 import type { ActiveHelper, BoostId, RunState, StartHelper } from './sim/types'
 
 const CONTROLS = () => t('Drag to aim and release to launch. Keys: ←/→ aim, Space launch, F fast, Esc pause.')
@@ -169,6 +183,10 @@ const particles = new Particles()
 const shake = new Shake(8)
 const juice = new Juice(particles, shake)
 const renderer = new BoardRenderer(view, particles, shake)
+/** The hero, alive beside the ball. */
+const avatar = new HeroAvatar('rookie')
+avatar.size = 1.35
+renderer.avatar = avatar
 
 const params = new URLSearchParams(location.search)
 const loaded = loadSave()
@@ -197,7 +215,7 @@ let pickIntro = false
 /** How many of the current run's coins are already in the wallet. */
 let banked = 0
 
-if (params.has('debug')) Object.assign(window, { __brickstorm: { state: () => run } })
+if (params.has('debug')) Object.assign(window, { __brickstorm: { state: () => run, avatar: () => avatar } })
 
 function setFast(on: boolean) {
   fast = on
@@ -282,7 +300,8 @@ function showHome() {
       save.bestTurn > 0 &&
         h('p', { class: 'bs-best', textContent: t('Best turn {n}', { n: save.bestTurn }) }),
       saved && primary(t('Continue · Turn {n}', { n: saved.state.turn }), resumeRun),
-      saved ? button(t('New run'), confirmNewRun, 'wide') : primary(t('Play'), showHelpers),
+      saved ? button(t('New run'), confirmNewRun, 'wide') : primary(t('Play'), showHeroes),
+      button(t('Heroes'), () => showHeroes(), 'wide'),
       button(t('Shop'), () => showShop(showHome), 'wide'),
       justReset
         ? h(
@@ -346,7 +365,7 @@ function confirmNewRun() {
       primary(t('Start a new run'), () => {
         save = clearRun(save)
         persist()
-        showHelpers()
+        showHeroes()
       }),
     ),
     'confirm',
@@ -365,6 +384,7 @@ function showShop(onBack: () => void) {
         applyCosmetics()
       },
       onBack,
+      (id) => juice.heroVoice(id),
     ),
     'shop',
   )
@@ -559,6 +579,52 @@ function announceNewKinds(s: RunState) {
   persist()
 }
 
+/** "−N ♥ next turn": what the bricks one row above the line would cost if they crash. */
+function crashWarning(s: RunState): HTMLElement | null {
+  const line = dims(s).dangerRow
+  const damage = breachDamage(
+    s,
+    s.bricks.filter((b) => b.row >= line - 1),
+  )
+  return damage > 0
+    ? h('span', { class: 'bs-danger-hp', textContent: t('−{n} ♥ next turn', { n: damage }) })
+    : null
+}
+
+/** Events explained the first time they happen, waiting for the next aim. */
+const eventCards: Array<{ id: string; title: string; text: string }> = []
+
+/** The first time a storm wave or a boss attack happens, queue a card that explains it (once per save). */
+function queueEventCard(id: string, title: string, text: string) {
+  const key = `event:${id}`
+  if (save.seen.includes(key) || eventCards.some((c) => c.id === id)) return
+  eventCards.push({ id, title, text })
+  save = { ...save, seen: [...save.seen, key] }
+  persist()
+}
+
+/** A card the player reads and closes: the game waits behind it. */
+function showEventCard() {
+  const card = eventCards.shift()
+  if (!card) return
+  const back = holdRun()
+  show(
+    h(
+      'div',
+      { class: 'pf-panel bs-event' },
+      h(
+        'div',
+        { class: 'bs-event-head' },
+        sample(card.id),
+        h('h2', { class: 'pf-heading', textContent: card.title }),
+      ),
+      h('p', { class: 'pf-lede', textContent: card.text }),
+      primary(t('Got it'), back),
+    ),
+    'event',
+  )
+}
+
 /** Points at a helper (or the shop) when bricks are about to reach the line. */
 function updateDanger() {
   const s = run
@@ -576,6 +642,7 @@ function updateDanger() {
     const name = t(ACTIVE_HELPERS.find((x) => x.id === hint.use)!.name)
     dangerEl.replaceChildren(
       h('strong', { textContent: t('Danger!') }),
+      crashWarning(s) ?? '',
       h('span', { textContent: t('{name} can save you.', { name }) }),
       button(t('Use {name}', { name }), () => confirmHelper(hint.use), 'primary'),
       close,
@@ -583,6 +650,7 @@ function updateDanger() {
   } else {
     dangerEl.replaceChildren(
       h('strong', { textContent: t('Danger!') }),
+      crashWarning(s) ?? '',
       h('span', { textContent: t('Helpers like Push Back can save a run.') }),
       button(t('Shop'), openShopFromBar, 'primary'),
       close,
@@ -610,12 +678,33 @@ function updateNotice(dt: number) {
   if (n) noticeEl.style.setProperty('--left', String(1 - notices.progress))
 }
 
+/** Before a run: choose the hero (or buy one), then helpers. */
+function showHeroes() {
+  show(
+    h(
+      'div',
+      { class: 'pf-panel wide bs-shop' },
+      panelHead(t('Choose your hero'), showHome, wallet()),
+      heroBrowser({
+        getSave: () => save,
+        setSave: (next) => {
+          save = next
+          persist()
+        },
+        onPlay: (id) => (save.run ? showHome() : showHelpers(id)),
+        onVoice: (id) => juice.heroVoice(id),
+      }),
+    ),
+    'heroes',
+  )
+}
+
 /** Before a run: switch on owned helpers (Head Start, Lucky Start). */
 const START_HELPERS: StartHelper[] = ['headStart', 'luckyStart', 'powerStart', 'goldStart', 'eagleStart']
 
-function showHelpers() {
+function showHelpers(hero: HeroId = equippedHero(save)) {
   const owned = START_HELPERS.filter((k) => save.helpers[k] > 0)
-  if (!owned.length) return startRun({})
+  if (!owned.length) return startRun({}, hero)
   const use: Partial<Record<StartHelper, boolean>> = {}
   const LABEL: Record<StartHelper, string> = {
     headStart: t('Head Start: +5 balls'),
@@ -628,7 +717,7 @@ function showHelpers() {
     h(
       'div',
       { class: 'pf-panel' },
-      panelHead(t('Use helpers?'), showHome),
+      panelHead(t('Use helpers?'), showHeroes),
       ...owned.map((k) => {
         const box = h('input', { type: 'checkbox', onchange: () => (use[k] = box.checked) })
         return h(
@@ -638,13 +727,36 @@ function showHelpers() {
           h('span', { textContent: t('{label} (you have {n})', { label: LABEL[k], n: save.helpers[k] }) }),
         )
       }),
-      primary(t('Start'), () => startRun(use)),
+      primary(t('Start'), () => startRun(use, hero)),
     ),
     'helpers',
   )
 }
 
+/** What the hero reacts to this frame: where the ball is, what is flying, how bad things look. */
+function avatarContext(s: RunState): AvatarContext {
+  const d = dims(s)
+  const flying = s.balls.filter((b) => b.status === 'flying')
+  const lead = flying.reduce<(typeof flying)[number] | null>((a, b) => (!a || b.y < a.y ? b : a), null)
+  return {
+    homeX: s.phase === 'volley' ? (s.nextLaunchX ?? s.launchX) : s.launchX,
+    boardW: d.boardW,
+    floorY: d.floorY,
+    aim: s.phase === 'aim' && !paused && !panel ? aim : null,
+    watch: lead ? { x: lead.x, y: lead.y } : null,
+    throwing: s.balls.some((b) => b.status === 'queued'),
+    danger: s.bricks.some((b) => b.row >= d.dangerRow - 1),
+    lowHealth: s.hp / s.maxHp <= 0.3,
+    combo: s.phase === 'volley' ? comboPower(s) : 0,
+    // The ball sits in the hero's hand between volleys.
+    hold: s.phase === 'volley' ? null : { x: s.launchX, ...restingBall(s) },
+  }
+}
+
 function beginRun(s: RunState) {
+  avatar.reset()
+  renderer.resetTween()
+  avatar.setHero(s.hero)
   justReset = false
   run = s
   overShown = false
@@ -652,6 +764,7 @@ function beginRun(s: RunState) {
   juice.turn = s.turn
   juice.setXp(s.level, s.xp / xpToNext(s.level), true)
   juice.setCoins(walletTotal(save, s, banked), true)
+  juice.setHealth(s.hp, true)
   xpSeen = xpTotal(s.level, s.xp)
   paused = false
   acc = 0
@@ -664,9 +777,10 @@ function beginRun(s: RunState) {
   show(null)
 }
 
-function startRun(use: Partial<Record<StartHelper, boolean>>) {
+function startRun(use: Partial<Record<StartHelper, boolean>>, hero: HeroId = equippedHero(save)) {
   const seed = params.has('seed') ? Number(params.get('seed')) | 0 : randomSeed()
-  const s = createRun(seed)
+  const s = createRun(seed, hero)
+  juice.heroVoice(hero)
   for (const k of START_HELPERS) {
     if (use[k] && save.helpers[k] > 0) save.helpers = { ...save.helpers, [k]: save.helpers[k] - 1 }
     else use[k] = false
@@ -681,6 +795,16 @@ function resumeRun() {
   if (!save.run) return
   banked = save.run.banked
   beginRun(structuredClone(save.run.state))
+}
+
+/** One quiet line when every slot is taken: filled slot dots, and what ⇄ on a card means. */
+function slotsFull(s: RunState): HTMLElement {
+  return h(
+    'div',
+    { class: 'bs-slots-full', role: 'note' } as never,
+    h('span', { class: 'bs-slot-dots' }, ...Array.from({ length: boostSlots(s) }, () => h('i'))),
+    h('span', { textContent: t('Slots full · ⇄ replaces a skill') }),
+  )
 }
 
 /** After a boss: a callout on the pick screen that a boost slot was unlocked (shown once). */
@@ -793,6 +917,7 @@ function showPick() {
     const price = pickCost(s, id)
     const bonus = isInstant(id)
     const owned = bonus ? 0 : (s.boosts[id] ?? 0)
+    const swap = needsReplace(s, id)
     const art = h('span', { class: 'bs-card-icon' })
     art.innerHTML = BOOST_ICONS[id]
     const card = h(
@@ -810,7 +935,7 @@ function showPick() {
       bonus && h('span', { class: 'bs-ribbon', textContent: t('BONUS') }),
       art,
       // The card leads with what the skill does; tags only when they add something.
-      (owned > 0 || synergy || (held && !stashed)) &&
+      (owned > 0 || synergy || swap || (held && !stashed)) &&
         h(
           'div',
           { class: 'bs-card-meta' },
@@ -821,18 +946,20 @@ function showPick() {
             }),
           synergy && h('span', { class: 'bs-tag synergy', textContent: t('SYNERGY') }),
           held && !stashed && h('span', { class: 'bs-tag held', textContent: t('HELD') }),
+          // Taking it frees a slot first: a small badge, explained once above the cards.
+          swap &&
+            h('span', { class: 'bs-tag swap', textContent: '⇄', title: t('Replaces one of your skills') }),
         ),
       h('strong', { textContent: t(b.name) }),
       // An upgrade says what the next level does; a new skill says what level 1 does.
       h('span', { textContent: owned > 0 ? boostDetail(id, owned + 1, false) : t(b.text) }),
-      needsReplace(s, id) && h('small', { class: 'bs-swap', textContent: t('Slots full: swap one out') }),
       // Price, with the rarity quietly to its right; a held card says where it went instead.
       stashed
         ? h('div', { class: 'bs-card-foot bs-stashed' }, icon(LOCK_ICON), t('Held for next level-up'))
         : h(
             'div',
             { class: 'bs-card-foot' },
-            h('span', { class: 'bs-price' }, price ? coinAmount(price) : t('FREE')),
+            h('span', { class: price ? 'bs-price' : 'bs-price free' }, price ? coinAmount(price) : t('FREE')),
             h('small', { class: 'bs-rarity', textContent: rarityName(b.rarity) }),
           ),
     )
@@ -898,9 +1025,10 @@ function showPick() {
   show(
     h(
       'div',
-      { class: 'pf-panel wide' },
+      { class: 'pf-panel wide bs-pick' },
       h('div', { class: 'bs-shop-head' }, heading, wallet(), closeButton(skip)),
       slotCallout(s),
+      ids.some((id) => needsReplace(s, id)) && slotsFull(s),
       h('div', { class: 'bs-cards' }, ...cards),
       h('div', { class: 'bs-pick-actions' }, rerollBtn, button(t('Skip'), skip)),
     ),
@@ -959,7 +1087,7 @@ function showGrow() {
         'div',
         { class: 'bs-cards' },
         growCard('col', s.cols, s.rows, s.cols >= MAX_COLS, () => choose('col')),
-        growCard('row', s.cols, s.rows, s.rows >= MAX_ROWS, () => choose('row')),
+        growCard('row', s.cols, s.rows, baseRows(s) >= MAX_ROWS, () => choose('row')),
       ),
     ),
     'grow',
@@ -1028,7 +1156,10 @@ function finish(s: RunState) {
       'div',
       { class: 'pf-panel' },
       h('h2', { class: 'pf-heading', textContent: t('Continue?') }),
-      h('p', { class: 'pf-lede', textContent: t('Clear the 3 lowest rows and keep going.') }),
+      h('p', {
+        class: 'pf-lede',
+        textContent: t('Out of health! Clear the 3 lowest rows, heal to half and keep going.'),
+      }),
       h('div', { class: 'bs-shop-head' }, h('span', { textContent: t('Turn {n}', { n: s.turn }) }), wallet()),
       reviveBtn,
       button(t('No thanks'), () => showResults(s), 'quiet'),
@@ -1057,7 +1188,7 @@ function showResults(s: RunState) {
         h('span', { textContent: t('Best combo {n}', { n: save.bestCombo }) }),
         h('span', {}, t('Coins earned {n} · wallet', { n: s.coins }), ' ', coinAmount(save.coins)),
       ),
-      primary(t('Play again'), showHelpers),
+      primary(t('Play again'), showHeroes),
       button(t('Shop'), () => showShop(showHome), 'wide'),
       button(t('Home'), showHome, 'quiet'),
     ),
@@ -1069,7 +1200,7 @@ function showResults(s: RunState) {
 startRenderLoop((dt, time) => {
   const s = run
   if (s && !paused && s.phase === 'volley' && juice.hitstop === 0) {
-    acc += dt * speedMultiplier(s, fast)
+    acc += dt * speedMultiplier(s, fast) * juice.timeScale
     for (let n = 0; acc >= TICK && n < MAX_STEPS && s.phase === 'volley'; n++) {
       step(s)
       acc -= TICK
@@ -1080,8 +1211,26 @@ startRenderLoop((dt, time) => {
     }
   }
   if (s) {
-    for (const e of drainEvents(s)) juice.handle(e)
+    for (const e of drainEvents(s)) {
+      juice.handle(e)
+      avatar.handle(e)
+      // Storms explain themselves: a warning the turn before, then what this wave does.
+      if (e.type === 'stormSoon')
+        notices.push({
+          id: 'storm:soon',
+          title: t('⚡ Storm next turn'),
+          text: t('A special wave arrives next turn, bringing a heart.'),
+        })
+      if (e.type === 'storm') {
+        notices.push({ id: `storm:${e.kind}`, title: t(STORM_TEXT[e.kind]), text: t(STORM_EXPLAIN[e.kind]) })
+        queueEventCard(`storm:${e.kind}`, t(STORM_TEXT[e.kind]), t(STORM_EXPLAIN[e.kind]))
+      }
+      if (e.type === 'bossAttack')
+        queueEventCard(`attack:${e.id}`, t(ATTACK_TEXT[e.id]), skillInfo(e.id).text)
+    }
+    if (!paused) avatar.update(dt, avatarContext(s))
     juice.setBossHp(s.boss?.hp ?? null)
+    juice.setHealth(s.hp)
     // Boss fights get their own music and a card explaining the boss.
     if (s.phase !== 'over' && !isPreviewingMusic()) playMusic(s.boss ? BOSS : trackFor(save.equipped.music))
     // A new boss waits on the aim screen until the player has read its card.
@@ -1093,20 +1242,23 @@ startRenderLoop((dt, time) => {
       )
     }
     juice.setCoins(walletTotal(save, s, banked))
-    juice.setComboXp(s.phase === 'volley' ? xpComboMultiplier(s.combo) : 1)
+    juice.setComboXp(s.phase === 'volley' ? xpComboMultiplier(comboPower(s)) : 1)
     juice.setXp(s.level, s.xp / xpToNext(s.level))
     const xpNow = xpTotal(s.level, s.xp)
     juice.gainXp(xpNow - xpSeen)
     xpSeen = xpNow
     // Level up: celebrate for a beat, then open the pick screen.
     if (s.phase !== 'pick') pickIntro = false
-    else if (!panel.startsWith('pick')) {
+    // A boss's death plays out in full before the pick screen.
+    else if (!panel.startsWith('pick') && !juice.bossDying) {
       if (!pickIntro) {
         pickIntro = true
         juice.startLevelUp()
       } else if (juice.levelUpDone) showPick()
     }
     if (s.phase === 'grow' && panel !== 'grow') showGrow()
+    // A new kind of event explains itself once, when the player is next aiming.
+    if (eventCards.length && s.phase === 'aim' && !panel && !paused && !juice.bossDying) showEventCard()
     if (s.phase === 'over' && !overShown) {
       overShown = true
       finish(s)
@@ -1129,9 +1281,9 @@ startRenderLoop((dt, time) => {
 // ---------- Input ----------
 const boardPoint = (e: PointerEvent) =>
   toBoard(view.canvas.getBoundingClientRect(), e.clientX, e.clientY, view.width, view.height)
-const aimAt = (e: PointerEvent) => aimFromPointer(run!.launchX, ...boardPoint(e), dims(run!).floorY)
+const aimAt = (e: PointerEvent) => aimFromPointer(run!.launchX, ...boardPoint(e), restingBall(run!).y)
 
-const aiming = () => !!run && !paused && run.phase === 'aim'
+const aiming = () => !!run && !paused && run.phase === 'aim' && !juice.bossDying
 
 // Aim and launch work from anywhere on the page, so the guide keeps following
 // the pointer in the side gutters. Presses on buttons and panels are theirs.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AIM_MIN, BALL_R, BOARD_W, COLS, DANGER_ROW, MIN_VY_RATIO, RECALL_AFTER } from './config'
+import { AIM_MIN, BALL_R, LAUNCH_LIFT, BOARD_W, COLS, DANGER_ROW, MIN_VY_RATIO, RECALL_AFTER } from './config'
 import { brickRect } from './rows'
 import { canRecall, createRun, drainEvents, fire, recall, restingBall, speedMultiplier, step } from './run'
 import { dims } from './dims'
@@ -67,8 +67,9 @@ describe('turn loop', () => {
     expect(s.ballCount).toBe(2)
   })
 
-  it('moves bricks down and ends the run at the danger row', () => {
+  it('moves bricks down and ends the run when a crash takes the last health', () => {
     const s = empty()
+    s.hp = 1
     brick(s, 0, DANGER_ROW - 1, 999)
     fire(s, Math.PI / 2)
     runVolley(s)
@@ -79,6 +80,7 @@ describe('turn loop', () => {
   it('lets game over win over a pending boost pick', () => {
     const s = empty()
     s.pendingPicks = 1
+    s.hp = 1
     brick(s, 0, DANGER_ROW - 1, 999)
     fire(s, Math.PI / 2)
     runVolley(s)
@@ -169,13 +171,13 @@ describe('turn loop', () => {
 })
 
 describe('waiting ball', () => {
-  it('sits on the floor at the size the run fires', () => {
+  it('waits in the hero’s hand, LAUNCH_LIFT above the floor, at the size the run fires', () => {
     const s = empty()
-    expect(restingBall(s)).toEqual({ y: dims(s).floorY - BALL_R, r: BALL_R })
+    expect(restingBall(s)).toEqual({ y: dims(s).floorY - BALL_R - LAUNCH_LIFT, r: BALL_R })
     s.boosts = { big: 2 }
     const r = BALL_R * 1.4
     expect(restingBall(s).r).toBeCloseTo(r)
-    expect(restingBall(s).y).toBeCloseTo(dims(s).floorY - r)
+    expect(restingBall(s).y).toBeCloseTo(dims(s).floorY - r - LAUNCH_LIFT)
     fire(s, Math.PI / 2)
     expect(s.balls[0].r).toBeCloseTo(restingBall(s).r)
   })

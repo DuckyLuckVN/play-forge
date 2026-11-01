@@ -48,7 +48,7 @@ describe('runStats', () => {
 
 describe('boostDetail', () => {
   it('describes what the owned level does', () => {
-    expect(boostDetail('fireball', 2)).toMatch(/every 8th/i)
+    expect(boostDetail('fireball', 2)).toMatch(/13% of balls/i)
     expect(boostDetail('damage', 3)).toContain('+60%')
     expect(boostDetail('crit', 2)).toContain('10%')
     expect(boostDetail('big', 1)).toContain('+20%')

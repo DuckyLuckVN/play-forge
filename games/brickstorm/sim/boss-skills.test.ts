@@ -421,13 +421,13 @@ describe('boss skills: tricks', () => {
     expect(bossHidesGuide(fight([]))).toBe(false)
   })
 
-  it('taxman: takes 10% of run coins a turn and pays back double', () => {
+  it('taxman: takes 10% of run coins a turn and gives it back when it falls', () => {
     const s = fight(['taxman'])
     s.coins = 100
     turns(s, 1)
     expect(s.coins).toBe(90)
     hit(s, 1e9, 'blast')
-    expect(s.coins).toBeGreaterThan(90 + 20)
+    expect(s.coins).toBe(100 + 4 * 31)
   })
 
   it('gravity bends a passing ball toward it; repulse away; speed stays', () => {

@@ -5,10 +5,10 @@ import type { Shake } from '@forge/fx/shake'
 import { prefersReducedMotion } from '@forge/fx/tween'
 import { theme } from '@forge/ui/theme'
 import type { SimEvent } from './sim/types'
-import { skillInfo } from './boss-skill-ui'
+import { skillGroup, skillInfo } from './boss-skill-ui'
 import { IMPACT_STYLE } from './cosmetics'
 import { t } from './i18n'
-import { BRICK_SOUNDS } from './sounds'
+import { BOSS_SOUNDS, BRICK_SOUNDS } from './sounds'
 
 const PENTA = [0, 2, 4, 7, 9]
 
@@ -257,9 +257,29 @@ export class Juice {
           size: 18,
           rise: 40,
         })
-        this.shake.add(0.15)
-        return playSound(pitched(BRICK_SOUNDS.zap, 0.7))
+        // Each kind of skill has its own sound and burst; rage shakes the screen.
+        const group = skillGroup(e.id)
+        this.particles.burst(e.x, e.y, {
+          count: group === 'rage' ? 40 : 24,
+          color: [info.color, '#ffffff'],
+          speed: group === 'rage' ? 420 : 240,
+          life: 0.6,
+        })
+        this.shake.add(group === 'rage' ? 0.5 : 0.15)
+        return this.play('cast', BOSS_SOUNDS[group])
       }
+      case 'bossHit':
+        this.particles.burst(e.x, e.y, {
+          count: 6,
+          color: [e.skill ? skillInfo(e.skill).color : theme.chalk, '#ffffff'],
+          speed: 180,
+          life: 0.3,
+        })
+        // Deeper as it weakens: the fight sounds like it's going your way.
+        return this.play('bossHit', pitched(BOSS_SOUNDS.hit, 0.6 + 0.6 * e.life))
+      case 'bossBlock':
+        this.particles.burst(e.x, e.y, { count: 5, color: ['#9fe7ff', '#ffffff'], speed: 140, life: 0.25 })
+        return this.play('bossBlock', BOSS_SOUNDS.block)
       case 'pop':
         this.particles.burst(e.x, e.y, { count: 12, color: ['#ff4d6d', '#ffffff'] })
         return playSound(pitched(BRICK_SOUNDS.kill, 1.6))

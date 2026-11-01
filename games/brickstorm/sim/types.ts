@@ -209,6 +209,10 @@ export type SimEvent =
   | { type: 'bossDown'; x: number; y: number; coins: number }
   /** A boss skill went off (or warns it will), at the boss. */
   | { type: 'bossSkill'; id: BossSkillId; x: number; y: number }
+  /** The boss took damage at (x, y); `life` is the share of hp it has left. */
+  | { type: 'bossHit'; x: number; y: number; life: number; skill?: BossSkillId }
+  /** A hit on the boss did nothing (a shield, a shell, immunity…). */
+  | { type: 'bossBlock'; x: number; y: number }
   /** A ball hit spikes and is gone for this volley. */
   | { type: 'pop'; x: number; y: number }
   /** A new, tougher hp stretch starts this turn. */
@@ -254,7 +258,13 @@ export interface RunState {
   xp: number
   level: number
   pendingPicks: number
+  /** Of the pending picks, how many are free (boss rewards, Lucky Start). Missing in older saves. */
+  freePicks?: number
   choices: BoostId[]
+  /** A boost the player paid to see again at the next level-up. */
+  held?: BoostId | null
+  /** Holds bought this run (each costs more). */
+  holdsUsed?: number
   rerollsUsed: number
   revivesUsed: number
   secondWindUsed: boolean

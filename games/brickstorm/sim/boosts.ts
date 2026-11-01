@@ -133,15 +133,20 @@ export function needsReplace(s: Pick<RunState, 'boosts' | 'bossesBeaten'>, id: B
 }
 
 /**
- * Up to 3 distinct boosts that aren't maxed out, weighted by rarity. Once every
+ * Up to 3 distinct boosts that aren't maxed out, weighted by rarity (plus a
+ * held one, if any). Once every
  * slot is full, about OWNED_LEAN of them are boosts the player already has, so
  * most level-ups can still be taken without dropping anything.
  */
 export function rollChoices(s: RunState): BoostId[] {
   const open = (id: BoostId) => (s.boosts[id] ?? 0) < BOOSTS[id].max
   const full = slottedBoosts(s.boosts).length >= boostSlots(s)
-  const owned = full ? slottedBoosts(s.boosts).filter(open) : []
-  const pool = (Object.keys(BOOSTS) as BoostId[]).filter((id) => open(id) && !owned.includes(id))
+  // A held boost is kept out of the draw and added as an extra card at the end.
+  const held = s.held && open(s.held) ? s.held : null
+  const owned = full ? slottedBoosts(s.boosts).filter((id) => open(id) && id !== held) : []
+  const pool = (Object.keys(BOOSTS) as BoostId[]).filter(
+    (id) => open(id) && !owned.includes(id) && id !== held,
+  )
   const picked: BoostId[] = []
   while (picked.length < 3 && (pool.length || owned.length)) {
     if (owned.length && (!pool.length || random(s.rng) < OWNED_LEAN)) {
@@ -153,7 +158,41 @@ export function rollChoices(s: RunState): BoostId[] {
     const i = pool.findIndex((id) => (roll -= WEIGHT[BOOSTS[id].rarity]) < 0)
     picked.push(...pool.splice(i, 1))
   }
+  // A held boost comes back as an extra card.
+  if (held) picked.push(held)
   return picked
+}
+
+/** Coins per level-up past the first: picks get pricier as the run goes on. */
+const PICK_STEP = 12
+/** Each level a boost already has adds this share to its upgrade price. */
+const UPGRADE_STEP = 0.5
+const HOLD_BASE = 30
+
+/** What taking `id` now costs: free for the run's first level-up and for boss rewards; upgrades cost more. */
+export function pickCost(s: RunState, id: BoostId): number {
+  if ((s.freePicks ?? 0) > 0) return 0
+  const base = PICK_STEP * Math.max(0, s.level - 2)
+  return Math.round(base * (1 + UPGRADE_STEP * (s.boosts[id] ?? 0)))
+}
+
+/** What holding a boost for the next level-up costs: 30, 60, 120… per run. */
+export function holdCost(s: RunState): number {
+  return HOLD_BASE * 2 ** (s.holdsUsed ?? 0)
+}
+
+/** Sets an offered boost aside to come back at the next level-up (one at a time). The caller has paid. */
+export function holdBoost(s: RunState, id: BoostId): void {
+  if (s.phase !== 'pick' || !s.choices.includes(id) || s.held) return
+  s.held = id
+  s.holdsUsed = (s.holdsUsed ?? 0) + 1
+  s.choices = s.choices.filter((x) => x !== id)
+}
+
+/** Passes on this pick: no boost, on to what's next. */
+export function skipPick(s: RunState): void {
+  if (s.phase !== 'pick') return
+  finishPick(s)
 }
 
 /**
@@ -169,6 +208,14 @@ export function pickBoost(s: RunState, id: BoostId, replace?: BoostId): void {
   s.boosts[id] = (s.boosts[id] ?? 0) + 1
   if (id === 'balls') s.ballCount += 2
   if (id === 'double') s.doubleVolleys += 3
+  finishPick(s)
+}
+
+/** One pick is done (taken or skipped): the next pick, a board growth, or aiming. */
+function finishPick(s: RunState): void {
+  // A held boost lasts for the level-up it came back in.
+  if (s.held && s.choices.includes(s.held)) s.held = null
+  if ((s.freePicks ?? 0) > 0) s.freePicks = (s.freePicks ?? 0) - 1
   s.pendingPicks--
   if (s.pendingPicks > 0) {
     s.choices = rollChoices(s)

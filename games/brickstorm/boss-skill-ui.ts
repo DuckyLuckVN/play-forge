@@ -183,7 +183,7 @@ export const SKILL_INFO: Record<BossSkillId, SkillInfo> = {
   },
   taxman: {
     adj: t('Taxing'),
-    text: t('Taxman: steals 10% of your run coins every turn; pays back double when it falls.'),
+    text: t('Taxman: steals 10% of your run coins every turn; gives them back when it falls.'),
     color: '#ffd43b',
   },
   gravity: { adj: t('Heavy'), text: t('Gravity Well: pulls balls toward it.'), color: '#845ef7' },
@@ -218,6 +218,33 @@ export const SKILL_INFO: Record<BossSkillId, SkillInfo> = {
     text: t('Rally: heals every brick on the board 20% each turn.'),
     color: '#69db7c',
   },
+}
+
+/** The kind of skill: picks its cast sound and burst. */
+export type SkillGroup = 'summon' | 'defense' | 'movement' | 'weak' | 'tricks' | 'rage'
+
+const GROUPS: Record<SkillGroup, BossSkillId[]> = {
+  summon: ['minions', 'mason', 'guards', 'brood', 'eggs', 'mirror', 'spikes', 'splitters', 'totem', 'swarm'],
+  defense: [
+    'shield',
+    'armored',
+    'bulwark',
+    'shell',
+    'underplate',
+    'phase',
+    'barrier',
+    'reflect',
+    'secondLife',
+    'stoneSkin',
+  ],
+  movement: ['drifter', 'blink', 'lunge', 'retreat', 'weaver', 'hover', 'enrage', 'evasive'],
+  weak: ['core', 'heart', 'runes', 'powerCells', 'rod', 'volatile', 'icebound', 'cracked'],
+  tricks: ['glutton', 'frost', 'leech', 'mire', 'shroud', 'taxman', 'gravity', 'repulse'],
+  rage: ['frenzy', 'lastStand', 'fortify', 'shatter', 'charge', 'rally'],
+}
+
+export function skillGroup(id: string): SkillGroup {
+  return (Object.keys(GROUPS) as SkillGroup[]).find((g) => GROUPS[g].includes(id as BossSkillId)) ?? 'tricks'
 }
 
 /** Info for a skill id, with a plain fallback for ids this build doesn't know (newer saves). */

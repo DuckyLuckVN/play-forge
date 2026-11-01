@@ -24,7 +24,9 @@ export function damageBrick(
   hit: Omit<BossHit, 'source'> = {},
 ): void {
   if (!s.bricks.includes(brick)) return // already destroyed earlier in this chain
-  if (brick.kind === 'boss') return damageBoss(s, amount, source, { ...hit, col: brick.col })
+  if (brick.kind === 'boss') {
+    return damageBoss(s, amount, source, { ...hit, col: brick.col, at: cellCenter(brick.col, brick.row) })
+  }
   if (brick.role === 'ice') return // a boss's ice wall melts on its own
   // Armour shrugs off plain ball hits; fire, explosions, lightning and lasers get through.
   brick.hp -= brick.kind === 'armored' && source === 'ball' ? Math.min(amount, 1) : amount

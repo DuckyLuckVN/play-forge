@@ -23,6 +23,9 @@ export const BOSS_FACES = 6
 const HITS_PER_BALL = 6
 /** Row Bomb (or anything that would delete a part) takes this share of max hp instead. */
 const BIG_HIT = 0.2
+/** The reward: this many coins per turn, with coin boosts counting at most MAX_COIN_MULT. */
+const COINS_PER_TURN = 4
+const MAX_COIN_MULT = 2
 
 /** 1 for the first boss, 2 for the second, 3 from the third on. */
 export function bossTier(turn: number): BossTier {
@@ -121,6 +124,16 @@ export function damageBoss(
     if (skill.damage) dealt = skill.damage(s, boss, dealt, { ...hit, source })
   }
   dealt = Math.max(0, dealt)
+  if (hit.at) {
+    if (dealt > 0)
+      s.events.push({
+        type: 'bossHit',
+        ...hit.at,
+        life: Math.max(0, (boss.hp - dealt) / boss.maxHp),
+        skill: boss.traits[0],
+      })
+    else if (amount > 0) s.events.push({ type: 'bossBlock', ...hit.at })
+  }
   const before = boss.hp
   boss.hp -= dealt
   boss.mem = { ...boss.mem, volley: (boss.mem?.volley ?? 0) + dealt }
@@ -136,9 +149,10 @@ export function damageBoss(
   s.bricks = s.bricks.filter((b) => b.kind !== 'boss' && (!b.role || b.role === 'minion'))
   for (const b of s.bricks) delete b.role
   s.boss = null
-  const coins = Math.round(10 * s.turn * modsOf(s.boosts).coinMult)
+  const coins = Math.round(COINS_PER_TURN * s.turn * Math.min(MAX_COIN_MULT, modsOf(s.boosts).coinMult))
   s.coins += coins
   s.pendingPicks++
+  s.freePicks = (s.freePicks ?? 0) + 1
   s.bossesBeaten = (s.bossesBeaten ?? 0) + 1
   for (const skill of skillsOf(boss)) skill.defeated?.(s, boss, { x, y })
   s.events.push({ type: 'bossDown', x, y, coins })

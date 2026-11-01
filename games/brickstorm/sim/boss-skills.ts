@@ -33,6 +33,8 @@ export interface BossHit {
   /** Column of the part that was hit, if known. */
   col?: number
   crit?: boolean
+  /** Where it landed, in px, for sparks. */
+  at?: { x: number; y: number }
 }
 
 export interface BossSkill {
@@ -588,7 +590,7 @@ export const BOSS_SKILLS: Record<BossSkillId, BossSkill> = {
       announce(s, 'taxman')
     },
     defeated: (s, boss) => {
-      s.coins += 2 * mem(boss, 'tax')
+      s.coins += mem(boss, 'tax')
     },
   },
   gravity: {

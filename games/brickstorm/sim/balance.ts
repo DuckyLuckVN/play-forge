@@ -1,7 +1,7 @@
 // Headless bots that play whole runs, for tuning difficulty and the economy.
 // `npm run balance` prints medians against the targets in the v2 plan.
 import { random } from '@forge/core/rng'
-import { needsReplace, pickBoost, slottedBoosts } from './boosts'
+import { needsReplace, pickBoost, pickCost, skipPick, slottedBoosts } from './boosts'
 import { AIM_MIN, MAX_COLS } from './config'
 import { dims } from './dims'
 import { growBoard } from './meta'
@@ -42,15 +42,29 @@ const BOT_RECALL = 10
 /** How much the bot likes a boost: its place in PREFER, unlisted ones last. */
 const rank = (id: BoostId) => (PREFER.includes(id) ? PREFER.indexOf(id) : PREFER.length)
 
-/** The bot's pick: its favourite offer, dropping its least favourite owned boost when slots are full. */
-function botPick(s: RunState): void {
-  const best = [...s.choices].sort((a, b) => rank(a) - rank(b))[0]
-  if (!needsReplace(s, best)) return pickBoost(s, best)
+/**
+ * The bot's pick: its favourite offer it can pay for (from this run's coins),
+ * dropping its least favourite owned boost when slots are full; it skips when
+ * it can afford nothing. Returns the coins it spent.
+ */
+function botPick(s: RunState, wallet: number): number {
+  const affordable = s.choices.filter((id) => pickCost(s, id) <= wallet)
+  if (!affordable.length) {
+    skipPick(s)
+    return 0
+  }
+  const take = (id: BoostId, replace?: BoostId) => {
+    const cost = pickCost(s, id)
+    pickBoost(s, id, replace)
+    return cost
+  }
+  const best = [...affordable].sort((a, b) => rank(a) - rank(b))[0]
+  if (!needsReplace(s, best)) return take(best)
   const worst = slottedBoosts(s.boosts).sort((a, b) => rank(b) - rank(a))[0]
   // Not worth a swap: level up something it has instead, if offered.
-  const keep = s.choices.find((id) => !needsReplace(s, id))
-  if (rank(best) >= rank(worst) && keep) return pickBoost(s, keep)
-  pickBoost(s, best, worst)
+  const keep = affordable.find((id) => !needsReplace(s, id))
+  if (rank(best) >= rank(worst) && keep) return take(keep)
+  return take(best, worst)
 }
 
 function playVolley(s: RunState): void {
@@ -111,13 +125,14 @@ export function simulateRun(seed: number, bot: Bot, maxTurns = 150): RunResult {
   let firstLevelTurn: number | null = null
   let bossesMet = 0
   let bossesBeaten = 0
+  let spent = 0
   while (s.phase !== 'over' && s.turn < maxTurns) {
     if (s.phase === 'grow') {
       growBoard(s, s.cols < MAX_COLS ? 'col' : 'row')
       continue
     }
     if (s.phase === 'pick') {
-      botPick(s)
+      spent += botPick(s, s.coins - spent)
       continue
     }
     const angle =

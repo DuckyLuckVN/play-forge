@@ -504,8 +504,15 @@ export class BoardRenderer {
         })
       }
     }
+    // A little squash when it's hit.
+    const pts = parts.map((b) => cellCenter(b.col, b.row))
+    const mx = pts.reduce((a, p) => a + p.x, 0) / pts.length
+    const my = pts.reduce((a, p) => a + p.y, 0) / pts.length
+    const squash = 0.035 * juice.bossHit
     ctx.save()
-    ctx.translate(this.glide.x, this.glide.y)
+    ctx.translate(this.glide.x + mx, this.glide.y + my)
+    ctx.scale(1 + squash, 1 - squash)
+    ctx.translate(-mx, -my)
     drawBoss(ctx, s, time, { hit: juice.bossHit, look: bossLook(s), cast: juice.bossCast })
     ctx.restore()
   }

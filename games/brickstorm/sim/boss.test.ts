@@ -267,3 +267,17 @@ describe('boss hitbox', () => {
     expect(shootUp('normal', 0, 3.5 * CELL, 'fortress')).toBeLessThan(notchBottom + 7 + 2)
   })
 })
+
+describe('boss reward', () => {
+  it('pays 4 coins per turn, with Gold Rush counting at most double', () => {
+    const plain = withBoss()
+    const before = plain.coins
+    damageBrick(plain, bossParts(plain)[0], 1e9, 'blast')
+    expect(plain.coins - before).toBe(4 * 30)
+    const rich = withBoss()
+    rich.boosts.coins = 10
+    const start = rich.coins
+    damageBrick(rich, bossParts(rich)[0], 1e9, 'blast')
+    expect(rich.coins - start).toBe(4 * 30 * 2)
+  })
+})

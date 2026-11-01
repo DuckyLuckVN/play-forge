@@ -34,6 +34,7 @@ export function applyHelpers(s: RunState, use: Partial<Record<StartHelper, boole
   if (use.eagleStart) s.boosts.eagle = Math.max(1, s.boosts.eagle ?? 0)
   if (use.luckyStart) {
     s.pendingPicks++
+    s.freePicks = (s.freePicks ?? 0) + 1
     s.phase = 'pick'
     s.choices = rollChoices(s)
   }

@@ -14,6 +14,7 @@ import { h, icon, toast } from '@forge/ui/dom'
 import { icons } from '@forge/ui/icons'
 import { applyTheme } from '@forge/ui/theme'
 import { bossIntro } from './boss-ui'
+import { dangerHint } from './danger-hint'
 import { growCard } from './grow-ui'
 import { coinAmount, shortCoins } from './coin'
 import { BOSS, trackFor } from './music'
@@ -34,6 +35,7 @@ import {
   guidePanel,
   helpersPanel,
   navPanel,
+  closeButton,
   panelHead,
   sample,
   statsPanel,
@@ -42,6 +44,10 @@ import { BOOST_ICONS } from './icons'
 import {
   BOOSTS,
   boostSlots,
+  holdBoost,
+  holdCost,
+  pickCost,
+  skipPick,
   isSynergy,
   needsReplace,
   pickBoost,
@@ -123,6 +129,11 @@ const controls = h('div', { class: 'bs-controls' }, fastBtn, recallBtn, drawerBt
 const notices = new NoticeQueue()
 const noticeEl = h('button', { class: 'bs-notice', type: 'button', onclick: () => notices.dismiss() })
 noticeEl.hidden = true
+/** "Danger! Use Push Back" when bricks near the line; closed for the rest of that turn. */
+const dangerEl = h('div', { class: 'bs-danger', role: 'alert' })
+dangerEl.hidden = true
+let dangerShown = ''
+let dangerClosedTurn = -1
 let noticeShown: object | null = null
 const leftSide = h('aside', { class: 'bs-side left' })
 const rightSide = h('aside', { class: 'bs-side right' })
@@ -130,7 +141,7 @@ const stage = h(
   'main',
   { class: 'pf-stage bs-stage' },
   leftSide,
-  h('div', { class: 'bs-center' }, boardEl, controls, noticeEl),
+  h('div', { class: 'bs-center' }, boardEl, controls, noticeEl, dangerEl),
   rightSide,
 )
 const overlay = h('div', { class: 'pf-overlay' })
@@ -492,6 +503,37 @@ function announceNewKinds(s: RunState) {
   persist()
 }
 
+/** Points at a helper (or the shop) when bricks are about to reach the line. */
+function updateDanger() {
+  const s = run
+  const hint = s && !paused && !panel && s.turn !== dangerClosedTurn ? dangerHint(s, save.helpers) : null
+  const key = hint ? `${s!.turn}:${'use' in hint ? hint.use : 'shop'}` : ''
+  if (key === dangerShown) return
+  dangerShown = key
+  dangerEl.hidden = !hint
+  if (!hint || !s) return
+  const close = closeButton(() => {
+    dangerClosedTurn = s.turn
+    updateDanger()
+  })
+  if ('use' in hint) {
+    const name = t(ACTIVE_HELPERS.find((x) => x.id === hint.use)!.name)
+    dangerEl.replaceChildren(
+      h('strong', { textContent: t('Danger!') }),
+      h('span', { textContent: t('{name} can save you.', { name }) }),
+      button(t('Use {name}', { name }), () => confirmHelper(hint.use), 'primary'),
+      close,
+    )
+  } else {
+    dangerEl.replaceChildren(
+      h('strong', { textContent: t('Danger!') }),
+      h('span', { textContent: t('Helpers like Push Back can save a run.') }),
+      button(t('Shop'), openShopFromBar, 'primary'),
+      close,
+    )
+  }
+}
+
 /** Shows the current notice, ticking only while the game is in view. */
 function updateNotice(dt: number) {
   if (run && !paused && !panel && run.phase !== 'pick') notices.update(dt)
@@ -602,8 +644,21 @@ function slotCallout(s: RunState): HTMLElement | null {
 }
 
 /** Takes an offered boost (dropping `replace` for it when slots are full), then the next screen. */
+/** Pays `cost` from the wallet (this run's coins are banked first); false if it's short. */
+function pay(cost: number): boolean {
+  if (cost <= 0) return true
+  checkpoint()
+  const paid = spend(save, cost)
+  if (!paid) return false
+  save = paid
+  return true
+}
+
+const canPay = (cost: number) => walletTotal(save, run, banked) >= cost
+
+/** Pays for and takes an offered boost (dropping `replace` for it when slots are full), then the next screen. */
 function takeBoost(id: BoostId, replace?: BoostId) {
-  if (!run) return
+  if (!run || !pay(pickCost(run, id))) return
   pickBoost(run, id, replace)
   checkpoint()
   if (run.phase === 'pick') showPick()
@@ -661,15 +716,18 @@ function showPick() {
   // the player hasn't seen yet.
   const shownAt = performance.now()
   const settled = () => performance.now() - shownAt >= PICK_GRACE_MS
+  const holding = holdCost(s)
   const cards = s.choices.map((id) => {
     const b = BOOSTS[id]
     const synergy = isSynergy(s, id)
+    const held = s.held === id
+    const price = pickCost(s, id)
     const art = h('span', { class: 'bs-card-icon' })
     art.innerHTML = BOOST_ICONS[id]
     const card = h(
       'button',
       {
-        class: `pf-btn bs-card ${b.rarity}${synergy ? ' synergy' : ''}`,
+        class: `pf-btn bs-card ${b.rarity}${synergy ? ' synergy' : ''}${held ? ' held' : ''}`,
         type: 'button',
         onclick: () => {
           if (!settled()) return
@@ -677,7 +735,9 @@ function showPick() {
           takeBoost(id)
         },
       },
-      synergy && h('em', { class: 'bs-ribbon', textContent: t('SYNERGY') }),
+      held
+        ? h('em', { class: 'bs-ribbon held', textContent: t('HELD') })
+        : synergy && h('em', { class: 'bs-ribbon', textContent: t('SYNERGY') }),
       art,
       h('small', { textContent: rarityName(b.rarity) }),
       // Taking a boost you have levels it up; say so, so it never reads as a new slot.
@@ -690,8 +750,24 @@ function showPick() {
       h('strong', { textContent: t(b.name) }),
       h('span', { textContent: t(b.text) }),
       needsReplace(s, id) && h('small', { class: 'bs-swap', textContent: t('Slots full: swap one out') }),
+      h('span', { class: 'bs-price' }, price ? coinAmount(price) : t('FREE')),
     )
-    return card
+    card.disabled = !canPay(price)
+    // Pay to see this boost again at the next level-up (one at a time).
+    const hold = button(
+      t('Hold'),
+      () => {
+        if (!settled() || !pay(holding)) return
+        holdBoost(s, id)
+        checkpoint()
+        showPick()
+      },
+      'quiet bs-hold',
+    )
+    hold.append(' ', coinAmount(holding))
+    hold.title = t('Keep this boost for your next level-up')
+    hold.disabled = !!s.held || !canPay(holding)
+    return h('div', { class: 'bs-card-wrap' }, card, !held && hold)
   })
   const heading = h('h2', {
     class: 'pf-heading',
@@ -721,16 +797,43 @@ function showPick() {
   )
   if (!token) rerollBtn.append(' ', coinAmount(cost))
   rerollBtn.disabled = !token && save.coins + (s.coins - banked) < cost
+  const skip = () => settled() && confirmSkip()
   show(
     h(
       'div',
       { class: 'pf-panel wide' },
-      h('div', { class: 'bs-shop-head' }, heading, wallet()),
+      h('div', { class: 'bs-shop-head' }, heading, wallet(), closeButton(skip)),
       slotCallout(s),
       h('div', { class: 'bs-cards' }, ...cards),
-      rerollBtn,
+      h('div', { class: 'bs-pick-actions' }, rerollBtn, button(t('Skip'), skip, 'quiet')),
     ),
-    `pick-${s.level}-${s.pendingPicks}-${s.rerollsUsed}`,
+    `pick-${s.level}-${s.pendingPicks}-${s.rerollsUsed}-${s.holdsUsed ?? 0}`,
+  )
+}
+
+/** Skipping a pick gives up its boost, so ask first. */
+function confirmSkip() {
+  if (!run) return
+  const s = run
+  show(
+    h(
+      'div',
+      { class: 'pf-panel' },
+      panelHead(t('Skip this level-up?'), showPick),
+      h('p', { class: 'pf-lede', textContent: t("You won't get a boost from this level-up.") }),
+      button(
+        t('Skip'),
+        () => {
+          skipPick(s)
+          checkpoint()
+          if (s.phase === 'pick') showPick()
+          else show(null)
+        },
+        'primary wide',
+      ),
+      button(t('Keep picking'), showPick, 'wide'),
+    ),
+    'pick-skip',
   )
 }
 
@@ -918,6 +1021,7 @@ startRenderLoop((dt, time) => {
   juice.update(dt)
   if (s && s.phase === 'aim') announceNewKinds(s)
   updateNotice(dt)
+  updateDanger()
   updateShopCoins()
   renderPanels(s, time)
   const d = s ? dims(s) : boardSize(COLS, ROWS)

@@ -775,3 +775,75 @@
   color: var(--pf-chalk);
   font-size: 14px;
 }
+
+/* Pick cards: a price at the bottom, a Hold button under each. */
+.bs-card-wrap {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+.bs-card .bs-price {
+  justify-self: start;
+  margin-top: auto;
+  font-weight: 700;
+  color: var(--pf-yolk);
+}
+.bs-card:disabled {
+  opacity: 0.55;
+}
+.bs-hold.pf-btn {
+  font-size: 13px;
+  padding: 6px 10px;
+}
+.bs-card.held {
+  box-shadow: 0 0 0 3px rgb(255 200 61 / 0.5);
+}
+.bs-ribbon.held {
+  background: #ffc83d;
+  color: #3a2a00;
+}
+.bs-pick-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* Near-death hint at the top of the board, clear of the danger zone it warns about. */
+.bs-danger {
+  position: absolute;
+  left: 50%;
+  top: 64px;
+  transform: translateX(-50%);
+  width: min(var(--bs-board-w, 360px) - 24px, 440px);
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 2px solid var(--pf-coral, #ff6b6b);
+  border-radius: 14px;
+  background: rgb(40 10 20 / 0.92);
+  color: var(--pf-chalk);
+  animation: bs-danger-pulse 1.2s ease-in-out infinite;
+  z-index: 2;
+}
+.bs-danger[hidden] {
+  display: none;
+}
+.bs-danger strong {
+  color: var(--pf-coral, #ff6b6b);
+}
+.bs-danger span {
+  font-size: 14px;
+}
+@keyframes bs-danger-pulse {
+  50% {
+    box-shadow: 0 0 18px rgb(255 107 107 / 0.6);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bs-danger {
+    animation: none;
+  }
+}

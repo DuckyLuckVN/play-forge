@@ -250,6 +250,7 @@ function bounceOffBricks(s: RunState, ball: Ball, mods: Mods, bricks: Brick[]): 
   const touch = brick.kind === 'boss' ? bossContact(s, ball, face) : 'hit'
   if (touch === 'pass') return false
   if (touch === 'hit') hitBrick(s, ball, brick, mods, ball.kind === 'fire' ? 2 : 1, face)
+  else s.events.push({ type: 'bossBlock', x: ball.x, y: ball.y })
   if (brick.role === 'spike') {
     ball.status = 'landed'
     s.events.push({ type: 'pop', x: ball.x, y: ball.y })

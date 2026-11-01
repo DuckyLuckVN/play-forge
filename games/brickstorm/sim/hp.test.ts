@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { killBrick } from './damage'
-import { spawnRow } from './rows'
+import { patternAt } from './patterns'
+import { hpScale, spawnRow } from './rows'
 import { drainEvents } from './run'
 import { brick, empty } from './testing'
 
@@ -22,13 +23,15 @@ describe('brick hp tracks the turn', () => {
     let all = 0
     let doubled = 0
     for (let seed = 1; seed <= 1000; seed++) {
+      // Scattered rows only: shaped rows make their bricks tougher on purpose.
+      if (patternAt(seed, 21) !== 'scatter') continue
       const s = empty(seed)
       s.ballCount = 999
       s.turn = 21
       spawnRow(s)
       for (const b of s.bricks) {
         all++
-        if (b.hp > 21 * (1 + 21 / 25) * 1.1 + 1) doubled++
+        if (b.hp > hpScale(21) * 1.1 + 1) doubled++
       }
     }
     expect(doubled / all).toBeGreaterThan(0.06)

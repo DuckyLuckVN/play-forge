@@ -39,7 +39,18 @@ import {
   statsPanel,
 } from './panels'
 import { BOOST_ICONS } from './icons'
-import { BOOSTS, isSynergy, pickBoost, reroll, rerollCost, xpToNext, xpTotal } from './sim/boosts'
+import {
+  BOOSTS,
+  boostSlots,
+  isSynergy,
+  needsReplace,
+  pickBoost,
+  reroll,
+  rerollCost,
+  slottedBoosts,
+  xpToNext,
+  xpTotal,
+} from './sim/boosts'
 import { AIM_MIN, BOARD_H, BOARD_W, boardSize, COLS, MAX_COLS, MAX_ROWS, ROWS, TICK } from './sim/config'
 import { aimFromPointer } from './sim/physics'
 import { canRecall, createRun, drainEvents, fire, recall, speedMultiplier, step } from './sim/run'
@@ -569,6 +580,56 @@ function resumeRun() {
   beginRun(structuredClone(save.run.state))
 }
 
+/** Takes an offered boost (dropping `replace` for it when slots are full), then the next screen. */
+function takeBoost(id: BoostId, replace?: BoostId) {
+  if (!run) return
+  pickBoost(run, id, replace)
+  checkpoint()
+  if (run.phase === 'pick') showPick()
+  else show(null)
+}
+
+/** Slots are full: the player picks which owned boost to drop for `id`, or goes back. */
+function showSwap(id: BoostId) {
+  if (!run) return
+  const s = run
+  const owned = slottedBoosts(s.boosts)
+  show(
+    h(
+      'div',
+      { class: 'pf-panel wide' },
+      panelHead(t('Swap for {name}?', { name: t(BOOSTS[id].name) }), showPick),
+      h('p', {
+        class: 'pf-lede',
+        textContent: t(
+          'Your boost slots are full ({n}/{max}). Pick one to drop for it. Each boss you beat adds a slot.',
+          { n: owned.length, max: boostSlots(s) },
+        ),
+      }),
+      h(
+        'div',
+        { class: 'bs-cards' },
+        ...owned.map((old) => {
+          const b = BOOSTS[old]
+          const art = h('span', { class: 'bs-card-icon' })
+          art.innerHTML = BOOST_ICONS[old]
+          const card = h(
+            'button',
+            { class: `pf-btn bs-card ${b.rarity}`, type: 'button', onclick: () => takeBoost(id, old) },
+            art,
+            h('strong', { textContent: t(b.name) }),
+            h('span', { textContent: t(b.text) }),
+          )
+          card.setAttribute('aria-label', t('Drop {name} (level {n})', { name: t(b.name), n: s.boosts[old] ?? 0 }))
+          card.append(h('small', { textContent: `×${s.boosts[old]}` }))
+          return card
+        }),
+      ),
+    ),
+    `pick-swap-${id}`,
+  )
+}
+
 function showPick() {
   if (!run) return
   const s = run
@@ -588,10 +649,8 @@ function showPick() {
         type: 'button',
         onclick: () => {
           if (!settled()) return
-          pickBoost(s, id)
-          checkpoint()
-          if (s.phase === 'pick') showPick()
-          else show(null)
+          if (needsReplace(s, id)) return showSwap(id)
+          takeBoost(id)
         },
       },
       synergy && h('em', { class: 'bs-ribbon', textContent: t('SYNERGY') }),
@@ -599,6 +658,7 @@ function showPick() {
       h('small', { textContent: rarityName(b.rarity) }),
       h('strong', { textContent: t(b.name) }),
       h('span', { textContent: t(b.text) }),
+      needsReplace(s, id) && h('small', { class: 'bs-swap', textContent: t('Slots full: swap one out') }),
     )
     return card
   })

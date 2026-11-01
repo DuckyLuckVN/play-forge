@@ -73,6 +73,7 @@ export function damageBoss(s: RunState, amount: number, source: DamageSource): v
   const coins = Math.round(10 * s.turn * modsOf(s.boosts).coinMult)
   s.coins += coins
   s.pendingPicks++
+  s.bossesBeaten = (s.bossesBeaten ?? 0) + 1
   s.events.push({ type: 'bossDown', x, y, coins })
 }
 

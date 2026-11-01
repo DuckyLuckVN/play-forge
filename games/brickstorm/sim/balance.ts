@@ -1,7 +1,7 @@
 // Headless bots that play whole runs, for tuning difficulty and the economy.
 // `npm run balance` prints medians against the targets in the v2 plan.
 import { random } from '@forge/core/rng'
-import { pickBoost } from './boosts'
+import { needsReplace, pickBoost, slottedBoosts } from './boosts'
 import { AIM_MIN, MAX_COLS } from './config'
 import { dims } from './dims'
 import { growBoard } from './meta'
@@ -38,6 +38,20 @@ const PREFER: BoostId[] = [
 const GREEDY_ANGLES = 6
 /** Bots recall a volley after this long, like an impatient player. */
 const BOT_RECALL = 10
+
+/** How much the bot likes a boost: its place in PREFER, unlisted ones last. */
+const rank = (id: BoostId) => (PREFER.includes(id) ? PREFER.indexOf(id) : PREFER.length)
+
+/** The bot's pick: its favourite offer, dropping its least favourite owned boost when slots are full. */
+function botPick(s: RunState): void {
+  const best = [...s.choices].sort((a, b) => rank(a) - rank(b))[0]
+  if (!needsReplace(s, best)) return pickBoost(s, best)
+  const worst = slottedBoosts(s.boosts).sort((a, b) => rank(b) - rank(a))[0]
+  // Not worth a swap: level up something it has instead, if offered.
+  const keep = s.choices.find((id) => !needsReplace(s, id))
+  if (rank(best) >= rank(worst) && keep) return pickBoost(s, keep)
+  pickBoost(s, best, worst)
+}
 
 function playVolley(s: RunState): void {
   for (let i = 0; s.phase === 'volley'; i++) {
@@ -103,7 +117,7 @@ export function simulateRun(seed: number, bot: Bot, maxTurns = 150): RunResult {
       continue
     }
     if (s.phase === 'pick') {
-      pickBoost(s, PREFER.find((id) => s.choices.includes(id)) ?? s.choices[0])
+      botPick(s)
       continue
     }
     const angle =

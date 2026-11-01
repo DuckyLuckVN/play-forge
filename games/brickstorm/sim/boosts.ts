@@ -110,11 +110,44 @@ export function xpTotal(level: number, xp: number): number {
   return 8 * level + 3 * level * (level - 1) + xp
 }
 
-/** Up to 3 distinct boosts that aren't maxed out, weighted by rarity. */
+/** Lasting boosts the player can hold this many of; each boss beaten adds one. */
+export const BASE_SLOTS = 3
+/** Share of offers drawn from owned boosts once every slot is taken. */
+const OWNED_LEAN = 0.3
+/** Boosts that pay out once when picked (+2 balls, Double Down), so they take no slot. */
+const INSTANT: readonly BoostId[] = ['balls', 'double']
+
+export function boostSlots(s: Pick<RunState, 'bossesBeaten'>): number {
+  return BASE_SLOTS + (s.bossesBeaten ?? 0)
+}
+
+/** The boosts that fill slots, in the order they were first picked. */
+export function slottedBoosts(boosts: RunState['boosts']): BoostId[] {
+  return (Object.keys(boosts) as BoostId[]).filter((id) => (boosts[id] ?? 0) > 0 && !INSTANT.includes(id))
+}
+
+/** Taking `id` would need a free slot and there is none: the player must drop a boost for it. */
+export function needsReplace(s: Pick<RunState, 'boosts' | 'bossesBeaten'>, id: BoostId): boolean {
+  if (INSTANT.includes(id) || (s.boosts[id] ?? 0) > 0) return false
+  return slottedBoosts(s.boosts).length >= boostSlots(s)
+}
+
+/**
+ * Up to 3 distinct boosts that aren't maxed out, weighted by rarity. Once every
+ * slot is full, about OWNED_LEAN of them are boosts the player already has, so
+ * most level-ups can still be taken without dropping anything.
+ */
 export function rollChoices(s: RunState): BoostId[] {
-  const pool = (Object.keys(BOOSTS) as BoostId[]).filter((id) => (s.boosts[id] ?? 0) < BOOSTS[id].max)
+  const open = (id: BoostId) => (s.boosts[id] ?? 0) < BOOSTS[id].max
+  const full = slottedBoosts(s.boosts).length >= boostSlots(s)
+  const owned = full ? slottedBoosts(s.boosts).filter(open) : []
+  const pool = (Object.keys(BOOSTS) as BoostId[]).filter((id) => open(id) && !owned.includes(id))
   const picked: BoostId[] = []
-  while (picked.length < 3 && pool.length) {
+  while (picked.length < 3 && (pool.length || owned.length)) {
+    if (owned.length && (!pool.length || random(s.rng) < OWNED_LEAN)) {
+      picked.push(...owned.splice(Math.floor(random(s.rng) * owned.length), 1))
+      continue
+    }
     const total = pool.reduce((sum, id) => sum + WEIGHT[BOOSTS[id].rarity], 0)
     let roll = random(s.rng) * total
     const i = pool.findIndex((id) => (roll -= WEIGHT[BOOSTS[id].rarity]) < 0)
@@ -123,8 +156,16 @@ export function rollChoices(s: RunState): BoostId[] {
   return picked
 }
 
-export function pickBoost(s: RunState, id: BoostId): void {
+/**
+ * Takes one of the offered boosts. With every slot full, a new boost needs
+ * `replace`: an owned boost that is dropped for it; without one nothing happens.
+ */
+export function pickBoost(s: RunState, id: BoostId, replace?: BoostId): void {
   if (s.phase !== 'pick' || !s.choices.includes(id)) return
+  if (needsReplace(s, id)) {
+    if (!replace || !slottedBoosts(s.boosts).includes(replace)) return
+    delete s.boosts[replace]
+  }
   s.boosts[id] = (s.boosts[id] ?? 0) + 1
   if (id === 'balls') s.ballCount += 2
   if (id === 'double') s.doubleVolleys += 3

@@ -8,7 +8,7 @@ import { t } from './i18n'
 import { BOOST_ICONS } from './icons'
 import { drawKindGlyph, drawPickupGlyph } from './render'
 import type { Helpers } from './save'
-import { BOOSTS } from './sim/boosts'
+import { BOOSTS, boostSlots, slottedBoosts } from './sim/boosts'
 import type { ActiveHelper, BoostId, BrickKind, PickupKind, RunState } from './sim/types'
 
 export const ACTIVE_HELPERS: Array<{ id: ActiveHelper; name: string; glyph: string; text: string }> = [
@@ -80,7 +80,9 @@ export function boostsPanel(s: RunState, onInfo: (id: BoostId) => void): HTMLEle
   return h(
     'div',
     { class: 'bs-side-block' },
-    h('h3', { textContent: owned.length ? t('Boosts · {n}', { n: owned.length }) : t('Boosts') }),
+    h('h3', {
+      textContent: t('Boosts · {n}/{max} slots', { n: slottedBoosts(s.boosts).length, max: boostSlots(s) }),
+    }),
     owned.length
       ? h(
           'div',

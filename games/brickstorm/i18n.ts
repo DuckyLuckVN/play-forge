@@ -163,15 +163,19 @@ export const VI: Dictionary = {
   'No new rows until it falls. Hit any part to drain its health before it reaches the line.':
     'Không có hàng mới cho tới khi nó gục. Đánh vào bất kỳ phần nào để rút máu trước khi nó chạm vạch.',
   Boss: 'Trùm',
-  'Every 30 turns. One big health bar, 1–2 special traits, and no new rows until it falls. Beat it for coins and a free boost.':
-    'Mỗi 30 lượt. Một thanh máu lớn, 1–2 đặc tính riêng, và không có hàng mới cho tới khi nó gục. Hạ nó để nhận xu và một nâng cấp miễn phí.',
+  'Every 30 turns. One big health bar, 1–2 special traits, and no new rows until it falls. Beat it for coins, a free boost and an extra boost slot.':
+    'Mỗi 30 lượt. Một thanh máu lớn, 1–2 đặc tính riêng, và không có hàng mới cho tới khi nó gục. Hạ nó để nhận xu, một nâng cấp miễn phí và thêm một ô nâng cấp.',
   'Play again': 'Chơi lại',
   Home: 'Trang chủ',
   Run: 'Lượt chơi',
   '? Guide': '? Hướng dẫn',
   'About {name}': 'Về {name}',
-  'Boosts · {n}': 'Nâng cấp · {n}',
-  Boosts: 'Nâng cấp',
+  'Boosts · {n}/{max} slots': 'Nâng cấp · {n}/{max} ô',
+  'Slots full: swap one out': 'Hết ô: phải đổi một nâng cấp',
+  'Swap for {name}?': 'Đổi lấy {name}?',
+  'Your boost slots are full ({n}/{max}). Pick one to drop for it. Each boss you beat adds a slot.':
+    'Các ô nâng cấp đã đầy ({n}/{max}). Chọn một cái để bỏ. Mỗi trùm bạn hạ thêm một ô.',
+  'Drop {name} (level {n})': 'Bỏ {name} (cấp {n})',
   '{name} level {n}. Show details': '{name} cấp {n}. Xem chi tiết',
   'Level up to pick boosts.': 'Lên cấp để chọn nâng cấp.',
   Helpers: 'Trợ giúp',

@@ -38,7 +38,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'brick:boss',
     name: 'Boss',
-    text: 'Every 30 turns. One big health bar, 1–2 special traits, and no new rows until it falls. Beat it for coins and a free boost.',
+    text: 'Every 30 turns. One big health bar, 1–2 special traits, and no new rows until it falls. Beat it for coins, a free boost and an extra boost slot.',
   },
   { id: 'pickup:ball', name: '+1 Ball', text: 'Touch it to add a ball for the rest of the run.' },
   { id: 'pickup:coin', name: 'Coin', text: 'Touch it for 5 coins to spend in the shop.' },

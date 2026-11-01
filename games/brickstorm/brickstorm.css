@@ -709,3 +709,9 @@
 .bs-grow-preview {
   display: block;
 }
+
+/* A pick card that needs a slot freed first. */
+.bs-card .bs-swap {
+  color: var(--pf-coral, #ff6b6b);
+  font-weight: 700;
+}

@@ -196,6 +196,8 @@ export interface RunState {
   pierceNext?: boolean
   /** The boss fight in progress, if any (absent in runs saved before bosses). */
   boss?: Boss | null
+  /** Bosses beaten this run; each adds a boost slot. Missing in older saves. */
+  bossesBeaten?: number
   nextId: number
   events: SimEvent[]
 }

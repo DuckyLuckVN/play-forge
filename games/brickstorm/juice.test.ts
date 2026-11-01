@@ -305,3 +305,26 @@ describe('grow effect', () => {
     expect(j.growFx).toBeNull()
   })
 })
+
+describe('boss skill shouts', () => {
+  it('a skill going off flares the boss and shouts its name there', () => {
+    particles.text.mockClear()
+    const j = juice()
+    j.handle({ type: 'bossSkill', id: 'mason', x: 100, y: 80 })
+    expect(j.bossCast).toBe(1)
+    expect(particles.text).toHaveBeenCalledWith(
+      100,
+      expect.any(Number),
+      'MASON!',
+      expect.objectContaining({ color: expect.any(String) }),
+    )
+    j.update(1)
+    expect(j.bossCast).toBe(0)
+  })
+
+  it('a popped ball bursts', () => {
+    particles.burst.mockClear()
+    juice().handle({ type: 'pop', x: 10, y: 20 })
+    expect(particles.burst).toHaveBeenCalled()
+  })
+})

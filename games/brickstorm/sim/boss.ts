@@ -4,11 +4,11 @@
 // each turn like any brick. Later bosses are bigger and have more skills.
 import { random, randomInt } from '@forge/core/rng'
 import { modsOf } from './boosts'
-import { bossParts, crushUnderBoss } from './boss-kit'
+import { bossParts, crushUnderBoss, moveBoss } from './boss-kit'
 import { BOSS_SHAPES, shapeOf, shapeSize } from './boss-shapes'
-import { BOSS_SKILLS, type BossHit, SKILL_IDS } from './boss-skills'
+import { BOSS_SKILLS, type BossHit, type BossSkill, type Face, SKILL_IDS } from './boss-skills'
 import { cellCenter, hpScale } from './rows'
-import type { Boss, BossSkillId, BossTier, Brick, RunState } from './types'
+import type { Ball, Boss, BossSkillId, BossTier, Brick, RunState } from './types'
 import type { DamageSource } from './damage'
 
 export { bossParts } from './boss-kit'
@@ -35,11 +35,33 @@ export function bossHp(s: RunState): number {
   return Math.round(Math.max(typical * 3, Math.min(typical * 12, firepower)))
 }
 
-/** Its skills, from the run's rng: 2 for the first boss, 3 for the second, 4 after that. */
+/** Skills that would stack too hard or look the same: a boss gets at most one of each group. */
+const EXCLUSIVE: BossSkillId[][] = [
+  ['shell', 'bulwark', 'underplate', 'heart'],
+  ['drifter', 'weaver', 'blink', 'evasive'],
+  ['armored', 'icebound', 'stoneSkin', 'powerCells', 'guards'],
+  ['gravity', 'repulse', 'mire'],
+  ['hover', 'lunge', 'charge'],
+  ['shield', 'totem', 'glutton'],
+]
+
+/**
+ * Its skills, from the run's rng: 2 for the first boss, 3 for the second, 4
+ * after that. The first (which names it) is one of its own tier's skills.
+ */
 export function rollTraits(s: RunState, tier = bossTier(s.turn)): BossSkillId[] {
-  const pool = SKILL_IDS.filter((id) => BOSS_SKILLS[id].tier <= tier)
+  let pool = SKILL_IDS.filter((id) => BOSS_SKILLS[id].tier <= tier)
   const n = Math.min(pool.length, tier + 1)
-  return Array.from({ length: n }, () => pool.splice(randomInt(s.rng, pool.length), 1)[0])
+  const picked: BossSkillId[] = []
+  while (picked.length < n && pool.length) {
+    const own = pool.filter((id) => BOSS_SKILLS[id].tier === tier)
+    const from = picked.length === 0 && own.length ? own : pool
+    const id = from[randomInt(s.rng, from.length)]
+    picked.push(id)
+    const out = new Set([id, ...EXCLUSIVE.filter((g) => g.includes(id)).flat()])
+    pool = pool.filter((x) => !out.has(x))
+  }
+  return picked
 }
 
 /** A body shape for the tier, from the run's rng. */
@@ -52,7 +74,17 @@ export function spawnBoss(s: RunState, traits = rollTraits(s), shape = rollShape
   const hp = bossHp(s)
   const noun = BOSS_NOUNS[randomInt(s.rng, BOSS_NOUNS.length)]
   const face = Math.floor(random(s.rng) * BOSS_FACES)
-  const boss: Boss = { hp, maxHp: hp, traits, noun, turn: s.turn, dir: 1, shape, face, tier: bossTier(s.turn) }
+  const boss: Boss = {
+    hp,
+    maxHp: hp,
+    traits,
+    noun,
+    turn: s.turn,
+    dir: 1,
+    shape,
+    face,
+    tier: bossTier(s.turn),
+  }
   s.boss = boss
   const body = shapeOf(shape)
   const left = Math.floor((s.cols - shapeSize(body).w) / 2)
@@ -70,29 +102,114 @@ function center(parts: Brick[]): { x: number; y: number } {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
 }
 
+/** The boss's skills with their hooks (ids this build doesn't know are skipped). */
+function skillsOf(boss: Boss): BossSkill[] {
+  return boss.traits.map((id) => BOSS_SKILLS[id]).filter((k): k is BossSkill => !!k)
+}
+
 /** Damage to any part comes off the shared pool (after its skills have their say); at 0 it falls and pays out. */
-export function damageBoss(s: RunState, amount: number, source: DamageSource, hit: Omit<BossHit, 'source'> = {}): void {
+export function damageBoss(
+  s: RunState,
+  amount: number,
+  source: DamageSource,
+  hit: Omit<BossHit, 'source'> = {},
+): void {
   const boss = s.boss
   if (!boss) return
   let dealt = amount
-  for (const id of boss.traits) {
-    const skill = BOSS_SKILLS[id]
-    if (skill?.damage) dealt = skill.damage(s, boss, dealt, { ...hit, source })
+  for (const skill of skillsOf(boss)) {
+    if (skill.damage) dealt = skill.damage(s, boss, dealt, { ...hit, source })
   }
-  boss.hp -= Math.max(0, dealt)
+  dealt = Math.max(0, dealt)
+  const before = boss.hp
+  boss.hp -= dealt
+  boss.mem = { ...boss.mem, volley: (boss.mem?.volley ?? 0) + dealt }
+  for (const skill of skillsOf(boss)) skill.hurt?.(s, boss, before, { ...hit, source })
   const parts = bossParts(s)
+  if (boss.hp <= 0 && skillsOf(boss).some((k) => k.death?.(s, boss))) boss.hp = Math.max(boss.hp, 1)
   if (boss.hp > 0) {
     for (const p of parts) p.hp = boss.hp
     return
   }
   const { x, y } = center(parts)
-  s.bricks = s.bricks.filter((b) => b.kind !== 'boss')
+  // Its machinery goes with it; its minions stay as plain bricks.
+  s.bricks = s.bricks.filter((b) => b.kind !== 'boss' && (!b.role || b.role === 'minion'))
+  for (const b of s.bricks) delete b.role
   s.boss = null
   const coins = Math.round(10 * s.turn * modsOf(s.boosts).coinMult)
   s.coins += coins
   s.pendingPicks++
   s.bossesBeaten = (s.bossesBeaten ?? 0) + 1
+  for (const skill of skillsOf(boss)) skill.defeated?.(s, boss, { x, y })
   s.events.push({ type: 'bossDown', x, y, coins })
+}
+
+/** A volley starts: per-volley counters reset, then skills react (Barrier, Leech…). */
+export function bossLaunch(s: RunState): void {
+  const boss = s.boss
+  if (!boss) return
+  boss.mem = { ...boss.mem, volley: 0 }
+  for (const skill of skillsOf(boss)) skill.launch?.(s, boss)
+}
+
+/** A volley ended, before the board drops. */
+export function bossVolleyEnd(s: RunState): void {
+  const boss = s.boss
+  if (!boss) return
+  for (const skill of skillsOf(boss)) skill.volleyEnd?.(s, boss)
+}
+
+/** Rows the boss moves after the board drops (Lunge, Hover, Retreat…), never above the top. */
+export function bossDrop(s: RunState): void {
+  const boss = s.boss
+  if (!boss || !bossParts(s).length) return
+  let rows = 0
+  for (const skill of skillsOf(boss)) rows += skill.drop?.(s, boss) ?? 0
+  const top = Math.min(...bossParts(s).map((b) => b.row))
+  rows = Math.max(rows, -top)
+  if (rows) moveBoss(s, 0, rows)
+}
+
+/** What a ball does on touching the boss: the first skill that says other than 'hit' wins. */
+export function bossContact(s: RunState, ball: Ball, face: Face): 'hit' | 'block' | 'pass' {
+  const boss = s.boss
+  if (!boss) return 'hit'
+  for (const skill of skillsOf(boss)) {
+    const r = skill.contact?.(s, boss, ball, face)
+    if (r && r !== 'hit') return r
+  }
+  return 'hit'
+}
+
+/** Pulls and pushes on a flying ball; returns how fast it may move (1 = full speed). */
+export function bossForce(s: RunState, ball: Ball, dt: number): number {
+  const boss = s.boss
+  if (!boss) return 1
+  let speed = 1
+  for (const skill of skillsOf(boss)) {
+    skill.force?.(s, boss, ball, dt)
+    speed *= skill.slow?.(s, boss, ball) ?? 1
+  }
+  return speed
+}
+
+/** A brick a skill summoned took damage. */
+export function bossRoleHit(s: RunState, brick: Brick, amount: number, source: DamageSource): void {
+  const boss = s.boss
+  if (!boss) return
+  for (const skill of skillsOf(boss)) skill.roleHit?.(s, boss, brick, amount, source)
+}
+
+/** A brick a skill summoned was destroyed. */
+export function bossRoleKill(s: RunState, brick: Brick): void {
+  const boss = s.boss
+  if (!boss) return
+  for (const skill of skillsOf(boss)) skill.roleKill?.(s, boss, brick)
+}
+
+/** Shroud: the aim guide stops at its first bounce. */
+export function bossHidesGuide(s: Pick<RunState, 'boss'>): boolean {
+  return !!s.boss?.traits.includes('shroud')
 }
 
 /** Something that would delete a part (Row Bomb) hits the whole boss hard instead. */

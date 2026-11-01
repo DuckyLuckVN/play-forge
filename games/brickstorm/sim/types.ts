@@ -31,7 +31,63 @@ export interface Rect {
 export type BrickKind = 'normal' | 'bomb' | 'gold' | 'lightning' | 'mystery' | 'armored' | 'splitter' | 'boss'
 
 /** A boss skill (see sim/boss-skills.ts). The first five were the original "traits". */
-export type BossSkillId = 'shield' | 'minions' | 'drifter' | 'armored' | 'enrage'
+export type BossSkillId =
+  // Summon
+  | 'minions'
+  | 'mason'
+  | 'guards'
+  | 'brood'
+  | 'eggs'
+  | 'mirror'
+  | 'spikes'
+  | 'splitters'
+  | 'totem'
+  | 'swarm'
+  // Defense
+  | 'shield'
+  | 'armored'
+  | 'bulwark'
+  | 'shell'
+  | 'underplate'
+  | 'phase'
+  | 'barrier'
+  | 'reflect'
+  | 'secondLife'
+  | 'stoneSkin'
+  // Movement
+  | 'drifter'
+  | 'blink'
+  | 'lunge'
+  | 'retreat'
+  | 'weaver'
+  | 'hover'
+  | 'enrage'
+  | 'evasive'
+  // Weak points
+  | 'core'
+  | 'heart'
+  | 'runes'
+  | 'powerCells'
+  | 'rod'
+  | 'volatile'
+  | 'icebound'
+  | 'cracked'
+  // Tricks
+  | 'glutton'
+  | 'frost'
+  | 'leech'
+  | 'mire'
+  | 'shroud'
+  | 'taxman'
+  | 'gravity'
+  | 'repulse'
+  // Rage
+  | 'frenzy'
+  | 'lastStand'
+  | 'fortify'
+  | 'shatter'
+  | 'charge'
+  | 'rally'
 /** @deprecated Old name for BossSkillId, kept for saved runs and older code. */
 export type BossTrait = BossSkillId
 
@@ -60,7 +116,8 @@ export interface Boss {
 }
 
 /** What a brick summoned by a boss skill does (drawn and handled specially). */
-export type BossRole = 'minion'
+export type BossRole =
+  'minion' | 'guard' | 'egg' | 'decoy' | 'spike' | 'totem' | 'rune' | 'cell' | 'rod' | 'core' | 'ice'
 
 export interface Brick {
   id: number
@@ -150,6 +207,10 @@ export type SimEvent =
   | { type: 'turn'; turn: number }
   | { type: 'boss'; noun: string; traits: BossTrait[] }
   | { type: 'bossDown'; x: number; y: number; coins: number }
+  /** A boss skill went off (or warns it will), at the boss. */
+  | { type: 'bossSkill'; id: BossSkillId; x: number; y: number }
+  /** A ball hit spikes and is gone for this volley. */
+  | { type: 'pop'; x: number; y: number }
   /** A new, tougher hp stretch starts this turn. */
   | { type: 'tougher' }
   | { type: 'over' }

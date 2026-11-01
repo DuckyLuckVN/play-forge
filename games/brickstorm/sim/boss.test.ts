@@ -41,7 +41,12 @@ describe('boss', () => {
   })
 
   it('grows with each boss: bigger bodies and 2, 3, then 4 skills', () => {
-    for (const [turn, tier] of [[30, 1], [60, 2], [90, 3], [150, 3]] as const) {
+    for (const [turn, tier] of [
+      [30, 1],
+      [60, 2],
+      [90, 3],
+      [150, 3],
+    ] as const) {
       expect(bossTier(turn)).toBe(tier)
       for (let seed = 1; seed <= 20; seed++) {
         const s = beforeBoss(seed)
@@ -58,7 +63,9 @@ describe('boss', () => {
   it('fits every shape on the smallest board and crushes bricks in its way', () => {
     for (const shape of Object.keys(BOSS_SHAPES)) {
       const s = beforeBoss()
-      for (let c = 0; c < s.cols; c++) for (let r = 0; r < 3; r++) s.bricks.push({ id: s.nextId++, col: c, row: r, hp: 5, maxHp: 5, kind: 'normal', split: false })
+      for (let c = 0; c < s.cols; c++)
+        for (let r = 0; r < 3; r++)
+          s.bricks.push({ id: s.nextId++, col: c, row: r, hp: 5, maxHp: 5, kind: 'normal', split: false })
       spawnBoss(s, [], shape)
       const parts = bossParts(s)
       for (const p of parts) {
@@ -213,7 +220,20 @@ describe('boss hitbox', () => {
     spawnBoss(s, [], shape)
     s.phase = 'volley'
     s.balls = [
-      { x, y: TOP + 6 * CELL, vx: 0, vy: -600, status: 'flying', kind, r: 7, split: false, inside: [], pierceLeft, bounceBonus: 0, lastBrick: -1 },
+      {
+        x,
+        y: TOP + 6 * CELL,
+        vx: 0,
+        vy: -600,
+        status: 'flying',
+        kind,
+        r: 7,
+        split: false,
+        inside: [],
+        pierceLeft,
+        bounceBonus: 0,
+        lastBrick: -1,
+      },
     ]
     let top = Infinity
     for (let i = 0; i < 120 && s.balls[0].vy < 0; i++) {

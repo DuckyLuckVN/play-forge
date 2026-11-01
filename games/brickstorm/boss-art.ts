@@ -5,13 +5,14 @@ import { compactNumber, fillFitText } from '@forge/ui/text'
 import { FONT, theme } from '@forge/ui/theme'
 import { bossName, skillInfo } from './boss-skill-ui'
 import { shapeOf } from './sim/boss-shapes'
+import { phased } from './sim/boss-skills'
 import { BRICK_INSET, CELL, TOP } from './sim/config'
 import { dims } from './sim/dims'
-import { hitRects } from './sim/rows'
-import type { Boss, Brick, Rect, RunState } from './sim/types'
+import { brickRect, cellCenter, hitRects } from './sim/rows'
+import type { Boss, BossRole, Brick, Rect, RunState } from './sim/types'
 
 /** What drawBoss needs from the run; the boss card's preview fakes this. */
-export type BossView = Pick<RunState, 'boss' | 'bricks'> & Partial<Pick<RunState, 'cols' | 'rows'>>
+export type BossView = Pick<RunState, 'boss' | 'bricks'> & Partial<Pick<RunState, 'cols' | 'rows' | 'turn'>>
 
 interface Geo {
   parts: Brick[]
@@ -40,7 +41,12 @@ function geometry(s: BossView): Geo | null {
   const rects = hitRects(parts)
   const x = Math.min(...rects.map((r) => r.x))
   const y = Math.min(...rects.map((r) => r.y))
-  const box = { x, y, w: Math.max(...rects.map((r) => r.x + r.w)) - x, h: Math.max(...rects.map((r) => r.y + r.h)) - y }
+  const box = {
+    x,
+    y,
+    w: Math.max(...rects.map((r) => r.x + r.w)) - x,
+    h: Math.max(...rects.map((r) => r.y + r.h)) - y,
+  }
   const col0 = Math.min(...parts.map((b) => b.col))
   const row0 = Math.min(...parts.map((b) => b.row))
   const c = shapeOf(s.boss.shape).core
@@ -121,6 +127,8 @@ export interface BossLook {
   hit: number
   /** Where its eyes look (a ball, or the launch point). */
   look?: { x: number; y: number }
+  /** 0..1 flare while a skill goes off. */
+  cast?: number
 }
 
 export function drawBoss(ctx: CanvasRenderingContext2D, s: BossView, time: number, look: BossLook): void {
@@ -131,20 +139,25 @@ export function drawBoss(ctx: CanvasRenderingContext2D, s: BossView, time: numbe
   const rage = boss.traits.includes('enrage') && life < 0.5
   const accent = skillInfo(boss.traits[0] ?? 'armored').color
   const tier = boss.tier ?? 1
-  const danger = s.rows !== undefined && Math.max(...g.parts.map((b) => b.row)) >= dims({ cols: s.cols ?? 7, rows: s.rows }).dangerRow - 3
+  const danger =
+    s.rows !== undefined &&
+    Math.max(...g.parts.map((b) => b.row)) >= dims({ cols: s.cols ?? 7, rows: s.rows }).dangerRow - 3
   const body = bodyPath(g)
   const inner = bodyPath(g, -3)
 
   ctx.save()
+  // Phase Shift: a ghost on its off turns.
+  if (s.turn !== undefined && phased({ turn: s.turn }, boss)) ctx.globalAlpha = 0.4 + 0.1 * Math.sin(time * 6)
   // Aura: a glow from tier 2, living flames from tier 3.
   if (tier >= 3) drawFlames(ctx, g, time, rage ? theme.coral : accent)
   ctx.shadowColor = rage || danger ? theme.coral : accent
-  ctx.shadowBlur = tier >= 2 ? 26 + 10 * Math.sin(time * 4) : 14 + 6 * Math.sin(time * 4)
+  ctx.shadowBlur =
+    (tier >= 2 ? 26 + 10 * Math.sin(time * 4) : 14 + 6 * Math.sin(time * 4)) + 30 * (look.cast ?? 0)
   ctx.fillStyle = accent
   ctx.fill(body)
   ctx.shadowBlur = 0
 
-  for (const id of boss.traits) drawSkill(ctx, id, g, boss, time, 'back')
+  for (const id of boss.traits) drawSkill(ctx, s, id, g, boss, time, 'back')
 
   // Body and skin.
   const [top, bottom] = rage ? RAGE : (PALETTE[boss.noun] ?? PALETTE.Behemoth)
@@ -161,7 +174,7 @@ export function drawBoss(ctx: CanvasRenderingContext2D, s: BossView, time: numbe
   drawFace(ctx, boss, g.core, time, { ...look, rage, danger, life })
   drawStatus(ctx, boss, g.core, life, rage)
 
-  for (const id of boss.traits) drawSkill(ctx, id, g, boss, time, 'front')
+  for (const id of boss.traits) drawSkill(ctx, s, id, g, boss, time, 'front')
   if (look.hit > 0) {
     ctx.fillStyle = `rgb(255 255 255 / ${0.55 * look.hit})`
     ctx.fill(body)
@@ -396,7 +409,11 @@ function drawFace(ctx: CanvasRenderingContext2D, boss: Boss, core: Rect, time: n
     }
     case 4: {
       // Three eyes, blinking out of step.
-      const spots: Array<[number, number]> = [[-0.22, 0.05], [0.22, 0.05], [0, -0.12]]
+      const spots: Array<[number, number]> = [
+        [-0.22, 0.05],
+        [0.22, 0.05],
+        [0, -0.12],
+      ]
       spots.forEach(([dx, dy], i) => {
         const shut = (time * 0.6 + i * 1.3 + boss.turn) % 3 < 0.12 || wince
         const ex = cx + dx * core.w
@@ -484,7 +501,13 @@ function drawFace(ctx: CanvasRenderingContext2D, boss: Boss, core: Rect, time: n
 }
 
 /** Cracks as it weakens, then its name and hp bar. */
-function drawStatus(ctx: CanvasRenderingContext2D, boss: Boss, core: Rect, life: number, rage: boolean): void {
+function drawStatus(
+  ctx: CanvasRenderingContext2D,
+  boss: Boss,
+  core: Rect,
+  life: number,
+  rage: boolean,
+): void {
   const { x, y, w, h } = core
   if (life < 0.66) {
     ctx.strokeStyle = 'rgb(0 0 0 / 0.55)'
@@ -521,9 +544,58 @@ function drawStatus(ctx: CanvasRenderingContext2D, boss: Boss, core: Rect, life:
   fillFitText(ctx, compactNumber(Math.ceil(boss.hp)), x + w / 2, y + h - 13, barW, true)
 }
 
-/** Each skill's look, behind or in front of the body. */
+/** Bricks a skill summoned, for tethers back to the boss. */
+const SKILL_ROLE: Record<string, BossRole> = {
+  guards: 'guard',
+  mirror: 'decoy',
+  totem: 'totem',
+  runes: 'rune',
+  powerCells: 'cell',
+  rod: 'rod',
+  core: 'core',
+}
+
+/** Small things circling the body: specks, coins, bricks, crumbs. */
+function orbit(
+  g: Geo,
+  n: number,
+  time: number,
+  speed: number,
+  draw: (x: number, y: number, i: number) => void,
+): void {
+  const { x, y, w, h } = g.box
+  for (let i = 0; i < n; i++) {
+    const a = time * speed + (i / n) * Math.PI * 2
+    draw(x + w / 2 + Math.cos(a) * (w / 2 + 12), y + h / 2 + Math.sin(a) * (h / 2 + 10), i)
+  }
+}
+
+/** A glowing bar along every outer edge on one side of the body. */
+function edgeGlow(
+  ctx: CanvasRenderingContext2D,
+  g: Geo,
+  side: 'top' | 'bottom' | 'left' | 'right',
+  color: string,
+  time: number,
+): void {
+  ctx.fillStyle = color
+  ctx.shadowColor = color
+  ctx.shadowBlur = 10
+  ctx.globalAlpha = 0.75 + 0.2 * Math.sin(time * 5)
+  g.parts.forEach((b, i) => {
+    const r = g.rects[i]
+    if (side === 'top' && !g.has(b.col, b.row - 1)) ctx.fillRect(r.x + 4, r.y - 5, r.w - 8, 4)
+    if (side === 'bottom' && !g.has(b.col, b.row + 1)) ctx.fillRect(r.x + 4, r.y + r.h + 1, r.w - 8, 4)
+    if (side === 'left' && !g.has(b.col - 1, b.row)) ctx.fillRect(r.x - 5, r.y + 4, 4, r.h - 8)
+    if (side === 'right' && !g.has(b.col + 1, b.row)) ctx.fillRect(r.x + r.w + 1, r.y + 4, 4, r.h - 8)
+  })
+  ctx.shadowBlur = 0
+}
+
+/** Each skill's look, behind or in front of the body, in the skill's colour. */
 function drawSkill(
   ctx: CanvasRenderingContext2D,
+  s: BossView,
   id: string,
   g: Geo,
   boss: Boss,
@@ -531,60 +603,209 @@ function drawSkill(
   layer: 'back' | 'front',
 ): void {
   const { box } = g
+  const cx = box.x + box.w / 2
+  const cy = box.y + box.h / 2
   const color = skillInfo(id).color
+  const m = (name: string) => boss.mem?.[name] ?? 0
+  const life = boss.hp / boss.maxHp
   ctx.save()
+  ctx.strokeStyle = color
+  ctx.fillStyle = color
+  if (layer === 'back') {
+    // Tethers to the bricks it powers.
+    const role = SKILL_ROLE[id]
+    if (role) {
+      ctx.lineWidth = 2
+      ctx.setLineDash([4, 6])
+      ctx.lineDashOffset = -time * 30
+      ctx.globalAlpha = 0.5
+      for (const b of s.bricks.filter((b) => b.role === role)) {
+        const c = cellCenter(b.col, b.row)
+        ctx.beginPath()
+        ctx.moveTo(cx, cy)
+        ctx.lineTo(c.x, c.y)
+        ctx.stroke()
+      }
+      ctx.setLineDash([])
+      ctx.globalAlpha = 1
+    }
+    switch (id) {
+      case 'drifter':
+      case 'weaver': {
+        const back = boss.dir > 0 ? box.x - 6 : box.x + box.w + 6
+        ctx.lineWidth = 3
+        ctx.lineCap = 'round'
+        ctx.globalAlpha = 0.6
+        for (let i = 0; i < (id === 'weaver' ? 5 : 3); i++) {
+          const y = box.y + ((i + 1) * box.h) / (id === 'weaver' ? 6 : 4)
+          const len = 12 + 6 * Math.sin(time * 6 + i)
+          ctx.beginPath()
+          ctx.moveTo(back, y)
+          ctx.lineTo(back - boss.dir * len, y)
+          ctx.stroke()
+        }
+        break
+      }
+      case 'gravity':
+      case 'repulse': {
+        // A vortex pulling in, or rings pushing out.
+        ctx.lineWidth = 2
+        for (let i = 0; i < 3; i++) {
+          let k = (time * 0.6 + i / 3) % 1
+          if (id === 'gravity') k = 1 - k
+          ctx.globalAlpha = 0.5 * (id === 'gravity' ? k : 1 - k)
+          ctx.beginPath()
+          ctx.ellipse(
+            cx,
+            cy,
+            box.w / 2 + 10 + k * 70,
+            box.h / 2 + 8 + k * 60,
+            time * (id === 'gravity' ? 1 : -1),
+            0,
+            Math.PI * 1.6,
+          )
+          ctx.stroke()
+        }
+        break
+      }
+      case 'mire':
+        ctx.globalAlpha = 0.35
+        for (let i = 0; i < 9; i++) {
+          const bx = box.x - 20 + ((i * 37) % (box.w + 40))
+          const r = 10 + 5 * Math.sin(time * 2 + i)
+          ctx.beginPath()
+          ctx.arc(bx, box.y + box.h + 10 + Math.sin(time + i) * 6, r, 0, Math.PI * 2)
+          ctx.fill()
+        }
+        break
+      case 'hover':
+        ctx.fillStyle = 'rgb(0 0 0 / 0.35)'
+        ctx.beginPath()
+        ctx.ellipse(cx, box.y + box.h + 18, box.w * 0.4, 6, 0, 0, Math.PI * 2)
+        ctx.fill()
+        break
+      case 'blink':
+        ctx.globalAlpha = 0.25 + 0.2 * Math.sin(time * 9)
+        ctx.lineWidth = 2
+        ctx.setLineDash([5, 5])
+        ctx.translate(Math.sin(time * 13) * 6, 0)
+        ctx.stroke(outline(g, 3))
+        break
+      case 'frost':
+      case 'icebound':
+        // Snowflakes drifting around it.
+        for (let i = 0; i < 10; i++) {
+          const k = (time * 0.25 + i / 10) % 1
+          ctx.globalAlpha = 0.7 * Math.sin(k * Math.PI)
+          ctx.beginPath()
+          ctx.arc(
+            box.x - 10 + ((i * 41) % (box.w + 20)) + Math.sin(time + i) * 6,
+            box.y - 10 + k * (box.h + 30),
+            2,
+            0,
+            Math.PI * 2,
+          )
+          ctx.fill()
+        }
+        break
+      case 'charge':
+        if (!m('charging')) break
+        ctx.lineWidth = 4
+        ctx.globalAlpha = 0.5 + 0.5 * Math.sin(time * 20)
+        ctx.stroke(outline(g, 8 + 4 * Math.sin(time * 10)))
+        break
+      case 'lunge':
+        if (!m('lunge')) break
+        // Arrows warning of the extra drop.
+        ctx.globalAlpha = 0.6 + 0.4 * Math.sin(time * 12)
+        for (const dx of [-0.25, 0, 0.25]) {
+          const ax = cx + dx * box.w
+          const ay = box.y + box.h + 10 + ((time * 30) % 12)
+          ctx.beginPath()
+          ctx.moveTo(ax - 8, ay)
+          ctx.lineTo(ax + 8, ay)
+          ctx.lineTo(ax, ay + 10)
+          ctx.fill()
+        }
+        break
+      case 'shroud':
+        ctx.fillStyle = 'rgb(30 30 40 / 0.45)'
+        for (let i = 0; i < 6; i++) {
+          const a = time * 0.3 + i
+          ctx.beginPath()
+          ctx.arc(cx + Math.cos(a) * box.w * 0.7, cy + Math.sin(a * 1.3) * box.h * 0.7, 26, 0, Math.PI * 2)
+          ctx.fill()
+        }
+        break
+      case 'frenzy':
+        if (life >= 0.5) break
+        ctx.lineWidth = 3
+        ctx.globalAlpha = 0.4 + 0.4 * Math.sin(time * 14)
+        ctx.stroke(outline(g, 6))
+        break
+    }
+    ctx.restore()
+    return
+  }
   switch (id) {
     case 'shield':
-      if (layer !== 'front') break
-      // A shimmering hex bubble around the whole body.
-      ctx.strokeStyle = color
+    case 'barrier': {
+      // A shimmering hex bubble; Barrier shows how many hits it still blocks.
+      const left = id === 'barrier' ? m('barrier') : 1
+      if (!left) break
       ctx.globalAlpha = 0.45 + 0.2 * Math.sin(time * 5)
       ctx.lineWidth = 2
-      ctx.stroke(outline(g, 6))
+      ctx.stroke(outline(g, id === 'barrier' ? 10 : 6))
       ctx.globalAlpha = 0.35
       for (let i = 0; i < 8; i++) {
         const a = (i / 8) * Math.PI * 2 + time * 0.4
-        hexagon(ctx, box.x + box.w / 2 + Math.cos(a) * (box.w / 2 + 4), box.y + box.h / 2 + Math.sin(a) * (box.h / 2 + 4), 5)
+        hexagon(ctx, cx + Math.cos(a) * (box.w / 2 + 4), cy + Math.sin(a) * (box.h / 2 + 4), 5)
       }
-      break
-    case 'minions':
-      if (layer !== 'front') break
-      // A buzzing swarm.
-      ctx.fillStyle = color
-      for (let i = 0; i < 7; i++) {
-        const a = time * (1.5 + i * 0.2) + i * 2
-        ctx.beginPath()
-        ctx.arc(
-          box.x + box.w / 2 + Math.cos(a) * (box.w / 2 + 10) + Math.sin(time * 20 + i) * 2,
-          box.y + box.h / 2 + Math.sin(a * 1.3) * (box.h / 2 + 8),
-          2.5,
-          0,
-          Math.PI * 2,
-        )
-        ctx.fill()
-      }
-      break
-    case 'drifter': {
-      if (layer !== 'back') break
-      // Speed streaks behind it.
-      const back = boss.dir > 0 ? box.x - 6 : box.x + box.w + 6
-      ctx.strokeStyle = color
-      ctx.lineWidth = 3
-      ctx.lineCap = 'round'
-      for (let i = 0; i < 3; i++) {
-        const y = box.y + ((i + 1) * box.h) / 4
-        const len = 12 + 6 * Math.sin(time * 6 + i)
-        ctx.globalAlpha = 0.6
-        ctx.beginPath()
-        ctx.moveTo(back, y)
-        ctx.lineTo(back - boss.dir * len, y)
-        ctx.stroke()
+      if (id === 'barrier') {
+        ctx.globalAlpha = 1
+        ctx.font = `700 13px ${FONT}`
+        ctx.textAlign = 'center'
+        ctx.fillText(`◈${left}`, box.x + box.w + 4, box.y - 4)
       }
       break
     }
+    case 'minions':
+    case 'swarm':
+    case 'splitters':
+    case 'brood':
+      orbit(g, id === 'swarm' ? 12 : 7, time, 1.6, (x, y, i) => {
+        ctx.beginPath()
+        ctx.arc(x + Math.sin(time * 20 + i) * 2, y, id === 'brood' ? 3.5 : 2.5, 0, Math.PI * 2)
+        ctx.fill()
+      })
+      break
+    case 'mason':
+      orbit(g, 5, time, 0.8, (x, y) => ctx.fillRect(x - 5, y - 3, 10, 6))
+      break
+    case 'eggs':
+      orbit(g, 3, time, 0.6, (x, y) => {
+        ctx.beginPath()
+        ctx.ellipse(x, y, 4, 5.5, 0, 0, Math.PI * 2)
+        ctx.fill()
+      })
+      break
+    case 'taxman':
+      orbit(g, 6, time, 1.2, (x, y, i) => {
+        ctx.globalAlpha = 0.9
+        ctx.fillStyle = '#ffc83d'
+        ctx.beginPath()
+        ctx.ellipse(x, y, 5 * Math.abs(Math.cos(time * 4 + i)) + 1, 5, 0, 0, Math.PI * 2)
+        ctx.fill()
+      })
+      break
+    case 'glutton':
+      orbit(g, 4, time, -1, (x, y) => {
+        ctx.beginPath()
+        ctx.arc(x, y, 2, 0, Math.PI * 2)
+        ctx.fill()
+      })
+      break
     case 'armored':
-      if (layer !== 'front') break
-      // Bolted plates on its flanks.
       ctx.fillStyle = 'rgb(201 204 255 / 0.28)'
       for (const px of [g.core.x + 5, g.core.x + g.core.w - 21]) {
         ctx.beginPath()
@@ -592,8 +813,343 @@ function drawSkill(
         ctx.fill()
       }
       break
+    case 'bulwark':
+      edgeGlow(ctx, g, 'left', color, time)
+      edgeGlow(ctx, g, 'right', color, time)
+      break
+    case 'shell':
+      edgeGlow(ctx, g, 'top', color, time)
+      break
+    case 'underplate':
+      edgeGlow(ctx, g, 'bottom', color, time)
+      break
+    case 'heart': {
+      // A beating heart on the middle of its underside.
+      const beat = 1 + 0.15 * Math.sin(time * 8)
+      const hx = cx
+      const hy = box.y + box.h - 6
+      ctx.translate(hx, hy)
+      ctx.scale(beat, beat)
+      ctx.shadowColor = color
+      ctx.shadowBlur = 12
+      ctx.beginPath()
+      ctx.moveTo(0, 6)
+      ctx.bezierCurveTo(-12, -2, -6, -10, 0, -4)
+      ctx.bezierCurveTo(6, -10, 12, -2, 0, 6)
+      ctx.fill()
+      break
+    }
+    case 'reflect': {
+      // A glint sweeping across.
+      ctx.clip(bodyPath(g))
+      const k = (time * 0.5) % 1.5
+      const gx = box.x + k * (box.w + 80) - 40
+      const grad = ctx.createLinearGradient(gx - 20, 0, gx + 20, 0)
+      grad.addColorStop(0, 'rgb(255 255 255 / 0)')
+      grad.addColorStop(0.5, 'rgb(255 255 255 / 0.35)')
+      grad.addColorStop(1, 'rgb(255 255 255 / 0)')
+      ctx.fillStyle = grad
+      ctx.fillRect(box.x, box.y, box.w, box.h)
+      break
+    }
+    case 'secondLife':
+      // A halo while the second life is still there.
+      if (m('revived')) break
+      ctx.lineWidth = 3
+      ctx.shadowColor = color
+      ctx.shadowBlur = 10
+      ctx.beginPath()
+      ctx.ellipse(cx, box.y - 10 + Math.sin(time * 3) * 2, box.w * 0.22, 6, 0, 0, Math.PI * 2)
+      ctx.stroke()
+      break
+    case 'stoneSkin':
+      ctx.globalAlpha = 0.3
+      ctx.fillStyle = '#a8a29e'
+      for (let i = 0; i < 6; i++) {
+        ctx.beginPath()
+        ctx.arc(box.x + ((i * 53) % box.w), box.y + ((i * 31) % box.h), 9, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      break
+    case 'phase':
+      ctx.globalAlpha = 0.4
+      for (let i = 0; i < 4; i++) {
+        const k = (time * 0.7 + i / 4) % 1
+        ctx.beginPath()
+        ctx.arc(box.x + ((i * 61) % box.w), box.y - k * 26, 4 * (1 - k) + 1, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      break
+    case 'evasive':
+      ctx.globalAlpha = 0.18
+      ctx.translate(Math.sin(time * 7) * 8, 0)
+      ctx.fill(bodyPath(g))
+      break
+    case 'volatile':
+      // Fuse sparks on top.
+      for (let i = 0; i < 6; i++) {
+        const k = (time * 2 + i / 6) % 1
+        ctx.globalAlpha = 1 - k
+        ctx.beginPath()
+        ctx.arc(cx + Math.sin(i * 7) * k * 24, box.y - 4 - k * 18, 2, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      break
+    case 'icebound':
+      // Icicles under it.
+      g.parts.forEach((b, i) => {
+        if (g.has(b.col, b.row + 1)) return
+        const r = g.rects[i]
+        for (let x = r.x + 8; x < r.x + r.w - 6; x += 12) {
+          const len = 6 + ((x * 7) % 8)
+          ctx.globalAlpha = 0.8
+          ctx.beginPath()
+          ctx.moveTo(x - 3, r.y + r.h)
+          ctx.lineTo(x + 3, r.y + r.h)
+          ctx.lineTo(x, r.y + r.h + len)
+          ctx.fill()
+        }
+      })
+      break
+    case 'cracked':
+    case 'shatter':
+      ctx.clip(bodyPath(g))
+      ctx.lineWidth = 2
+      ctx.shadowColor = color
+      ctx.shadowBlur = 8
+      ctx.globalAlpha = 0.55 + 0.25 * Math.sin(time * 3)
+      ctx.beginPath()
+      ctx.moveTo(box.x + box.w * 0.7, box.y)
+      ctx.lineTo(box.x + box.w * 0.62, box.y + box.h * 0.35)
+      ctx.lineTo(box.x + box.w * 0.75, box.y + box.h * 0.6)
+      ctx.lineTo(box.x + box.w * 0.68, box.y + box.h)
+      ctx.stroke()
+      break
+    case 'leech':
+      // Tendrils reaching down.
+      ctx.lineWidth = 3
+      ctx.globalAlpha = 0.6
+      for (let i = 0; i < 3; i++) {
+        const lx = box.x + ((i + 1) * box.w) / 4
+        ctx.beginPath()
+        ctx.moveTo(lx, box.y + box.h)
+        ctx.quadraticCurveTo(
+          lx + Math.sin(time * 3 + i) * 12,
+          box.y + box.h + 16,
+          lx + Math.sin(time * 2 + i) * 6,
+          box.y + box.h + 30,
+        )
+        ctx.stroke()
+      }
+      break
+    case 'lastStand':
+      if (s.turn === undefined || s.turn >= m('immuneUntil')) break
+      ctx.lineWidth = 4
+      ctx.shadowColor = color
+      ctx.shadowBlur = 16
+      ctx.stroke(outline(g, 5))
+      break
+    case 'fortify':
+      edgeGlow(ctx, g, 'bottom', color, time)
+      break
+    case 'rally':
+      for (let i = 0; i < 5; i++) {
+        const k = (time * 0.8 + i / 5) % 1
+        ctx.globalAlpha = 1 - k
+        ctx.font = `700 12px ${FONT}`
+        ctx.textAlign = 'center'
+        ctx.fillText('+', box.x + ((i * 47) % box.w), box.y - k * 24)
+      }
+      break
+    case 'enrage':
+    case 'hover':
+    case 'drifter':
+    case 'weaver':
+    case 'blink':
+    case 'gravity':
+    case 'repulse':
+    case 'mire':
+    case 'shroud':
+    case 'frost':
+    case 'frenzy':
+    case 'charge':
+    case 'lunge':
+    case 'retreat':
+    case 'spikes':
+    case 'guards':
+    case 'mirror':
+    case 'totem':
+    case 'runes':
+    case 'powerCells':
+    case 'rod':
+    case 'core':
+      break // drawn behind, or by the bricks it summons
   }
   ctx.restore()
+}
+
+const ROLE_COLOR: Record<BossRole, string> = {
+  minion: '#6b5aa8',
+  guard: '#5b6fbf',
+  egg: '#f1e3b8',
+  decoy: '#b9a6ff',
+  spike: '#a3243b',
+  totem: '#2f9e6e',
+  rune: '#c9a227',
+  cell: '#e0a800',
+  rod: '#d9c55a',
+  core: '#ffe066',
+  ice: '#a5e4ff',
+}
+
+/** A brick a boss summoned, in its role's colours with a glyph; returns false to also draw its hp. */
+export function drawRoleBrick(ctx: CanvasRenderingContext2D, b: Brick, time: number): boolean {
+  const role = b.role
+  if (!role) return false
+  const r = brickRect(b)
+  const cx = r.x + r.w / 2
+  const cy = r.y + r.h / 2
+  ctx.save()
+  ctx.fillStyle = ROLE_COLOR[role]
+  switch (role) {
+    case 'ice':
+      ctx.globalAlpha = 0.55
+      ctx.beginPath()
+      ctx.roundRect(r.x, r.y, r.w, r.h, 6)
+      ctx.fill()
+      ctx.globalAlpha = 0.8
+      ctx.strokeStyle = '#e8f9ff'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo(r.x + 8, r.y + r.h - 10)
+      ctx.lineTo(r.x + r.w - 14, r.y + 8)
+      ctx.moveTo(r.x + 20, r.y + r.h - 6)
+      ctx.lineTo(r.x + r.w - 6, r.y + 18)
+      ctx.stroke()
+      ctx.restore()
+      return true
+    case 'egg': {
+      const wobble = (b.timer ?? 2) <= 1 ? Math.sin(time * 18) * 0.15 : Math.sin(time * 3) * 0.05
+      ctx.translate(cx, cy)
+      ctx.rotate(wobble)
+      ctx.beginPath()
+      ctx.ellipse(0, 2, r.w * 0.36, r.h * 0.44, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = '#c9a27a'
+      for (const [dx, dy] of [
+        [-6, -6],
+        [7, 2],
+        [-3, 10],
+      ]) {
+        ctx.beginPath()
+        ctx.arc(dx, dy, 3, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.restore()
+      return false
+    }
+    case 'core': {
+      const pulse = 1 + 0.12 * Math.sin(time * 6)
+      ctx.shadowColor = ROLE_COLOR.core
+      ctx.shadowBlur = 18
+      ctx.translate(cx, cy)
+      ctx.scale(pulse, pulse)
+      ctx.beginPath()
+      ctx.moveTo(0, -r.h * 0.45)
+      ctx.lineTo(r.w * 0.36, 0)
+      ctx.lineTo(0, r.h * 0.45)
+      ctx.lineTo(-r.w * 0.36, 0)
+      ctx.closePath()
+      ctx.fill()
+      ctx.restore()
+      return false
+    }
+    default:
+      ctx.beginPath()
+      ctx.roundRect(r.x, r.y, r.w, r.h, 9)
+      ctx.fill()
+  }
+  ctx.fillStyle = 'rgb(255 255 255 / 0.85)'
+  ctx.strokeStyle = 'rgb(255 255 255 / 0.85)'
+  ctx.lineWidth = 2
+  const gx = r.x + r.w - 11
+  const gy = r.y + 11
+  switch (role) {
+    case 'minion':
+      // Little horns.
+      for (const dx of [10, r.w - 10]) {
+        ctx.beginPath()
+        ctx.moveTo(r.x + dx - 4, r.y + 2)
+        ctx.lineTo(r.x + dx, r.y - 6)
+        ctx.lineTo(r.x + dx + 4, r.y + 2)
+        ctx.fill()
+      }
+      break
+    case 'guard':
+      ctx.beginPath()
+      ctx.moveTo(gx - 6, gy - 6)
+      ctx.lineTo(gx + 6, gy - 6)
+      ctx.lineTo(gx + 6, gy)
+      ctx.quadraticCurveTo(gx + 6, gy + 6, gx, gy + 8)
+      ctx.quadraticCurveTo(gx - 6, gy + 6, gx - 6, gy)
+      ctx.closePath()
+      ctx.fill()
+      break
+    case 'decoy':
+      ctx.globalAlpha = 0.6 + 0.3 * Math.sin(time * 4)
+      for (const dx of [-8, 8]) {
+        ctx.beginPath()
+        ctx.arc(cx + dx, r.y + 14, 4, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      break
+    case 'spike':
+      for (let i = 0; i < 4; i++) {
+        const x = r.x + 8 + (i * (r.w - 16)) / 3
+        for (const [y0, y1] of [
+          [r.y, r.y - 7],
+          [r.y + r.h, r.y + r.h + 7],
+        ]) {
+          ctx.beginPath()
+          ctx.moveTo(x - 4, y0)
+          ctx.lineTo(x, y1)
+          ctx.lineTo(x + 4, y0)
+          ctx.fill()
+        }
+      }
+      break
+    case 'totem':
+      ctx.globalAlpha = 0.6 + 0.4 * Math.sin(time * 4)
+      ctx.fillRect(gx - 6, gy - 1.5, 12, 3)
+      ctx.fillRect(gx - 1.5, gy - 6, 3, 12)
+      break
+    case 'rune':
+      ctx.translate(gx, gy)
+      ctx.rotate(time)
+      ctx.beginPath()
+      ctx.arc(0, 0, 6, 0, Math.PI * 2)
+      ctx.moveTo(-6, 0)
+      ctx.lineTo(6, 0)
+      ctx.moveTo(0, -6)
+      ctx.lineTo(0, 6)
+      ctx.stroke()
+      break
+    case 'cell':
+    case 'rod':
+      // A lightning bolt.
+      ctx.beginPath()
+      ctx.moveTo(gx + 2, gy - 8)
+      ctx.lineTo(gx - 5, gy + 1)
+      ctx.lineTo(gx, gy + 1)
+      ctx.lineTo(gx - 2, gy + 8)
+      ctx.lineTo(gx + 5, gy - 1)
+      ctx.lineTo(gx, gy - 1)
+      ctx.closePath()
+      ctx.fill()
+      break
+  }
+  ctx.restore()
+  return false
 }
 
 function hexagon(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): void {

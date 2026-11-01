@@ -620,7 +620,10 @@ function showSwap(id: BoostId) {
             h('strong', { textContent: t(b.name) }),
             h('span', { textContent: t(b.text) }),
           )
-          card.setAttribute('aria-label', t('Drop {name} (level {n})', { name: t(b.name), n: s.boosts[old] ?? 0 }))
+          card.setAttribute(
+            'aria-label',
+            t('Drop {name} (level {n})', { name: t(b.name), n: s.boosts[old] ?? 0 }),
+          )
           card.append(h('small', { textContent: `×${s.boosts[old]}` }))
           return card
         }),
@@ -719,7 +722,10 @@ function showGrow() {
       'div',
       { class: 'pf-panel wide' },
       h('h2', { class: 'pf-heading', textContent: t('The storm grows!') }),
-      h('p', { class: 'pf-lede', textContent: t('Choose how the board grows. It stays for the rest of this run.') }),
+      h('p', {
+        class: 'pf-lede',
+        textContent: t('Choose how the board grows. It stays for the rest of this run.'),
+      }),
       h(
         'div',
         { class: 'bs-cards' },
@@ -852,7 +858,10 @@ startRenderLoop((dt, time) => {
     // A new boss waits on the aim screen until the player has read its card.
     if (s.boss && s.boss !== bossAnnounced && s.phase === 'aim' && !panel && !paused) {
       bossAnnounced = s.boss
-      show(bossIntro(s.boss, () => show(null)), 'boss')
+      show(
+        bossIntro(s.boss, () => show(null)),
+        'boss',
+      )
     }
     juice.setCoins(s.coins)
     juice.setXp(s.level, s.xp / xpToNext(s.level))

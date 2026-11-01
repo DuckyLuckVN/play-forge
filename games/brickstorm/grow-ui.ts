@@ -68,7 +68,13 @@ export function drawGrowPreview(
 }
 
 /** One choice card. `onPick` runs on click unless the axis is already at its max. */
-export function growCard(axis: GrowAxis, cols: number, rows: number, maxed: boolean, onPick: () => void): HTMLButtonElement {
+export function growCard(
+  axis: GrowAxis,
+  cols: number,
+  rows: number,
+  maxed: boolean,
+  onPick: () => void,
+): HTMLButtonElement {
   const canvas = h('canvas', { width: PREVIEW_W * 2, height: PREVIEW_H * 2, class: 'bs-grow-preview' })
   canvas.style.width = `${PREVIEW_W}px`
   canvas.style.height = `${PREVIEW_H}px`

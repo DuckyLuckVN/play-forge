@@ -5,6 +5,7 @@ import type { Shake } from '@forge/fx/shake'
 import { prefersReducedMotion } from '@forge/fx/tween'
 import { theme } from '@forge/ui/theme'
 import type { SimEvent } from './sim/types'
+import { skillInfo } from './boss-skill-ui'
 import { IMPACT_STYLE } from './cosmetics'
 import { t } from './i18n'
 import { BRICK_SOUNDS } from './sounds'
@@ -130,6 +131,8 @@ export class Juice {
   coinFlyers: Array<{ x0: number; y0: number; age: number; delay: number }> = []
   /** 0..1 white flash on the boss after it takes damage. */
   bossHit = 0
+  /** 0..1 flare on the boss while one of its skills goes off. */
+  bossCast = 0
   private bossHp: number | null = null
   /** Seconds since bricks got tougher (a new hp stretch), for the "▲" notice; null when not showing. */
   tougherAge: number | null = null
@@ -245,6 +248,21 @@ export class Juice {
         this.shake.add(0.6)
         playSound(BRICK_SOUNDS.danger)
         return playSound(pitched(BRICK_SOUNDS.explode, 0.6))
+      case 'bossSkill': {
+        // The boss shouts the skill's name ("MASON!") in its colour.
+        const info = skillInfo(e.id)
+        this.bossCast = 1
+        this.particles.text(e.x, e.y - 30, `${info.text.split(':')[0].toUpperCase()}!`, {
+          color: info.color,
+          size: 18,
+          rise: 40,
+        })
+        this.shake.add(0.15)
+        return playSound(pitched(BRICK_SOUNDS.zap, 0.7))
+      }
+      case 'pop':
+        this.particles.burst(e.x, e.y, { count: 12, color: ['#ff4d6d', '#ffffff'] })
+        return playSound(pitched(BRICK_SOUNDS.kill, 1.6))
       case 'bossDown':
         this.show(t('BOSS DOWN! +{coins}', { coins: e.coins }), 1)
         this.banner!.big = true
@@ -413,6 +431,7 @@ export class Juice {
   update(dt: number): void {
     this.clock += dt
     this.bossHit = Math.max(0, this.bossHit - dt * 6)
+    this.bossCast = Math.max(0, this.bossCast - dt * 2)
     if (this.tougherAge !== null)
       this.tougherAge = this.tougherAge + dt > TOUGHER_LIFE ? null : this.tougherAge + dt
     if (this.growFx) {

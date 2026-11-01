@@ -3,7 +3,8 @@
 import { randomInt } from '@forge/core/rng'
 import { dims } from './dims'
 import { hpCap, hpScale } from './rows'
-import type { Boss, BossRole, Brick, BrickKind, RunState } from './types'
+import { cellCenter } from './rows'
+import type { Boss, BossRole, BossSkillId, Brick, BrickKind, RunState } from './types'
 
 export function bossParts(s: RunState): Brick[] {
   return s.bricks.filter((b) => b.kind === 'boss')
@@ -23,11 +24,15 @@ export function bossBounds(s: RunState): { left: number; right: number; top: num
 const key = (col: number, row: number) => `${col},${row}`
 
 /** Empty cells above the danger line, optionally only those `where` allows, in board order. */
-export function freeCells(s: RunState, where: (col: number, row: number) => boolean = () => true): Array<[number, number]> {
+export function freeCells(
+  s: RunState,
+  where: (col: number, row: number) => boolean = () => true,
+): Array<[number, number]> {
   const taken = new Set(s.bricks.map((b) => key(b.col, b.row)))
   const out: Array<[number, number]> = []
   for (let row = 0; row < dims(s).dangerRow; row++) {
-    for (let col = 0; col < s.cols; col++) if (!taken.has(key(col, row)) && where(col, row)) out.push([col, row])
+    for (let col = 0; col < s.cols; col++)
+      if (!taken.has(key(col, row)) && where(col, row)) out.push([col, row])
   }
   return out
 }
@@ -88,4 +93,27 @@ export function mem(boss: Boss, name: string): number {
 
 export function setMem(boss: Boss, name: string, value: number): void {
   boss.mem = { ...boss.mem, [name]: value }
+}
+
+/** The middle of the boss's body, in px. */
+export function bossCenter(s: RunState): { x: number; y: number } {
+  const { left, right, top, bottom } = bossBounds(s)
+  const a = cellCenter(left, top)
+  const b = cellCenter(right, bottom)
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+}
+
+/** Tells the player a skill went off (the boss shouts its name). */
+export function announce(s: RunState, id: BossSkillId): void {
+  if (!bossParts(s).length) return
+  s.events.push({ type: 'bossSkill', id, ...bossCenter(s) })
+}
+
+/** Turns since the boss arrived (0 on its first turn). */
+export function age(s: Pick<RunState, 'turn'>, boss: Boss): number {
+  return s.turn - boss.turn
+}
+
+export function roleBricks(s: RunState, role: BossRole): Brick[] {
+  return s.bricks.filter((b) => b.role === role)
 }

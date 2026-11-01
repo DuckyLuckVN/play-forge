@@ -24,7 +24,18 @@ import { damageBrick, explode, zap } from './damage'
 import { dims } from './dims'
 export { comboMultiplier } from './damage'
 import { antiStall, bounceWalls, circleRect, deepestContact, reflect } from './physics'
-import { BOSS_EVERY, bossTurn, liftBoss, spawnBoss } from './boss'
+import {
+  BOSS_EVERY,
+  bossContact,
+  bossDrop,
+  bossForce,
+  bossLaunch,
+  bossTurn,
+  bossVolleyEnd,
+  liftBoss,
+  spawnBoss,
+} from './boss'
+import type { Face } from './boss-skills'
 import { brickRect, cellCenter, hitRects, hpStepStart, spawnRow } from './rows'
 import type { Ball, Brick, Pickup, RunState, SimEvent } from './types'
 
@@ -132,6 +143,7 @@ export function fire(s: RunState, angle: number): void {
   s.fever = false
   s.nextLaunchX = null
   s.dangerAtStart = s.bricks.some((b) => b.row === dims(s).dangerRow - 1)
+  bossLaunch(s)
   s.events.push({ type: 'fire' })
 }
 
@@ -162,9 +174,11 @@ export function step(s: RunState): void {
 function moveBall(s: RunState, ball: Ball, mods: Mods): void {
   const r = ball.r
   const d = dims(s)
-  const dist = Math.hypot(ball.vx, ball.vy) * TICK
+  // A boss may pull, push or slow balls.
+  const pace = bossForce(s, ball, TICK)
+  const dist = Math.hypot(ball.vx, ball.vy) * TICK * pace
   const n = Math.max(1, Math.ceil(dist / (r / 2)))
-  const dt = TICK / n
+  const dt = (TICK * pace) / n
   for (let i = 0; i < n; i++) {
     ball.x += ball.vx * dt
     ball.y += ball.vy * dt
@@ -175,10 +189,17 @@ function moveBall(s: RunState, ball: Ball, mods: Mods): void {
       s.events.push({ type: 'wall' })
     }
 
+    let popped: boolean
     if (ball.kind === 'fire') {
       burnThrough(s, ball, mods)
-      bounceOffBricks(s, ball, mods, s.bricks.filter((b) => b.kind === 'boss'))
-    } else bounceOffBricks(s, ball, mods, s.bricks)
+      popped = bounceOffBricks(
+        s,
+        ball,
+        mods,
+        s.bricks.filter((b) => b.kind === 'boss'),
+      )
+    } else popped = bounceOffBricks(s, ball, mods, s.bricks)
+    if (popped) return
 
     collectPickups(s, ball, mods)
 
@@ -194,7 +215,9 @@ function moveBall(s: RunState, ball: Ball, mods: Mods): void {
 
 /** A fire ball never bounces off bricks: it burns each one it passes through, once per pass. A boss is too big to burn through. */
 function burnThrough(s: RunState, ball: Ball, mods: Mods): void {
-  const touching = s.bricks.filter((b) => b.kind !== 'boss' && circleRect(ball.x, ball.y, ball.r, brickRect(b)))
+  const touching = s.bricks.filter(
+    (b) => b.kind !== 'boss' && circleRect(ball.x, ball.y, ball.r, brickRect(b)),
+  )
   ball.inside = ball.inside.filter((id) => touching.some((b) => b.id === id))
   for (const brick of touching) {
     if (ball.inside.includes(brick.id)) continue
@@ -203,18 +226,35 @@ function burnThrough(s: RunState, ball: Ball, mods: Mods): void {
   }
 }
 
-/** Bounces off the deepest of `bricks`; the boss is one solid body that can't be pierced. */
-function bounceOffBricks(s: RunState, ball: Ball, mods: Mods, bricks: Brick[]): void {
+/** Which side of a brick a contact normal (pointing at the ball) is on. */
+function faceOf(nx: number, ny: number): Face {
+  if (Math.abs(ny) >= Math.abs(nx)) return ny < 0 ? 'top' : 'bottom'
+  return nx < 0 ? 'left' : 'right'
+}
+
+/**
+ * Bounces off the deepest of `bricks`; the boss is one solid body that can't
+ * be pierced. Returns true if the ball hit spikes and is gone for this volley.
+ */
+function bounceOffBricks(s: RunState, ball: Ball, mods: Mods, bricks: Brick[]): boolean {
   // A pierced brick is ignored until the ball has fully left it, so a
   // bounce off the next brick can't push the ball back into it for a re-hit.
   const pierced = s.bricks.find((b) => b.id === ball.lastBrick)
   if (!pierced || !circleRect(ball.x, ball.y, ball.r, brickRect(pierced))) ball.lastBrick = -1
   const solid = bricks.filter((b) => b.id !== ball.lastBrick)
   const contact = deepestContact(ball.x, ball.y, hitRects(solid), ball.r)
-  if (!contact) return
+  if (!contact) return false
   const brick = solid[contact.index]
   const { col, row } = brick
-  hitBrick(s, ball, brick, mods, ball.kind === 'fire' ? 2 : 1)
+  const face = faceOf(contact.nx, contact.ny)
+  const touch = brick.kind === 'boss' ? bossContact(s, ball, face) : 'hit'
+  if (touch === 'pass') return false
+  if (touch === 'hit') hitBrick(s, ball, brick, mods, ball.kind === 'fire' ? 2 : 1, face)
+  if (brick.role === 'spike') {
+    ball.status = 'landed'
+    s.events.push({ type: 'pop', x: ball.x, y: ball.y })
+    return true
+  }
   if (ball.pierceLeft > 0 && brick.kind !== 'boss') {
     ball.pierceLeft--
     ball.lastBrick = brick.id
@@ -235,10 +275,11 @@ function bounceOffBricks(s: RunState, ball: Ball, mods: Mods, bricks: Brick[]): 
     const ty = ball.vy - vn * contact.ny
     s.balls.push({ ...ball, vx: vn * contact.nx - tx, vy: vn * contact.ny - ty, inside: [] })
   }
+  return false
 }
 
 /** A ball hitting a brick: combo, fever, crit, damage, and chain lightning. */
-function hitBrick(s: RunState, ball: Ball, brick: Brick, mods: Mods, power: number): void {
+function hitBrick(s: RunState, ball: Ball, brick: Brick, mods: Mods, power: number, face?: Face): void {
   s.combo++
   s.sinceHit = 0
   s.bestCombo = Math.max(s.bestCombo, s.combo)
@@ -255,7 +296,7 @@ function hitBrick(s: RunState, ball: Ball, brick: Brick, mods: Mods, power: numb
   const { x, y } = cellCenter(brick.col, brick.row)
   s.events.push({ type: 'hit', x, y, combo: s.combo, crit })
   const from = { col: brick.col, row: brick.row }
-  damageBrick(s, brick, damage, ball.kind === 'fire' ? 'fire' : 'ball')
+  damageBrick(s, brick, damage, ball.kind === 'fire' ? 'fire' : 'ball', 0, { face, crit })
   if (mods.zapChance > 0 && random(s.rng) < mods.zapChance) zap(s, from, 2, 1 * mods.damageMult, 0)
 }
 
@@ -299,6 +340,7 @@ export function laserRow(s: RunState, row: number, damage = s.turn): void {
 }
 
 function endTurn(s: RunState): void {
+  bossVolleyEnd(s)
   s.launchX = s.nextLaunchX ?? s.launchX
   s.ballCount += s.pendingBalls
   s.pendingBalls = 0
@@ -319,6 +361,7 @@ function endTurn(s: RunState): void {
   s.freezeNext = false
   for (const b of s.bricks) b.row += drops
   for (const p of s.pickups) p.row += drops
+  if (!frozen) bossDrop(s)
   s.pickups = s.pickups.filter((p) => p.row < dangerRow)
 
   if (mods.secondWind && !s.secondWindUsed && s.bricks.some((b) => b.row >= dangerRow)) {

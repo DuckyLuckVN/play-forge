@@ -121,7 +121,8 @@ export const VI: Dictionary = {
   'Maxed out': 'Đã tối đa',
   'More room: more bricks per row to break, and wider angles to aim.':
     'Thêm chỗ: nhiều gạch mỗi hàng để phá, và góc ngắm rộng hơn.',
-  'More time: bricks need one more turn to reach the line.': 'Thêm thời gian: gạch cần thêm một lượt để chạm vạch.',
+  'More time: bricks need one more turn to reach the line.':
+    'Thêm thời gian: gạch cần thêm một lượt để chạm vạch.',
   'The storm grows!': 'Cơn bão lớn dần!',
   'Choose how the board grows. It stays for the rest of this run.':
     'Chọn cách mở rộng bàn chơi. Nó giữ nguyên tới hết lượt chơi này.',
@@ -152,6 +153,125 @@ export const VI: Dictionary = {
   Hydra: 'Mãng Xà',
   '{adj} {noun}': '{noun} {adj}',
   'Shield: heals a little every turn.': 'Khiên: hồi một ít máu mỗi lượt.',
+  Mason: 'Thợ Xây',
+  'Mason: builds a 3-brick wall below itself every 3 turns.':
+    'Thợ xây: cứ 3 lượt xây một bức tường 3 viên bên dưới nó.',
+  Guarded: 'Hộ Vệ',
+  'Guardians: 2 guards at its sides; it takes half damage while they stand.':
+    'Hộ vệ: 2 lính gác hai bên; nó chỉ nhận nửa sát thương khi chúng còn đứng.',
+  Brooding: 'Sinh Sôi',
+  'Brood: every 4 turns fills half the top row with bricks.':
+    'Sinh sôi: cứ 4 lượt lấp nửa hàng trên cùng bằng gạch.',
+  Nesting: 'Ấp Trứng',
+  'Egg Layer: lays an egg that hatches into 3 bricks after 2 turns unless broken.':
+    'Đẻ trứng: đẻ một quả trứng nở thành 3 viên gạch sau 2 lượt nếu không bị phá.',
+  Mirrored: 'Phân Thân',
+  'Mirror Image: 2 decoys block a quarter of hits; breaking one hurts it.':
+    'Phân thân: 2 bản sao chặn một phần tư cú đánh; phá một bản sao sẽ làm nó mất máu.',
+  Spiked: 'Gai Góc',
+  'Spikes: spike bricks pop any ball that hits them for this volley.':
+    'Gai: gạch gai làm vỡ bóng chạm vào nó trong loạt bắn này.',
+  Splitting: 'Phân Bào',
+  'Splitter Spawn: summons a splitter brick every turn.': 'Gạch tách: gọi một viên gạch tách đôi mỗi lượt.',
+  Totemic: 'Vật Tổ',
+  'Totem: a totem heals it 5% every turn until you break it.':
+    'Vật tổ: vật tổ hồi cho nó 5% máu mỗi lượt cho tới khi bạn phá nó.',
+  Swarming: 'Bầy Ong',
+  'Swarm: every quarter of health lost, 4 minions burst out.':
+    'Bầy đàn: mỗi khi mất một phần tư máu, 4 tay sai ùa ra.',
+  Walled: 'Thành Lũy',
+  'Bulwark: shields on its sides; side hits do nothing.':
+    'Thành lũy: khiên hai bên sườn; đánh vào hông không có tác dụng.',
+  Shelled: 'Mai Rùa',
+  'Shell: hits on its top do nothing.': 'Mai: đánh vào đỉnh không có tác dụng.',
+  Plated: 'Bọc Thép',
+  'Underplate: hits on its bottom deal half damage.': 'Giáp bụng: đánh vào đáy chỉ gây nửa sát thương.',
+  Phantom: 'Bóng Ma',
+  'Phase Shift: every 3rd turn balls pass right through it.': 'Hư ảnh: cứ lượt thứ 3 bóng xuyên qua nó.',
+  Warded: 'Kết Giới',
+  'Barrier: a bubble blocks the first few hits of every volley.':
+    'Kết giới: bong bóng chặn vài cú đánh đầu tiên của mỗi loạt bắn.',
+  Gleaming: 'Sáng Loáng',
+  'Reflect: 1 in 10 hits bounces off faster, without damage.':
+    'Phản xạ: 1 trên 10 cú đánh nảy ra nhanh hơn mà không gây sát thương.',
+  Undying: 'Bất Tử',
+  'Second Life: once, it comes back with 30% health.': 'Hồi sinh: một lần, nó sống lại với 30% máu.',
+  Stone: 'Đá',
+  'Stone Skin: loses at most a quarter of its health per volley.':
+    'Da đá: mỗi loạt bắn mất tối đa một phần tư máu.',
+  Blinking: 'Dịch Chuyển',
+  'Blink: teleports to another column every 2 turns.': 'Dịch chuyển: cứ 2 lượt dịch chuyển sang cột khác.',
+  Lunging: 'Lao Tới',
+  'Lunge: every 4 turns it lunges an extra row (it warns you first).':
+    'Lao tới: cứ 4 lượt nó lao thêm một hàng (có báo trước).',
+  Cowardly: 'Nhát Gan',
+  'Retreat: after losing a fifth of its health in one volley, it backs up a row.':
+    'Rút lui: mất một phần năm máu trong một loạt bắn thì nó lùi lên một hàng.',
+  Weaving: 'Lượn Lờ',
+  'Weaver: slides two columns every turn.': 'Lượn lờ: trượt hai cột mỗi lượt.',
+  Floating: 'Lơ Lửng',
+  'Hover: falls only every other turn, but has more health.':
+    'Lơ lửng: chỉ rơi cách lượt, nhưng nhiều máu hơn.',
+  Elusive: 'Lẩn Tránh',
+  'Evasive: dodges a column for every 10 hits it takes.': 'Lẩn tránh: né sang một cột sau mỗi 10 cú đánh.',
+  Cored: 'Lõi Pha Lê',
+  'Crystal Core: hit the glowing core brick to hurt the boss 5% each time.':
+    'Lõi pha lê: đánh vào viên lõi phát sáng để trừ 5% máu trùm mỗi lần.',
+  Exposed: 'Hở Tim',
+  'Exposed Heart: the middle of its underside takes double damage; the rest less.':
+    'Tim lộ: giữa bụng nhận gấp đôi sát thương; chỗ khác nhận ít hơn.',
+  Runic: 'Cổ Ngữ',
+  'Runes: break all 3 runes to stun it for a turn and deal 15%.':
+    'Cổ ngữ: phá cả 3 viên cổ ngữ để làm nó choáng một lượt và trừ 15% máu.',
+  Powered: 'Nạp Năng',
+  'Power Cells: takes 60% less damage until you break its 2 cells.':
+    'Pin năng lượng: nhận ít hơn 60% sát thương cho tới khi bạn phá 2 viên pin.',
+  Conductive: 'Dẫn Điện',
+  'Lightning Rod: every hit on the rod zaps the boss for 3%.':
+    'Cột thu lôi: mỗi cú đánh vào cột giật trùm mất 3% máu.',
+  Volatile: 'Dễ Nổ',
+  'Volatile: bombs and blasts deal triple damage.': 'Dễ nổ: bom và vụ nổ gây gấp ba sát thương.',
+  Frozen: 'Băng Giá',
+  'Icebound: fire deals triple damage; plain balls half.':
+    'Băng giá: lửa gây gấp ba sát thương; bóng thường chỉ một nửa.',
+  Cracked: 'Nứt Vỡ',
+  'Cracked: critical hits deal double damage.': 'Nứt vỡ: đòn chí mạng gây gấp đôi sát thương.',
+  Greedy: 'Tham Ăn',
+  'Glutton: eats a pickup every turn and heals 5%.': 'Tham ăn: mỗi lượt ăn một vật phẩm và hồi 5% máu.',
+  Frosty: 'Sương Giá',
+  'Frost: every 3 turns raises an ice wall that melts a turn later.':
+    'Sương giá: cứ 3 lượt dựng một bức tường băng, tan sau một lượt.',
+  Leeching: 'Hút Máu',
+  'Leech: holds back more of your balls each volley while it lives.':
+    'Đỉa: giữ lại ngày càng nhiều bóng của bạn mỗi loạt bắn khi nó còn sống.',
+  Murky: 'Lầy Lội',
+  'Mire: balls slow down near it.': 'Đầm lầy: bóng chậm lại khi ở gần nó.',
+  Shrouded: 'Mù Sương',
+  'Shroud: your aim guide stops at the first bounce.': 'Màn sương: đường ngắm chỉ hiện tới lần nảy đầu tiên.',
+  Taxing: 'Thu Thuế',
+  'Taxman: steals 10% of your run coins every turn; pays back double when it falls.':
+    'Thu thuế: mỗi lượt lấy 10% xu của lượt chơi; trả lại gấp đôi khi nó gục.',
+  Heavy: 'Hấp Dẫn',
+  'Gravity Well: pulls balls toward it.': 'Giếng trọng lực: hút bóng về phía nó.',
+  Repelling: 'Đẩy Lùi',
+  'Repulse: pushes balls away.': 'Đẩy lùi: đẩy bóng ra xa.',
+  Frenzied: 'Điên Loạn',
+  'Frenzy: below half health, summons 2 bricks every turn.':
+    'Điên loạn: dưới nửa máu, gọi 2 viên gạch mỗi lượt.',
+  Stubborn: 'Lì Lợm',
+  "Last Stand: once, below a quarter health, it can't be hurt until next turn.":
+    'Tử thủ: một lần, dưới một phần tư máu, nó bất khả xâm phạm tới lượt sau.',
+  Fortified: 'Kiên Cố',
+  'Fortify: at half health it builds a wall below itself.':
+    'Gia cố: còn nửa máu thì nó xây tường bên dưới mình.',
+  Brittle: 'Giòn',
+  'Shatter: when it falls it bursts into gold bricks.': 'Vỡ vụn: khi gục nó vỡ thành gạch vàng.',
+  Charging: 'Tụ Lực',
+  'Charge: every 5 turns it charges up; deal 15% that volley or it slams down 2 rows.':
+    'Tụ lực: cứ 5 lượt nó tụ lực; gây 15% sát thương trong loạt đó, không thì nó dập xuống 2 hàng.',
+  Rallying: 'Cổ Vũ',
+  'Rally: heals every brick on the board 20% each turn.':
+    'Cổ vũ: mỗi lượt hồi 20% máu cho mọi viên gạch trên bàn.',
   'Minions: summons 2 small bricks every turn.': 'Tay sai: gọi 2 viên gạch nhỏ mỗi lượt.',
   'Drifter: slides one column every turn.': 'Trôi dạt: trượt sang một cột mỗi lượt.',
   'Armored: plain balls deal half damage.': 'Giáp: bóng thường chỉ gây nửa sát thương.',
@@ -163,8 +283,8 @@ export const VI: Dictionary = {
   'No new rows until it falls. Hit any part to drain its health before it reaches the line.':
     'Không có hàng mới cho tới khi nó gục. Đánh vào bất kỳ phần nào để rút máu trước khi nó chạm vạch.',
   Boss: 'Trùm',
-  'Every 30 turns. One big health bar, 1–2 special traits, and no new rows until it falls. Beat it for coins, a free boost and an extra boost slot.':
-    'Mỗi 30 lượt. Một thanh máu lớn, 1–2 đặc tính riêng, và không có hàng mới cho tới khi nó gục. Hạ nó để nhận xu, một nâng cấp miễn phí và thêm một ô nâng cấp.',
+  'Every 30 turns. One big health bar, 2–4 skills (more for each boss), and no new rows until it falls. Beat it for coins, a free boost and an extra boost slot.':
+    'Mỗi 30 lượt. Một thanh máu lớn, 2–4 kỹ năng (mỗi trùm sau nhiều hơn), và không có hàng mới cho tới khi nó gục. Hạ nó để nhận xu, một nâng cấp miễn phí và thêm một ô nâng cấp.',
   'Play again': 'Chơi lại',
   Home: 'Trang chủ',
   Run: 'Lượt chơi',

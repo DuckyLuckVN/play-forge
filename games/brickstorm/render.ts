@@ -5,7 +5,8 @@ import type { Canvas2D } from '@forge/render2d/canvas'
 import { compactNumber, fillFitText, fitScale } from '@forge/ui/text'
 import { FONT, theme } from '@forge/ui/theme'
 import { ArenaPainter, type ArenaId } from './arenas'
-import { drawBoss } from './boss-art'
+import { drawBoss, drawRoleBrick } from './boss-art'
+import { bossHidesGuide } from './sim/boss'
 import { drawCoin } from './coin'
 import { drawBall, TRAIL_STYLE } from './cosmetics'
 import { t } from './i18n'
@@ -162,7 +163,7 @@ export class BoardRenderer {
     if (s) {
       this.drawPickups(ctx, s, time)
       this.drawBricks(ctx, s, time)
-      drawBoss(ctx, s, time, { hit: juice.bossHit, look: bossLook(s) })
+      drawBoss(ctx, s, time, { hit: juice.bossHit, look: bossLook(s), cast: juice.bossCast })
       if (s.phase === 'aim' && aim !== null) this.drawGuide(ctx, s, aim)
       this.drawBalls(ctx, s, time, juice.zaps)
     }
@@ -215,12 +216,17 @@ export class BoardRenderer {
     for (const b of s.bricks) {
       if (b.kind === 'boss') continue // drawn as one body by drawBoss
       const r = brickRect(b)
-      ctx.fillStyle = b.kind === 'gold' ? '#ffc83d' : hpColor(b.hp, s.turn)
-      ctx.beginPath()
-      ctx.roundRect(r.x, r.y, r.w, r.h, 9)
-      ctx.fill()
-      ctx.fillStyle = 'rgb(255 255 255 / 0.18)'
-      ctx.fillRect(r.x + 6, r.y + 4, r.w - 12, 4)
+      if (b.role) {
+        // Summoned by a boss skill: its own look (ice has no number).
+        if (drawRoleBrick(ctx, b, time)) continue
+      } else {
+        ctx.fillStyle = b.kind === 'gold' ? '#ffc83d' : hpColor(b.hp, s.turn)
+        ctx.beginPath()
+        ctx.roundRect(r.x, r.y, r.w, r.h, 9)
+        ctx.fill()
+        ctx.fillStyle = 'rgb(255 255 255 / 0.18)'
+        ctx.fillRect(r.x + 6, r.y + 4, r.w - 12, 4)
+      }
       drawKindGlyph(ctx, b.kind, r, time)
       const hp = compactNumber(Math.ceil(b.hp))
       ctx.fillStyle = theme.night
@@ -254,7 +260,7 @@ export class BoardRenderer {
       this.d.boardW,
       this.d.floorY,
       rest.r,
-    )
+    ).slice(0, bossHidesGuide(s) ? 2 : undefined)
     ctx.strokeStyle = 'rgb(244 241 255 / 0.7)'
     ctx.lineWidth = 3
     ctx.lineCap = 'round'
@@ -496,7 +502,13 @@ export class BoardRenderer {
       const x = col ? band.x + band.w - 4 + out * 0.3 : band.x + along
       const y = col ? band.y + along : band.y + band.h - 4 + out * 0.3
       ctx.beginPath()
-      ctx.arc(x + (col ? 0 : Math.sin(i + k * 9) * 3), y + (col ? Math.sin(i + k * 9) * 3 : 0), 2.2 * (1 - k) + 0.5, 0, Math.PI * 2)
+      ctx.arc(
+        x + (col ? 0 : Math.sin(i + k * 9) * 3),
+        y + (col ? Math.sin(i + k * 9) * 3 : 0),
+        2.2 * (1 - k) + 0.5,
+        0,
+        Math.PI * 2,
+      )
       ctx.fill()
     }
     ctx.restore()

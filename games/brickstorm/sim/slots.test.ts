@@ -21,7 +21,12 @@ describe('boost slots', () => {
     s.turn = 30
     s.ballCount = 10
     spawnBoss(s, [])
-    damageBrick(s, s.bricks.find((b) => b.kind === 'boss')!, 1e9, 'laser')
+    damageBrick(
+      s,
+      s.bricks.find((b) => b.kind === 'boss')!,
+      1e9,
+      'laser',
+    )
     expect(s.bossesBeaten).toBe(1)
     expect(boostSlots(s)).toBe(4)
   })

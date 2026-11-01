@@ -57,7 +57,9 @@ export function bossIntro(boss: Boss, onClose: () => void): HTMLElement {
     bossPreview(boss),
     h('p', {
       class: 'pf-lede',
-      textContent: t('No new rows until it falls. Hit any part to drain its health before it reaches the line.'),
+      textContent: t(
+        'No new rows until it falls. Hit any part to drain its health before it reaches the line.',
+      ),
     }),
     h(
       'ul',

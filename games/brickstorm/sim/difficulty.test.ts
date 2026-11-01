@@ -9,6 +9,8 @@ import {
   spawnRow,
   BALL_PICKUP_CHANCE,
   BALL_SURE_UNTIL,
+  HP_MULT,
+  lateHardness,
 } from './rows'
 import { drainEvents, fire, startNextTurn } from './run'
 import { brick, empty, runVolley } from './testing'
@@ -26,7 +28,7 @@ function rowAt(seed: number, turn: number, balls = 999): RunState {
 describe('difficulty', () => {
   it('scales brick hp faster than the turn', () => {
     expect(hpScale(10)).toBeCloseTo(9.6) // turns 6–10 use turn 8
-    expect(hpScale(40)).toBeCloseTo(81.506) // turns 39–42 use turn 40.5
+    expect(hpScale(40)).toBeCloseTo(81.506 * (1 + 0.2 * lateHardness(40.5))) // turns 39–42 use turn 40.5
   })
 
   it('holds hp flat for 5 turns early, shrinking to 2 late', () => {
@@ -114,13 +116,27 @@ describe('bricks follow the balls you have', () => {
     }
   })
 
+  it('leaves the early game alone, then makes bricks up to 20% tougher after the first boss', () => {
+    expect(lateHardness(10)).toBe(0)
+    expect(lateHardness(30)).toBe(0)
+    expect(lateHardness(45)).toBeCloseTo(0.5)
+    expect(lateHardness(60)).toBe(1)
+    expect(lateHardness(300)).toBe(1)
+    expect(HP_MULT).toBe(1.2)
+    const s = empty()
+    s.ballCount = 10
+    expect(hpCap(s)).toBe(14) // 1.4 hits' worth per ball early
+    s.turn = 60
+    expect(hpCap(s)).toBe(17) // 1.7 late
+  })
+
   it('caps brick hp at what the balls can deal', () => {
     for (let seed = 1; seed <= 300; seed++) {
       const s = rowAt(seed, 40, 3)
       for (const b of s.bricks) expect(b.hp).toBeLessThanOrEqual(hpCap(s))
     }
     const s = empty()
-    s.ballCount = 5
+    s.ballCount = 10
     const before = hpCap(s)
     s.boosts = { damage: 5 } // +20% each: ×2
     expect(hpCap(s)).toBeCloseTo(before * 2)

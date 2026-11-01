@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ROWS, TOP } from './config'
-import { brickRect, spawnRow } from './rows'
+import { brickRect, spawnRow, hpScale } from './rows'
 import type { RunState } from './types'
 
 /** Just the fields spawnRow reads and writes. */
@@ -50,10 +50,10 @@ describe('spawnRow', () => {
     let doubled = false
     for (let seed = 1; seed <= 500; seed++) {
       for (const b of spawned(seed, 50).bricks) {
-        expect(b.hp).toBeGreaterThanOrEqual(96) // hpScale(50) ≈ 107, ×0.9
-        expect(b.hp).toBeLessThanOrEqual(236) // ×1.1, doubled
+        expect(b.hp).toBeGreaterThanOrEqual(Math.floor(hpScale(50) * 0.9))
+        expect(b.hp).toBeLessThanOrEqual(Math.ceil(hpScale(50) * 1.1) * 2)
         expect(b.maxHp).toBe(b.hp)
-        if (b.hp > 118) doubled = true
+        if (b.hp > hpScale(50) * 1.1 + 1) doubled = true
       }
     }
     expect(doubled).toBe(true)

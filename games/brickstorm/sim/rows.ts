@@ -82,6 +82,16 @@ export function hpStepStart(turn: number): number {
 }
 
 const HP_CURVE = 40
+/** After the first boss bricks get tougher: up to this much above the base curve (the difficulty dial). */
+export const HP_MULT = 1.2
+/** The extra toughness ramps in from the first boss's turn to this one, then stays. */
+const HARD_FROM = 30
+const HARD_FULL = 60
+
+/** 0 before the first boss, rising to 1 by HARD_FULL: how much of the late-game toughness applies. */
+export function lateHardness(turn: number): number {
+  return Math.max(0, Math.min(1, (turn - HARD_FROM) / (HARD_FULL - HARD_FROM)))
+}
 /** From this turn hp also compounds, so even a snowballing run ends. */
 const LATE_FROM = 60
 const LATE_GROWTH = 1.025
@@ -94,15 +104,19 @@ const LATE_GROWTH = 1.025
 export function hpScale(turn: number): number {
   const start = hpStepStart(turn)
   const t = start + (hpStepLength(start) - 1) / 2
-  return t * (1 + t / HP_CURVE) * LATE_GROWTH ** Math.max(0, t - LATE_FROM)
+  const tougher = 1 + (HP_MULT - 1) * lateHardness(t)
+  return tougher * t * (1 + t / HP_CURVE) * LATE_GROWTH ** Math.max(0, t - LATE_FROM)
 }
 
 /** Hits' worth of damage per ball a brick may need, at most. */
 const HP_PER_BALL = 1.4
+/** ...rising to this many once the late-game toughness is fully in. */
+const HP_PER_BALL_LATE = 1.7
 
 /** Most hp a new brick may have: what the run's balls can deal, so a run short on balls stays playable. */
 export function hpCap(state: RunState): number {
-  return Math.max(1, Math.round(HP_PER_BALL * state.ballCount * modsOf(state.boosts).damageMult))
+  const perBall = HP_PER_BALL + (HP_PER_BALL_LATE - HP_PER_BALL) * lateHardness(state.turn)
+  return Math.max(1, Math.round(perBall * state.ballCount * modsOf(state.boosts).damageMult))
 }
 
 /** Most bricks a new row may have for a run with `balls` balls: 1 ball, 1 brick; 6 balls, 4. */

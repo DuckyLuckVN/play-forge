@@ -5,7 +5,7 @@ export const CELL = 56
 /** Starting board size; a run's board can grow (see dims.ts). */
 export const COLS = 7
 export const ROWS = 12
-export const MAX_COLS = 10
+export const MAX_COLS = 12
 export const MAX_ROWS = 16
 /** Every this many turns the player may grow the board. */
 export const GROW_EVERY = 50

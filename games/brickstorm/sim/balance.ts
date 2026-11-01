@@ -2,7 +2,7 @@
 // `npm run balance` prints medians against the targets in the v2 plan.
 import { random } from '@forge/core/rng'
 import { pickBoost } from './boosts'
-import { AIM_MIN } from './config'
+import { AIM_MIN, MAX_COLS } from './config'
 import { dims } from './dims'
 import { growBoard } from './meta'
 import { aimFromPointer } from './physics'
@@ -94,7 +94,7 @@ export function simulateRun(seed: number, bot: Bot, maxTurns = 150): RunResult {
   let firstLevelTurn: number | null = null
   while (s.phase !== 'over' && s.turn < maxTurns) {
     if (s.phase === 'grow') {
-      growBoard(s, s.cols < 10 ? 'col' : 'row')
+      growBoard(s, s.cols < MAX_COLS ? 'col' : 'row')
       continue
     }
     if (s.phase === 'pick') {

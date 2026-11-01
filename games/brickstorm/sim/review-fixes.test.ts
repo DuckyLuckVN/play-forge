@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { bankRun, DEFAULT_SAVE } from '../save'
+import { xpToNext } from './boosts'
 import { DANGER_ROW } from './config'
 import { revive, useHelper } from './meta'
 import { createRun, drainEvents, fire, step } from './run'
@@ -45,7 +46,7 @@ describe('review fixes', () => {
 
   it('a helper that levels you up opens the pick right away, at combo 1×', () => {
     const s = empty()
-    s.xp = 7
+    s.xp = xpToNext(0) - 1
     s.combo = 120
     brick(s, 0, 4, 1)
     useHelper(s, 'rowBomb')

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { xpToNext } from './boosts'
-import { DANGER_ROW } from './config'
+import { DANGER_ROW, KILL_XP, XP_PER_BRICK } from './config'
 import { damageBrick, killBrick } from './damage'
 import { spawnRow } from './rows'
 import { drainEvents, fire, step } from './run'
@@ -84,7 +84,10 @@ describe('special bricks', () => {
     expect(new Set(ids).size).toBe(ids.length)
     let xp = s.xp
     for (let l = 0; l < s.level; l++) xp += xpToNext(l)
-    expect(xp).toBeCloseTo(kills.length)
+    const bricks = s.nextId // every brick ever made, splitter children too
+    // Every kill pays its bonus once; damage pays at most a brick's worth per brick.
+    expect(xp).toBeGreaterThanOrEqual(kills.length * KILL_XP - 1e-9)
+    expect(xp).toBeLessThanOrEqual(kills.length * KILL_XP + bricks * XP_PER_BRICK + 1e-9)
   })
 
   it('armored bricks take at most 1 per ball hit, but full blast damage', () => {

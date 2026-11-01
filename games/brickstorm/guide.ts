@@ -1,7 +1,7 @@
 // What every brick, pickup and special ball does, for the Guide screen, the
 // first-seen hints and the run stats side panel.
 import { t } from './i18n'
-import { BOOSTS, modsOf, xpToNext } from './sim/boosts'
+import { BOOSTS, levelPower, modsOf, xpToNext } from './sim/boosts'
 import type { BoostId, RunState } from './sim/types'
 
 export interface GuideEntry {
@@ -27,7 +27,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'brick:mystery',
     name: 'Mystery brick',
-    text: 'Breaks open for a surprise: balls, coins, fireballs or a free boost.',
+    text: 'Breaks open for a surprise: balls, coins, fireballs or a free skill.',
   },
   {
     id: 'brick:armored',
@@ -38,7 +38,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'brick:boss',
     name: 'Boss',
-    text: 'Every 30 turns. One big health bar, 2–4 skills (more for each boss), and no new rows until it falls. Beat it for coins, a free boost and an extra boost slot.',
+    text: 'Every 30 turns. One big health bar, 2–4 special powers (more for each boss), and no new rows until it falls. Beat it for coins, a free skill and an extra skill slot.',
   },
   { id: 'pickup:ball', name: '+1 Ball', text: 'Touch it to add a ball for the rest of the run.' },
   { id: 'pickup:coin', name: 'Coin', text: 'Touch it for 5 coins to spend in the shop.' },
@@ -75,7 +75,7 @@ export function runStats(s: RunState, bestTurn: number): Array<[string, string]>
     [t('Turn'), String(s.turn)],
     [t('Best turn'), String(Math.max(bestTurn, s.turn))],
     [t('Balls'), String(s.ballCount)],
-    [t('Damage per hit'), num(mods.damageMult)],
+    [t('Damage per hit'), num(mods.damageMult * levelPower(s.level))],
     [t('Crit chance'), `${Math.round(mods.critChance * 100)}%`],
     [t('Combo'), t('{n} (best {best})', { n: s.combo, best: s.bestCombo })],
     [t('Level'), `${s.level + 1} · ${Math.floor(s.xp)}/${xpToNext(s.level)} XP`],
@@ -90,7 +90,7 @@ export function boostDetail(id: BoostId, n: number): string {
   const m = modsOf({ [id]: n })
   const now: Record<BoostId, string> = {
     damage: t('Balls deal +{p} damage (×{m} per hit).', { p: pct(0.25 * n), m: m.damageMult }),
-    balls: t('You got +{n} balls in total from this boost.', { n: 2 * n }),
+    balls: t('You got +{n} balls in total from this skill.', { n: 2 * n }),
     coins: t('Coins from bricks and pickups are worth +{p}.', { p: pct(0.3 * n) }),
     speed: t('Balls fly +{p} faster.', { p: pct(0.15 * n) }),
     pierce: t('Each ball passes straight through the first brick it hits (still damaging it).'),

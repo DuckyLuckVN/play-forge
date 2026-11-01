@@ -4,7 +4,7 @@ import { h } from '@forge/ui/dom'
 import { FONT, theme } from '@forge/ui/theme'
 import { ArenaPainter, type ArenaId } from './arenas'
 import { playMusic } from '@forge/audio/music'
-import { coinAmount } from './coin'
+import { coinAmount, formatCoins } from './coin'
 import { trackFor } from './music'
 import { drawBall, IMPACT_STYLE, TRAIL_STYLE } from './cosmetics'
 import { t } from './i18n'
@@ -161,9 +161,15 @@ function preview(it: ShopItem): HTMLCanvasElement {
 
 /**
  * Builds the shop panel. `getSave`/`setSave` read and persist the wallet;
- * the panel re-renders itself after every purchase.
+ * `pending` is coins earned mid-shot that reach the wallet when the shot ends
+ * (shown as a note). The panel re-renders itself after every purchase.
  */
-export function shopPanel(getSave: () => Save, setSave: (s: Save) => void, onBack: () => void): HTMLElement {
+export function shopPanel(
+  getSave: () => Save,
+  pending: () => number,
+  setSave: (s: Save) => void,
+  onBack: () => void,
+): HTMLElement {
   let tab: ItemKind = 'ball'
   const panel = h('div', { class: 'pf-panel wide bs-shop' })
 
@@ -262,7 +268,16 @@ export function shopPanel(getSave: () => Save, setSave: (s: Save) => void, onBac
           previewing = null
           onBack()
         },
-        coinAmount(save.coins, 'bs-wallet'),
+        h(
+          'span',
+          { class: 'bs-wallet-wrap' },
+          coinAmount(save.coins, 'bs-wallet'),
+          pending() > 0 &&
+            h('span', {
+              class: 'bs-wallet-pending',
+              textContent: t('+{n} after this shot', { n: formatCoins(pending()) }),
+            }),
+        ),
       ),
       tabs,
       h('div', { class: 'bs-items' }, ...items),

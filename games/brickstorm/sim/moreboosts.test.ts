@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { BOOSTS, modsOf, SYNERGIES } from './boosts'
-import { DANGER_ROW, GUIDE_LENGTH, TICK } from './config'
+import { DANGER_ROW, GUIDE_LENGTH, KILL_XP, TICK } from './config'
 import { killBrick } from './damage'
 import { drainEvents, fire, step } from './run'
 import { brick, empty, runVolley } from './testing'
@@ -62,7 +62,7 @@ describe('brain', () => {
     const s = empty()
     s.boosts = { brain: 1 }
     killBrick(s, brick(s, 0, 0, 1), 0)
-    expect(s.xp).toBeCloseTo(1.3)
+    expect(s.xp).toBeCloseTo(KILL_XP * 1.3)
   })
 })
 

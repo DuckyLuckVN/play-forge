@@ -1,5 +1,15 @@
 import { random } from '@forge/core/rng'
-import { BALL_R, CELL, COMBO_GAP, GUIDE_LENGTH, MAX_COLS, MAX_ROWS } from './config'
+import {
+  BALL_R,
+  CELL,
+  COMBO_GAP,
+  GUIDE_LENGTH,
+  MAX_COLS,
+  MAX_ROWS,
+  LEVEL_POWER,
+  XP_BASE,
+  XP_STEP,
+} from './config'
 import type { BoostId, RunState } from './types'
 
 export type Rarity = 'common' | 'rare' | 'epic'
@@ -70,7 +80,23 @@ export function isSynergy(s: RunState, id: BoostId): boolean {
   return (SYNERGIES[id] ?? []).some((p) => (s.boosts[p] ?? 0) > 0)
 }
 
-const WEIGHT: Record<Rarity, number> = { common: 60, rare: 30, epic: 10 }
+/** Chance a new card is each tier; the rest is common. Rolled per card, before the boost. */
+export const TIER_CHANCE = { rare: 0.17, epic: 0.03 } as const
+/** Epic chance added for each pick screen in a row without an epic (bad-luck protection). */
+export const EPIC_PITY = 0.01
+/** When a rolled tier has nothing left: try these, in order. */
+const FALLBACK: Record<Rarity, Rarity[]> = {
+  epic: ['epic', 'rare', 'common'],
+  rare: ['rare', 'common', 'epic'],
+  common: ['common', 'rare', 'epic'],
+}
+
+/** A card's tier: epic (more likely the longer since the last epic), rare, or common. */
+function rollTier(s: RunState): Rarity {
+  const roll = random(s.rng)
+  const epic = TIER_CHANCE.epic + EPIC_PITY * (s.epicDry ?? 0)
+  return roll < epic ? 'epic' : roll < epic + TIER_CHANCE.rare ? 'rare' : 'common'
+}
 
 export type Mods = ReturnType<typeof modsOf>
 
@@ -100,14 +126,19 @@ export function modsOf(boosts: Partial<Record<BoostId, number>>) {
   }
 }
 
+/** Ball damage multiplier from levels reached (LEVEL_POWER each). */
+export function levelPower(level: number): number {
+  return 1 + LEVEL_POWER * level
+}
+
 /** XP needed to go from `level` to the next one. */
 export function xpToNext(level: number): number {
-  return 8 + 6 * level
+  return XP_BASE + XP_STEP * level
 }
 
 /** All XP earned in a run: every finished level plus `xp` into the current one. */
 export function xpTotal(level: number, xp: number): number {
-  return 8 * level + 3 * level * (level - 1) + xp
+  return XP_BASE * level + (XP_STEP * level * (level - 1)) / 2 + xp
 }
 
 /** Lasting boosts the player can hold this many of; each boss beaten adds one. */
@@ -122,6 +153,11 @@ export function boostSlots(s: Pick<RunState, 'bossesBeaten'>): number {
 }
 
 /** The boosts that fill slots, in the order they were first picked. */
+/** A bonus skill (+2 balls, Double Down): it pays out when picked and takes no slot. */
+export function isInstant(id: BoostId): boolean {
+  return INSTANT.includes(id)
+}
+
 export function slottedBoosts(boosts: RunState['boosts']): BoostId[] {
   return (Object.keys(boosts) as BoostId[]).filter((id) => (boosts[id] ?? 0) > 0 && !INSTANT.includes(id))
 }
@@ -133,58 +169,91 @@ export function needsReplace(s: Pick<RunState, 'boosts' | 'bossesBeaten'>, id: B
 }
 
 /**
- * Up to 3 distinct boosts that aren't maxed out, weighted by rarity (plus a
- * held one, if any). Once every
+ * Up to 3 distinct boosts that aren't maxed out, weighted by rarity. A held
+ * boost takes the first card and new ones fill the rest. Once every
  * slot is full, about OWNED_LEAN of them are boosts the player already has, so
  * most level-ups can still be taken without dropping anything.
  */
 export function rollChoices(s: RunState): BoostId[] {
   const open = (id: BoostId) => (s.boosts[id] ?? 0) < BOOSTS[id].max
   const full = slottedBoosts(s.boosts).length >= boostSlots(s)
-  // A held boost is kept out of the draw and added as an extra card at the end.
+  // A held boost is kept out of the draw and comes back as the first card, but
+  // not on the screen it was held on (a reroll there): it waits for the next level-up.
   const held = s.held && open(s.held) ? s.held : null
+  const comesBack = held && !s.heldNow ? held : null
   const owned = full ? slottedBoosts(s.boosts).filter((id) => open(id) && id !== held) : []
   const pool = (Object.keys(BOOSTS) as BoostId[]).filter(
     (id) => open(id) && !owned.includes(id) && id !== held,
   )
-  const picked: BoostId[] = []
-  while (picked.length < 3 && (pool.length || owned.length)) {
+  const picked: BoostId[] = comesBack ? [comesBack] : []
+  // A card held on this screen still takes its spot there, so a reroll draws one fewer.
+  const cards = held && s.heldNow ? 2 : 3
+  while (picked.length < cards && (pool.length || owned.length)) {
     if (owned.length && (!pool.length || random(s.rng) < OWNED_LEAN)) {
       picked.push(...owned.splice(Math.floor(random(s.rng) * owned.length), 1))
       continue
     }
-    const total = pool.reduce((sum, id) => sum + WEIGHT[BOOSTS[id].rarity], 0)
-    let roll = random(s.rng) * total
-    const i = pool.findIndex((id) => (roll -= WEIGHT[BOOSTS[id].rarity]) < 0)
-    picked.push(...pool.splice(i, 1))
+    // Tier first, then an even pick inside it, so the odds don't depend on how
+    // many boosts each tier has left.
+    const tier = FALLBACK[rollTier(s)].find((r) => pool.some((id) => BOOSTS[id].rarity === r))!
+    const inTier = pool.filter((id) => BOOSTS[id].rarity === tier)
+    const id = inTier[Math.floor(random(s.rng) * inTier.length)]
+    picked.push(...pool.splice(pool.indexOf(id), 1))
   }
-  // A held boost comes back as an extra card.
-  if (held) picked.push(held)
+  s.epicDry = picked.some((id) => BOOSTS[id].rarity === 'epic') ? 0 : (s.epicDry ?? 0) + 1
   return picked
 }
 
-/** Coins per level-up past the first: picks get pricier as the run goes on. */
-const PICK_STEP = 12
+/** Base price of a pick at the second level-up, by rarity. */
+export const RARITY_PRICE: Record<Rarity, number> = { common: 7, rare: 12, epic: 20 }
+/** Price weight for boosts stronger or weaker than their rarity suggests (default 1). */
+export const PRICE_WEIGHT: Partial<Record<BoostId, number>> = {
+  damage: 1.2,
+  balls: 1.2,
+  glass: 1.3,
+  speed: 0.8,
+  magnet: 0.7,
+  eagle: 0.7,
+}
+/** Each level-up past the second adds this share to every price. */
+const LEVEL_STEP = 0.15
 /** Each level a boost already has adds this share to its upgrade price. */
 const UPGRADE_STEP = 0.5
-const HOLD_BASE = 30
+/** A hold costs this share of the boost's price (at least HOLD_MIN), doubling per hold. */
+const HOLD_SHARE = 0.75
+const HOLD_MIN = 5
 
-/** What taking `id` now costs: free for the run's first level-up and for boss rewards; upgrades cost more. */
+/**
+ * What taking `id` now costs: free for the run's first level-up and for boss
+ * and mystery rewards; otherwise by rarity and strength, rising each level, and
+ * more for an upgrade of a boost you own.
+ */
 export function pickCost(s: RunState, id: BoostId): number {
-  if ((s.freePicks ?? 0) > 0) return 0
-  const base = PICK_STEP * Math.max(0, s.level - 2)
-  return Math.round(base * (1 + UPGRADE_STEP * (s.boosts[id] ?? 0)))
+  if ((s.freePicks ?? 0) > 0 || s.level <= 1) return 0
+  return listPrice(s, id)
 }
 
-/** What holding a boost for the next level-up costs: 30, 60, 120… per run. */
-export function holdCost(s: RunState): number {
-  return HOLD_BASE * 2 ** (s.holdsUsed ?? 0)
+/** A boost's price before any free pick: rarity × strength, rising each level, more for an upgrade. */
+function listPrice(s: RunState, id: BoostId): number {
+  const base = RARITY_PRICE[BOOSTS[id].rarity] * (PRICE_WEIGHT[id] ?? 1)
+  const growth = 1 + LEVEL_STEP * Math.max(0, s.level - 2)
+  return Math.round(base * growth * (1 + UPGRADE_STEP * (s.boosts[id] ?? 0)))
+}
+
+/**
+ * What holding `id` for the next level-up costs: a share of its price (so rarer
+ * boosts cost more to hold), doubling with each hold this run.
+ */
+export function holdCost(s: RunState, id: BoostId): number {
+  return Math.max(HOLD_MIN, Math.round(HOLD_SHARE * listPrice(s, id))) * 2 ** (s.holdsUsed ?? 0)
 }
 
 /** Sets an offered boost aside to come back at the next level-up (one at a time). The caller has paid. */
 export function holdBoost(s: RunState, id: BoostId): void {
-  if (s.phase !== 'pick' || !s.choices.includes(id) || s.held) return
+  // A bonus pays out when taken; holding one makes no sense.
+  if (s.phase !== 'pick' || !s.choices.includes(id) || s.held || isInstant(id)) return
   s.held = id
+  s.heldNow = true
   s.holdsUsed = (s.holdsUsed ?? 0) + 1
   s.choices = s.choices.filter((x) => x !== id)
 }
@@ -215,6 +284,7 @@ export function pickBoost(s: RunState, id: BoostId, replace?: BoostId): void {
 function finishPick(s: RunState): void {
   // A held boost lasts for the level-up it came back in.
   if (s.held && s.choices.includes(s.held)) s.held = null
+  s.heldNow = false
   if ((s.freePicks ?? 0) > 0) s.freePicks = (s.freePicks ?? 0) - 1
   s.pendingPicks--
   if (s.pendingPicks > 0) {

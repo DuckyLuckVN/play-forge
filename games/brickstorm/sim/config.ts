@@ -42,6 +42,25 @@ export const COMBO_TIERS = [
   [0, 1],
 ] as const
 
+/** XP for dealing a whole brick's worth of damage (bosses pay only when killed: see BOSS_XP_PER_TURN). */
+export const XP_PER_BRICK = 12
+/** A boss pays no XP per hit; killing it pays this much per turn, at most one level. */
+export const BOSS_XP_PER_TURN = 8
+/** Extra XP for breaking a brick. */
+export const KILL_XP = 3
+/** [min combo, XP multiplier], highest first: a long combo makes XP rain. */
+export const XP_COMBO_TIERS = [
+  [100, 2],
+  [50, 1.5],
+  [25, 1.25],
+  [0, 1],
+] as const
+/** Ball damage added per level reached: levelling always makes you stronger, even without a pick. */
+export const LEVEL_POWER = 0.04
+/** XP to the next level is XP_BASE + XP_STEP × level. */
+export const XP_BASE = 40
+export const XP_STEP = 60
+
 /** Volley time (s) after which the game runs at 2× and 3×. */
 export const AUTO_2X = 6
 export const AUTO_3X = 12

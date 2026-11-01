@@ -17,7 +17,7 @@ describe('boost stats', () => {
   })
 
   it('needs more xp each level', () => {
-    expect([0, 1, 5].map(xpToNext)).toEqual([8, 14, 38])
+    expect([0, 1, 5].map(xpToNext)).toEqual([40, 100, 340])
   })
 })
 
@@ -33,18 +33,45 @@ describe('rollChoices', () => {
     }
   })
 
-  it('makes epic boosts rare', () => {
-    const s = empty(5)
-    let epic = 0
+  it('rolls each card tier first: mostly common, some rare, epic rare', () => {
+    const cards = { common: 0, rare: 0, epic: 0 }
     let total = 0
-    for (let i = 0; i < 1000; i++) {
+    for (let seed = 1; seed <= 3000; seed++) {
+      const s = empty(seed)
       for (const id of rollChoices(s)) {
         total++
-        if (BOOSTS[id].rarity === 'epic') epic++
+        cards[BOOSTS[id].rarity]++
       }
     }
-    expect(epic / total).toBeGreaterThanOrEqual(0.06)
-    expect(epic / total).toBeLessThanOrEqual(0.16)
+    expect(cards.common / total).toBeGreaterThan(0.72)
+    expect(cards.rare / total).toBeGreaterThan(0.13)
+    expect(cards.rare / total).toBeLessThan(0.22)
+    expect(cards.epic / total).toBeGreaterThan(0.015)
+    expect(cards.epic / total).toBeLessThan(0.06)
+  })
+
+  it('makes an epic more likely after every screen without one, then resets', () => {
+    const s = empty(7)
+    s.epicDry = 1000
+    expect(rollChoices(s).some((id) => BOOSTS[id].rarity === 'epic')).toBe(true)
+    expect(s.epicDry).toBe(0)
+    const dry = empty(8)
+    let shown = false
+    for (let i = 0; i < 60 && !shown; i++) shown = rollChoices(dry).some((id) => BOOSTS[id].rarity === 'epic')
+    expect(shown).toBe(true)
+  })
+
+  it('falls back to another tier when one has nothing left', () => {
+    const s = empty()
+    const maxed = Object.fromEntries(
+      Object.entries(BOOSTS)
+        .filter(([, b]) => b.rarity === 'common')
+        .map(([id, b]) => [id, b.max]),
+    )
+    s.boosts = maxed
+    const choices = rollChoices(s)
+    expect(choices).toHaveLength(3)
+    expect(choices.every((id) => BOOSTS[id].rarity !== 'common')).toBe(true)
   })
 
   it('returns fewer when few are eligible', () => {
@@ -97,7 +124,7 @@ describe('picking', () => {
 describe('xp in a run', () => {
   it('levels up from kills and opens a pick after the volley', () => {
     const s = empty()
-    s.xp = 7
+    s.xp = xpToNext(0) - 1
     brick(s, 3, 5, 1)
     fire(s, Math.PI / 2)
     runVolley(s)

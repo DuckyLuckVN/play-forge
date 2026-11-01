@@ -550,5 +550,5 @@ describe('boss skills: all', () => {
       }
       expect(['aim', 'over', 'pick', 'grow']).toContain(s.phase)
     }
-  })
+  }, 20_000) // many full fights: ~2 s alone, slower when the whole suite runs in parallel
 })

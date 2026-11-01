@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { columnOrder, PATTERN_BLOCK, patternAt, patternLimit, type Pattern } from './patterns'
-import { hpScale, spawnRow } from './rows'
+import { BALL_PICKUP_CHANCE, hpScale, spawnRow } from './rows'
 import { empty } from './testing'
 
 describe('row patterns', () => {
@@ -73,14 +73,16 @@ describe('row patterns', () => {
     expect(trimmed).toBeGreaterThan(10)
   })
 
-  it('keeps a free column and a ball in shaped rows', () => {
+  it('keeps a free column in shaped rows, so an offered ball always fits', () => {
+    let balls = 0
     for (let seed = 1; seed <= 200; seed++) {
       const s = empty(seed)
       s.turn = 41
       s.ballCount = 999
       spawnRow(s)
       expect(s.bricks.length).toBeLessThan(s.cols)
-      expect(s.pickups.some((p) => p.kind === 'ball')).toBe(true)
+      if (s.pickups.some((p) => p.kind === 'ball')) balls++
     }
+    expect(balls / 200).toBeGreaterThan(BALL_PICKUP_CHANCE - 0.1)
   })
 })

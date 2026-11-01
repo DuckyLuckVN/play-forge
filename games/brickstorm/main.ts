@@ -16,7 +16,7 @@ import { applyTheme } from '@forge/ui/theme'
 import { bossIntro } from './boss-ui'
 import { dangerHint } from './danger-hint'
 import { growCard } from './grow-ui'
-import { coinAmount, shortCoins } from './coin'
+import { coinAmount } from './coin'
 import { BOSS, trackFor } from './music'
 import { rarityName, t } from './i18n'
 import { toBoard } from './input'
@@ -58,6 +58,7 @@ import {
   boostSlots,
   holdBoost,
   holdCost,
+  isInstant,
   pickCost,
   skipPick,
   isSynergy,
@@ -70,6 +71,7 @@ import {
   xpTotal,
 } from './sim/boosts'
 import { AIM_MIN, BOARD_H, BOARD_W, boardSize, COLS, MAX_COLS, MAX_ROWS, ROWS, TICK } from './sim/config'
+import { xpComboMultiplier } from './sim/damage'
 import { aimFromPointer } from './sim/physics'
 import { canRecall, createRun, drainEvents, fire, recall, speedMultiplier, step } from './sim/run'
 import type { ActiveHelper, BoostId, RunState, StartHelper } from './sim/types'
@@ -107,7 +109,7 @@ function updateShopCoins() {
   const total = walletTotal(save, run, banked)
   if (total === shownWallet) return
   shownWallet = total
-  shopCoins.replaceChildren(coinAmount(shortCoins(total)))
+  shopCoins.replaceChildren(coinAmount(total))
   shopBarBtn.setAttribute('aria-label', t('Shop ({n} coins)', { n: total }))
 }
 const guideBtn = button('?', () => openGuideFromBar(), 'icon bs-guide-btn')
@@ -134,7 +136,7 @@ const recallBtn = button(t('Recall'), () => {
   }
   recallBtn.blur()
 })
-const drawerBtn = button(t('Boosts & helpers'), () => openDrawer())
+const drawerBtn = button(t('Skills & helpers'), () => openDrawer())
 drawerBtn.classList.add('bs-drawer-btn')
 const controls = h('div', { class: 'bs-controls' }, fastBtn, recallBtn, drawerBtn)
 // First-seen hints: a card over the middle of the board. Tap to dismiss.
@@ -363,6 +365,8 @@ function showShop(onBack: () => void) {
   show(
     shopPanel(
       () => save,
+      // Coins from the shot still flying land in the wallet when it ends.
+      () => (run ? Math.max(0, walletTotal(save, run, banked) - save.coins) : 0),
       (next) => {
         save = next
         persist()
@@ -436,7 +440,7 @@ function boostInfo(id: BoostId, back = holdRun()) {
   showDetail(
     `${t(b.name)} ×${run.boosts[id] ?? 0}`,
     boostDetail(id, run.boosts[id] ?? 1),
-    t('{rarity} boost', { rarity: rarityName(b.rarity) }),
+    t('{rarity} skill', { rarity: rarityName(b.rarity) }),
     back,
     BOOST_ICONS[id],
   )
@@ -490,7 +494,7 @@ function openDrawer() {
     h(
       'div',
       { class: 'pf-panel wide bs-shop' },
-      panelHead(t('Boosts & helpers'), close),
+      panelHead(t('Skills & helpers'), close),
       statsPanel(s, save.bestTurn),
       boostsPanel(s, (id) => boostInfo(id, reopen)),
       helpersPanel(
@@ -626,7 +630,7 @@ function showHelpers() {
   const use: Partial<Record<StartHelper, boolean>> = {}
   const LABEL: Record<StartHelper, string> = {
     headStart: t('Head Start: +5 balls'),
-    luckyStart: t('Lucky Start: a free boost'),
+    luckyStart: t('Lucky Start: a free skill'),
     powerStart: t('Power Start: Heavy Hitter ×2'),
     goldStart: t('Gold Start: Gold Rush ×2'),
     eagleStart: t('Eagle Start: Eagle Eye'),
@@ -658,6 +662,7 @@ function beginRun(s: RunState) {
   slotsSeen = boostSlots(s)
   juice.turn = s.turn
   juice.setXp(s.level, s.xp / xpToNext(s.level), true)
+  juice.setCoins(walletTotal(save, s, banked), true)
   xpSeen = xpTotal(s.level, s.xp)
   paused = false
   acc = 0
@@ -701,8 +706,8 @@ function slotCallout(s: RunState): HTMLElement | null {
     h(
       'div',
       {},
-      h('strong', { textContent: t('New boost slot!') }),
-      h('span', { textContent: t('Boss beaten: you can now hold {n} boosts.', { n: slots }) }),
+      h('strong', { textContent: t('New skill slot!') }),
+      h('span', { textContent: t('Boss beaten: you can now hold {n} skills.', { n: slots }) }),
     ),
   )
 }
@@ -745,7 +750,7 @@ function showSwap(id: BoostId) {
       h('p', {
         class: 'pf-lede',
         textContent: t(
-          'Your boost slots are full ({n}/{max}). Pick one to drop for it. Each boss you beat adds a slot.',
+          'Your skill slots are full ({n}/{max}). Pick one to drop for it. Each boss you beat adds a slot.',
           { n: owned.length, max: boostSlots(s) },
         ),
       }),
@@ -776,6 +781,9 @@ function showSwap(id: BoostId) {
   )
 }
 
+/** Where the held card sat on this pick screen, so it stays in its place (greyed out). */
+let heldAt: number | null = null
+
 function showPick() {
   if (!run) return
   const s = run
@@ -783,50 +791,68 @@ function showPick() {
   // the player hasn't seen yet.
   const shownAt = performance.now()
   const settled = () => performance.now() - shownAt >= PICK_GRACE_MS
-  const holding = holdCost(s)
-  const cards = s.choices.map((id) => {
+  // A card held on this screen stays where it was, greyed out, instead of vanishing.
+  const away = s.held && !s.choices.includes(s.held) ? s.held : null
+  if (!away) heldAt = null
+  const ids = [...s.choices]
+  if (away) ids.splice(Math.min(heldAt ?? ids.length, ids.length), 0, away)
+  const cards = ids.map((id) => {
     const b = BOOSTS[id]
+    const stashed = id === away
     const synergy = isSynergy(s, id)
     const held = s.held === id
     const price = pickCost(s, id)
+    const bonus = isInstant(id)
+    const owned = bonus ? 0 : (s.boosts[id] ?? 0)
     const art = h('span', { class: 'bs-card-icon' })
     art.innerHTML = BOOST_ICONS[id]
     const card = h(
       'button',
       {
-        class: `pf-btn bs-card ${b.rarity}${synergy ? ' synergy' : ''}${held ? ' held' : ''}`,
+        class: `pf-btn bs-card ${b.rarity}${bonus ? ' bonus' : ''}${synergy ? ' synergy' : ''}${held ? ' held' : ''}${stashed ? ' stashed' : ''}`,
         type: 'button',
         onclick: () => {
-          if (!settled()) return
+          if (!settled() || stashed) return
           if (needsReplace(s, id)) return showSwap(id)
           takeBoost(id)
         },
       },
+      // A bonus pays out when taken: a ribbon in the corner (bonuses can't be held, so it's free).
+      bonus && h('span', { class: 'bs-ribbon', textContent: t('BONUS') }),
       art,
-      // One line of labels: rarity, new or a level-up (never reads as a new slot), synergy, held.
-      h(
-        'div',
-        { class: 'bs-card-meta' },
-        h('small', { textContent: rarityName(b.rarity) }),
-        h('span', {
-          class: `bs-tag ${s.boosts[id] ? 'up' : 'new'}`,
-          textContent: s.boosts[id]
-            ? t('Lv {from} → {to}', { from: s.boosts[id] ?? 0, to: (s.boosts[id] ?? 0) + 1 })
-            : t('NEW'),
-        }),
-        synergy && h('span', { class: 'bs-tag synergy', textContent: t('SYNERGY') }),
-        held && h('span', { class: 'bs-tag held', textContent: t('HELD') }),
-      ),
+      // The card leads with what the skill does; tags only when they add something.
+      (owned > 0 || synergy || (held && !stashed)) &&
+        h(
+          'div',
+          { class: 'bs-card-meta' },
+          owned > 0 &&
+            h('span', {
+              class: 'bs-tag up',
+              textContent: t('Lv {from} → {to}', { from: owned, to: owned + 1 }),
+            }),
+          synergy && h('span', { class: 'bs-tag synergy', textContent: t('SYNERGY') }),
+          held && !stashed && h('span', { class: 'bs-tag held', textContent: t('HELD') }),
+        ),
       h('strong', { textContent: t(b.name) }),
       h('span', { textContent: t(b.text) }),
       needsReplace(s, id) && h('small', { class: 'bs-swap', textContent: t('Slots full: swap one out') }),
-      h('span', { class: 'bs-price' }, price ? coinAmount(price) : t('FREE')),
+      // Price, with the rarity quietly to its right; a held card says where it went instead.
+      stashed
+        ? h('div', { class: 'bs-card-foot bs-stashed' }, icon(LOCK_ICON), t('Held for next level-up'))
+        : h(
+            'div',
+            { class: 'bs-card-foot' },
+            h('span', { class: 'bs-price' }, price ? coinAmount(price) : t('FREE')),
+            h('small', { class: 'bs-rarity', textContent: rarityName(b.rarity) }),
+          ),
     )
-    card.disabled = !canPay(price)
+    card.disabled = stashed || !canPay(price)
     // A lock in the corner: pay to see this boost again at the next level-up (one at a time).
     const name = t(b.name)
+    const holding = holdCost(s, id)
     const lock =
       !s.held &&
+      !bonus &&
       h(
         'button',
         {
@@ -835,6 +861,7 @@ function showPick() {
           title: t('Hold {name} for your next level-up', { name }),
           onclick: () => {
             if (!settled() || !pay(holding)) return
+            heldAt = s.choices.indexOf(id)
             holdBoost(s, id)
             checkpoint()
             showPick()
@@ -849,10 +876,9 @@ function showPick() {
     }
     return h('div', { class: 'bs-card-wrap' }, card, lock)
   })
-  const heldAway = s.held && !s.choices.includes(s.held) ? t(BOOSTS[s.held].name) : null
   const heading = h('h2', {
     class: 'pf-heading',
-    textContent: t('Level up! Pick a boost'),
+    textContent: t('Level up! Pick a skill'),
     tabIndex: -1,
     autofocus: true,
   })
@@ -877,7 +903,7 @@ function showPick() {
     'bs-reroll',
   )
   if (!token) rerollBtn.append(' ', coinAmount(cost))
-  rerollBtn.disabled = !token && save.coins + (s.coins - banked) < cost
+  rerollBtn.disabled = !token && !canPay(cost)
   const skip = () => settled() && confirmSkip()
   show(
     h(
@@ -886,13 +912,6 @@ function showPick() {
       h('div', { class: 'bs-shop-head' }, heading, wallet(), closeButton(skip)),
       slotCallout(s),
       h('div', { class: 'bs-cards' }, ...cards),
-      heldAway &&
-        h(
-          'p',
-          { class: 'bs-held-note' },
-          icon(LOCK_ICON),
-          t('{name} is held for your next level-up.', { name: heldAway }),
-        ),
       h('div', { class: 'bs-pick-actions' }, rerollBtn, button(t('Skip'), skip)),
     ),
     `pick-${s.level}-${s.pendingPicks}-${s.rerollsUsed}-${s.holdsUsed ?? 0}`,
@@ -908,7 +927,7 @@ function confirmSkip() {
       'div',
       { class: 'pf-panel' },
       panelHead(t('Skip this level-up?'), showPick),
-      h('p', { class: 'pf-lede', textContent: t("You won't get a boost from this level-up.") }),
+      h('p', { class: 'pf-lede', textContent: t("You won't get a skill from this level-up.") }),
       button(
         t('Skip'),
         () => {
@@ -1083,7 +1102,8 @@ startRenderLoop((dt, time) => {
         'boss',
       )
     }
-    juice.setCoins(s.coins)
+    juice.setCoins(walletTotal(save, s, banked))
+    juice.setComboXp(s.phase === 'volley' ? xpComboMultiplier(s.combo) : 1)
     juice.setXp(s.level, s.xp / xpToNext(s.level))
     const xpNow = xpTotal(s.level, s.xp)
     juice.gainXp(xpNow - xpSeen)

@@ -762,7 +762,7 @@ function showPick() {
         checkpoint()
         showPick()
       },
-      'quiet bs-hold',
+      'bs-hold',
     )
     hold.append(' ', coinAmount(holding))
     hold.title = t('Keep this boost for your next level-up')
@@ -793,7 +793,7 @@ function showPick() {
       checkpoint()
       showPick()
     },
-    'quiet',
+    'bs-reroll',
   )
   if (!token) rerollBtn.append(' ', coinAmount(cost))
   rerollBtn.disabled = !token && save.coins + (s.coins - banked) < cost
@@ -805,7 +805,7 @@ function showPick() {
       h('div', { class: 'bs-shop-head' }, heading, wallet(), closeButton(skip)),
       slotCallout(s),
       h('div', { class: 'bs-cards' }, ...cards),
-      h('div', { class: 'bs-pick-actions' }, rerollBtn, button(t('Skip'), skip, 'quiet')),
+      h('div', { class: 'bs-pick-actions' }, rerollBtn, button(t('Skip'), skip)),
     ),
     `pick-${s.level}-${s.pendingPicks}-${s.rerollsUsed}-${s.holdsUsed ?? 0}`,
   )

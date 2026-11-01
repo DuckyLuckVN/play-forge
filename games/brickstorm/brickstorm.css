@@ -776,11 +776,10 @@
   font-size: 14px;
 }
 
-/* Pick cards: equal heights, the price pinned to the bottom, a Hold button under each. */
+/* Pick cards: equal heights, the price pinned to the bottom, a lock in the corner to hold one. */
 .bs-card-wrap {
+  position: relative;
   display: grid;
-  grid-template-rows: 1fr auto;
-  gap: 8px;
 }
 .bs-card-wrap > .bs-card.pf-btn {
   display: flex;
@@ -788,6 +787,20 @@
   align-items: flex-start;
   justify-content: flex-start;
   height: 100%;
+}
+.bs-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  align-items: center;
+}
+.bs-card .bs-tag.synergy {
+  background: rgb(75 227 160 / 0.25);
+  color: #4be3a0;
+}
+.bs-card .bs-tag.held {
+  background: #ffc83d;
+  color: #3a2a00;
 }
 .bs-card .bs-price {
   margin-top: auto;
@@ -798,18 +811,46 @@
 .bs-card:disabled {
   opacity: 0.55;
 }
-.bs-hold.pf-btn {
-  width: 100%;
-  justify-content: center;
-  font-size: 14px;
-  padding: 8px 10px;
-}
 .bs-card.held {
   box-shadow: 0 0 0 3px rgb(255 200 61 / 0.5);
 }
-.bs-ribbon.held {
-  background: #ffc83d;
-  color: #3a2a00;
+.bs-lock {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 2px solid var(--pf-rim);
+  border-radius: 999px;
+  background: var(--pf-night, #12102a);
+  color: var(--pf-haze);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.bs-lock:hover:not(:disabled) {
+  border-color: #ffc83d;
+  color: #ffc83d;
+}
+.bs-lock:focus-visible {
+  outline: 3px solid var(--pf-yolk);
+  outline-offset: 2px;
+}
+.bs-lock:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.bs-held-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  color: #ffc83d;
+  font-size: 14px;
 }
 .bs-pick-actions {
   display: flex;

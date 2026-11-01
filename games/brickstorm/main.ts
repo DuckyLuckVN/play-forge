@@ -644,6 +644,9 @@ function slotCallout(s: RunState): HTMLElement | null {
 }
 
 /** Takes an offered boost (dropping `replace` for it when slots are full), then the next screen. */
+const LOCK_ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>'
+
 /** Pays `cost` from the wallet (this run's coins are banked first); false if it's short. */
 function pay(cost: number): boolean {
   if (cost <= 0) return true
@@ -735,40 +738,54 @@ function showPick() {
           takeBoost(id)
         },
       },
-      held
-        ? h('em', { class: 'bs-ribbon held', textContent: t('HELD') })
-        : synergy && h('em', { class: 'bs-ribbon', textContent: t('SYNERGY') }),
       art,
-      h('small', { textContent: rarityName(b.rarity) }),
-      // Taking a boost you have levels it up; say so, so it never reads as a new slot.
-      h('span', {
-        class: `bs-tag ${s.boosts[id] ? 'up' : 'new'}`,
-        textContent: s.boosts[id]
-          ? t('UPGRADE · Lv {from} → {to}', { from: s.boosts[id] ?? 0, to: (s.boosts[id] ?? 0) + 1 })
-          : t('NEW'),
-      }),
+      // One line of labels: rarity, new or a level-up (never reads as a new slot), synergy, held.
+      h(
+        'div',
+        { class: 'bs-card-meta' },
+        h('small', { textContent: rarityName(b.rarity) }),
+        h('span', {
+          class: `bs-tag ${s.boosts[id] ? 'up' : 'new'}`,
+          textContent: s.boosts[id]
+            ? t('Lv {from} → {to}', { from: s.boosts[id] ?? 0, to: (s.boosts[id] ?? 0) + 1 })
+            : t('NEW'),
+        }),
+        synergy && h('span', { class: 'bs-tag synergy', textContent: t('SYNERGY') }),
+        held && h('span', { class: 'bs-tag held', textContent: t('HELD') }),
+      ),
       h('strong', { textContent: t(b.name) }),
       h('span', { textContent: t(b.text) }),
       needsReplace(s, id) && h('small', { class: 'bs-swap', textContent: t('Slots full: swap one out') }),
       h('span', { class: 'bs-price' }, price ? coinAmount(price) : t('FREE')),
     )
     card.disabled = !canPay(price)
-    // Pay to see this boost again at the next level-up (one at a time).
-    const hold = button(
-      t('Hold'),
-      () => {
-        if (!settled() || !pay(holding)) return
-        holdBoost(s, id)
-        checkpoint()
-        showPick()
-      },
-      'bs-hold',
-    )
-    hold.append(' ', coinAmount(holding))
-    hold.title = t('Keep this boost for your next level-up')
-    hold.disabled = !!s.held || !canPay(holding)
-    return h('div', { class: 'bs-card-wrap' }, card, !held && hold)
+    // A lock in the corner: pay to see this boost again at the next level-up (one at a time).
+    const name = t(b.name)
+    const lock =
+      !s.held &&
+      h(
+        'button',
+        {
+          class: 'bs-lock',
+          type: 'button',
+          title: t('Hold {name} for your next level-up', { name }),
+          onclick: () => {
+            if (!settled() || !pay(holding)) return
+            holdBoost(s, id)
+            checkpoint()
+            showPick()
+          },
+        },
+        icon(LOCK_ICON),
+        coinAmount(holding),
+      )
+    if (lock) {
+      lock.disabled = !canPay(holding)
+      lock.setAttribute('aria-label', t('Hold {name} for your next level-up', { name }))
+    }
+    return h('div', { class: 'bs-card-wrap' }, card, lock)
   })
+  const heldAway = s.held && !s.choices.includes(s.held) ? t(BOOSTS[s.held].name) : null
   const heading = h('h2', {
     class: 'pf-heading',
     textContent: t('Level up! Pick a boost'),
@@ -805,6 +822,13 @@ function showPick() {
       h('div', { class: 'bs-shop-head' }, heading, wallet(), closeButton(skip)),
       slotCallout(s),
       h('div', { class: 'bs-cards' }, ...cards),
+      heldAway &&
+        h(
+          'p',
+          { class: 'bs-held-note' },
+          icon(LOCK_ICON),
+          t('{name} is held for your next level-up.', { name: heldAway }),
+        ),
       h('div', { class: 'bs-pick-actions' }, rerollBtn, button(t('Skip'), skip)),
     ),
     `pick-${s.level}-${s.pendingPicks}-${s.rerollsUsed}-${s.holdsUsed ?? 0}`,

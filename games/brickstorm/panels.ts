@@ -198,18 +198,38 @@ export function sample(id: string): HTMLCanvasElement {
   return canvas
 }
 
+const CLOSE_ICON =
+  '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>'
+
+/** The ✕ in a menu's top-right corner. */
+export function closeButton(onClose: () => void): HTMLButtonElement {
+  const b = h('button', { class: 'pf-btn icon bs-close', type: 'button', onclick: onClose })
+  b.innerHTML = CLOSE_ICON
+  b.title = t('Close')
+  b.setAttribute('aria-label', t('Close'))
+  return b
+}
+
+/** A menu's title row: heading, anything extra (wallet, icon), then the ✕. */
+export function panelHead(
+  title: string,
+  onClose: () => void,
+  ...extra: Array<Node | null | false>
+): HTMLElement {
+  return h(
+    'div',
+    { class: 'bs-shop-head bs-panel-head' },
+    h('h2', { class: 'pf-heading', textContent: title }),
+    ...extra.filter((x): x is Node => !!x),
+    closeButton(onClose),
+  )
+}
+
 export function guidePanel(onBack: () => void): HTMLElement {
-  const back = h('button', {
-    class: 'pf-btn primary wide',
-    type: 'button',
-    textContent: t('Got it'),
-    onclick: onBack,
-  })
-  back.autofocus = true
   return h(
     'div',
     { class: 'pf-panel wide bs-shop' },
-    h('h2', { class: 'pf-heading', textContent: t('Guide') }),
+    panelHead(t('Guide'), onBack),
     h(
       'ul',
       { class: 'bs-guide' },
@@ -222,6 +242,5 @@ export function guidePanel(onBack: () => void): HTMLElement {
         ),
       ),
     ),
-    back,
   )
 }

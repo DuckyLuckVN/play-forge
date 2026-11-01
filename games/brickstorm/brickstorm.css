@@ -398,6 +398,23 @@
   justify-content: space-between;
   gap: 12px;
 }
+/* Menu title row with the ✕ in the top-right corner; it stays put while long menus scroll. */
+.bs-panel-head .pf-heading {
+  flex: 1;
+  min-width: 0;
+}
+.bs-shop > .bs-panel-head {
+  position: sticky;
+  top: -26px;
+  z-index: 2;
+  margin: -26px -24px 0;
+  padding: 20px 24px 10px;
+  background: var(--pf-felt);
+}
+.bs-close.pf-btn {
+  flex: none;
+  align-self: flex-start;
+}
 .bs-wallet {
   font-weight: 700;
   font-size: 20px;
@@ -422,14 +439,15 @@
 }
 .bs-bar-coins {
   position: absolute;
-  right: -6px;
-  bottom: -8px;
-  padding: 1px 5px;
+  right: -8px;
+  bottom: -9px;
+  padding: 1px 6px 1px 3px;
+  border: 1.5px solid var(--pf-yolk);
   border-radius: 999px;
-  background: var(--pf-yolk);
-  color: var(--pf-ink);
+  background: var(--pf-night);
+  color: var(--pf-yolk);
   font: 700 11px/1.3 var(--pf-font);
-  box-shadow: 0 1px 0 var(--pf-yolk-edge);
+  box-shadow: 0 2px 4px rgb(0 0 0 / 0.4);
   pointer-events: none;
 }
 .bs-shop-btn.pf-btn {

@@ -6,6 +6,7 @@ import { ArenaPainter, type ArenaId } from './arenas'
 import { coinAmount } from './coin'
 import { drawBall, IMPACT_STYLE, TRAIL_STYLE } from './cosmetics'
 import { t } from './i18n'
+import { panelHead } from './panels'
 import type { Save } from './save'
 import { buy, CATALOG, equip, type ItemKind, type ShopItem } from './shop'
 import { BOARD_W } from './sim/config'
@@ -178,15 +179,9 @@ export function shopPanel(getSave: () => Save, setSave: (s: Save) => void, onBac
       )
     })
     panel.replaceChildren(
-      h(
-        'div',
-        { class: 'bs-shop-head' },
-        h('h2', { class: 'pf-heading', textContent: t('Shop') }),
-        coinAmount(save.coins, 'bs-wallet'),
-      ),
+      panelHead(t('Shop'), onBack, coinAmount(save.coins, 'bs-wallet')),
       tabs,
       h('div', { class: 'bs-items' }, ...items),
-      h('button', { class: 'pf-btn quiet', type: 'button', textContent: t('Back'), onclick: onBack }),
     )
   }
   render()

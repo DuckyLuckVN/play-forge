@@ -25,7 +25,16 @@ import { applyHelpers, growBoard, revive, reviveCost, useHelper } from './sim/me
 import { dims } from './sim/dims'
 import { boostDetail, GUIDE, newlySeen } from './guide'
 import { NoticeQueue } from './notices'
-import { ACTIVE_HELPERS, boostsPanel, guidePanel, helpersPanel, navPanel, sample, statsPanel } from './panels'
+import {
+  ACTIVE_HELPERS,
+  boostsPanel,
+  guidePanel,
+  helpersPanel,
+  navPanel,
+  panelHead,
+  sample,
+  statsPanel,
+} from './panels'
 import { BOOST_ICONS } from './icons'
 import { BOOSTS, isSynergy, pickBoost, reroll, rerollCost, xpToNext, xpTotal } from './sim/boosts'
 import { AIM_MIN, BOARD_H, BOARD_W, boardSize, COLS, MAX_COLS, MAX_ROWS, ROWS, TICK } from './sim/config'
@@ -66,7 +75,7 @@ function updateShopCoins() {
   const total = walletTotal(save, run, banked)
   if (total === shownWallet) return
   shownWallet = total
-  shopCoins.textContent = shortCoins(total)
+  shopCoins.replaceChildren(coinAmount(shortCoins(total)))
   shopBarBtn.setAttribute('aria-label', t('Shop ({n} coins)', { n: total }))
 }
 const guideBtn = button('?', () => openGuideFromBar(), 'icon bs-guide-btn')
@@ -241,7 +250,7 @@ function confirmNewRun() {
     h(
       'div',
       { class: 'pf-panel' },
-      h('h2', { class: 'pf-heading', textContent: t('Start over?') }),
+      panelHead(t('Start over?'), showHome),
       h('p', {
         class: 'pf-lede',
         textContent: t('Your run at turn {n} will be lost. Coins you earned are kept.', {
@@ -253,7 +262,6 @@ function confirmNewRun() {
         persist()
         showHelpers()
       }),
-      button(t('Back'), showHome, 'quiet'),
     ),
     'confirm',
   )
@@ -322,15 +330,9 @@ function showDetail(title: string, body: string, extra: string, back: () => void
     h(
       'div',
       { class: 'pf-panel bs-detail' },
-      h(
-        'div',
-        { class: 'bs-shop-head' },
-        h('h2', { class: 'pf-heading', textContent: title }),
-        iconHtml ? art : null,
-      ),
+      panelHead(title, back, iconHtml ? art : null),
       h('p', { class: 'pf-lede', textContent: body }),
       extra && h('p', { class: 'bs-side-empty', textContent: extra }),
-      primary(t('Got it'), back),
     ),
     `detail-${title}`,
   )
@@ -365,7 +367,7 @@ function confirmHelper(id: ActiveHelper, back = holdRun(), onCancel = back) {
     h(
       'div',
       { class: 'pf-panel bs-detail' },
-      h('h2', { class: 'pf-heading', textContent: t('Use {name}?', { name: t(a.name) }) }),
+      panelHead(t('Use {name}?', { name: t(a.name) }), onCancel),
       h('p', { class: 'pf-lede', textContent: `${t(a.text)}.` }),
       h('p', {
         class: 'bs-side-empty',
@@ -378,7 +380,6 @@ function confirmHelper(id: ActiveHelper, back = holdRun(), onCancel = back) {
         back()
         useActiveHelper(id)
       }),
-      button(t('Cancel'), onCancel, 'quiet'),
     ),
     `confirm-${id}`,
   )
@@ -397,6 +398,7 @@ function openDrawer() {
     h(
       'div',
       { class: 'pf-panel wide bs-shop' },
+      panelHead(t('Boosts & helpers'), close),
       statsPanel(s, save.bestTurn),
       boostsPanel(s, (id) => boostInfo(id, reopen)),
       helpersPanel(
@@ -405,7 +407,6 @@ function openDrawer() {
         (id) => confirmHelper(id, close, reopen),
         (id) => helperInfo(id, reopen),
       ),
-      primary(t('Close'), close),
     ),
     'drawer',
   )
@@ -503,7 +504,7 @@ function showHelpers() {
     h(
       'div',
       { class: 'pf-panel' },
-      h('h2', { class: 'pf-heading', textContent: t('Use helpers?') }),
+      panelHead(t('Use helpers?'), showHome),
       ...owned.map((k) => {
         const box = h('input', { type: 'checkbox', onchange: () => (use[k] = box.checked) })
         return h(
@@ -514,7 +515,6 @@ function showHelpers() {
         )
       }),
       primary(t('Start'), () => startRun(use)),
-      button(t('Back'), showHome, 'quiet'),
     ),
     'helpers',
   )
@@ -853,6 +853,13 @@ window.addEventListener('pointercancel', () => (dragging = false))
 window.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return
   if (run?.phase === 'pick' && !panel && (e.code === 'Space' || e.code === 'Enter')) juice.skipLevelUp()
+  // Esc closes a menu that has a ✕.
+  const closeX =
+    !overlay.hidden && e.code === 'Escape' && overlay.querySelector<HTMLButtonElement>('.bs-close')
+  if (closeX) {
+    closeX.click()
+    return
+  }
   if (e.code === 'Escape' || e.code === 'KeyP') {
     if (paused) resume()
     else pause()

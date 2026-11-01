@@ -290,8 +290,8 @@ export const VI: Dictionary = {
   'Fire charge': 'Nạp lửa',
   'Your next volley starts with 3 fireballs.': 'Loạt bắn tới mở đầu bằng 3 cầu lửa.',
   Laser: 'Laser',
-  'Fires a beam across its row, hitting every brick in it.':
-    'Bắn tia ngang hàng, trúng mọi viên gạch trong hàng.',
+  'Fires a beam across its row every time a ball passes it, until the volley ends.':
+    'Bắn tia ngang hàng mỗi lần bóng đi qua, tới hết loạt bắn.',
   'Burns straight through bricks for double damage without bouncing.':
     'Xuyên thẳng qua gạch với sát thương gấp đôi, không nảy lại.',
   'Bomb ball': 'Bóng bom',

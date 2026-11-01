@@ -64,6 +64,8 @@ export interface Pickup {
   col: number
   row: number
   kind: PickupKind
+  /** A laser that has fired this volley: it stays until the volley ends, then goes. */
+  used?: boolean
 }
 
 export interface Ball {
@@ -85,6 +87,8 @@ export interface Ball {
   bounceBonus: number
   /** Id of the brick the ball is overlapping, -1 if none; prevents double hits. */
   lastBrick: number
+  /** Lasers the ball is passing over right now, so each fires once per pass. */
+  lasers?: number[]
 }
 
 export type BoostId =

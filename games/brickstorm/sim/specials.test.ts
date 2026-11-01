@@ -139,14 +139,31 @@ describe('special bricks', () => {
 })
 
 describe('new pickups', () => {
-  it('a laser pickup hits its whole row', () => {
+  it('a laser pickup stays all volley and fires 2× ball damage across its row on every pass', () => {
     const s = empty()
     s.turn = 7
+    s.ballCount = 3
     s.pickups.push({ id: s.nextId++, col: 3, row: 6, kind: 'laser' })
     const row = [brick(s, 0, 6, 100), brick(s, 6, 6, 100)]
     fire(s, Math.PI / 2)
+    let most = 0
+    runVolley(s, (s) => (most = Math.max(most, s.pickups.length)))
+    // 3 balls straight up and back down: 6 passes, 2 damage each.
+    expect(most).toBe(1)
+    expect(row.map((b) => b.hp)).toEqual([88, 88])
+    expect(drainEvents(s).filter((e) => e.type === 'laser')).toHaveLength(6)
+  })
+
+  it('a used laser is gone after the volley; an untouched one stays', () => {
+    const s = empty()
+    const used = { id: s.nextId++, col: 3, row: 6, kind: 'laser' as const }
+    const untouched = { id: s.nextId++, col: 0, row: 2, kind: 'laser' as const }
+    s.pickups.push(used, untouched)
+    fire(s, Math.PI / 2)
     runVolley(s)
-    expect(row.map((b) => b.hp)).toEqual([93, 93])
+    const ids = s.pickups.map((p) => p.id)
+    expect(ids).not.toContain(used.id)
+    expect(ids).toContain(untouched.id)
   })
 
   it('a fire pickup arms 3 fireballs for the next volley', () => {

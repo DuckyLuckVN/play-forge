@@ -260,13 +260,23 @@ function hitBrick(s: RunState, ball: Ball, brick: Brick, mods: Mods, power: numb
 }
 
 function collectPickups(s: RunState, ball: Ball, mods: Mods): void {
+  const over: number[] = []
   for (let i = s.pickups.length - 1; i >= 0; i--) {
     const p = s.pickups[i]
     const { x, y } = cellCenter(p.col, p.row)
     if (Math.hypot(ball.x - x, ball.y - y) >= PICKUP_R + ball.r + mods.pickupReach) continue
+    if (p.kind === 'laser') {
+      // Lasers stay all volley and fire once per pass of each ball.
+      over.push(p.id)
+      if (ball.lasers?.includes(p.id)) continue
+      p.used = true
+      laserRow(s, p.row, LASER_POWER * mods.damageMult * (s.overcharged ? 2 : 1))
+      continue
+    }
     s.pickups.splice(i, 1)
     applyPickup(s, p, mods)
   }
+  ball.lasers = over
 }
 
 /** What a pickup does once collected (by a ball, or the Vacuum helper). Remove it from the board first. */
@@ -279,10 +289,13 @@ export function applyPickup(s: RunState, p: Pickup, mods = modsOf(s.boosts)): vo
   else laserRow(s, p.row)
 }
 
-/** A laser across a row: every brick in it takes the turn's worth of damage. */
-export function laserRow(s: RunState, row: number): void {
+/** A ball over a laser pickup fires it for this many times a ball hit's damage. */
+const LASER_POWER = 2
+
+/** A laser across a row: every brick in it takes `damage` (the turn's worth unless told). */
+export function laserRow(s: RunState, row: number, damage = s.turn): void {
   s.events.push({ type: 'laser', y: cellCenter(0, row).y })
-  for (const b of s.bricks.filter((b) => b.row === row)) damageBrick(s, b, s.turn, 'laser')
+  for (const b of s.bricks.filter((b) => b.row === row)) damageBrick(s, b, damage, 'laser')
 }
 
 function endTurn(s: RunState): void {
@@ -290,6 +303,7 @@ function endTurn(s: RunState): void {
   s.ballCount += s.pendingBalls
   s.pendingBalls = 0
   s.balls = []
+  s.pickups = s.pickups.filter((p) => !p.used)
   s.overcharged = false
   if (s.doubleVolleys > 0) s.doubleVolleys--
 

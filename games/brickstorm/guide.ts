@@ -43,7 +43,7 @@ export const GUIDE: GuideEntry[] = [
   { id: 'pickup:ball', name: '+1 Ball', text: 'Touch it to add a ball for the rest of the run.' },
   { id: 'pickup:coin', name: 'Coin', text: 'Touch it for 5 coins to spend in the shop.' },
   { id: 'pickup:fire', name: 'Fire charge', text: 'Your next volley starts with 3 fireballs.' },
-  { id: 'pickup:laser', name: 'Laser', text: 'Fires a beam across its row, hitting every brick in it.' },
+  { id: 'pickup:laser', name: 'Laser', text: 'Fires a beam across its row every time a ball passes it, until the volley ends.' },
   {
     id: 'ball:fire',
     name: 'Fireball',

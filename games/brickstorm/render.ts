@@ -225,6 +225,13 @@ export class BoardRenderer {
   private drawPickups(ctx: CanvasRenderingContext2D, s: RunState, time: number): void {
     for (const p of s.pickups) {
       const { x, y } = cellCenter(p.col, p.row)
+      if (p.used) {
+        // A fired laser stays charged until the volley ends.
+        ctx.fillStyle = `rgb(255 111 181 / ${0.25 + 0.15 * Math.sin(time * 12)})`
+        ctx.beginPath()
+        ctx.arc(x, y, PICKUP_R + 6, 0, Math.PI * 2)
+        ctx.fill()
+      }
       drawPickupGlyph(ctx, p.kind, x, y + Math.sin(time * 4 + p.id) * 3, time)
     }
   }

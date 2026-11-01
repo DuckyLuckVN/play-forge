@@ -112,8 +112,9 @@ export function fire(s: RunState, angle: number): void {
   s.rainNext = 0
   s.overcharged = !!s.overchargeNext
   s.overchargeNext = false
-  const pierce = mods.pierce + (s.pierceNext ? 2 : 0)
+  const pierceShot = s.pierceNext ? 2 : 0
   s.pierceNext = false
+  const every = (n: number, i: number) => n > 0 && (i + 1) % n === 0
   const charges = Math.min(n, s.fireCharges)
   s.fireCharges -= charges
   const kindOf = (i: number): Ball['kind'] => {
@@ -129,9 +130,10 @@ export function fire(s: RunState, angle: number): void {
     status: 'queued',
     kind: kindOf(i),
     r: mods.radius,
-    split: false,
+    // Twin Shot and Piercing work on every Nth ball, more of them each level.
+    split: !every(mods.twinEvery, i),
     inside: [],
-    pierceLeft: pierce,
+    pierceLeft: (every(mods.pierceEvery, i) ? 1 : 0) + pierceShot,
     bounceBonus: 0,
     lastBrick: -1,
   }))
@@ -185,7 +187,7 @@ function moveBall(s: RunState, ball: Ball, mods: Mods): void {
 
     if (bounceWalls(ball, r, d.boardW)) {
       ;[ball.vx, ball.vy] = antiStall(ball.vx, ball.vy)
-      if (mods.bouncy) ball.bounceBonus += 1
+      ball.bounceBonus += mods.bounceStep
       s.events.push({ type: 'wall' })
     }
 
@@ -268,7 +270,7 @@ function bounceOffBricks(s: RunState, ball: Ball, mods: Mods, bricks: Brick[]): 
     ball.kind = 'normal'
     explode(s, col, row, s.turn, 0, 'bomb')
   }
-  if (mods.twin && !ball.split) {
+  if (!ball.split) {
     // The twin leaves mirrored across the contact normal, so it also heads away from the brick.
     ball.split = true
     const vn = ball.vx * contact.nx + ball.vy * contact.ny
@@ -298,7 +300,7 @@ function hitBrick(s: RunState, ball: Ball, brick: Brick, mods: Mods, power: numb
   s.events.push({ type: 'hit', x, y, combo: s.combo, crit })
   const from = { col: brick.col, row: brick.row }
   damageBrick(s, brick, damage, ball.kind === 'fire' ? 'fire' : 'ball', 0, { face, crit })
-  if (mods.zapChance > 0 && random(s.rng) < mods.zapChance) zap(s, from, 2, 1 * mods.damageMult, 0)
+  if (mods.zapChance > 0 && random(s.rng) < mods.zapChance) zap(s, from, mods.zapArcs, 1 * mods.damageMult, 0)
 }
 
 function collectPickups(s: RunState, ball: Ball, mods: Mods): void {

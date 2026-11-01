@@ -7,12 +7,12 @@ import type { BoostId } from './types'
 describe('boost stats', () => {
   it('maps boost counts to modifiers', () => {
     expect(modsOf({ damage: 2, crit: 1, bouncy: 1 })).toMatchObject({
-      damageMult: 1.5,
+      damageMult: 1.4,
       coinMult: 1,
       speedMult: 1,
-      pierce: 0,
-      critChance: 0.1,
-      bouncy: true,
+      pierceEvery: 0,
+      critChance: 0.05,
+      bounceStep: 0.5,
     })
   })
 
@@ -25,7 +25,7 @@ describe('rollChoices', () => {
   it('gives 3 distinct eligible boosts', () => {
     for (let seed = 1; seed <= 200; seed++) {
       const s = empty(seed)
-      s.boosts = { pierce: 1 }
+      s.boosts = { pierce: 3 } // maxed out
       const choices = rollChoices(s)
       expect(choices).toHaveLength(3)
       expect(new Set(choices).size).toBe(3)
@@ -150,9 +150,9 @@ describe('xp in a run', () => {
     expect(s.balls).toHaveLength(2)
   })
 
-  it('pierces the first brick', () => {
+  it('pierces the first brick (level 3: every ball)', () => {
     const s = empty()
-    s.boosts = { pierce: 1 }
+    s.boosts = { pierce: 3 }
     const first = brick(s, 3, 6, 100)
     const second = brick(s, 3, 3, 100)
     fire(s, Math.PI / 2)
@@ -162,7 +162,7 @@ describe('xp in a run', () => {
 
   it('does not trap a piercing ball between stacked bricks', () => {
     const s = empty()
-    s.boosts = { pierce: 1 }
+    s.boosts = { pierce: 3 }
     brick(s, 3, 4, 1000)
     brick(s, 3, 3, 1000)
     fire(s, Math.PI / 2)

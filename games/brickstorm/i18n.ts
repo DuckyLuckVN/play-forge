@@ -19,9 +19,11 @@ export const VI: Dictionary = {
   'Balls fly +{p} faster.': 'Bóng bay nhanh hơn +{p}.',
   'Each ball passes straight through the first brick it hits (still damaging it).':
     'Mỗi quả bóng xuyên qua viên gạch đầu tiên nó chạm (vẫn gây sát thương).',
+  'One in {n} balls passes straight through the first brick it hits (still damaging it).':
+    'Cứ {n} quả có một quả xuyên qua viên gạch đầu tiên nó chạm (vẫn gây sát thương).',
   '{p} of hits are critical and deal 3× damage.': '{p} số cú đánh là chí mạng, gây 3× sát thương.',
-  'Each wall bounce adds +1 damage to that ball for the rest of the volley.':
-    'Mỗi lần nảy tường, quả bóng đó được +1 sát thương đến hết loạt bắn.',
+  'Each wall bounce adds +{d} damage to that ball for the rest of the volley.':
+    'Mỗi lần nảy tường, quả bóng đó được +{d} sát thương đến hết loạt bắn.',
   'Your volley is doubled for 3 turns each time you pick this.':
     'Mỗi lần chọn, loạt bắn của bạn được nhân đôi trong 3 lượt.',
   'Every {n}th ball is a fireball that burns through bricks for 2× damage.':
@@ -29,15 +31,18 @@ export const VI: Dictionary = {
   'Every {n}th ball explodes on its first hit, damaging a 3×3 area.':
     'Cứ mỗi {n} quả có một quả nổ ở cú chạm đầu, gây sát thương vùng 3×3.',
   'Each ball splits in two on its first brick hit.': 'Mỗi quả bóng tách đôi khi chạm viên gạch đầu tiên.',
+  'One in {n} balls splits in two on its first brick hit.':
+    'Cứ {n} quả có một quả tách đôi khi chạm viên gạch đầu tiên.',
   'Balls are +{p} bigger, so they hit more.': 'Bóng to hơn +{p}, nên trúng nhiều hơn.',
-  '{p} of hits arc to the 2 nearest bricks.': '{p} số cú đánh phóng tia điện sang 2 viên gạch gần nhất.',
-  'When a brick breaks, its 4 neighbours take a hit too.':
-    'Khi một viên gạch vỡ, 4 viên kề bên cũng bị trúng đòn.',
+  '{p} of hits arc to the nearest brick.': '{p} số cú đánh phóng tia điện sang viên gạch gần nhất.',
+  '{p} of hits arc to the {n} nearest bricks.': '{p} số cú đánh phóng tia điện sang {n} viên gạch gần nhất.',
+  'When a brick breaks, its 4 neighbours take {m}× ball damage.':
+    'Khi một viên gạch vỡ, 4 viên kề bên nhận {m}× sát thương bóng.',
   'Pickups up to a whole cell away fly to your balls.': 'Vật phẩm cách tới một ô sẽ bay về phía bóng.',
   'Every brick you break pays +{n} coins.': 'Mỗi viên gạch bạn phá được thêm +{n} xu.',
   'Every brick you break pays +1 coin.': 'Mỗi viên gạch bạn phá được thêm +1 xu.',
-  'Your combo survives {s} s without a hit (normally 1.5 s).':
-    'Combo giữ được {s} giây không trúng (bình thường 1.5 giây).',
+  'Your combo survives {s} s without a hit (normally {base} s).':
+    'Combo giữ được {s} giây không trúng (bình thường {base} giây).',
   'You earn +{p} XP, so you level up faster.': 'Bạn nhận thêm +{p} XP, lên cấp nhanh hơn.',
   'All damage ×2, but bricks drop an extra row every 10th turn.':
     'Mọi sát thương ×2, nhưng cứ 10 lượt gạch rơi thêm một hàng.',
@@ -145,7 +150,6 @@ export const VI: Dictionary = {
   'NEW BEST!': 'KỶ LỤC MỚI!',
   'Best combo {n}': 'Combo cao nhất {n}',
   'Coins earned {n} · wallet': 'Xu kiếm được {n} · ví',
-  'Shop ({n} coins)': 'Cửa hàng ({n} xu)',
   '▲ Tougher bricks': '▲ Gạch cứng hơn',
   Crystal: 'Pha Lê',
   Hive: 'Bầy Đàn',
@@ -346,7 +350,7 @@ export const VI: Dictionary = {
   'Buy {name} for {price} coins': 'Mua {name} với giá {price} xu',
   'Owned: {n}': 'Đang có: {n}',
   'Heavy Hitter': 'Đòn Nặng',
-  '+25% ball damage': '+25% sát thương bóng',
+  '+20% ball damage': '+20% sát thương bóng',
   Reinforcements: 'Tiếp Viện',
   '+2 balls': '+2 bóng',
   'Gold Rush': 'Cơn Sốt Vàng',
@@ -354,25 +358,25 @@ export const VI: Dictionary = {
   Tailwind: 'Gió Xuôi',
   '+15% ball speed': '+15% tốc độ bóng',
   Piercing: 'Xuyên Phá',
-  'Balls pass through their first brick': 'Bóng xuyên qua viên gạch đầu tiên',
+  'Every 3rd ball passes through its first brick': 'Cứ 3 quả có một quả xuyên qua viên gạch đầu tiên',
   'Lucky Strike': 'Cú Đánh May Mắn',
-  '+10% crit chance (crits deal 3×)': '+10% tỉ lệ chí mạng (chí mạng gây 3×)',
+  '+5% crit chance (crits deal 3×)': '+5% tỉ lệ chí mạng (chí mạng gây 3×)',
   'Rubber Walls': 'Tường Cao Su',
-  '+1 damage per wall bounce, stacking': '+1 sát thương mỗi lần nảy tường, cộng dồn',
+  '+0.5 damage per wall bounce, stacking': '+0.5 sát thương mỗi lần nảy tường, cộng dồn',
   'Double Down': 'Nhân Đôi',
   'Double your balls for the next 3 volleys': 'Nhân đôi số bóng trong 3 loạt bắn tới',
   Fireball: 'Cầu Lửa',
-  'Every 8th ball is a fireball that burns through bricks': 'Cứ 8 quả có một quả cầu lửa xuyên gạch',
+  'Every 12th ball is a fireball that burns through bricks': 'Cứ 12 quả có một quả cầu lửa xuyên gạch',
   'Bomb Ball': 'Bóng Bom',
-  'Every 12th ball explodes on its first hit': 'Cứ 12 quả có một quả nổ ở cú chạm đầu',
+  'Every 16th ball explodes on its first hit': 'Cứ 16 quả có một quả nổ ở cú chạm đầu',
   'Twin Shot': 'Song Bắn',
-  'Balls split in two on their first hit': 'Bóng tách đôi ở cú chạm đầu',
+  'Every 3rd ball splits in two on its first hit': 'Cứ 3 quả có một quả tách đôi ở cú chạm đầu',
   'Big Balls': 'Bóng To',
   '+20% ball size': '+20% kích thước bóng',
   'Chain Lightning': 'Sét Lan',
-  '15% of hits arc to 2 nearby bricks': '15% cú đánh phóng điện sang 2 viên gạch gần',
+  '5% of hits arc to a nearby brick': '5% cú đánh phóng điện sang một viên gạch gần',
   Aftershock: 'Dư Chấn',
-  'Destroyed bricks damage their 4 neighbours': 'Gạch vỡ gây sát thương cho 4 viên kề bên',
+  'Destroyed bricks deal half damage to their 4 neighbours': 'Gạch vỡ gây nửa sát thương cho 4 viên kề bên',
   Magnet: 'Nam Châm',
   'Grab pickups a whole cell away': 'Hút vật phẩm cách một ô',
   Midas: 'Bàn Tay Vàng',

@@ -33,8 +33,8 @@ describe('runStats', () => {
     s.boosts = { damage: 2, crit: 1 }
     s.ballCount = 12
     const stats = Object.fromEntries(runStats(s, 40))
-    expect(stats['Damage per hit']).toBe('1.5')
-    expect(stats['Crit chance']).toBe('10%')
+    expect(stats['Damage per hit']).toBe('1.4')
+    expect(stats['Crit chance']).toBe('5%')
     expect(stats['Balls']).toBe('12')
     expect(stats['Best turn']).toBe('40')
   })
@@ -48,9 +48,9 @@ describe('runStats', () => {
 
 describe('boostDetail', () => {
   it('describes what the owned level does', () => {
-    expect(boostDetail('fireball', 2)).toMatch(/every 6th/i)
-    expect(boostDetail('damage', 3)).toContain('+75%')
-    expect(boostDetail('crit', 2)).toContain('20%')
+    expect(boostDetail('fireball', 2)).toMatch(/every 8th/i)
+    expect(boostDetail('damage', 3)).toContain('+60%')
+    expect(boostDetail('crit', 2)).toContain('10%')
     expect(boostDetail('big', 1)).toContain('+20%')
   })
 

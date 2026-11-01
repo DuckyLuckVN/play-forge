@@ -5,7 +5,7 @@ import { SKILL_IDS } from './boss-skills'
 import { damageBrick } from './damage'
 import { dims } from './dims'
 import { revive, useHelper } from './meta'
-import { hpScale } from './rows'
+import { hpCap, hpScale } from './rows'
 import { BRICK_INSET, CELL, TOP } from './config'
 import { drainEvents, startNextTurn, step } from './run'
 import { empty } from './testing'
@@ -27,6 +27,15 @@ function withBoss(traits: BossTrait[] = [], seed = 1): RunState {
 }
 
 describe('boss hp', () => {
+  it('stays beatable late: sized to the bricks you actually face, not the raw hp curve', () => {
+    const s = beforeBoss(1, 60)
+    s.turn = 300
+    // Raw hpScale(300) is near a million; real bricks are capped by your firepower.
+    expect(hpScale(300)).toBeGreaterThan(500_000)
+    expect(bossHp(s)).toBeLessThanOrEqual(12 * hpCap(s))
+    expect(bossHp(s)).toBeGreaterThanOrEqual(3 * Math.min(hpScale(300), hpCap(s)))
+  })
+
   it('counts the damage bonus from levels, so levelling does not trivialise bosses', () => {
     const low = withBoss()
     const high = beforeBoss()
@@ -104,9 +113,11 @@ describe('boss', () => {
     const strong = beforeBoss(1, 60)
     weak.turn = strong.turn = BOSS_EVERY
     expect(bossHp(strong)).toBeGreaterThan(bossHp(weak))
+    // Between 3 and 12 of the bricks this run actually faces (capped by its firepower).
     for (const s of [weak, strong]) {
-      expect(bossHp(s)).toBeGreaterThanOrEqual(hpScale(s.turn) * 3)
-      expect(bossHp(s)).toBeLessThanOrEqual(hpScale(s.turn) * 14)
+      const typical = Math.min(hpScale(s.turn), hpCap(s))
+      expect(bossHp(s)).toBeGreaterThanOrEqual(typical * 3)
+      expect(bossHp(s)).toBeLessThanOrEqual(typical * 12)
     }
   })
 

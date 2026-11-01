@@ -8,7 +8,7 @@ import { bossParts, crushUnderBoss, moveBoss } from './boss-kit'
 import { BOSS_SHAPES, shapeOf, shapeSize } from './boss-shapes'
 import { BOSS_SKILLS, type BossHit, type BossSkill, type Face, SKILL_IDS } from './boss-skills'
 import { BOSS_XP_PER_TURN } from './config'
-import { cellCenter, hpScale } from './rows'
+import { cellCenter, hpCap, hpScale } from './rows'
 import type { Ball, Boss, BossSkillId, BossTier, Brick, RunState } from './types'
 import { gainXp, type DamageSource } from './damage'
 
@@ -21,7 +21,7 @@ export const BOSS_NOUNS = ['Golem', 'Titan', 'Colossus', 'Warden', 'Behemoth', '
 /** How many face styles boss-ui can draw. */
 export const BOSS_FACES = 6
 /** Boss hp: about this many of the run's ball hits, kept between 3 and 12 bricks' worth (the body is solid, so balls can't rattle around inside it). */
-const HITS_PER_BALL = 8
+const HITS_PER_BALL = 7
 /** Row Bomb (or anything that would delete a part) takes this share of max hp instead. */
 const BIG_HIT = 0.2
 /** The reward: this many coins per turn, with coin boosts counting at most MAX_COIN_MULT. */
@@ -39,7 +39,9 @@ export function bossXp(turn: number, level: number): number {
 }
 
 export function bossHp(s: RunState): number {
-  const typical = hpScale(s.turn)
+  // A typical brick as you meet it: brick hp is capped by your firepower, so
+  // the boss is too (late in a run the raw curve runs into the millions).
+  const typical = Math.min(hpScale(s.turn), hpCap(s))
   // Real firepower: balls × boost damage × the bonus from levels reached.
   const firepower = s.ballCount * modsOf(s.boosts).damageMult * levelPower(s.level) * HITS_PER_BALL
   return Math.round(Math.max(typical * 3, Math.min(typical * 12, firepower)))

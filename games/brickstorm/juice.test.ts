@@ -306,6 +306,29 @@ describe('combo on the XP bar', () => {
     expect(j.xpHeat).toBe(3)
   })
 
+  it('shows the multiplier next to the XP tally, slamming in once per tier', () => {
+    const j = juice()
+    j.setComboXp(1.25)
+    expect(j.comboShown).toBe(1.25)
+    expect(j.comboTierAge).toBe(0)
+    expect(j.comboFade).toBe(1)
+    j.update(0.1)
+    j.setComboXp(1.25)
+    expect(j.comboTierAge).toBeCloseTo(0.1) // same tier: no new slam
+    j.setComboXp(1.5)
+    expect(j.comboTierAge).toBe(0)
+    expect(j.comboShown).toBe(1.5)
+  })
+
+  it('fades the multiplier out when the combo ends', () => {
+    const j = juice()
+    j.setComboXp(2)
+    j.setComboXp(1)
+    expect(j.comboShown).toBe(2) // still showing while it fades
+    j.update(0.5)
+    expect(j.comboFade).toBe(0)
+  })
+
   it('shakes the bar harder the bigger the combo', () => {
     expect(barShake(1)).toBe(0)
     expect(barShake(1.25)).toBe(0)

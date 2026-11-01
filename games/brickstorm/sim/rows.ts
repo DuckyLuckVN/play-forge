@@ -13,6 +13,26 @@ export function brickRect(b: { col: number; row: number }): Rect {
   }
 }
 
+/** One rect around all of the boss's parts, so it is solid with no seams; null without a boss. */
+export function bossBody(bricks: readonly { col: number; row: number; kind: string }[]): Rect | null {
+  const rects = bricks.filter((b) => b.kind === 'boss').map(brickRect)
+  if (!rects.length) return null
+  const x = Math.min(...rects.map((r) => r.x))
+  const y = Math.min(...rects.map((r) => r.y))
+  return {
+    x,
+    y,
+    w: Math.max(...rects.map((r) => r.x + r.w)) - x,
+    h: Math.max(...rects.map((r) => r.y + r.h)) - y,
+  }
+}
+
+/** The rect each brick collides with: its own, or the whole body for a boss part. */
+export function hitRects(bricks: readonly { col: number; row: number; kind: string }[]): Rect[] {
+  const body = bossBody(bricks)
+  return bricks.map((b) => (b.kind === 'boss' && body ? body : brickRect(b)))
+}
+
 export function cellCenter(col: number, row: number): { x: number; y: number } {
   return { x: (col + 0.5) * CELL, y: TOP + (row + 0.5) * CELL }
 }

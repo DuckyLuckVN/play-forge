@@ -1,7 +1,7 @@
 // How a boss looks and reads: one big body over its parts, its name and traits.
 import { FONT, theme } from '@forge/ui/theme'
 import { t } from './i18n'
-import { brickRect } from './sim/rows'
+import { bossBody } from './sim/rows'
 import type { Boss, BossTrait, RunState } from './sim/types'
 
 const ADJECTIVE: Record<BossTrait, string> = {
@@ -44,20 +44,15 @@ export function bossName(boss: Pick<Boss, 'traits' | 'noun'>): string {
 /** The boss's body over its parts. `hit` (0..1) flashes it white after damage. */
 export function drawBoss(ctx: CanvasRenderingContext2D, s: RunState, time: number, hit: number): void {
   const boss = s.boss
-  const parts = s.bricks.filter((b) => b.kind === 'boss')
-  if (!boss || !parts.length) return
-  const rects = parts.map(brickRect)
-  const x = Math.min(...rects.map((r) => r.x))
-  const y = Math.min(...rects.map((r) => r.y))
-  const w = Math.max(...rects.map((r) => r.x + r.w)) - x
-  const h = Math.max(...rects.map((r) => r.y + r.h)) - y
+  const body = bossBody(s.bricks)
+  if (!boss || !body) return
+  // Drawn exactly on the hitbox (no bobbing), so balls bounce off what you see.
+  const { x, y, w, h } = body
   const life = Math.max(0, boss.hp / boss.maxHp)
   const rage = boss.traits.includes('enrage') && life < 0.5
   const accent = TRAIT_COLOR[boss.traits[0]]
-  const bob = Math.sin(time * 3) * 1.5
 
   ctx.save()
-  ctx.translate(0, bob)
   // Aura.
   ctx.shadowColor = rage ? theme.coral : accent
   ctx.shadowBlur = 18 + 8 * Math.sin(time * 4)

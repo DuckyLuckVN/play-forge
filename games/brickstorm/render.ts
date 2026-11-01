@@ -14,7 +14,7 @@ import { BALL_R, boardSize, CELL, COLS, COMBO_TIERS, PICKUP_R, ROWS, TOP } from 
 import { traceGuide } from './sim/physics'
 import { restingBall } from './sim/run'
 import { dims, type Dims } from './sim/dims'
-import { brickRect, cellCenter } from './sim/rows'
+import { brickRect, cellCenter, hitRects } from './sim/rows'
 import type { BrickKind, PickupKind, Rect, RunState } from './sim/types'
 
 const TRAIL = 4
@@ -240,7 +240,7 @@ export class BoardRenderer {
       rest.y,
       aim,
       modsOf(s.boosts).guideLength,
-      s.bricks.map(brickRect),
+      hitRects(s.bricks),
       this.d.boardW,
       this.d.floorY,
       rest.r,

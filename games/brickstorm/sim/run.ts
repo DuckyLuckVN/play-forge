@@ -25,7 +25,7 @@ import { dims } from './dims'
 export { comboMultiplier } from './damage'
 import { antiStall, bounceWalls, circleRect, deepestContact, reflect } from './physics'
 import { BOSS_EVERY, bossTurn, liftBoss, spawnBoss } from './boss'
-import { brickRect, cellCenter, hpStepStart, spawnRow } from './rows'
+import { brickRect, cellCenter, hitRects, hpStepStart, spawnRow } from './rows'
 import type { Ball, Brick, Pickup, RunState, SimEvent } from './types'
 
 const COIN_PICKUP = 5
@@ -175,8 +175,10 @@ function moveBall(s: RunState, ball: Ball, mods: Mods): void {
       s.events.push({ type: 'wall' })
     }
 
-    if (ball.kind === 'fire') burnThrough(s, ball, mods)
-    else bounceOffBricks(s, ball, mods)
+    if (ball.kind === 'fire') {
+      burnThrough(s, ball, mods)
+      bounceOffBricks(s, ball, mods, s.bricks.filter((b) => b.kind === 'boss'))
+    } else bounceOffBricks(s, ball, mods, s.bricks)
 
     collectPickups(s, ball, mods)
 
@@ -190,9 +192,9 @@ function moveBall(s: RunState, ball: Ball, mods: Mods): void {
   }
 }
 
-/** A fire ball never bounces off bricks: it burns each one it passes through, once per pass. */
+/** A fire ball never bounces off bricks: it burns each one it passes through, once per pass. A boss is too big to burn through. */
 function burnThrough(s: RunState, ball: Ball, mods: Mods): void {
-  const touching = s.bricks.filter((b) => circleRect(ball.x, ball.y, ball.r, brickRect(b)))
+  const touching = s.bricks.filter((b) => b.kind !== 'boss' && circleRect(ball.x, ball.y, ball.r, brickRect(b)))
   ball.inside = ball.inside.filter((id) => touching.some((b) => b.id === id))
   for (const brick of touching) {
     if (ball.inside.includes(brick.id)) continue
@@ -201,18 +203,19 @@ function burnThrough(s: RunState, ball: Ball, mods: Mods): void {
   }
 }
 
-function bounceOffBricks(s: RunState, ball: Ball, mods: Mods): void {
+/** Bounces off the deepest of `bricks`; the boss is one solid body that can't be pierced. */
+function bounceOffBricks(s: RunState, ball: Ball, mods: Mods, bricks: Brick[]): void {
   // A pierced brick is ignored until the ball has fully left it, so a
   // bounce off the next brick can't push the ball back into it for a re-hit.
   const pierced = s.bricks.find((b) => b.id === ball.lastBrick)
   if (!pierced || !circleRect(ball.x, ball.y, ball.r, brickRect(pierced))) ball.lastBrick = -1
-  const solid = s.bricks.filter((b) => b.id !== ball.lastBrick)
-  const contact = deepestContact(ball.x, ball.y, solid.map(brickRect), ball.r)
+  const solid = bricks.filter((b) => b.id !== ball.lastBrick)
+  const contact = deepestContact(ball.x, ball.y, hitRects(solid), ball.r)
   if (!contact) return
   const brick = solid[contact.index]
   const { col, row } = brick
-  hitBrick(s, ball, brick, mods, 1)
-  if (ball.pierceLeft > 0) {
+  hitBrick(s, ball, brick, mods, ball.kind === 'fire' ? 2 : 1)
+  if (ball.pierceLeft > 0 && brick.kind !== 'boss') {
     ball.pierceLeft--
     ball.lastBrick = brick.id
   } else {

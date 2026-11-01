@@ -4,7 +4,8 @@ import { damageBrick } from './damage'
 import { dims } from './dims'
 import { revive, useHelper } from './meta'
 import { hpScale } from './rows'
-import { drainEvents, startNextTurn } from './run'
+import { BRICK_INSET, CELL, TOP } from './config'
+import { drainEvents, startNextTurn, step } from './run'
 import { empty } from './testing'
 import type { BossTrait, RunState } from './types'
 
@@ -166,5 +167,39 @@ describe('boss', () => {
     delete (s as Partial<RunState>).boss
     startNextTurn(s)
     expect(s.bricks.length).toBeGreaterThan(0)
+  })
+})
+
+describe('boss hitbox', () => {
+  /** One ball flying straight up under the boss's middle column; returns its highest point. */
+  function shootUp(kind: 'normal' | 'fire', pierceLeft: number, x = 3.5 * CELL): number {
+    const s = withBoss()
+    s.phase = 'volley'
+    s.balls = [
+      { x, y: TOP + 6 * CELL, vx: 0, vy: -600, status: 'flying', kind, r: 7, split: false, inside: [], pierceLeft, bounceBonus: 0, lastBrick: -1 },
+    ]
+    let top = Infinity
+    for (let i = 0; i < 120 && s.balls[0].vy < 0; i++) {
+      step(s)
+      top = Math.min(top, s.balls[0].y)
+    }
+    return top
+  }
+  const bottom = TOP + 2 * CELL - BRICK_INSET
+
+  it('stops a normal ball at the bottom of the body', () => {
+    expect(shootUp('normal', 0)).toBeGreaterThanOrEqual(bottom + 7 - 1)
+  })
+
+  it('is solid to piercing balls: they bounce off its outside instead of entering it', () => {
+    expect(shootUp('normal', 2)).toBeGreaterThanOrEqual(bottom + 7 - 1)
+  })
+
+  it('is solid to fire balls', () => {
+    expect(shootUp('fire', 0)).toBeGreaterThanOrEqual(bottom + 7 - 1)
+  })
+
+  it('has no gaps on the seam between two parts', () => {
+    expect(shootUp('normal', 0, 3 * CELL)).toBeGreaterThanOrEqual(bottom + 7 - 0.1)
   })
 })

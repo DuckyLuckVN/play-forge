@@ -23,7 +23,7 @@ describe('shop catalog', () => {
   })
 
   it('has one free starter per look, then rising prices', () => {
-    for (const kind of ['ball', 'trail', 'arena', 'impact']) {
+    for (const kind of ['ball', 'trail', 'arena', 'impact', 'music']) {
       const prices = of(kind).map((i) => i.price)
       expect(
         prices.filter((p) => p === 0),

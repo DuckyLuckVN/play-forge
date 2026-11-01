@@ -1,6 +1,6 @@
 import { spend, type Helpers, type Save } from './save'
 
-export type ItemKind = 'ball' | 'trail' | 'arena' | 'impact' | 'helper'
+export type ItemKind = 'ball' | 'trail' | 'arena' | 'impact' | 'music' | 'helper'
 
 export interface ShopItem {
   id: string
@@ -120,6 +120,28 @@ export const CATALOG: ShopItem[] = [
     ['plasma', 'Plasma', 3000],
     ['boom', 'Boom!', 3400],
     ['supernova', 'Supernova', 4000],
+  ]),
+  ...looks('music', [
+    ['arcade', 'Arcade', 0],
+    ['lofi', 'Lo-Fi Drift', 300],
+    ['cafe', 'Rainy Café', 400],
+    ['hero', '8-Bit Hero', 500],
+    ['march', 'Brick March', 650],
+    ['breeze', 'Ocean Breeze', 800],
+    ['party', 'Pixel Party', 950],
+    ['funk', 'Funk Brick', 1100],
+    ['starlight', 'Starlight', 1250],
+    ['neon', 'Neon Drive', 1400],
+    ['quest', 'Heroic Quest', 1600],
+    ['jazz', 'Midnight Jazz', 1800],
+    ['disco', 'Disco Bounce', 2000],
+    ['waltz', 'Aurora Waltz', 2200],
+    ['night', 'Arcade Night', 2400],
+    ['groove', 'Groove Machine', 2700],
+    ['retro', 'Retro Wave', 3000],
+    ['thunder', 'Thunder Run', 3300],
+    ['meteor', 'Meteor Storm', 3600],
+    ['overdrive', 'Overdrive', 4000],
   ]),
   helper('headStart', 'Head Start', 150, 'Start a run with +5 balls'),
   helper('luckyStart', 'Lucky Start', 200, 'Start a run with a free boost pick'),

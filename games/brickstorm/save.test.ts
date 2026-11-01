@@ -125,6 +125,16 @@ describe('save', () => {
   })
 })
 
+describe('soundtracks', () => {
+  it('gives older saves the default track, owned and equipped', () => {
+    const old = { ...fresh(), owned: ['ball:classic'], equipped: { ball: 'ball:classic' } }
+    const storage = new Map([[SAVE_KEY, JSON.stringify(old)]])
+    const { save } = loadSave({ getItem: (k: string) => storage.get(k) ?? null } as unknown as Storage)
+    expect(save.owned).toContain('music:arcade')
+    expect(save.equipped.music).toBe('music:arcade')
+  })
+})
+
 describe('wallet', () => {
   it('counts coins earned this run that are not banked yet', () => {
     const save = { ...fresh(), coins: 100 }

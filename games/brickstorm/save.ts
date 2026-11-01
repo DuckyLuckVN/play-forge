@@ -11,6 +11,8 @@ export interface Equipped {
   trail: string
   arena: string
   impact: string
+  /** Gameplay soundtrack. */
+  music: string
 }
 
 export interface Helpers {
@@ -50,8 +52,14 @@ export const DEFAULT_SAVE: Save = {
   bestTurn: 0,
   bestCombo: 0,
   coins: 0,
-  owned: ['ball:classic', 'trail:none', 'arena:indigo', 'impact:shards'],
-  equipped: { ball: 'ball:classic', trail: 'trail:none', arena: 'arena:indigo', impact: 'impact:shards' },
+  owned: ['ball:classic', 'trail:none', 'arena:indigo', 'impact:shards', 'music:arcade'],
+  equipped: {
+    ball: 'ball:classic',
+    trail: 'trail:none',
+    arena: 'arena:indigo',
+    impact: 'impact:shards',
+    music: 'music:arcade',
+  },
   helpers: {
     headStart: 0,
     luckyStart: 0,

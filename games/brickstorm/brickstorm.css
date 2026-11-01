@@ -450,6 +450,11 @@
   box-shadow: 0 2px 4px rgb(0 0 0 / 0.4);
   pointer-events: none;
 }
+.bs-listen.pf-btn {
+  min-height: 0;
+  padding: 6px 10px;
+  font-size: 13px;
+}
 .bs-shop-btn.pf-btn {
   display: grid;
   justify-items: center;

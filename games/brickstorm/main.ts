@@ -2,7 +2,7 @@ import '@forge/ui/base.css'
 import './brickstorm.css'
 import { playMusic } from '@forge/audio/music'
 import { playSound, setMusicDuck, UI_SOUNDS } from '@forge/audio/sound'
-import { ARCADE, LOUNGE } from '@forge/audio/tracks'
+import { LOUNGE } from '@forge/audio/tracks'
 import { startRenderLoop } from '@forge/core/loop'
 import { randomSeed } from '@forge/core/rng'
 import { Particles } from '@forge/fx/particles'
@@ -15,14 +15,14 @@ import { icons } from '@forge/ui/icons'
 import { applyTheme } from '@forge/ui/theme'
 import { bossName, TRAIT_TEXT } from './boss-ui'
 import { coinAmount, shortCoins } from './coin'
-import { BOSS } from './music'
+import { BOSS, trackFor } from './music'
 import { rarityName, t } from './i18n'
 import { toBoard } from './input'
 import { Juice } from './juice'
 import { BoardRenderer } from './render'
 import { ARENAS, type ArenaId } from './arenas'
 import { bankRun, canBank, clearRun, loadSave, recordRun, spend, walletTotal, writeSave } from './save'
-import { shopPanel } from './shop-ui'
+import { isPreviewingMusic, shopPanel } from './shop-ui'
 import { applyHelpers, growBoard, revive, reviveCost, useHelper } from './sim/meta'
 import { dims } from './sim/dims'
 import { boostDetail, GUIDE, newlySeen } from './guide'
@@ -537,7 +537,7 @@ function beginRun(s: RunState) {
   particles.clear()
   controls.hidden = false
   pauseBtn.hidden = false
-  playMusic(ARCADE)
+  playMusic(trackFor(save.equipped.music))
   show(null)
 }
 
@@ -727,7 +727,7 @@ function finish(s: RunState) {
       overShown = false
       controls.hidden = false
       pauseBtn.hidden = false
-      playMusic(ARCADE)
+      playMusic(trackFor(save.equipped.music))
       checkpoint()
       show(null)
     },
@@ -793,7 +793,7 @@ startRenderLoop((dt, time) => {
     for (const e of drainEvents(s)) juice.handle(e)
     juice.setBossHp(s.boss?.hp ?? null)
     // Boss fights get their own music and a card explaining the boss.
-    if (s.phase !== 'over') playMusic(s.boss ? BOSS : ARCADE)
+    if (s.phase !== 'over' && !isPreviewingMusic()) playMusic(s.boss ? BOSS : trackFor(save.equipped.music))
     if (s.boss && s.boss !== bossAnnounced) {
       bossAnnounced = s.boss
       notices.push({

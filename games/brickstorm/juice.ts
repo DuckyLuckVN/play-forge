@@ -100,6 +100,8 @@ const XP_TICK_GAP = 0.125
 export const LEVEL_UP_INTRO = 1.2
 /** Seconds the "bricks are tougher" notice shows. */
 export const TOUGHER_LIFE = 2.2
+/** Seconds the new column or row glows after the board grows. */
+export const GROW_FX_LIFE = 1.4
 
 /** A short XP tick whose pitch climbs an octave as the bar fills. */
 export function xpTick(fill: number): Tone[] {
@@ -131,6 +133,8 @@ export class Juice {
   private bossHp: number | null = null
   /** Seconds since bricks got tougher (a new hp stretch), for the "▲" notice; null when not showing. */
   tougherAge: number | null = null
+  /** The board's newest column or row, lit up for a moment after it grows. */
+  growFx: { axis: 'col' | 'row'; age: number } | null = null
   /** XP as drawn, in levels (1.5 = halfway through the second level); eases toward the real value. */
   shownXp = 0
   private targetXp = 0
@@ -272,6 +276,7 @@ export class Juice {
         return playSound(boom ? BRICK_SOUNDS.explode : BRICK_SOUNDS.secondWind)
       }
       case 'grow':
+        this.growFx = { axis: e.axis, age: 0 }
         this.show(e.axis === 'col' ? t('WIDER!') : t('TALLER!'), 0.6)
         return playSound(BRICK_SOUNDS.secondWind)
       case 'jackpot':
@@ -410,6 +415,10 @@ export class Juice {
     this.bossHit = Math.max(0, this.bossHit - dt * 6)
     if (this.tougherAge !== null)
       this.tougherAge = this.tougherAge + dt > TOUGHER_LIFE ? null : this.tougherAge + dt
+    if (this.growFx) {
+      this.growFx.age += dt
+      if (this.growFx.age > GROW_FX_LIFE) this.growFx = null
+    }
     this.updateXp(dt)
     this.hitstop = Math.max(0, this.hitstop - dt)
     for (const q of this.queue) q.at -= dt

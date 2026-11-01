@@ -13,7 +13,8 @@ import { langMenu } from '@forge/ui/lang-menu'
 import { h, icon, toast } from '@forge/ui/dom'
 import { icons } from '@forge/ui/icons'
 import { applyTheme } from '@forge/ui/theme'
-import { bossName, TRAIT_TEXT } from './boss-ui'
+import { bossIntro } from './boss-ui'
+import { growCard } from './grow-ui'
 import { coinAmount, shortCoins } from './coin'
 import { BOSS, trackFor } from './music'
 import { rarityName, t } from './i18n'
@@ -653,32 +654,18 @@ function showGrow() {
     checkpoint()
     if (s.phase !== 'pick') show(null)
   }
-  const col = button(
-    t('+1 column ({from} → {to})', { from: s.cols, to: s.cols + 1 }),
-    () => choose('col'),
-    'primary wide',
-  )
-  col.autofocus = true
-  col.disabled = s.cols >= MAX_COLS
-  const row = button(
-    t('+1 row ({from} → {to})', { from: s.rows, to: s.rows + 1 }),
-    () => choose('row'),
-    'wide',
-  )
-  row.disabled = s.rows >= MAX_ROWS
   show(
     h(
       'div',
-      { class: 'pf-panel' },
+      { class: 'pf-panel wide' },
       h('h2', { class: 'pf-heading', textContent: t('The storm grows!') }),
-      h('p', {
-        class: 'pf-lede',
-        textContent: t(
-          'Make the board bigger. A column gives your balls more room; a row gives you more time.',
-        ),
-      }),
-      col,
-      row,
+      h('p', { class: 'pf-lede', textContent: t('Choose how the board grows. It stays for the rest of this run.') }),
+      h(
+        'div',
+        { class: 'bs-cards' },
+        growCard('col', s.cols, s.rows, s.cols >= MAX_COLS, () => choose('col')),
+        growCard('row', s.cols, s.rows, s.rows >= MAX_ROWS, () => choose('row')),
+      ),
     ),
     'grow',
   )
@@ -802,13 +789,10 @@ startRenderLoop((dt, time) => {
     juice.setBossHp(s.boss?.hp ?? null)
     // Boss fights get their own music and a card explaining the boss.
     if (s.phase !== 'over' && !isPreviewingMusic()) playMusic(s.boss ? BOSS : trackFor(save.equipped.music))
-    if (s.boss && s.boss !== bossAnnounced) {
+    // A new boss waits on the aim screen until the player has read its card.
+    if (s.boss && s.boss !== bossAnnounced && s.phase === 'aim' && !panel && !paused) {
       bossAnnounced = s.boss
-      notices.push({
-        id: 'brick:boss',
-        title: t('Boss: {name}', { name: bossName(s.boss) }),
-        text: s.boss.traits.map((k) => TRAIT_TEXT[k]).join(' '),
-      })
+      show(bossIntro(s.boss, () => show(null)), 'boss')
     }
     juice.setCoins(s.coins)
     juice.setXp(s.level, s.xp / xpToNext(s.level))

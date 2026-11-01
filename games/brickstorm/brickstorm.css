@@ -674,3 +674,38 @@
 :is(.bs-stage, .pf-overlay) :is(h2, h3, p, li, strong, span, button) {
   overflow-wrap: anywhere;
 }
+
+/* Boss intro card. */
+.bs-boss-preview {
+  display: block;
+  margin: 0 auto;
+}
+.bs-boss-skills {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  text-align: left;
+}
+.bs-boss-skills li {
+  display: grid;
+  grid-template-columns: 12px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+.bs-boss-chip {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: 0 0 8px currentColor;
+}
+
+/* Grow choice cards: the board picture on top. */
+.bs-grow-card.pf-btn {
+  text-align: center;
+  justify-items: center;
+}
+.bs-grow-preview {
+  display: block;
+}

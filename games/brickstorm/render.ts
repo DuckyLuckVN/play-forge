@@ -9,7 +9,7 @@ import { drawBoss } from './boss-ui'
 import { drawCoin } from './coin'
 import { drawBall, TRAIL_STYLE } from './cosmetics'
 import { t } from './i18n'
-import { COIN_FLY, hpColor, type Juice, TOUGHER_LIFE } from './juice'
+import { COIN_FLY, GROW_FX_LIFE, hpColor, type Juice, TOUGHER_LIFE } from './juice'
 import { modsOf } from './sim/boosts'
 import { BALL_R, boardSize, CELL, COLS, COMBO_TIERS, PICKUP_R, ROWS, TOP } from './sim/config'
 import { traceGuide } from './sim/physics'
@@ -160,6 +160,7 @@ export class BoardRenderer {
       if (s.phase === 'aim' && aim !== null) this.drawGuide(ctx, s, aim)
       this.drawBalls(ctx, s, time, juice.zaps)
     }
+    if (juice.growFx) this.drawGrowFx(ctx, juice.growFx)
     for (const l of juice.lasers) {
       ctx.fillStyle = '#ff6fb5'
       ctx.globalAlpha = l.life / 0.3
@@ -458,6 +459,41 @@ export class BoardRenderer {
       const y = c.y0 + (ty - c.y0) * k - Math.sin(k * Math.PI) * 60
       drawCoin(ctx, x, y, 7, c.age * 14)
     }
+  }
+
+  /** The column or row the board just gained: a glow that fades, a light sweeping along it, sparks at its edge. */
+  private drawGrowFx(ctx: CanvasRenderingContext2D, fx: { axis: 'col' | 'row'; age: number }): void {
+    const k = fx.age / GROW_FX_LIFE
+    const col = fx.axis === 'col'
+    const band = col
+      ? { x: (this.d.cols - 1) * CELL, y: TOP, w: CELL, h: this.d.floorY - TOP }
+      : { x: 0, y: TOP + (this.d.dangerRow - 1) * CELL, w: this.d.boardW, h: CELL }
+    ctx.save()
+    ctx.globalAlpha = 1 - k
+    ctx.fillStyle = 'rgb(75 227 160 / 0.22)'
+    ctx.fillRect(band.x, band.y, band.w, band.h)
+    // A bright line sweeping along the new space.
+    const sweep = ease.outCubic(Math.min(1, k * 1.6))
+    const g = col
+      ? ctx.createLinearGradient(0, band.y, 0, band.y + band.h)
+      : ctx.createLinearGradient(band.x, 0, band.x + band.w, 0)
+    g.addColorStop(Math.max(0, sweep - 0.15), 'rgb(75 227 160 / 0)')
+    g.addColorStop(sweep, 'rgb(200 255 230 / 0.9)')
+    g.addColorStop(Math.min(1, sweep + 0.02), 'rgb(75 227 160 / 0)')
+    ctx.fillStyle = g
+    ctx.fillRect(band.x, band.y, band.w, band.h)
+    // Sparks drifting out of the outer edge.
+    ctx.fillStyle = '#c8ffe6'
+    for (let i = 0; i < 14; i++) {
+      const along = ((i * 0.618) % 1) * (col ? band.h : band.w)
+      const out = k * 30 * (0.5 + ((i * 0.37) % 1))
+      const x = col ? band.x + band.w - 4 + out * 0.3 : band.x + along
+      const y = col ? band.y + along : band.y + band.h - 4 + out * 0.3
+      ctx.beginPath()
+      ctx.arc(x + (col ? 0 : Math.sin(i + k * 9) * 3), y + (col ? Math.sin(i + k * 9) * 3 : 0), 2.2 * (1 - k) + 0.5, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.restore()
   }
 
   /** "▲ Tougher bricks" under the HUD on the turn a new hp stretch starts. */

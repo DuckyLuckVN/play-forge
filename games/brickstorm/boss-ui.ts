@@ -1,7 +1,10 @@
 // How a boss looks and reads: one big body over its parts, its name and traits.
 import { compactNumber, fillFitText } from '@forge/ui/text'
 import { FONT, theme } from '@forge/ui/theme'
+import { h } from '@forge/ui/dom'
 import { t } from './i18n'
+import { panelHead } from './panels'
+import { CELL, TOP } from './sim/config'
 import { bossBody } from './sim/rows'
 import type { Boss, BossTrait, RunState } from './sim/types'
 
@@ -43,7 +46,12 @@ export function bossName(boss: Pick<Boss, 'traits' | 'noun'>): string {
 }
 
 /** The boss's body over its parts. `hit` (0..1) flashes it white after damage. */
-export function drawBoss(ctx: CanvasRenderingContext2D, s: RunState, time: number, hit: number): void {
+export function drawBoss(
+  ctx: CanvasRenderingContext2D,
+  s: Pick<RunState, 'boss' | 'bricks'>,
+  time: number,
+  hit: number,
+): void {
   const boss = s.boss
   const body = bossBody(s.bricks)
   if (!boss || !body) return
@@ -165,4 +173,60 @@ export function drawBoss(ctx: CanvasRenderingContext2D, s: RunState, time: numbe
     ctx.fill()
   }
   ctx.restore()
+}
+
+/** Preview size in CSS px: the 3×2 body plus room for its glow. */
+const PREVIEW_PAD = 14
+
+/** A canvas that keeps drawing `boss` (as a 3×2 body) for as long as it is on the page. */
+function bossPreview(boss: Boss): HTMLCanvasElement {
+  const w = 3 * CELL + PREVIEW_PAD * 2
+  const hgt = 2 * CELL + PREVIEW_PAD * 2
+  const canvas = h('canvas', { class: 'bs-boss-preview', width: w * 2, height: hgt * 2 })
+  canvas.style.width = `${w}px`
+  canvas.style.height = `${hgt}px`
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return canvas
+  const parts = [0, 1].flatMap((row) =>
+    [0, 1, 2].map((col) => ({ id: row * 3 + col, col, row, hp: boss.hp, maxHp: boss.maxHp, kind: 'boss' as const, split: false })),
+  )
+  const start = performance.now()
+  const frame = (now: number) => {
+    ctx.setTransform(2, 0, 0, 2, 0, 0)
+    ctx.clearRect(0, 0, w, hgt)
+    ctx.translate(PREVIEW_PAD, PREVIEW_PAD - TOP)
+    drawBoss(ctx, { boss, bricks: parts }, (now - start) / 1000, 0)
+    if (canvas.isConnected || now - start < 500) requestAnimationFrame(frame)
+  }
+  requestAnimationFrame(frame)
+  return canvas
+}
+
+/** The card that introduces a boss: it waits for the player to close it. */
+export function bossIntro(boss: Boss, onClose: () => void): HTMLElement {
+  const fight = h('button', { class: 'pf-btn primary wide', type: 'button', onclick: onClose }, t('Fight!'))
+  fight.autofocus = true
+  return h(
+    'div',
+    { class: 'pf-panel bs-boss-intro' },
+    panelHead(t('Boss: {name}', { name: bossName(boss) }), onClose),
+    bossPreview(boss),
+    h('p', {
+      class: 'pf-lede',
+      textContent: t('No new rows until it falls. Hit any part to drain its health before it reaches the line.'),
+    }),
+    h(
+      'ul',
+      { class: 'bs-boss-skills' },
+      ...boss.traits.map((k) =>
+        h(
+          'li',
+          {},
+          h('span', { class: 'bs-boss-chip', style: `background:${TRAIT_COLOR[k]}` }),
+          h('span', { textContent: TRAIT_TEXT[k] }),
+        ),
+      ),
+    ),
+    fight,
+  )
 }

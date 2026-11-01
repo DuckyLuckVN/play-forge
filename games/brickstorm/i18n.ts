@@ -114,11 +114,17 @@ export const VI: Dictionary = {
   'Level up! Pick a boost': 'Lên cấp! Chọn một nâng cấp',
   'Reroll (use 1 of {n} tokens)': 'Đổi lại (dùng 1 trong {n} vé)',
   Reroll: 'Đổi lại',
-  '+1 column ({from} → {to})': '+1 cột ({from} → {to})',
-  '+1 row ({from} → {to})': '+1 hàng ({from} → {to})',
+  '+1 column': '+1 cột',
+  '+1 row': '+1 hàng',
+  '{from} → {to} columns': '{from} → {to} cột',
+  '{from} → {to} rows': '{from} → {to} hàng',
+  'Maxed out': 'Đã tối đa',
+  'More room: more bricks per row to break, and wider angles to aim.':
+    'Thêm chỗ: nhiều gạch mỗi hàng để phá, và góc ngắm rộng hơn.',
+  'More time: bricks need one more turn to reach the line.': 'Thêm thời gian: gạch cần thêm một lượt để chạm vạch.',
   'The storm grows!': 'Cơn bão lớn dần!',
-  'Make the board bigger. A column gives your balls more room; a row gives you more time.':
-    'Mở rộng bàn chơi. Thêm cột cho bóng nhiều chỗ hơn; thêm hàng cho bạn nhiều thời gian hơn.',
+  'Choose how the board grows. It stays for the rest of this run.':
+    'Chọn cách mở rộng bàn chơi. Nó giữ nguyên tới hết lượt chơi này.',
   Paused: 'Tạm dừng',
   Resume: 'Tiếp tục',
   'Quit (your run is saved)': 'Thoát (lượt chơi được lưu)',
@@ -153,6 +159,9 @@ export const VI: Dictionary = {
   'BOSS FIGHT!': 'ĐÁNH TRÙM!',
   'BOSS DOWN! +{coins}': 'HẠ TRÙM! +{coins}',
   'Boss: {name}': 'Trùm: {name}',
+  'Fight!': 'Chiến!',
+  'No new rows until it falls. Hit any part to drain its health before it reaches the line.':
+    'Không có hàng mới cho tới khi nó gục. Đánh vào bất kỳ phần nào để rút máu trước khi nó chạm vạch.',
   Boss: 'Trùm',
   'Every 30 turns. One big health bar, 1–2 special traits, and no new rows until it falls. Beat it for coins and a free boost.':
     'Mỗi 30 lượt. Một thanh máu lớn, 1–2 đặc tính riêng, và không có hàng mới cho tới khi nó gục. Hạ nó để nhận xu và một nâng cấp miễn phí.',

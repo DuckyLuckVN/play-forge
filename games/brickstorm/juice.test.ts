@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { playSound } from '@forge/audio/sound'
 import { theme } from '@forge/ui/theme'
-import { comboPitch, hitSound, hpColor, Juice, pitched } from './juice'
+import { comboPitch, GROW_FX_LIFE, hitSound, hpColor, Juice, pitched } from './juice'
 import { BRICK_SOUNDS } from './sounds'
 
 vi.mock('@forge/audio/sound', () => ({ playSound: vi.fn() }))
@@ -291,5 +291,17 @@ describe('XP tally and heat', () => {
     const whooshes = vi.mocked(playSound).mock.calls.filter(([s]) => s === BRICK_SOUNDS.whoosh)
     expect(whooshes).toHaveLength(1)
     expect(calls).toBeGreaterThan(0)
+  })
+})
+
+describe('grow effect', () => {
+  it('lights the new edge when the board grows, then fades out', () => {
+    const j = juice()
+    j.handle({ type: 'grow', axis: 'col' })
+    expect(j.growFx).toEqual({ axis: 'col', age: 0 })
+    j.update(GROW_FX_LIFE / 2)
+    expect(j.growFx?.age).toBeCloseTo(GROW_FX_LIFE / 2)
+    j.update(GROW_FX_LIFE)
+    expect(j.growFx).toBeNull()
   })
 })

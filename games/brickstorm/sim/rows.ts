@@ -63,7 +63,7 @@ export function hpScale(turn: number): number {
 }
 
 /** Hits' worth of damage per ball a brick may need, at most. */
-const HP_PER_BALL = 1.25
+const HP_PER_BALL = 1.4
 
 /** Most hp a new brick may have: what the run's balls can deal, so a run short on balls stays playable. */
 export function hpCap(state: RunState): number {

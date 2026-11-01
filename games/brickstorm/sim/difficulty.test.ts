@@ -100,7 +100,7 @@ describe('bricks follow the balls you have', () => {
       for (const b of s.bricks) expect(b.hp).toBeLessThanOrEqual(hpCap(s))
     }
     const s = empty()
-    s.ballCount = 4
+    s.ballCount = 5
     const before = hpCap(s)
     s.boosts = { damage: 4 }
     expect(hpCap(s)).toBeCloseTo(before * 2)

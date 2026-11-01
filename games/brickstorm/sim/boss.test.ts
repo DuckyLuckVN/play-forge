@@ -51,7 +51,7 @@ describe('boss', () => {
     weak.turn = strong.turn = BOSS_EVERY
     expect(bossHp(strong)).toBeGreaterThan(bossHp(weak))
     for (const s of [weak, strong]) {
-      expect(bossHp(s)).toBeGreaterThanOrEqual(hpScale(s.turn) * 4)
+      expect(bossHp(s)).toBeGreaterThanOrEqual(hpScale(s.turn) * 3)
       expect(bossHp(s)).toBeLessThanOrEqual(hpScale(s.turn) * 14)
     }
   })

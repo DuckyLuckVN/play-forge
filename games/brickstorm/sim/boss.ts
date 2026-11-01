@@ -13,8 +13,8 @@ const WIDTH = 3
 const HEIGHT = 2
 export const BOSS_TRAITS: BossTrait[] = ['shield', 'minions', 'drifter', 'armored', 'enrage']
 export const BOSS_NOUNS = ['Golem', 'Titan', 'Colossus', 'Warden', 'Behemoth', 'Hydra'] as const
-/** Boss hp: about this many of the run's ball hits, kept between 5 and 12 bricks' worth. */
-const HITS_PER_BALL = 10
+/** Boss hp: about this many of the run's ball hits, kept between 3 and 12 bricks' worth (the body is solid, so balls can't rattle around inside it). */
+const HITS_PER_BALL = 6
 /** Shield heals this share of max hp each turn. */
 const SHIELD_HEAL = 0.08
 /** Row Bomb (or anything that would delete a part) takes this share of max hp instead. */
@@ -27,7 +27,7 @@ export function bossParts(s: RunState): Brick[] {
 export function bossHp(s: RunState): number {
   const typical = hpScale(s.turn)
   const firepower = s.ballCount * modsOf(s.boosts).damageMult * HITS_PER_BALL
-  return Math.round(Math.max(typical * 5, Math.min(typical * 12, firepower)))
+  return Math.round(Math.max(typical * 3, Math.min(typical * 12, firepower)))
 }
 
 /** One or two different traits, from the run's rng. */

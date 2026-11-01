@@ -17,6 +17,14 @@ export const ACTIVE_HELPERS: Array<{ id: ActiveHelper; name: string; glyph: stri
   { id: 'freeze', name: 'Freeze', glyph: '❄', text: "Bricks don't drop after your next volley" },
   { id: 'firePack', name: 'Fire Pack', glyph: '🔥', text: 'Next volley starts with 5 fireballs' },
   { id: 'surge', name: 'Ball Surge', glyph: '×1.5', text: '+50% balls next volley' },
+  { id: 'megaBomb', name: 'Mega Bomb', glyph: '☢', text: 'Halve the health of every brick' },
+  { id: 'colBomb', name: 'Column Bomb', glyph: '⇣', text: 'Destroy the fullest column' },
+  { id: 'laserGrid', name: 'Laser Grid', glyph: '≡', text: 'Lasers across the 3 lowest rows' },
+  { id: 'midasTouch', name: 'Midas Touch', glyph: '♛', text: 'Turn 4 bricks into gold' },
+  { id: 'ballRain', name: 'Ball Rain', glyph: '+10', text: '+10 balls next volley' },
+  { id: 'overcharge', name: 'Overcharge', glyph: '⚡', text: '×2 damage next volley' },
+  { id: 'vacuum', name: 'Vacuum', glyph: '◎', text: 'Collect every pickup on the board' },
+  { id: 'pierceShot', name: 'Pierce Shot', glyph: '➹', text: 'Balls pierce 2 bricks next volley' },
 ]
 
 export function statsPanel(s: RunState, bestTurn: number): HTMLElement {

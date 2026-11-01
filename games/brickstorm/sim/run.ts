@@ -26,7 +26,7 @@ export { comboMultiplier } from './damage'
 import { antiStall, bounceWalls, circleRect, deepestContact, reflect } from './physics'
 import { BOSS_EVERY, bossTurn, liftBoss, spawnBoss } from './boss'
 import { brickRect, cellCenter, hpStepStart, spawnRow } from './rows'
-import type { Ball, Brick, RunState, SimEvent } from './types'
+import type { Ball, Brick, Pickup, RunState, SimEvent } from './types'
 
 const COIN_PICKUP = 5
 /** Turn reached → coin bonus. */
@@ -97,6 +97,12 @@ export function fire(s: RunState, angle: number): void {
   let n = s.doubleVolleys > 0 ? s.ballCount * 2 : s.ballCount
   if (s.surgeNext) n = Math.ceil(n * 1.5)
   s.surgeNext = false
+  n += s.rainNext ?? 0
+  s.rainNext = 0
+  s.overcharged = !!s.overchargeNext
+  s.overchargeNext = false
+  const pierce = mods.pierce + (s.pierceNext ? 2 : 0)
+  s.pierceNext = false
   const charges = Math.min(n, s.fireCharges)
   s.fireCharges -= charges
   const kindOf = (i: number): Ball['kind'] => {
@@ -114,7 +120,7 @@ export function fire(s: RunState, angle: number): void {
     r: mods.radius,
     split: false,
     inside: [],
-    pierceLeft: mods.pierce,
+    pierceLeft: pierce,
     bounceBonus: 0,
     lastBrick: -1,
   }))
@@ -238,7 +244,11 @@ function hitBrick(s: RunState, ball: Ball, brick: Brick, mods: Mods, power: numb
     s.events.push({ type: 'fever' })
   }
   const crit = mods.critChance > 0 && random(s.rng) < mods.critChance
-  const damage = (power * mods.damageMult + ball.bounceBonus) * (s.fever ? 2 : 1) * (crit ? 3 : 1)
+  const damage =
+    (power * mods.damageMult + ball.bounceBonus) *
+    (s.fever ? 2 : 1) *
+    (crit ? 3 : 1) *
+    (s.overcharged ? 2 : 1)
   const { x, y } = cellCenter(brick.col, brick.row)
   s.events.push({ type: 'hit', x, y, combo: s.combo, crit })
   const from = { col: brick.col, row: brick.row }
@@ -252,15 +262,24 @@ function collectPickups(s: RunState, ball: Ball, mods: Mods): void {
     const { x, y } = cellCenter(p.col, p.row)
     if (Math.hypot(ball.x - x, ball.y - y) >= PICKUP_R + ball.r + mods.pickupReach) continue
     s.pickups.splice(i, 1)
-    s.events.push({ type: 'pickup', kind: p.kind, x, y })
-    if (p.kind === 'ball') s.pendingBalls++
-    else if (p.kind === 'coin') s.coins += Math.round(COIN_PICKUP * mods.coinMult)
-    else if (p.kind === 'fire') s.fireCharges += 3
-    else {
-      s.events.push({ type: 'laser', y })
-      for (const b of s.bricks.filter((b) => b.row === p.row)) damageBrick(s, b, s.turn, 'laser')
-    }
+    applyPickup(s, p, mods)
   }
+}
+
+/** What a pickup does once collected (by a ball, or the Vacuum helper). Remove it from the board first. */
+export function applyPickup(s: RunState, p: Pickup, mods = modsOf(s.boosts)): void {
+  const { x, y } = cellCenter(p.col, p.row)
+  s.events.push({ type: 'pickup', kind: p.kind, x, y })
+  if (p.kind === 'ball') s.pendingBalls++
+  else if (p.kind === 'coin') s.coins += Math.round(COIN_PICKUP * mods.coinMult)
+  else if (p.kind === 'fire') s.fireCharges += 3
+  else laserRow(s, p.row)
+}
+
+/** A laser across a row: every brick in it takes the turn's worth of damage. */
+export function laserRow(s: RunState, row: number): void {
+  s.events.push({ type: 'laser', y: cellCenter(0, row).y })
+  for (const b of s.bricks.filter((b) => b.row === row)) damageBrick(s, b, s.turn, 'laser')
 }
 
 function endTurn(s: RunState): void {
@@ -268,6 +287,7 @@ function endTurn(s: RunState): void {
   s.ballCount += s.pendingBalls
   s.pendingBalls = 0
   s.balls = []
+  s.overcharged = false
   if (s.doubleVolleys > 0) s.doubleVolleys--
 
   if (s.bricks.length === 0) bonus(s, { type: 'allClear', coins: s.turn })

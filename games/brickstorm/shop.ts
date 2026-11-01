@@ -152,6 +152,17 @@ export const CATALOG: ShopItem[] = [
   helper('freeze', 'Freeze', 200, "Mid-run: bricks don't drop after your next volley"),
   helper('firePack', 'Fire Pack', 225, 'Mid-run: your next volley starts with 5 fireballs'),
   helper('surge', 'Ball Surge', 175, 'Mid-run: +50% balls for your next volley'),
+  helper('powerStart', 'Power Start', 250, 'Start a run with Heavy Hitter ×2'),
+  helper('goldStart', 'Gold Start', 250, 'Start a run with Gold Rush ×2'),
+  helper('eagleStart', 'Eagle Start', 200, 'Start a run with Eagle Eye'),
+  helper('megaBomb', 'Mega Bomb', 450, 'Mid-run: halve the health of every brick'),
+  helper('colBomb', 'Column Bomb', 275, 'Mid-run: destroy the fullest column'),
+  helper('laserGrid', 'Laser Grid', 350, 'Mid-run: fire lasers across the 3 lowest rows'),
+  helper('midasTouch', 'Midas Touch', 225, 'Mid-run: turn 4 bricks into gold'),
+  helper('ballRain', 'Ball Rain', 200, 'Mid-run: +10 balls for your next volley'),
+  helper('overcharge', 'Overcharge', 325, 'Mid-run: ×2 damage for your next volley'),
+  helper('vacuum', 'Vacuum', 150, 'Mid-run: collect every pickup on the board'),
+  helper('pierceShot', 'Pierce Shot', 300, 'Mid-run: balls pierce 2 bricks next volley'),
 ]
 
 export const findItem = (id: string) => CATALOG.find((i) => i.id === id)

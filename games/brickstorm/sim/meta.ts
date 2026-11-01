@@ -3,9 +3,10 @@ import { rollChoices } from './boosts'
 import { MAX_COLS, MAX_ROWS } from './config'
 import { dims } from './dims'
 import { liftBoss } from './boss'
-import { killBrick } from './damage'
-import { openPickOrAim } from './run'
-import type { ActiveHelper, RunState } from './types'
+import { randomInt } from '@forge/core/rng'
+import { damageBrick, killBrick } from './damage'
+import { applyPickup, laserRow, openPickOrAim } from './run'
+import type { ActiveHelper, RunState, StartHelper } from './types'
 
 /** Coins for the next revive this run: 100, 200, 300… */
 export function reviveCost(s: RunState): number {
@@ -26,8 +27,11 @@ export function revive(s: RunState): void {
 }
 
 /** Applies helpers the player switched on for this run. */
-export function applyHelpers(s: RunState, use: { headStart: boolean; luckyStart: boolean }): void {
+export function applyHelpers(s: RunState, use: Partial<Record<StartHelper, boolean>>): void {
   if (use.headStart) s.ballCount += 5
+  if (use.powerStart) s.boosts.damage = (s.boosts.damage ?? 0) + 2
+  if (use.goldStart) s.boosts.coins = (s.boosts.coins ?? 0) + 2
+  if (use.eagleStart) s.boosts.eagle = Math.max(1, s.boosts.eagle ?? 0)
   if (use.luckyStart) {
     s.pendingPicks++
     s.phase = 'pick'
@@ -66,6 +70,43 @@ export function useHelper(s: RunState, id: ActiveHelper): boolean {
       break
     case 'surge':
       s.surgeNext = true
+      break
+    case 'megaBomb': {
+      for (const b of s.bricks.filter((b) => b.kind !== 'boss'))
+        damageBrick(s, b, Math.max(1, b.hp / 2), 'blast')
+      const part = s.bricks.find((b) => b.kind === 'boss')
+      if (part && s.boss) damageBrick(s, part, s.boss.maxHp * 0.15, 'blast')
+      break
+    }
+    case 'colBomb': {
+      const per = new Map<number, number>()
+      for (const b of s.bricks) per.set(b.col, (per.get(b.col) ?? 0) + 1)
+      const col = [...per.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0]
+      for (const b of s.bricks.filter((b) => b.col === col)) killBrick(s, b, 0)
+      break
+    }
+    case 'laserGrid': {
+      const rows = [...new Set(s.bricks.map((b) => b.row))].sort((a, b) => b - a).slice(0, 3)
+      for (const row of rows) laserRow(s, row)
+      break
+    }
+    case 'midasTouch': {
+      const plain = s.bricks.filter((b) => b.kind === 'normal')
+      for (let i = 0; i < 4 && plain.length; i++)
+        plain.splice(randomInt(s.rng, plain.length), 1)[0].kind = 'gold'
+      break
+    }
+    case 'ballRain':
+      s.rainNext = (s.rainNext ?? 0) + 10
+      break
+    case 'overcharge':
+      s.overchargeNext = true
+      break
+    case 'vacuum':
+      for (const p of s.pickups.splice(0)) applyPickup(s, p)
+      break
+    case 'pierceShot':
+      s.pierceNext = true
       break
   }
   s.events.push({ type: 'helper', id })

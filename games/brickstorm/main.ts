@@ -42,7 +42,7 @@ import { BOOSTS, isSynergy, pickBoost, reroll, rerollCost, xpToNext, xpTotal } f
 import { AIM_MIN, BOARD_H, BOARD_W, boardSize, COLS, MAX_COLS, MAX_ROWS, ROWS, TICK } from './sim/config'
 import { aimFromPointer } from './sim/physics'
 import { canRecall, createRun, drainEvents, fire, recall, speedMultiplier, step } from './sim/run'
-import type { ActiveHelper, BoostId, RunState } from './sim/types'
+import type { ActiveHelper, BoostId, RunState, StartHelper } from './sim/types'
 
 const CONTROLS = () => t('Drag to aim and release to launch. Keys: ←/→ aim, Space launch, F fast, Esc pause.')
 const AIM_STEP = (1.5 * Math.PI) / 180
@@ -499,11 +499,19 @@ function updateNotice(dt: number) {
 }
 
 /** Before a run: switch on owned helpers (Head Start, Lucky Start). */
+const START_HELPERS: StartHelper[] = ['headStart', 'luckyStart', 'powerStart', 'goldStart', 'eagleStart']
+
 function showHelpers() {
-  const owned = (['headStart', 'luckyStart'] as const).filter((k) => save.helpers[k] > 0)
-  if (!owned.length) return startRun({ headStart: false, luckyStart: false })
-  const use = { headStart: false, luckyStart: false }
-  const LABEL = { headStart: t('Head Start: +5 balls'), luckyStart: t('Lucky Start: a free boost') }
+  const owned = START_HELPERS.filter((k) => save.helpers[k] > 0)
+  if (!owned.length) return startRun({})
+  const use: Partial<Record<StartHelper, boolean>> = {}
+  const LABEL: Record<StartHelper, string> = {
+    headStart: t('Head Start: +5 balls'),
+    luckyStart: t('Lucky Start: a free boost'),
+    powerStart: t('Power Start: Heavy Hitter ×2'),
+    goldStart: t('Gold Start: Gold Rush ×2'),
+    eagleStart: t('Eagle Start: Eagle Eye'),
+  }
   show(
     h(
       'div',
@@ -541,10 +549,10 @@ function beginRun(s: RunState) {
   show(null)
 }
 
-function startRun(use: { headStart: boolean; luckyStart: boolean }) {
+function startRun(use: Partial<Record<StartHelper, boolean>>) {
   const seed = params.has('seed') ? Number(params.get('seed')) | 0 : randomSeed()
   const s = createRun(seed)
-  for (const k of ['headStart', 'luckyStart'] as const) {
+  for (const k of START_HELPERS) {
     if (use[k] && save.helpers[k] > 0) save.helpers = { ...save.helpers, [k]: save.helpers[k] - 1 }
     else use[k] = false
   }

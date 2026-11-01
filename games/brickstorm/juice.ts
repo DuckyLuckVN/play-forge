@@ -76,6 +76,14 @@ const HELPER_TEXT = {
   freeze: t('FROZEN!'),
   firePack: t('FIRE PACK!'),
   surge: t('BALL SURGE!'),
+  megaBomb: t('MEGA BOMB!'),
+  colBomb: t('COLUMN BOMB!'),
+  laserGrid: t('LASER GRID!'),
+  midasTouch: t('MIDAS TOUCH!'),
+  ballRain: t('BALL RAIN!'),
+  overcharge: t('OVERCHARGE!'),
+  vacuum: t('VACUUM!'),
+  pierceShot: t('PIERCE SHOT!'),
 }
 
 const BANNER_LIFE = 1.4
@@ -257,10 +265,12 @@ export class Juice {
       case 'milestone':
         this.show(t('TURN {turn}! +{coins}', { turn: e.turn, coins: e.coins }), 0.5)
         return playSound(BRICK_SOUNDS.jackpot)
-      case 'helper':
+      case 'helper': {
         this.show(HELPER_TEXT[e.id], 0.5)
-        if (e.id === 'rowBomb' || e.id === 'pushBack') this.shake.add(0.35)
-        return playSound(e.id === 'rowBomb' ? BRICK_SOUNDS.explode : BRICK_SOUNDS.secondWind)
+        const boom = e.id === 'rowBomb' || e.id === 'megaBomb' || e.id === 'colBomb'
+        if (boom || e.id === 'pushBack') this.shake.add(boom && e.id !== 'rowBomb' ? 0.6 : 0.35)
+        return playSound(boom ? BRICK_SOUNDS.explode : BRICK_SOUNDS.secondWind)
+      }
       case 'grow':
         this.show(e.axis === 'col' ? t('WIDER!') : t('TALLER!'), 0.6)
         return playSound(BRICK_SOUNDS.secondWind)

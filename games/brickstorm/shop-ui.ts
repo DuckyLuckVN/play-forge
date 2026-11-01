@@ -33,6 +33,17 @@ const HELPER_GLYPH: Record<string, string> = {
   'helper:freeze': '❄',
   'helper:firePack': '🔥',
   'helper:surge': '×1.5',
+  'helper:powerStart': '⚔',
+  'helper:goldStart': '$',
+  'helper:eagleStart': '◉',
+  'helper:megaBomb': '☢',
+  'helper:colBomb': '⇣',
+  'helper:laserGrid': '≡',
+  'helper:midasTouch': '♛',
+  'helper:ballRain': '+10',
+  'helper:overcharge': '⚡',
+  'helper:vacuum': '◎',
+  'helper:pierceShot': '➹',
 }
 
 const arenaPainter = new ArenaPainter()

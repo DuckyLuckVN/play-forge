@@ -18,8 +18,9 @@ describe('cosmetics', () => {
 describe('shop catalog', () => {
   const of = (kind: string) => CATALOG.filter((i) => i.kind === kind)
 
-  it('offers at least 20 balls, trails and impacts', () => {
-    for (const kind of ['ball', 'trail', 'impact']) expect(of(kind).length, kind).toBeGreaterThanOrEqual(20)
+  it('offers at least 20 of everything', () => {
+    for (const kind of ['ball', 'trail', 'arena', 'impact', 'music', 'helper'])
+      expect(of(kind).length, kind).toBeGreaterThanOrEqual(20)
   })
 
   it('has one free starter per look, then rising prices', () => {

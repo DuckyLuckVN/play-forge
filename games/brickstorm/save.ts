@@ -25,6 +25,17 @@ export interface Helpers {
   freeze: number
   firePack: number
   surge: number
+  powerStart: number
+  goldStart: number
+  eagleStart: number
+  megaBomb: number
+  colBomb: number
+  laserGrid: number
+  midasTouch: number
+  ballRain: number
+  overcharge: number
+  vacuum: number
+  pierceShot: number
 }
 
 export interface SavedRun {
@@ -70,6 +81,17 @@ export const DEFAULT_SAVE: Save = {
     freeze: 0,
     firePack: 0,
     surge: 0,
+    powerStart: 0,
+    goldStart: 0,
+    eagleStart: 0,
+    megaBomb: 0,
+    colBomb: 0,
+    laserGrid: 0,
+    midasTouch: 0,
+    ballRain: 0,
+    overcharge: 0,
+    vacuum: 0,
+    pierceShot: 0,
   },
   seen: [],
   run: null,

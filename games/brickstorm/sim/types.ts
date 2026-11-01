@@ -3,7 +3,23 @@ import type { RngState } from '@forge/core/rng'
 export type Phase = 'aim' | 'volley' | 'pick' | 'grow' | 'over'
 
 /** Helpers the player can spend mid-run, while aiming. */
-export type ActiveHelper = 'pushBack' | 'rowBomb' | 'freeze' | 'firePack' | 'surge'
+export type ActiveHelper =
+  | 'pushBack'
+  | 'rowBomb'
+  | 'freeze'
+  | 'firePack'
+  | 'surge'
+  | 'megaBomb'
+  | 'colBomb'
+  | 'laserGrid'
+  | 'midasTouch'
+  | 'ballRain'
+  | 'overcharge'
+  | 'vacuum'
+  | 'pierceShot'
+
+/** Helpers switched on before a run starts. */
+export type StartHelper = 'headStart' | 'luckyStart' | 'powerStart' | 'goldStart' | 'eagleStart'
 
 export interface Rect {
   x: number
@@ -167,6 +183,13 @@ export interface RunState {
   freezeNext: boolean
   /** Ball Surge helper: +50% balls next volley. */
   surgeNext: boolean
+  /** Ball Rain helper: extra balls next volley. (Optional: absent in older saved runs.) */
+  rainNext?: number
+  /** Overcharge helper: ×2 damage next volley; `overcharged` while that volley flies. */
+  overchargeNext?: boolean
+  overcharged?: boolean
+  /** Pierce Shot helper: every ball pierces 2 extra bricks next volley. */
+  pierceNext?: boolean
   /** The boss fight in progress, if any (absent in runs saved before bosses). */
   boss?: Boss | null
   nextId: number

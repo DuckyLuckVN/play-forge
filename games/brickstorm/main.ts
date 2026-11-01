@@ -34,6 +34,7 @@ import {
   undoReset,
   walletTotal,
   writeSave,
+  type Save,
 } from './save'
 import { isPreviewingMusic, shopPanel } from './shop-ui'
 import { applyHelpers, growBoard, revive, reviveCost, useHelper } from './sim/meta'
@@ -231,6 +232,14 @@ function applyCosmetics() {
 }
 applyCosmetics()
 
+/** Swaps in a whole different save (fresh start, undo): its look and music too, not just its numbers. */
+function replaceSave(next: Save) {
+  save = next
+  leaveRun()
+  applyCosmetics()
+  playMusic(LOUNGE)
+}
+
 // ---------- Screens ----------
 function show(el: HTMLElement | null, key = '') {
   overlay.hidden = !el
@@ -287,7 +296,8 @@ function showHome() {
             { class: 'bs-reset-done', role: 'status' },
             h('span', { textContent: t('Progress erased. Fresh start!') }),
             button(t('Undo'), () => {
-              save = undoReset() ?? save
+              const back = undoReset()
+              if (back) replaceSave(back)
               justReset = false
               showHome()
             }),
@@ -315,7 +325,7 @@ function confirmFreshStart() {
       button(
         t('Erase everything'),
         () => {
-          save = resetSave()
+          replaceSave(resetSave())
           justReset = true
           showHome()
         },

@@ -4,12 +4,54 @@ import type { Particles } from '@forge/fx/particles'
 import type { Shake } from '@forge/fx/shake'
 import { prefersReducedMotion } from '@forge/fx/tween'
 import { theme } from '@forge/ui/theme'
-import type { SimEvent } from './sim/types'
+import type { Boss, Brick, SimEvent } from './sim/types'
 import { skillGroup, skillInfo } from './boss-skill-ui'
 import { IMPACT_STYLE } from './cosmetics'
 import { t } from './i18n'
-import { CELL } from './sim/config'
-import { BOSS_SOUNDS, BRICK_SOUNDS } from './sounds'
+import { CELL, TOP } from './sim/config'
+import { HEROES, type HeroId } from './sim/heroes'
+import { BOSS_SOUNDS, BRICK_SOUNDS, HEALTH_SOUNDS, HERO_SOUNDS } from './sounds'
+
+/** Banner per storm wave. */
+/** What each storm wave means, for the notice card under its banner. */
+export const STORM_EXPLAIN = {
+  wall: 'Bricks fill every column but one. A heart rides with it.',
+  iron: 'Armoured bricks: plain balls chip 1 per hit; fire, bombs and lasers hit fully. A heart rides with it.',
+  gold: 'A row of gold bricks: they pay double coins. A heart rides with it.',
+  bombs: 'A row of bomb bricks: break one and they chain. A heart rides with it.',
+} as const
+
+/** Banner for each boss attack as it lands. */
+export const ATTACK_TEXT = {
+  slam: 'GROUND SLAM!',
+  barrage: 'MISSILES INCOMING!',
+  hex: 'HEXED!',
+  thorns: 'THORNS!',
+} as const
+
+export const STORM_TEXT = {
+  wall: 'STORM: BRICK WALL!',
+  iron: 'STORM: IRON WAVE!',
+  gold: 'STORM: GOLD RUSH!',
+  bombs: 'STORM: BOMB WAVE!',
+} as const
+
+/** Health and healing green. */
+export const HEAL_COLOR = '#69db7c'
+
+/** A boss's death: explosions until this many seconds, then the finale; it is over at BOSS_DEATH_LIFE. */
+/** Arena growth: rumble until ARENA_OPEN, the rows open until ARENA_LAND, then the thud. A shrink squeezes until ARENA_SQUEEZE. */
+/** After a combo ends its multiplier stays this long, then fades over COMBO_FADE seconds. */
+export const COMBO_HOLD = 0.6
+export const COMBO_FADE = 0.8
+/** How fast the XP bar's heat cools after a combo, in multiplier per second. */
+const BAR_COOL = 1.2
+export const ARENA_OPEN = 0.35
+export const ARENA_LAND = 0.95
+export const ARENA_SQUEEZE = 0.4
+export const BOSS_DEATH_BOOM = 2
+export const BOSS_DEATH_LIFE = 2.7
+export const SHOCKWAVE_LIFE = 0.7
 
 const PENTA = [0, 2, 4, 7, 9]
 
@@ -86,6 +128,7 @@ const HELPER_TEXT = {
   overcharge: t('OVERCHARGE!'),
   vacuum: t('VACUUM!'),
   pierceShot: t('PIERCE SHOT!'),
+  potion: t('HEALED!'),
 }
 
 const BANNER_LIFE = 1.4
@@ -218,12 +261,15 @@ export class Juice {
   xpSparks = 0
   /** XP multiplier from the live combo (1: none); while above 1 the XP bar burns. */
   comboMult = 1
+  /** The multiplier as the XP bar feels it: up at once with the combo, cooling gently after it ends. */
+  barMult = 1
   /** The multiplier shown by the XP tally: the last one above 1, kept while it fades out. */
   comboShown = 1
   /** Seconds since the multiplier last stepped up (null: never), for its one slam. */
   comboTierAge: number | null = null
   /** 1 while a combo multiplies XP; fades to 0 in about 0.2 s after it ends. */
   comboFade = 0
+  private comboHold = 0
   /** The level badge popping after the bar crossed the line; `count` levels in this burst. */
   levelPop: { age: number; count: number } | null = null
   private lastChime = -Infinity
@@ -237,6 +283,23 @@ export class Juice {
   /** Chain effects waiting for their ripple delay. */
   private queue: Array<{ e: Extract<SimEvent, { type: 'explode' | 'zap' }>; at: number }> = []
   private announced = 0
+  /** 0..1 after a hit bounced off the boss: it smirks. */
+  bossSmug = 0
+  /** 0..1 after the boss hurt the hero: it laughs. */
+  bossGloat = 0
+  /** 0..1 red flash over the board after a crash; decays in `update`. */
+  hurtFlash = 0
+  /** Health as the bar draws it: drops at once, while `hpGhost` drains down to it so the loss shows. */
+  hpGhost: number | null = null
+  /** Last health loss / gain popping by the bar; `age` in seconds. */
+  hpPop: { amount: number; age: number } | null = null
+  /** 0..1 glow on the health bar after a heal. */
+  healGlow = 0
+  /** 0..1 shake of the hero portrait after a hit. */
+  heroHurt = 0
+  /** 0..1 flare of the hero portrait when its trait goes off. */
+  heroCast = 0
+  private hp: number | null = null
   /** When each kind of sound last played, so big volleys don't stack hundreds of tones. */
   private lastPlayed = new Map<string, number>()
 
@@ -257,7 +320,7 @@ export class Juice {
         // Every hit feeds the XP bar; an orb shows it (capped so big volleys stay readable).
         if (this.xpOrbs.length < MAX_XP_ORBS) this.xpOrbs.push({ x0: e.x, y0: e.y, age: 0 })
         if (e.crit) this.particles.text(e.x, e.y, t('CRIT'), { color: theme.yolk, size: 16 })
-        const level = ANNOUNCER.filter(([at]) => e.combo >= at).length
+        const level = ANNOUNCER.filter(([at]) => e.power >= at).length
         if (level > this.announced) {
           this.announced = level
           const [, text, sound] = ANNOUNCER[level - 1]
@@ -357,28 +420,40 @@ export class Juice {
         // Deeper as it weakens: the fight sounds like it's going your way.
         return this.play('bossHit', pitched(BOSS_SOUNDS.hit, 0.6 + 0.6 * e.life))
       case 'bossBlock':
+        this.bossSmug = 1
         this.particles.burst(e.x, e.y, { count: 5, color: ['#9fe7ff', '#ffffff'], speed: 140, life: 0.25 })
         return this.play('bossBlock', BOSS_SOUNDS.block)
       case 'pop':
         this.particles.burst(e.x, e.y, { count: 12, color: ['#ff4d6d', '#ffffff'] })
         return playSound(pitched(BRICK_SOUNDS.kill, 1.6))
-      case 'bossDown':
-        this.show(t('BOSS DOWN! +{coins}', { coins: e.coins }), 1)
-        this.particles.text(e.x, e.y + 40, t('+1 SKILL SLOT!'), { color: '#4be3a0', size: 22, rise: 60 })
-        this.banner!.big = true
-        this.shake.add(0.8)
-        celebrate()
-        this.flyCoins(e.x, e.y, 20)
-        for (let i = 0; i < 3; i++) {
-          this.particles.burst(e.x, e.y, {
-            count: 30,
-            color: ['#ff9f43', '#ffc83d', '#b48cff', '#ffffff'],
-            speed: 260 + i * 120,
-            life: 0.8,
-          })
+      case 'bossDown': {
+        // The boss doesn't just vanish: its body stays, cracks and blows up
+        // in a chain of explosions, then a flash and a shockwave finish it.
+        const cells = e.ghost?.parts ?? []
+        const xs = cells.map((p) => p.col * CELL)
+        const ys = cells.map((p) => TOP + p.row * CELL)
+        const box = cells.length
+          ? {
+              x: Math.min(...xs),
+              y: Math.min(...ys),
+              w: Math.max(...xs) - Math.min(...xs) + CELL,
+              h: Math.max(...ys) - Math.min(...ys) + CELL,
+            }
+          : { x: e.x - CELL, y: e.y - CELL, w: 2 * CELL, h: 2 * CELL }
+        this.bossDeath = {
+          age: 0,
+          x: e.x,
+          y: e.y,
+          coins: e.coins,
+          box,
+          ghost: e.ghost ?? null,
+          booms: 0,
+          finished: false,
         }
-        playSound(BRICK_SOUNDS.allClear)
-        return playSound(BRICK_SOUNDS.jackpot)
+        this.hitstop = Math.max(this.hitstop, 0.12)
+        this.shake.add(0.5)
+        return playSound(pitched(BRICK_SOUNDS.explode, 0.5))
+      }
       case 'explode':
       case 'zap':
         // Chains ripple outward: each link plays a beat after the one before.
@@ -417,7 +492,257 @@ export class Juice {
         return playSound(BRICK_SOUNDS.revive)
       case 'land':
         return
+      case 'breach':
+        if (this.bossHp !== null) this.bossGloat = 1
+        this.hurtFlash = prefersReducedMotion() ? 0.4 : 1
+        this.heroHurt = 1
+        this.shake.add(e.boss ? 0.7 : 0.45)
+        this.hitstop = Math.max(this.hitstop, 0.08)
+        for (const p of e.at) {
+          this.particles.burst(p.x, p.y, { count: 16, color: theme.coral, speed: 260, gravity: 500 })
+          this.particles.text(p.x, p.y - 10, t('CRASH!'), { color: theme.coral, size: 16, rise: 30 })
+        }
+        return playSound(e.boss ? HEALTH_SOUNDS.bossCrash : HEALTH_SOUNDS.hurt)
+      case 'heal':
+        this.healGlow = 1
+        if (e.source === 'regen') return this.play('regen', HEALTH_SOUNDS.regen)
+        if (e.source === 'boss' || e.source === 'potion' || e.source === 'heart')
+          this.particles.text(this.width / 2, this.healY, t('+{n} HEALTH', { n: e.amount }), {
+            color: HEAL_COLOR,
+            size: 18,
+            rise: 40,
+          })
+        return playSound(HEALTH_SOUNDS.heal)
+      case 'heroHit':
+        this.bossGloat = 1
+        // A boss attack hits the hero: a red bolt from the spot, the screen stings.
+        this.hurtFlash = Math.max(this.hurtFlash, prefersReducedMotion() ? 0.3 : 0.6)
+        this.heroHurt = 1
+        this.shake.add(e.source === 'slam' ? 0.6 : 0.15)
+        this.particles.burst(e.x, e.y, { count: 10, color: ['#c77dff', '#ff6b6b'], speed: 180 })
+        this.particles.text(e.x, e.y - 8, `−${e.damage}`, { color: theme.coral, size: 15, rise: 30 })
+        return this.play('heroHit', e.source === 'slam' ? HEALTH_SOUNDS.bossCrash : HEALTH_SOUNDS.hurt, 0.7)
+      case 'bossWarn':
+        this.show(t('⚠ GROUND SLAM NEXT TURN!'), 0.2)
+        return playSound(BRICK_SOUNDS.danger)
+      case 'bossAttack': {
+        this.bossCast = 1
+        this.show(t(ATTACK_TEXT[e.id]), e.id === 'slam' ? 0.7 : 0.3)
+        this.banner!.big = e.id === 'slam'
+        if (e.id === 'slam') {
+          // The ground heaves: a big shake, a dust wave rolling across the floor, a boom.
+          this.shake.add(1)
+          this.hitstop = Math.max(this.hitstop, 0.1)
+          for (let i = 0; i < 14; i++) {
+            const x = ((i + 0.5) / 14) * this.width
+            this.particles.burst(x, this.floorY, {
+              count: 6,
+              color: ['#c9c3e6', '#8a83a8', '#e8590c'],
+              speed: 220,
+              gravity: 500,
+              life: 0.7,
+            })
+          }
+          this.particles.burst(e.x, e.y, {
+            count: 30,
+            color: ['#e8590c', '#ffc83d', '#ffffff'],
+            speed: 320,
+            life: 0.6,
+          })
+          playSound(pitched(BRICK_SOUNDS.explode, 0.4))
+          return playSound(HEALTH_SOUNDS.bossCrash)
+        }
+        this.shake.add(0.3)
+        this.particles.burst(e.x, e.y, {
+          count: 18,
+          color: [skillInfo(e.id).color, '#ffffff'],
+          speed: 240,
+          life: 0.5,
+        })
+        return playSound(BOSS_SOUNDS.attack)
+      }
+      case 'arena':
+        // Before: a rumble. Then the new rows open (or the floor squeezes in). After: a thud and dust.
+        this.arenaFx = { grow: e.grow, age: 0, landed: false }
+        if (e.grow) this.show(t('THE ARENA GROWS!'), 0.3)
+        else if (!this.shrinking) this.show(t('THE ARENA SHRINKS'), 0.2)
+        this.shrinking = !e.grow
+        this.shake.add(e.grow ? 0.35 : 0.2)
+        return playSound(e.grow ? HEALTH_SOUNDS.storm : pitched(BRICK_SOUNDS.explode, 0.5))
+      case 'storm':
+        this.show(t(STORM_TEXT[e.kind]), 0.5)
+        this.banner!.big = true
+        this.shake.add(0.4)
+        return playSound(HEALTH_SOUNDS.storm)
+      case 'heroSkill':
+        this.heroCast = 1
+        if (e.x !== undefined && e.y !== undefined)
+          this.particles.burst(e.x, e.y, {
+            count: 12,
+            color: HEROES[e.hero].color,
+            speed: 200,
+            shape: 'circle',
+          })
+        else if (e.hero === 'frost') this.show(t('FROZEN!'), 0.4)
+        return this.play('hero', HERO_SOUNDS[HEROES[e.hero].voice])
     }
+  }
+
+  /**
+   * A boss's death, playing out: `age` seconds in; explosions go off across
+   * `box` until BOSS_DEATH_BOOM, then the finale. Null when none is playing.
+   */
+  bossDeath: {
+    age: number
+    x: number
+    y: number
+    coins: number
+    box: { x: number; y: number; w: number; h: number }
+    ghost: { boss: Boss; parts: Brick[] } | null
+    booms: number
+    finished: boolean
+  } | null = null
+  /** The finale's shockwave ring: seconds since it started (null: none). */
+  shockwave: { x: number; y: number; age: number } | null = null
+
+  /** True while a boss's death is still playing: the pick screen and aiming wait for it. */
+  get bossDying(): boolean {
+    return this.bossDeath !== null
+  }
+
+  /** Game speed while a boss dies: slow motion for the drama, normal otherwise. */
+  get timeScale(): number {
+    return this.bossDeath && !this.bossDeath.finished ? 0.35 : 1
+  }
+
+  /** Advances a boss death: an accelerating chain of explosions, then the finale. */
+  private updateBossDeath(dt: number): void {
+    const d = this.bossDeath
+    if (d) {
+      d.age += dt
+      // Explosions come faster and faster: about 12 before the finale.
+      const due = Math.floor(12 * (Math.min(d.age, BOSS_DEATH_BOOM) / BOSS_DEATH_BOOM) ** 0.7)
+      while (d.booms < due) {
+        d.booms++
+        const x = d.box.x + Math.random() * d.box.w
+        const y = d.box.y + Math.random() * d.box.h
+        const k = d.booms / 12
+        this.particles.burst(x, y, {
+          count: 14 + Math.round(10 * k),
+          color: ['#ff9f43', '#ffc83d', '#ffffff', '#ff6b6b'],
+          speed: 180 + 160 * k,
+          life: 0.5,
+        })
+        this.particles.burst(x, y, {
+          count: 6,
+          color: ['#5c5470', '#8a83a8'],
+          speed: 60,
+          life: 0.9,
+          shape: 'circle',
+        })
+        this.shake.add(0.18 + 0.12 * k)
+        if (!prefersReducedMotion()) this.flash = Math.max(this.flash, 0.12 + 0.2 * k)
+        this.play('bossBoom', pitched(BRICK_SOUNDS.explode, 0.7 + 0.6 * k), 0.9)
+      }
+      if (!d.finished && d.age >= BOSS_DEATH_BOOM) {
+        d.finished = true
+        this.finishBoss(d)
+      }
+      if (d.age >= BOSS_DEATH_LIFE) this.bossDeath = null
+    }
+    if (this.shockwave && (this.shockwave.age += dt) > SHOCKWAVE_LIFE) this.shockwave = null
+  }
+
+  /** The finale: a white flash, a shockwave, the body shatters, then the rewards. */
+  private finishBoss(d: NonNullable<Juice['bossDeath']>): void {
+    this.flash = prefersReducedMotion() ? 0.5 : 1
+    this.shockwave = { x: d.x, y: d.y, age: 0 }
+    this.shake.add(1)
+    this.hitstop = Math.max(this.hitstop, 0.15)
+    const accent = d.ghost ? skillInfo(d.ghost.boss.traits[0] ?? 'armored').color : '#b48cff'
+    for (const p of d.ghost?.parts ?? []) {
+      // Each piece of the body flies apart as shards.
+      const cx = (p.col + 0.5) * CELL
+      const cy = TOP + (p.row + 0.5) * CELL
+      this.particles.burst(cx, cy, {
+        count: 18,
+        color: [accent, '#ffffff', '#2b2540'],
+        speed: 420,
+        gravity: 700,
+        life: 1,
+      })
+    }
+    for (let i = 0; i < 3; i++) {
+      this.particles.burst(d.x, d.y, {
+        count: 30,
+        color: ['#ff9f43', '#ffc83d', '#b48cff', '#ffffff'],
+        speed: 300 + i * 160,
+        life: 0.9,
+      })
+    }
+    this.show(t('BOSS DOWN! +{coins}', { coins: d.coins }), 1)
+    this.banner!.big = true
+    this.particles.text(d.x, d.y + 40, t('+1 SKILL SLOT!'), { color: '#4be3a0', size: 22, rise: 60 })
+    celebrate()
+    this.flyCoins(d.x, d.y, 20)
+    playSound(pitched(BRICK_SOUNDS.explode, 0.4))
+    playSound(BRICK_SOUNDS.allClear)
+    playSound(BRICK_SOUNDS.jackpot)
+  }
+
+  /**
+   * The arena changing size: `age` seconds in. Growing: rumble (to ARENA_OPEN),
+   * the new rows open (to ARENA_LAND), then a thud. Shrinking: a squeeze, then a thud.
+   */
+  arenaFx: { grow: boolean; age: number; landed: boolean } | null = null
+  private shrinking = false
+  /** The floor's y (set by the renderer), for the arena's dust. */
+  floorY = 760
+
+  private updateArena(dt: number): void {
+    const a = this.arenaFx
+    if (!a) return
+    a.age += dt
+    const land = a.grow ? ARENA_LAND : ARENA_SQUEEZE
+    if (!a.landed && a.age >= land) {
+      a.landed = true
+      this.shake.add(a.grow ? 0.45 : 0.25)
+      for (let i = 0; i < 9; i++) {
+        const x = ((i + 0.5) / 9) * this.width
+        this.particles.burst(x, this.floorY, {
+          count: 5,
+          color: ['#c9c3e6', '#8a83a8', '#ffc83d'],
+          speed: 140,
+          gravity: 400,
+          life: 0.6,
+        })
+      }
+      playSound(pitched(BRICK_SOUNDS.explode, a.grow ? 0.35 : 0.6))
+    }
+    if (a.age >= land + 0.6) this.arenaFx = null
+  }
+
+  /** Board width and the y of the health bar, so heal popups rise from it (set by the renderer). */
+  width = 392
+  healY = 700
+
+  /** Plays a hero's signature sound (picked, or a run starting). */
+  heroVoice(hero: HeroId): void {
+    playSound(HERO_SOUNDS[HEROES[hero].voice])
+  }
+
+  /** The hero's real health each frame: a drop pops "−N" and leaves a ghost that drains; `snap` for a new run. */
+  setHealth(hp: number | null, snap = false): void {
+    if (hp === null || snap || this.hp === null) {
+      this.hp = hp
+      this.hpGhost = hp
+      this.hpPop = null
+      return
+    }
+    const change = Math.round(hp) - Math.round(this.hp)
+    if (change !== 0 && Math.abs(change) >= 1) this.hpPop = { amount: change, age: 0 }
+    if (hp > this.hp) this.hpGhost = Math.max(this.hpGhost ?? hp, hp)
+    this.hp = hp
   }
 
   /**
@@ -454,7 +779,10 @@ export class Juice {
       this.comboShown = mult
       this.comboTierAge = 0
     }
-    if (mult > 1) this.comboFade = 1
+    if (mult > 1) {
+      this.comboFade = 1
+      this.comboHold = COMBO_HOLD
+    }
     this.comboMult = mult
   }
 
@@ -500,12 +828,16 @@ export class Juice {
     this.xpFlash = Math.max(0, this.xpFlash - dt * 2)
     this.xpGains = this.xpGains.filter((g) => this.clock - g.at < RUSH_WINDOW)
     const recent = this.xpGains.reduce((sum, g) => sum + g.amount, 0)
+    // The bar's own multiplier: it jumps up with the combo, then (after the
+    // label's hold) cools down gradually instead of snapping off at a new turn.
+    if (this.comboMult >= this.barMult) this.barMult = this.comboMult
+    else if (this.comboHold <= 0) this.barMult = Math.max(this.comboMult, this.barMult - dt * BAR_COOL)
     // A live combo keeps the bar on fire (white-hot at ×2), as a big rush of XP does.
-    const comboHeat = this.comboMult >= 2 ? 3 : this.comboMult > 1 ? 2 : 0
+    const comboHeat = this.barMult >= 2 ? 3 : this.barMult > 1.05 ? 2 : 0
     const heat = Math.max(comboHeat, HEAT_AT.filter((at) => recent >= at).length)
     if (heat === 3 && this.xpHeat < 3) playSound(BRICK_SOUNDS.whoosh)
     this.xpHeat = heat
-    this.xpGlow = heat > 0 ? 1 : Math.max(0, this.xpGlow - dt * 2)
+    this.xpGlow = heat > 0 ? 1 : Math.max(0, this.xpGlow - dt * 0.9)
     if (this.xpTally) {
       this.xpTally.age += dt
       if (this.xpTally.age > TALLY_HOLD) this.xpTally = null
@@ -525,7 +857,11 @@ export class Juice {
     }
     if (this.levelUp) this.levelUp.age += dt
     if (this.comboTierAge !== null) this.comboTierAge += dt
-    if (this.comboMult <= 1) this.comboFade = Math.max(0, this.comboFade - dt * 5)
+    // When the combo ends the multiplier lingers a moment, then fades out gently.
+    if (this.comboMult <= 1) {
+      if (this.comboHold > 0) this.comboHold -= dt
+      else this.comboFade = Math.max(0, this.comboFade - dt / COMBO_FADE)
+    }
     if (this.levelPop) {
       this.levelPop.age += dt
       if (this.levelPop.age >= LEVEL_POP_LIFE) this.levelPop = null
@@ -604,6 +940,18 @@ export class Juice {
     for (const l of this.lasers) l.life -= dt
     this.lasers = this.lasers.filter((l) => l.life > 0)
     this.flash = Math.max(0, this.flash - dt * 2.5)
+    this.updateBossDeath(dt)
+    this.bossSmug = Math.max(0, this.bossSmug - dt * 0.8)
+    this.bossGloat = Math.max(0, this.bossGloat - dt * 0.6)
+    this.updateArena(dt)
+    this.hurtFlash = Math.max(0, this.hurtFlash - dt * 2)
+    this.healGlow = Math.max(0, this.healGlow - dt * 1.5)
+    this.heroHurt = Math.max(0, this.heroHurt - dt * 2.5)
+    this.heroCast = Math.max(0, this.heroCast - dt * 2)
+    if (this.hpPop && (this.hpPop.age += dt) > 1.4) this.hpPop = null
+    // The ghost waits a beat, then drains to the real health.
+    if (this.hpGhost !== null && this.hp !== null && this.hpGhost > this.hp && (this.hpPop?.age ?? 1) > 0.35)
+      this.hpGhost = Math.max(this.hp, this.hpGhost - Math.max(8, (this.hpGhost - this.hp) * 3) * dt)
     if (this.banner) {
       this.banner.age += dt
       if (this.banner.age > BANNER_LIFE) this.banner = null

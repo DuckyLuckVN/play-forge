@@ -1,7 +1,8 @@
 // What every brick, pickup and special ball does, for the Guide screen, the
 // first-seen hints and the run stats side panel.
 import { t } from './i18n'
-import { BOOSTS, levelPower, modsOf, xpToNext } from './sim/boosts'
+import { BOOSTS, levelPower, modsOf, runMods, xpToNext } from './sim/boosts'
+import { heroOf } from './sim/heroes'
 import { COMBO_GAP } from './sim/config'
 import type { BoostId, RunState } from './sim/types'
 
@@ -16,7 +17,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'brick:normal',
     name: 'Brick',
-    text: 'Break it before it reaches the red line. The number is its health.',
+    text: 'Break it before it reaches the red line: a brick that crashes into it hurts your hero. The number is its health.',
   },
   { id: 'brick:gold', name: 'Gold brick', text: 'Always drops 2× coins.' },
   {
@@ -41,9 +42,24 @@ export const GUIDE: GuideEntry[] = [
     name: 'Boss',
     text: 'Every 30 turns. One big health bar, 2–4 special powers (more for each boss), and no new rows until it falls. Beat it for coins, a free skill and an extra skill slot.',
   },
+  {
+    id: 'shape:triangle',
+    name: 'Triangle brick',
+    text: 'Its slanted side sends balls off at sharp angles. A little less health than a square.',
+  },
+  {
+    id: 'shape:orb',
+    name: 'Orb brick',
+    text: 'Round: balls glance off it in every direction. A little less health than a square.',
+  },
   { id: 'pickup:ball', name: '+1 Ball', text: 'Touch it to add a ball for the rest of the run.' },
   { id: 'pickup:coin', name: 'Coin', text: 'Touch it for 5 coins to spend in the shop.' },
   { id: 'pickup:fire', name: 'Fire charge', text: 'Your next volley starts with 3 fireballs.' },
+  {
+    id: 'pickup:heart',
+    name: 'Heart',
+    text: 'Touch it to heal 20% of your hero’s health. Shows up more when you are hurt.',
+  },
   {
     id: 'pickup:laser',
     name: 'Laser',
@@ -63,6 +79,9 @@ export function newlySeen(s: RunState, seen: string[]): string[] {
     // Bosses get their own card each fight.
     ...s.bricks.filter((b) => b.kind !== 'normal' && b.kind !== 'boss').map((b) => `brick:${b.kind}`),
     ...s.pickups.map((p) => `pickup:${p.kind}`),
+    ...s.bricks
+      .filter((b) => b.shape && b.kind !== 'boss')
+      .map((b) => (b.shape === 'orb' ? 'shape:orb' : 'shape:triangle')),
   ]
   return [...new Set(ids)].filter((id) => !seen.includes(id))
 }
@@ -71,8 +90,10 @@ const num = (n: number) => String(Math.round(n * 10) / 10)
 
 /** Label/value rows for the stats side panel. */
 export function runStats(s: RunState, bestTurn: number): Array<[string, string]> {
-  const mods = modsOf(s.boosts)
+  const mods = runMods(s)
   return [
+    [t('Hero'), t(heroOf(s).name)],
+    [t('Health'), `${Math.ceil(s.hp)} / ${s.maxHp}`],
     [t('Turn'), String(s.turn)],
     [t('Best turn'), String(Math.max(bestTurn, s.turn))],
     [t('Balls'), String(s.ballCount)],
@@ -95,24 +116,24 @@ export function boostDetail(id: BoostId, n: number, withLevel = true): string {
     coins: t('Coins from bricks and pickups are worth +{p}.', { p: pct(0.3 * n) }),
     speed: t('Balls fly +{p} faster.', { p: pct(0.15 * n) }),
     pierce:
-      m.pierceEvery === 1
+      m.pierceChance >= 1
         ? t('Each ball passes straight through the first brick it hits (still damaging it).')
-        : t('One in {n} balls passes straight through the first brick it hits (still damaging it).', {
-            n: m.pierceEvery,
+        : t('{p} of balls pass straight through the first brick they hit (still damaging it).', {
+            p: pct(m.pierceChance),
           }),
     crit: t('{p} of hits are critical and deal 3× damage.', { p: pct(m.critChance) }),
     bouncy: t('Each wall bounce adds +{d} damage to that ball for the rest of the volley.', {
       d: m.bounceStep,
     }),
     double: t('Your volley is doubled for 3 turns each time you pick this.'),
-    fireball: t('Every {n}th ball is a fireball that burns through bricks for 2× damage.', {
-      n: m.fireEvery,
+    fireball: t('{p} of balls are fireballs that burn through bricks for 2× damage.', {
+      p: pct(m.fireChance),
     }),
-    bombball: t('Every {n}th ball explodes on its first hit, damaging a 3×3 area.', { n: m.bombEvery }),
+    bombball: t('{p} of balls explode on their first hit, damaging a 3×3 area.', { p: pct(m.bombChance) }),
     twin:
-      m.twinEvery === 1
+      m.twinChance >= 1
         ? t('Each ball splits in two on its first brick hit.')
-        : t('One in {n} balls splits in two on its first brick hit.', { n: m.twinEvery }),
+        : t('{p} of balls split in two on their first brick hit.', { p: pct(m.twinChance) }),
     big: t('Balls are +{p} bigger, so they hit more.', { p: pct(0.2 * n) }),
     lightning:
       m.zapArcs === 1

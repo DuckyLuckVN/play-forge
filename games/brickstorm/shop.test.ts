@@ -52,3 +52,17 @@ describe('equip', () => {
     expect(equip(save, 'helper:revive')).toEqual(save)
   })
 })
+
+describe('heroes in the shop', () => {
+  it('sells every paid hero once, and buying one owns it', async () => {
+    const { HERO_IDS, HEROES } = await import('./sim/heroes')
+    const { buy, findItem } = await import('./shop')
+    const { DEFAULT_SAVE } = await import('./save')
+    for (const id of HERO_IDS) expect(findItem(`hero:${id}`)?.price).toBe(HEROES[id].price)
+    const rich = { ...structuredClone(DEFAULT_SAVE), coins: 99999 }
+    const res = buy(rich, 'hero:knight')
+    expect(res.result).toBe('ok')
+    expect(res.save.owned).toContain('hero:knight')
+    expect(buy(res.save, 'hero:knight').result).toBe('owned')
+  })
+})

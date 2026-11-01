@@ -60,9 +60,53 @@ function geometry(s: BossView): Geo | null {
 }
 
 /** The silhouette, grown (or shrunk, if negative) by `grow` on its outer sides only. */
+/**
+ * A triangle or orb part of the body (a shoulder, a horn, a fist), `grow` px
+ * out; it reaches into neighbouring parts so the body joins with no seam.
+ */
+function shapedPart(path: Path2D, g: Geo, b: Brick, grow: number): void {
+  const L = g.has(b.col - 1, b.row)
+  const R = g.has(b.col + 1, b.row)
+  const U = g.has(b.col, b.row - 1)
+  const D = g.has(b.col, b.row + 1)
+  const x1 = b.col * CELL + (L ? -1 : BRICK_INSET - grow)
+  const x2 = (b.col + 1) * CELL + (R ? 1 : grow - BRICK_INSET)
+  const y1 = TOP + b.row * CELL + (U ? -1 : BRICK_INSET - grow)
+  const y2 = TOP + (b.row + 1) * CELL + (D ? 1 : grow - BRICK_INSET)
+  if (b.shape === 'orb') {
+    const cx = (x1 + x2) / 2
+    const cy = (y1 + y2) / 2
+    const r = Math.min(x2 - x1, y2 - y1) / 2
+    path.moveTo(cx + r, cy)
+    path.arc(cx, cy, r, 0, Math.PI * 2)
+    // A wrist joining it to the body.
+    const k = r * 0.55
+    if (L) path.rect(x1, cy - k, cx - x1, 2 * k)
+    if (R) path.rect(cx, cy - k, x2 - cx, 2 * k)
+    if (U) path.rect(cx - k, y1, 2 * k, cy - y1)
+    if (D) path.rect(cx - k, cy, 2 * k, y2 - cy)
+    return
+  }
+  const tl = [x1, y1] as const
+  const tr = [x2, y1] as const
+  const bl = [x1, y2] as const
+  const br = [x2, y2] as const
+  const pts = {
+    'tri-tl': [tl, tr, bl],
+    'tri-tr': [tl, tr, br],
+    'tri-bl': [tl, bl, br],
+    'tri-br': [tr, br, bl],
+  }[b.shape as 'tri-tl']
+  path.moveTo(...pts[0])
+  path.lineTo(...pts[1])
+  path.lineTo(...pts[2])
+  path.closePath()
+}
+
 function bodyPath(g: Geo, grow = 0): Path2D {
   const path = new Path2D()
   g.parts.forEach((b, i) => {
+    if (b.shape) return shapedPart(path, g, b, grow)
     const r = g.rects[i]
     const L = g.has(b.col - 1, b.row)
     const R = g.has(b.col + 1, b.row)
@@ -84,6 +128,8 @@ function outline(g: Geo, grow = 0): Path2D {
   const path = new Path2D()
   const k = CORNER + grow
   g.parts.forEach((b, i) => {
+    // A shaped part strokes its own outline (a horn's slant, a fist's round).
+    if (b.shape) return shapedPart(path, g, b, grow)
     const r = g.rects[i]
     const L = !g.has(b.col - 1, b.row)
     const R = !g.has(b.col + 1, b.row)
@@ -125,6 +171,10 @@ function topEdges(g: Geo): Array<[number, number, number]> {
 export interface BossLook {
   /** 0..1 white flash after damage. */
   hit: number
+  /** 0..1 after a hit bounced off it (it smirks). */
+  smug?: number
+  /** 0..1 after it hurt the hero (it laughs). */
+  gloat?: number
   /** Where its eyes look (a ball, or the launch point). */
   look?: { x: number; y: number }
   /** 0..1 flare while a skill goes off. */
@@ -284,92 +334,249 @@ interface Mood {
   rage: boolean
   danger: boolean
   life: number
+  /** 0..1 while a skill goes off: it roars. */
+  cast?: number
+  /** 0..1 after one of your hits bounced off: it smirks. */
+  smug?: number
+  /** 0..1 after it hurt the hero: it laughs. */
+  gloat?: number
 }
 
-/** One of BOSS_FACES faces, in the core rect. Eyes follow `look`, blink, wince when hit, glow when close to the line. */
+/** What the face is showing right now, most urgent first. */
+type Expression = 'hurt' | 'roar' | 'laugh' | 'smug' | 'panic' | 'angry' | 'calm'
+
+function expressionOf(m: Mood): Expression {
+  if (m.hit > 0.3) return 'hurt'
+  if ((m.cast ?? 0) > 0.3) return 'roar'
+  if ((m.gloat ?? 0) > 0.2) return 'laugh'
+  if ((m.smug ?? 0) > 0.2) return 'smug'
+  if (m.life < 0.25) return 'panic'
+  if (m.life < 0.5 || m.rage) return 'angry'
+  return 'calm'
+}
+
+/**
+ * One of BOSS_FACES faces, in the core rect, acting out its mood: it winces
+ * when hit, roars when it casts, laughs when it hurts you, smirks when your
+ * hit bounces off, scowls when hurt, panics near death. Eyes follow `look`.
+ */
 function drawFace(ctx: CanvasRenderingContext2D, boss: Boss, core: Rect, time: number, m: Mood): void {
   const k = Math.min(core.w / 160, core.h / 104, 1.2)
-  const cx = core.x + core.w / 2
-  const eyeY = core.y + core.h * 0.44
-  const blink = (time * 0.6 + boss.turn) % 4 < 0.12
-  const wince = m.hit > 0.3
-  const pupil = m.rage || m.danger ? theme.coral : '#1d1240'
-  const toward = (ex: number, ey: number, r: number): [number, number] => {
-    if (!m.look) return [ex + Math.sin(time * 1.3) * r * 0.5, ey]
-    const a = Math.atan2(m.look.y - ey, m.look.x - ex)
-    return [ex + Math.cos(a) * r, ey + Math.sin(a) * r]
+  const ex = expressionOf(m)
+  // Panic trembles; a laugh bounces.
+  const jitter = ex === 'panic' ? Math.sin(time * 45) * 1.5 * k : 0
+  const bounce = ex === 'laugh' ? Math.abs(Math.sin(time * 14)) * 3 * k : 0
+  const cx = core.x + core.w / 2 + jitter
+  const eyeY = core.y + core.h * 0.42 - bounce
+  const mouthY = core.y + core.h * 0.7 - bounce
+  const blink = ex === 'calm' && (time * 0.6 + boss.turn) % 4 < 0.12
+  const hot = ex === 'angry' || ex === 'roar' || m.rage || m.danger
+  const pupil = hot ? theme.coral : '#1d1240'
+  const ink = theme.chalk
+  const toward = (x: number, y: number, r: number): [number, number] => {
+    if (ex === 'smug') return [x + r * 0.8, y + r * 0.2] // side-eye
+    if (ex === 'panic') return [x + Math.sin(time * 9) * r * 0.6, y]
+    if (!m.look) return [x + Math.sin(time * 1.3) * r * 0.5, y]
+    const a = Math.atan2(m.look.y - y, m.look.x - x)
+    return [x + Math.cos(a) * r, y + Math.sin(a) * r]
   }
   ctx.save()
-  if (m.danger) {
+  if (m.danger || ex === 'roar') {
     ctx.shadowColor = theme.coral
     ctx.shadowBlur = 10
   }
-  const eye = (ex: number, ey: number, rx: number, ry: number, pr: number) => {
-    if (blink || wince) {
-      ctx.strokeStyle = theme.chalk
-      ctx.lineWidth = 3 * k
+
+  /** An eye that acts: squeezed shut, laughing arcs, half-lidded, wide with a tiny pupil… */
+  const eye = (x: number, y: number, rx: number, ry: number, pr: number, side: number) => {
+    ctx.strokeStyle = ink
+    ctx.fillStyle = ink
+    ctx.lineWidth = 3 * k
+    ctx.lineCap = 'round'
+    if (ex === 'hurt') {
+      // > <
       ctx.beginPath()
-      ctx.moveTo(ex - rx, ey)
-      ctx.lineTo(ex + rx, ey)
+      ctx.moveTo(x - side * rx, y - ry * 0.7)
+      ctx.lineTo(x + side * rx * 0.6, y)
+      ctx.lineTo(x - side * rx, y + ry * 0.7)
       ctx.stroke()
       return
     }
-    ctx.fillStyle = theme.chalk
+    if (ex === 'laugh' || blink) {
+      ctx.beginPath()
+      if (ex === 'laugh') ctx.arc(x, y + ry * 0.4, rx * 0.8, Math.PI * 1.15, Math.PI * 1.85)
+      else {
+        ctx.moveTo(x - rx, y)
+        ctx.lineTo(x + rx, y)
+      }
+      ctx.stroke()
+      return
+    }
+    const wide = ex === 'roar' || ex === 'panic' ? 1.2 : 1
     ctx.beginPath()
-    ctx.ellipse(ex, ey, rx, ry, 0, 0, Math.PI * 2)
+    ctx.ellipse(x, y, rx * wide, ry * wide, 0, 0, Math.PI * 2)
     ctx.fill()
-    const [px, py] = toward(ex, ey, Math.min(rx, ry) - pr - 1)
+    const small = ex === 'panic' || ex === 'roar' ? 0.55 : 1
+    const [px, py] = toward(x, y, Math.min(rx, ry) * wide - pr * small - 1)
     ctx.fillStyle = pupil
     ctx.beginPath()
-    ctx.arc(px, py, pr, 0, Math.PI * 2)
+    ctx.arc(px, py, pr * small, 0, Math.PI * 2)
     ctx.fill()
+    // Lids: smug half-closed, angry slanted.
+    const skin = '#2a1840'
+    if (ex === 'smug') {
+      ctx.fillStyle = skin
+      ctx.fillRect(x - rx - 1, y - ry - 1, rx * 2 + 2, ry * 1.05)
+      ctx.strokeStyle = ink
+      ctx.beginPath()
+      ctx.moveTo(x - rx, y + 0.05 * ry)
+      ctx.lineTo(x + rx, y + 0.05 * ry)
+      ctx.stroke()
+    } else if (ex === 'angry') {
+      ctx.fillStyle = skin
+      ctx.beginPath()
+      ctx.moveTo(x - rx - 1, y - ry - 1)
+      ctx.lineTo(x + rx + 1, y - ry - 1)
+      ctx.lineTo(x + side * -rx, y - ry * 0.1)
+      ctx.closePath()
+      ctx.fill()
+    }
   }
-  const brow = (ex: number, side: number) => {
-    ctx.strokeStyle = theme.chalk
+  /** Brows: angry slant down to the middle, worried up, one raised when smug. */
+  const brow = (x: number, side: number, len = 12) => {
+    const inner = ex === 'angry' || ex === 'roar' || ex === 'hurt' ? 7 : ex === 'panic' ? -6 : 3
+    const lift = ex === 'smug' && side > 0 ? -7 : ex === 'panic' ? -3 : 0
+    ctx.strokeStyle = ink
     ctx.lineWidth = 4 * k
     ctx.lineCap = 'round'
     ctx.beginPath()
-    ctx.moveTo(ex - side * 12 * k, eyeY - 17 * k)
-    ctx.lineTo(ex + side * 8 * k, eyeY - 10 * k)
+    ctx.moveTo(x - side * len * k, eyeY - 17 * k + lift * k)
+    ctx.lineTo(x + side * 8 * k, eyeY - 17 * k + (inner + lift) * k)
     ctx.stroke()
   }
-  const jagged = (y: number, mw: number, teeth = 6) => {
-    ctx.strokeStyle = theme.chalk
+  /** The mouth, by expression. `mw` is its half-width. */
+  const mouth = (mw: number) => {
+    ctx.strokeStyle = ink
+    ctx.fillStyle = '#12081f'
     ctx.lineWidth = 3 * k
-    ctx.beginPath()
-    for (let i = 0; i <= teeth; i++) {
-      const mx = cx - mw + (i * 2 * mw) / teeth
-      const my = y + (i % 2 ? 5 : -2) * k
-      if (i) ctx.lineTo(mx, my)
-      else ctx.moveTo(mx, my)
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    switch (ex) {
+      case 'roar':
+      case 'laugh': {
+        // Wide open, teeth top and bottom; a laugh chatters.
+        const open = (ex === 'roar' ? 16 : 9 + 5 * Math.abs(Math.sin(time * 18))) * k
+        ctx.beginPath()
+        if (ex === 'laugh') {
+          ctx.moveTo(cx - mw, mouthY - 3 * k)
+          ctx.quadraticCurveTo(cx, mouthY + open * 2, cx + mw, mouthY - 3 * k)
+          ctx.closePath()
+        } else ctx.ellipse(cx, mouthY, mw * 0.8, open, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = ink
+        const n = 5
+        for (let i = 0; i < n; i++) {
+          const tx = cx - mw * 0.7 + ((i + 0.5) * 1.4 * mw) / n
+          ctx.beginPath()
+          ctx.moveTo(tx - 4 * k, mouthY - (ex === 'roar' ? open : 3 * k))
+          ctx.lineTo(tx + 4 * k, mouthY - (ex === 'roar' ? open : 3 * k))
+          ctx.lineTo(tx, mouthY - (ex === 'roar' ? open : 3 * k) + 6 * k)
+          ctx.fill()
+        }
+        if (ex === 'roar')
+          for (let i = 0; i < n - 1; i++) {
+            const tx = cx - mw * 0.55 + ((i + 0.5) * 1.1 * mw) / (n - 1)
+            ctx.beginPath()
+            ctx.moveTo(tx - 4 * k, mouthY + open)
+            ctx.lineTo(tx + 4 * k, mouthY + open)
+            ctx.lineTo(tx, mouthY + open - 6 * k)
+            ctx.fill()
+          }
+        return
+      }
+      case 'smug':
+        // A lopsided smirk.
+        ctx.beginPath()
+        ctx.moveTo(cx - mw * 0.6, mouthY + 2 * k)
+        ctx.quadraticCurveTo(cx + mw * 0.2, mouthY + 6 * k, cx + mw * 0.8, mouthY - 6 * k)
+        ctx.stroke()
+        return
+      case 'hurt': {
+        // Gritted teeth.
+        ctx.fillStyle = ink
+        ctx.beginPath()
+        ctx.roundRect(cx - mw * 0.7, mouthY - 5 * k, mw * 1.4, 10 * k, 3 * k)
+        ctx.fill()
+        ctx.strokeStyle = '#12081f'
+        ctx.lineWidth = 1.5 * k
+        ctx.beginPath()
+        ctx.moveTo(cx - mw * 0.7, mouthY)
+        ctx.lineTo(cx + mw * 0.7, mouthY)
+        for (let i = 1; i < 5; i++) {
+          const tx = cx - mw * 0.7 + (i * 1.4 * mw) / 5
+          ctx.moveTo(tx, mouthY - 5 * k)
+          ctx.lineTo(tx, mouthY + 5 * k)
+        }
+        ctx.stroke()
+        return
+      }
+      case 'panic':
+        // A wobbling little O.
+        ctx.beginPath()
+        ctx.ellipse(cx, mouthY, 6 * k + Math.sin(time * 20) * k, 8 * k, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.stroke()
+        return
+      case 'angry':
+      case 'calm': {
+        // A jagged grin, turned down into a snarl when angry.
+        const teeth = 6
+        const down = ex === 'angry' ? 1 : -1
+        ctx.beginPath()
+        for (let i = 0; i <= teeth; i++) {
+          const x = cx - mw + (i * 2 * mw) / teeth
+          const curve = down * (1 - ((i - teeth / 2) / (teeth / 2)) ** 2) * -6 * k
+          const y = mouthY + curve + (i % 2 ? 5 : -2) * k
+          if (i) ctx.lineTo(x, y)
+          else ctx.moveTo(x, y)
+        }
+        ctx.stroke()
+      }
     }
-    ctx.stroke()
   }
+
   switch ((boss.face ?? 0) % 6) {
     case 1: {
       // Cyclops: one big eye under a heavy brow.
-      eye(cx, eyeY, 24 * k, 18 * k, 9 * k)
-      ctx.strokeStyle = theme.chalk
+      eye(cx, eyeY, 24 * k, 18 * k, 9 * k, 1)
+      const inner = ex === 'angry' || ex === 'roar' ? 10 : ex === 'panic' ? -8 : 0
+      ctx.strokeStyle = ink
       ctx.lineWidth = 5 * k
       ctx.beginPath()
       ctx.moveTo(cx - 30 * k, eyeY - 32 * k)
-      ctx.lineTo(cx, eyeY - 23 * k)
+      ctx.lineTo(cx, eyeY - (23 - inner) * k)
       ctx.lineTo(cx + 30 * k, eyeY - 32 * k)
       ctx.stroke()
-      jagged(core.y + core.h * 0.72, core.w * 0.16, 4)
+      mouth(core.w * 0.16)
       break
     }
     case 2: {
-      // Chomper: little eyes, a big toothy jaw that snaps when hit.
-      for (const side of [-1, 1]) eye(cx + side * core.w * 0.16, eyeY - 6 * k, 7 * k, 7 * k, 3.5 * k)
-      const open = (4 + 6 * (0.5 + 0.5 * Math.sin(time * 3)) + m.hit * 10) * k
+      // Chomper: little eyes, a big toothy jaw. It gapes to roar, chatters to laugh, clamps when hit.
+      for (const side of [-1, 1]) eye(cx + side * core.w * 0.16, eyeY - 6 * k, 7 * k, 7 * k, 3.5 * k, side)
+      const open =
+        (ex === 'roar'
+          ? 18
+          : ex === 'laugh'
+            ? 6 + 8 * Math.abs(Math.sin(time * 18))
+            : ex === 'hurt'
+              ? 1
+              : 4 + 6 * (0.5 + 0.5 * Math.sin(time * 3))) * k
       const mw = core.w * 0.26
-      const my = core.y + core.h * 0.64
+      const my = mouthY - 4 * k
       ctx.fillStyle = '#12081f'
       ctx.beginPath()
       ctx.roundRect(cx - mw, my - open, mw * 2, open * 2, 6 * k)
       ctx.fill()
-      ctx.fillStyle = theme.chalk
+      ctx.fillStyle = ink
       for (let i = 0; i < 6; i++) {
         const tx = cx - mw + ((i + 0.5) * 2 * mw) / 6
         for (const dir of [1, -1]) {
@@ -383,17 +590,18 @@ function drawFace(ctx: CanvasRenderingContext2D, boss: Boss, core: Rect, time: n
       break
     }
     case 3: {
-      // Skull: dark sockets with glowing pinpoints, a nose, a row of teeth.
+      // Skull: dark sockets with glowing pinpoints; the teeth chatter when it laughs or panics.
       for (const side of [-1, 1]) {
-        const ex = cx + side * core.w * 0.17
+        const x = cx + side * core.w * 0.17
+        const squash = ex === 'laugh' ? 0.5 : ex === 'hurt' ? 0.3 : 1
         ctx.fillStyle = '#0c0614'
         ctx.beginPath()
-        ctx.ellipse(ex, eyeY, 13 * k, 11 * k, 0, 0, Math.PI * 2)
+        ctx.ellipse(x, eyeY, 13 * k, 11 * k * squash, ex === 'angry' ? side * -0.3 : 0, 0, Math.PI * 2)
         ctx.fill()
-        const [px, py] = toward(ex, eyeY, 5 * k)
-        ctx.fillStyle = m.rage || m.danger ? theme.coral : '#7fe7ff'
+        const [px, py] = toward(x, eyeY, 5 * k)
+        ctx.fillStyle = hot ? theme.coral : '#7fe7ff'
         ctx.beginPath()
-        ctx.arc(px, py, blink ? 1 : 3.5 * k, 0, Math.PI * 2)
+        ctx.arc(px, py, blink || ex === 'hurt' ? 1 : (ex === 'roar' ? 5 : 3.5) * k, 0, Math.PI * 2)
         ctx.fill()
       }
       ctx.fillStyle = '#0c0614'
@@ -402,9 +610,13 @@ function drawFace(ctx: CanvasRenderingContext2D, boss: Boss, core: Rect, time: n
       ctx.lineTo(cx - 5 * k, eyeY + 18 * k)
       ctx.lineTo(cx + 5 * k, eyeY + 18 * k)
       ctx.fill()
-      const ty = core.y + core.h * 0.7
-      ctx.fillStyle = theme.chalk
-      for (let i = -3; i < 3; i++) ctx.fillRect(cx + i * 8 * k + 1, ty - 5 * k, 6 * k, 10 * k)
+      const chatter =
+        ex === 'laugh' || ex === 'panic' ? Math.abs(Math.sin(time * 20)) * 5 * k : ex === 'roar' ? 8 * k : 0
+      ctx.fillStyle = ink
+      for (let i = -3; i < 3; i++) {
+        ctx.fillRect(cx + i * 8 * k + 1, mouthY - 5 * k - chatter / 2, 6 * k, 5 * k)
+        ctx.fillRect(cx + i * 8 * k + 1, mouthY + chatter / 2, 6 * k, 5 * k)
+      }
       break
     }
     case 4: {
@@ -414,80 +626,102 @@ function drawFace(ctx: CanvasRenderingContext2D, boss: Boss, core: Rect, time: n
         [0.22, 0.05],
         [0, -0.12],
       ]
-      spots.forEach(([dx, dy], i) => {
-        const shut = (time * 0.6 + i * 1.3 + boss.turn) % 3 < 0.12 || wince
-        const ex = cx + dx * core.w
-        const ey = eyeY + dy * core.h
-        if (shut) {
-          ctx.strokeStyle = theme.chalk
-          ctx.lineWidth = 3 * k
-          ctx.beginPath()
-          ctx.moveTo(ex - 9 * k, ey)
-          ctx.lineTo(ex + 9 * k, ey)
-          ctx.stroke()
-        } else {
-          ctx.fillStyle = theme.chalk
-          ctx.beginPath()
-          ctx.arc(ex, ey, 9 * k, 0, Math.PI * 2)
-          ctx.fill()
-          const [px, py] = toward(ex, ey, 4 * k)
-          ctx.fillStyle = pupil
-          ctx.beginPath()
-          ctx.arc(px, py, 4 * k, 0, Math.PI * 2)
-          ctx.fill()
-        }
-      })
-      jagged(core.y + core.h * 0.7, core.w * 0.2, 8)
+      spots.forEach(([dx, dy], i) =>
+        eye(cx + dx * core.w, eyeY + dy * core.h, 9 * k, 9 * k, 4 * k, i === 0 ? -1 : 1),
+      )
+      mouth(core.w * 0.2)
       break
     }
     case 5: {
-      // Visor: a dark band with a glowing slit and a scanning light.
+      // Visor: a dark band with a glowing slit. It narrows to a smirk, Vs when angry, flickers in panic.
       const vh = 16 * k
       ctx.fillStyle = '#0c0614'
       ctx.beginPath()
       ctx.roundRect(core.x + core.w * 0.12, eyeY - vh / 2, core.w * 0.76, vh, vh / 2)
       ctx.fill()
-      const glow = m.rage || m.danger ? theme.coral : '#7fe7ff'
-      ctx.fillStyle = glow
-      ctx.fillRect(core.x + core.w * 0.16, eyeY - 1.5 * k, core.w * 0.68, blink || wince ? 1 : 3 * k)
+      const glow = hot ? theme.coral : '#7fe7ff'
+      const flicker = ex === 'panic' && Math.sin(time * 30) > 0.3
+      ctx.strokeStyle = glow
+      ctx.lineWidth = (ex === 'smug' || ex === 'hurt' ? 1.5 : 3) * k
+      if (!flicker) {
+        ctx.beginPath()
+        const l = core.x + core.w * 0.16
+        const r = core.x + core.w * 0.84
+        if (ex === 'angry' || ex === 'roar') {
+          ctx.moveTo(l, eyeY - 4 * k)
+          ctx.lineTo(cx, eyeY + 3 * k)
+          ctx.lineTo(r, eyeY - 4 * k)
+        } else if (ex === 'laugh') {
+          ctx.moveTo(l, eyeY + 2 * k)
+          ctx.quadraticCurveTo(cx, eyeY - 6 * k, r, eyeY + 2 * k)
+        } else {
+          ctx.moveTo(l, eyeY)
+          ctx.lineTo(r, eyeY)
+        }
+        ctx.stroke()
+      }
       const scan = m.look
         ? Math.max(core.x + core.w * 0.18, Math.min(core.x + core.w * 0.82, m.look.x))
         : cx + Math.sin(time * 2) * core.w * 0.3
+      ctx.fillStyle = glow
       ctx.shadowColor = glow
       ctx.shadowBlur = 12
       ctx.beginPath()
       ctx.arc(scan, eyeY, 5 * k, 0, Math.PI * 2)
       ctx.fill()
       ctx.shadowBlur = 0
-      ctx.strokeStyle = 'rgb(255 255 255 / 0.5)'
-      ctx.lineWidth = 2
-      for (let i = -2; i <= 2; i++) {
-        ctx.beginPath()
-        ctx.moveTo(cx + i * 7 * k, core.y + core.h * 0.62)
-        ctx.lineTo(cx + i * 7 * k, core.y + core.h * 0.74)
-        ctx.stroke()
-      }
+      mouth(core.w * 0.14)
       break
     }
     default: {
-      // Angry brows and a jagged grin.
+      // Angry brows, two eyes and a jagged grin.
       for (const side of [-1, 1]) {
-        const ex = cx + side * core.w * 0.17
-        eye(ex, eyeY, 11 * k, 9 * k, 5 * k)
-        brow(ex, side)
+        const x = cx + side * core.w * 0.17
+        eye(x, eyeY, 11 * k, 9 * k, 5 * k, side)
+        brow(x, side)
       }
-      jagged(core.y + core.h * 0.66, core.w * 0.22)
+      mouth(core.w * 0.22)
     }
   }
   ctx.restore()
 
-  // Sweat when it's losing; steam when it's enraged.
-  if (m.life < 0.33) {
-    const d = (time * 1.2) % 1
-    ctx.fillStyle = `rgb(127 231 255 / ${1 - d})`
-    ctx.beginPath()
-    ctx.ellipse(core.x + core.w * 0.86, core.y + core.h * 0.25 + d * 14, 3, 5, 0, 0, Math.PI * 2)
-    ctx.fill()
+  // Sweat when it's losing (more in a panic); steam when enraged; an anger mark when cross.
+  if (m.life < 0.33 || ex === 'panic') {
+    for (let i = 0; i < (ex === 'panic' ? 3 : 1); i++) {
+      const d = (time * 1.4 + i * 0.33) % 1
+      ctx.fillStyle = `rgb(127 231 255 / ${1 - d})`
+      ctx.beginPath()
+      ctx.ellipse(
+        core.x + core.w * (0.86 - i * 0.7),
+        core.y + core.h * 0.25 + d * 16,
+        3,
+        5,
+        0,
+        0,
+        Math.PI * 2,
+      )
+      ctx.fill()
+    }
+  }
+  if (ex === 'angry' || ex === 'roar') {
+    // A throbbing cross-vein in the corner.
+    const vx = core.x + core.w * 0.82
+    const vy = core.y + core.h * 0.15
+    const p = 1 + 0.15 * Math.sin(time * 10)
+    ctx.strokeStyle = theme.coral
+    ctx.lineWidth = 3 * k
+    ctx.lineCap = 'round'
+    for (const [a, b] of [
+      [1, 1],
+      [-1, 1],
+      [1, -1],
+      [-1, -1],
+    ]) {
+      ctx.beginPath()
+      ctx.moveTo(vx + a * 2 * k * p, vy + b * 7 * k * p)
+      ctx.quadraticCurveTo(vx + a * 2 * k * p, vy + b * 2 * k * p, vx + a * 7 * k * p, vy + b * 2 * k * p)
+      ctx.stroke()
+    }
   }
   if (m.rage) {
     for (let i = 0; i < 3; i++) {
@@ -1041,6 +1275,9 @@ const ROLE_COLOR: Record<BossRole, string> = {
   rod: '#d9c55a',
   core: '#ffe066',
   ice: '#a5e4ff',
+  thorn: '#7b2cbf',
+  missile: '#e8590c',
+  ward: '#6c7a89',
 }
 
 /** A brick a boss summoned, in its role's colours with a glyph; returns false to also draw its hp. */
@@ -1105,6 +1342,72 @@ export function drawRoleBrick(ctx: CanvasRenderingContext2D, b: Brick, time: num
       ctx.restore()
       return false
     }
+    case 'thorn': {
+      // A cursed bramble: thorns all round, pulsing purple.
+      ctx.shadowColor = '#c77dff'
+      ctx.shadowBlur = 8 + 4 * Math.sin(time * 5)
+      ctx.beginPath()
+      ctx.roundRect(r.x + 3, r.y + 3, r.w - 6, r.h - 6, 8)
+      ctx.fill()
+      ctx.shadowBlur = 0
+      ctx.fillStyle = '#c77dff'
+      const n = 4
+      for (let i = 0; i < n; i++) {
+        const t2 = (i + 0.5) / n
+        for (const [x0, y0, dx, dy] of [
+          [r.x + r.w * t2, r.y + 3, 0, -1],
+          [r.x + r.w * t2, r.y + r.h - 3, 0, 1],
+          [r.x + 3, r.y + r.h * t2, -1, 0],
+          [r.x + r.w - 3, r.y + r.h * t2, 1, 0],
+        ]) {
+          ctx.beginPath()
+          ctx.moveTo(x0 - dy * 3.5, y0 - dx * 3.5)
+          ctx.lineTo(x0 + dx * 7, y0 + dy * 7)
+          ctx.lineTo(x0 + dy * 3.5, y0 + dx * 3.5)
+          ctx.fill()
+        }
+      }
+      ctx.restore()
+      return false
+    }
+    case 'missile': {
+      // A falling warhead with a flickering exhaust above it.
+      const flick = 0.7 + 0.3 * Math.sin(time * 30 + b.id)
+      ctx.fillStyle = `rgb(255 200 61 / ${flick})`
+      ctx.beginPath()
+      ctx.moveTo(cx - 7, r.y + 8)
+      ctx.lineTo(cx, r.y - 8 * flick)
+      ctx.lineTo(cx + 7, r.y + 8)
+      ctx.fill()
+      ctx.fillStyle = ROLE_COLOR.missile
+      ctx.beginPath()
+      ctx.moveTo(r.x + 8, r.y + 6)
+      ctx.lineTo(r.x + r.w - 8, r.y + 6)
+      ctx.lineTo(r.x + r.w - 8, r.y + r.h - 18)
+      ctx.lineTo(cx, r.y + r.h - 2)
+      ctx.lineTo(r.x + 8, r.y + r.h - 18)
+      ctx.closePath()
+      ctx.fill()
+      ctx.fillStyle = '#212529'
+      ctx.fillRect(r.x + 8, r.y + 14, r.w - 16, 4)
+      ctx.restore()
+      return false
+    }
+    case 'ward':
+      // Rough stone with cracks: it only guards.
+      ctx.beginPath()
+      ctx.roundRect(r.x, r.y, r.w, r.h, 6)
+      ctx.fill()
+      ctx.strokeStyle = 'rgb(0 0 0 / 0.3)'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo(r.x + 6, r.y + r.h / 2)
+      ctx.lineTo(r.x + r.w / 2, r.y + r.h / 2 - 4)
+      ctx.lineTo(r.x + r.w - 6, r.y + r.h / 2 + 3)
+      ctx.moveTo(r.x + r.w / 2, r.y + 6)
+      ctx.lineTo(r.x + r.w / 2 - 3, r.y + r.h / 2 - 4)
+      ctx.stroke()
+      break
     default:
       ctx.beginPath()
       ctx.roundRect(r.x, r.y, r.w, r.h, 9)

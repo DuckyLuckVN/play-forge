@@ -3,10 +3,11 @@
 // RunState's shape changes, so old saved runs are dropped instead of loaded
 // (or upgraded in `upgradeRun`, when that is safe).
 import { xpToNext } from './sim/boosts'
+import { DEFAULT_HERO, HEROES } from './sim/heroes'
 import type { RunState } from './sim/types'
 
 export const SAVE_KEY = 'play-forge:brickstorm:save'
-export const SIM_VERSION = 5
+export const SIM_VERSION = 6
 
 export interface Equipped {
   ball: string
@@ -15,6 +16,8 @@ export interface Equipped {
   impact: string
   /** Gameplay soundtrack. */
   music: string
+  /** The hero new runs start with ('hero:rookie'…). */
+  hero: string
 }
 
 export interface Helpers {
@@ -38,6 +41,7 @@ export interface Helpers {
   overcharge: number
   vacuum: number
   pierceShot: number
+  potion: number
 }
 
 export interface SavedRun {
@@ -65,13 +69,14 @@ export const DEFAULT_SAVE: Save = {
   bestTurn: 0,
   bestCombo: 0,
   coins: 0,
-  owned: ['ball:classic', 'trail:none', 'arena:indigo', 'impact:shards', 'music:arcade'],
+  owned: ['ball:classic', 'trail:none', 'arena:indigo', 'impact:shards', 'music:arcade', 'hero:rookie'],
   equipped: {
     ball: 'ball:classic',
     trail: 'trail:none',
     arena: 'arena:indigo',
     impact: 'impact:shards',
     music: 'music:arcade',
+    hero: 'hero:rookie',
   },
   helpers: {
     headStart: 0,
@@ -94,6 +99,7 @@ export const DEFAULT_SAVE: Save = {
     overcharge: 0,
     vacuum: 0,
     pierceShot: 0,
+    potion: 0,
   },
   seen: [],
   run: null,
@@ -130,14 +136,27 @@ const v4XpToNext = (level: number) => 8 + 6 * level
 
 /**
  * Brings an older saved run up to SIM_VERSION where that is safe. v4 → v5 only
- * rescaled XP, so the bar keeps the same share of the level.
+ * rescaled XP, so the bar keeps the same share of the level; v5 → v6 adds the hero.
  */
 function upgradeRun(run: unknown): unknown {
-  if (!isObject(run) || run.simVersion !== 4 || !isObject(run.state)) return run
-  const { level, xp } = run.state
-  if (!count(level) || !count(xp)) return run
-  const state = { ...run.state, xp: (Math.min(xp, v4XpToNext(level)) / v4XpToNext(level)) * xpToNext(level) }
-  return { ...run, simVersion: 5, state }
+  if (!isObject(run) || !isObject(run.state)) return run
+  if (run.simVersion === 4) {
+    const { level, xp } = run.state
+    if (!count(level) || !count(xp)) return run
+    const state = {
+      ...run.state,
+      xp: (Math.min(xp, v4XpToNext(level)) / v4XpToNext(level)) * xpToNext(level),
+    }
+    run = { ...run, simVersion: 5, state }
+  }
+  return upgradeV5(run)
+}
+
+/** v5 → v6 added heroes and health: an older run carries on as the Rookie at full health. */
+function upgradeV5(run: unknown): unknown {
+  if (!isObject(run) || run.simVersion !== 5 || !isObject(run.state)) return run
+  const hp = HEROES[DEFAULT_HERO].hp
+  return { ...run, simVersion: 6, state: { ...run.state, hero: DEFAULT_HERO, hp, maxHp: hp, kills: 0 } }
 }
 
 /** Turns stored data into a v2 save; null if it isn't a save at all. */

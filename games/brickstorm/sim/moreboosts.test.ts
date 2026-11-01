@@ -96,6 +96,7 @@ describe('second wind', () => {
     expect(s.bricks.some((b) => b.row >= DANGER_ROW)).toBe(false)
 
     brick(s, 0, DANGER_ROW - 1, 1e6)
+    s.hp = 1
     fire(s, Math.PI / 2)
     runVolley(s)
     expect(s.phase).toBe('over')

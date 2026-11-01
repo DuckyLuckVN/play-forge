@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { playSound } from '@forge/audio/sound'
 import { theme } from '@forge/ui/theme'
 import {
+  BOSS_DEATH_BOOM,
+  BOSS_DEATH_LIFE,
   barShake,
   comboPitch,
   GROW_FX_LIFE,
@@ -111,15 +113,15 @@ describe('Juice', () => {
   it('announces combo milestones once per volley', () => {
     const j = juice()
     j.handle({ type: 'fire' })
-    j.handle({ type: 'hit', x: 0, y: 0, combo: 24, crit: false })
+    j.handle({ type: 'hit', x: 0, y: 0, combo: 24, power: 24, crit: false })
     expect(j.banner).toBeNull()
-    j.handle({ type: 'hit', x: 0, y: 0, combo: 25, crit: false })
+    j.handle({ type: 'hit', x: 0, y: 0, combo: 25, power: 25, crit: false })
     expect(j.banner?.text).toBe('NICE!')
     j.banner = null
     const banner = () => j.banner?.text ?? null
-    j.handle({ type: 'hit', x: 0, y: 0, combo: 26, crit: false })
+    j.handle({ type: 'hit', x: 0, y: 0, combo: 26, power: 26, crit: false })
     expect(banner()).toBeNull()
-    j.handle({ type: 'hit', x: 0, y: 0, combo: 50, crit: false })
+    j.handle({ type: 'hit', x: 0, y: 0, combo: 50, power: 50, crit: false })
     expect(banner()).toBe('GREAT!')
   })
 
@@ -247,9 +249,9 @@ describe('XP bar', () => {
 
   it('sends an XP orb from a hit brick to the bar, capped in a big volley', () => {
     const j = juice()
-    j.handle({ type: 'hit', x: 10, y: 200, combo: 1, crit: false })
+    j.handle({ type: 'hit', x: 10, y: 200, combo: 1, power: 1, crit: false })
     expect(j.xpOrbs).toHaveLength(1)
-    for (let i = 0; i < 500; i++) j.handle({ type: 'hit', x: 10, y: 200, combo: 1, crit: false })
+    for (let i = 0; i < 500; i++) j.handle({ type: 'hit', x: 10, y: 200, combo: 1, power: 1, crit: false })
     expect(j.xpOrbs.length).toBeLessThanOrEqual(24)
     j.update(2)
     expect(j.xpOrbs).toHaveLength(0)
@@ -325,7 +327,9 @@ describe('combo on the XP bar', () => {
     j.setComboXp(2)
     j.setComboXp(1)
     expect(j.comboShown).toBe(2) // still showing while it fades
-    j.update(0.5)
+    j.update(0.3)
+    expect(j.comboFade).toBe(1) // lingers a moment
+    for (let i = 0; i < 30; i++) j.update(0.05)
     expect(j.comboFade).toBe(0)
   })
 
@@ -337,12 +341,14 @@ describe('combo on the XP bar', () => {
     expect(barShake(2)).toBeLessThanOrEqual(2.5) // a tremble, never a blur
   })
 
-  it('cools back down when the combo ends', () => {
+  it('cools back down when the combo ends (gently, not at once)', () => {
     const j = juice()
     j.setComboXp(1.5)
     j.update(0.05)
     j.setComboXp(1)
     j.update(0.05)
+    expect(j.xpHeat).toBe(2) // still warm for a beat
+    for (let i = 0; i < 40; i++) j.update(0.05)
     expect(j.xpHeat).toBe(0)
   })
 
@@ -540,5 +546,42 @@ describe('boss hits and casts', () => {
     const sounds = vi.mocked(playSound).mock.calls.map((c) => c[0])
     expect(sounds).toContain(BOSS_SOUNDS.summon)
     expect(sounds).toContain(BOSS_SOUNDS.rage)
+  })
+})
+
+describe('boss death', () => {
+  it('plays out: slow motion and explosions, then the finale, then it is over', () => {
+    const j = juice()
+    particles.burst.mockClear()
+    j.handle({ type: 'bossDown', x: 200, y: 200, coins: 100 })
+    expect(j.bossDying).toBe(true)
+    expect(j.timeScale).toBeLessThan(1)
+    expect(j.banner).toBeNull() // the banner waits for the finale
+    for (let t = 0; t < BOSS_DEATH_BOOM + 0.05; t += 0.05) j.update(0.05)
+    expect(particles.burst.mock.calls.length).toBeGreaterThan(10)
+    expect(j.timeScale).toBe(1)
+    expect(j.shockwave).not.toBeNull()
+    expect(j.banner?.text).toContain('BOSS DOWN')
+    for (let t = 0; t < BOSS_DEATH_LIFE; t += 0.05) j.update(0.05)
+    expect(j.bossDying).toBe(false)
+  })
+})
+
+describe('xp bar after a combo', () => {
+  it('cools down gradually when the combo ends, instead of snapping off', () => {
+    const j = juice()
+    j.setComboXp(2)
+    j.update(0.05)
+    expect(j.xpHeat).toBe(3)
+    j.setComboXp(1) // the volley ended, a new turn begins
+    j.update(0.05)
+    expect(j.barMult).toBe(2) // still hot for a beat
+    expect(j.xpHeat).toBe(3)
+    for (let i = 0; i < 20; i++) j.update(0.05)
+    expect(j.barMult).toBeGreaterThan(1)
+    expect(j.barMult).toBeLessThan(2)
+    for (let i = 0; i < 40; i++) j.update(0.05)
+    expect(j.barMult).toBe(1)
+    expect(j.xpGlow).toBeLessThan(1)
   })
 })

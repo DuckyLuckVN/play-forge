@@ -26,8 +26,8 @@ const covers = import.meta.glob<string>('../games/*/cover.svg', {
 const t = translator({
   'Eat, grow, outlast. Solo or up to 8 players.':
     'Ăn, lớn lên, trụ lâu nhất. Chơi một mình hoặc tối đa 8 người.',
-  'Aim, launch, and break the storm. Boosts, special bricks and a shop.':
-    'Ngắm, bắn và phá tan cơn bão gạch. Có nâng cấp, gạch đặc biệt và cửa hàng.',
+  'Aim, launch, and break the storm. 25 heroes, skills, special bricks and a shop.':
+    'Ngắm, bắn và phá tan cơn bão gạch. 25 anh hùng, kỹ năng, gạch đặc biệt và cửa hàng.',
   '{n} player': '{n} người chơi',
   '{n} players': '{n} người chơi',
   Play: 'Chơi',

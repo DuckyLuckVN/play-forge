@@ -19,13 +19,13 @@ describe('skills start weak and grow with each level', () => {
   })
 
   it('fireball and bomb ball: rarer balls at first', () => {
-    expect(at('fireball').map((m) => m.fireEvery)).toEqual([12, 8, 5])
-    expect(at('bombball').map((m) => m.bombEvery)).toEqual([16, 11, 7])
+    expect(at('fireball').map((m) => m.fireChance)).toEqual([0.08, 0.125, 0.2])
+    expect(at('bombball').map((m) => m.bombChance)).toEqual([0.06, 0.09, 0.14])
   })
 
-  it('twin shot and piercing: every 3rd ball, then every 2nd, then all', () => {
-    expect(at('twin').map((m) => m.twinEvery)).toEqual([3, 2, 1])
-    expect(at('pierce').map((m) => m.pierceEvery)).toEqual([3, 2, 1])
+  it('twin shot and piercing: a third of balls, then half, then all', () => {
+    expect(at('twin').map((m) => m.twinChance)).toEqual([0.33, 0.5, 1])
+    expect(at('pierce').map((m) => m.pierceChance)).toEqual([0.33, 0.5, 1])
   })
 
   it('aftershock: half, full, then 1.5× damage to neighbours', () => {
@@ -52,19 +52,21 @@ describe('skills start weak and grow with each level', () => {
 describe('per-ball skills', () => {
   const volley = (boosts: Partial<Record<BoostId, number>>) => {
     const s = empty()
-    s.ballCount = 6
+    s.ballCount = 600
     s.boosts = boosts
     fire(s, Math.PI / 2)
     return s.balls
   }
 
-  it('twin shot level 1 makes every 3rd ball split', () => {
-    expect(volley({ twin: 1 }).map((b) => !b.split)).toEqual([false, false, true, false, false, true])
+  const share = (xs: boolean[]) => xs.filter(Boolean).length / xs.length
+
+  it('twin shot level 1 makes about a third of balls split; level 3 all', () => {
+    expect(share(volley({ twin: 1 }).map((b) => !b.split))).toBeCloseTo(0.33, 1)
     expect(volley({ twin: 3 }).every((b) => !b.split)).toBe(true)
   })
 
-  it('piercing level 1 makes every 3rd ball pierce', () => {
-    expect(volley({ pierce: 1 }).map((b) => b.pierceLeft)).toEqual([0, 0, 1, 0, 0, 1])
+  it('piercing level 1 makes about a third of balls pierce; level 3 all', () => {
+    expect(share(volley({ pierce: 1 }).map((b) => b.pierceLeft === 1))).toBeCloseTo(0.33, 1)
     expect(volley({ pierce: 3 }).every((b) => b.pierceLeft === 1)).toBe(true)
   })
 

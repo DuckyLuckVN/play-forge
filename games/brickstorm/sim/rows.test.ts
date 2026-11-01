@@ -49,7 +49,7 @@ describe('spawnRow', () => {
   it('scales hp with the turn', () => {
     let doubled = false
     for (let seed = 1; seed <= 500; seed++) {
-      for (const b of spawned(seed, 50).bricks) {
+      for (const b of spawned(seed, 50).bricks.filter((b) => !b.shape)) {
         expect(b.hp).toBeGreaterThanOrEqual(Math.floor(hpScale(50) * 0.9))
         expect(b.hp).toBeLessThanOrEqual(Math.ceil(hpScale(50) * 1.1) * 2)
         expect(b.maxHp).toBe(b.hp)

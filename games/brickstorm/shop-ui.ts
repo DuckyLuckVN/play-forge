@@ -12,8 +12,11 @@ import { panelHead } from './panels'
 import type { Save } from './save'
 import { buy, CATALOG, equip, type ItemKind, type ShopItem } from './shop'
 import { BRICK_SOUNDS } from './sounds'
+import { heroBrowser } from './hero-ui'
+import type { HeroId } from './sim/heroes'
 
 const TABS: Array<[ItemKind, string]> = [
+  ['hero', t('Heroes')],
   ['ball', t('Balls')],
   ['trail', t('Trails')],
   ['arena', t('Arenas')],
@@ -44,6 +47,7 @@ const HELPER_GLYPH: Record<string, string> = {
   'helper:overcharge': '⚡',
   'helper:vacuum': '◎',
   'helper:pierceShot': '➹',
+  'helper:potion': '✚',
 }
 
 const arenaPainter = new ArenaPainter()
@@ -169,8 +173,10 @@ export function shopPanel(
   pending: () => number,
   setSave: (s: Save) => void,
   onBack: () => void,
+  /** Plays a hero's sound when it is tapped. */
+  juice?: (id: HeroId) => void,
 ): HTMLElement {
-  let tab: ItemKind = 'ball'
+  let tab: ItemKind = 'hero'
   const panel = h('div', { class: 'pf-panel wide bs-shop' })
 
   const render = () => {
@@ -195,72 +201,81 @@ export function shopPanel(
       }),
     )
     livePreviews = []
-    const items = CATALOG.filter((i) => i.kind === tab).map((it) => {
-      const owned = it.kind !== 'helper' && save.owned.includes(it.id)
-      const equipped = it.kind !== 'helper' && save.equipped[it.kind] === it.id
-      let action: HTMLButtonElement
-      if (equipped) {
-        action = h('button', {
-          class: 'pf-btn quiet',
-          type: 'button',
-          textContent: t('Equipped'),
-          disabled: true,
-        })
-      } else if (owned) {
-        action = h('button', {
-          class: 'pf-btn',
-          type: 'button',
-          textContent: t('Equip'),
-          onclick: () => {
-            setSave(equip(getSave(), it.id))
-            render()
-          },
-        })
-      } else {
-        action = h('button', {
-          class: 'pf-btn primary',
-          type: 'button',
-          disabled: save.coins < it.price,
-          onclick: () => {
-            const res = buy(getSave(), it.id)
-            if (res.result !== 'ok') return
-            let next = res.save
-            if (it.kind !== 'helper') next = equip(next, it.id)
-            setSave(next)
-            playSound(BRICK_SOUNDS.buy)
-            render()
-          },
-        })
-        action.append(coinAmount(it.price))
-        action.setAttribute(
-          'aria-label',
-          t('Buy {name} for {price} coins', { name: t(it.name), price: it.price }),
+    // Heroes have their own browser: a detail card over the roster.
+    const heroes =
+      tab === 'hero' &&
+      heroBrowser({ getSave, setSave: (next) => (setSave(next), render()), onVoice: (id) => juice?.(id) })
+    const items = (tab === 'hero' ? [] : CATALOG)
+      .filter((i) => i.kind === tab)
+      .map((it) => {
+        const owned = it.kind !== 'helper' && save.owned.includes(it.id)
+        const equipped = it.kind !== 'helper' && save.equipped[it.kind] === it.id
+        let action: HTMLButtonElement
+        if (equipped) {
+          action = h('button', {
+            class: 'pf-btn quiet',
+            type: 'button',
+            textContent: t('Equipped'),
+            disabled: true,
+          })
+        } else if (owned) {
+          action = h('button', {
+            class: 'pf-btn',
+            type: 'button',
+            textContent: t('Equip'),
+            onclick: () => {
+              setSave(equip(getSave(), it.id))
+              render()
+            },
+          })
+        } else {
+          action = h('button', {
+            class: 'pf-btn primary',
+            type: 'button',
+            disabled: save.coins < it.price,
+            onclick: () => {
+              const res = buy(getSave(), it.id)
+              if (res.result !== 'ok') return
+              let next = res.save
+              if (it.kind !== 'helper') next = equip(next, it.id)
+              setSave(next)
+              playSound(BRICK_SOUNDS.buy)
+              render()
+            },
+          })
+          action.append(coinAmount(it.price))
+          action.setAttribute(
+            'aria-label',
+            t('Buy {name} for {price} coins', { name: t(it.name), price: it.price }),
+          )
+        }
+        const listen =
+          it.kind === 'music' &&
+          h('button', {
+            class: 'pf-btn quiet bs-listen',
+            type: 'button',
+            textContent: previewing === it.id ? t('♪ Playing') : t('▶ Listen'),
+            onclick: () => {
+              previewing = it.id
+              playMusic(trackFor(it.id))
+              render()
+            },
+          })
+        return h(
+          'div',
+          { class: 'bs-item' },
+          preview(it),
+          listen,
+          h('strong', { textContent: t(it.name) }),
+          it.text && h('span', { class: 'bs-item-text', textContent: t(it.text) }),
+          it.helper &&
+            h('span', {
+              class: 'bs-item-text',
+              textContent: t('Owned: {n}', { n: save.helpers[it.helper] }),
+            }),
+          action,
         )
-      }
-      const listen =
-        it.kind === 'music' &&
-        h('button', {
-          class: 'pf-btn quiet bs-listen',
-          type: 'button',
-          textContent: previewing === it.id ? t('♪ Playing') : t('▶ Listen'),
-          onclick: () => {
-            previewing = it.id
-            playMusic(trackFor(it.id))
-            render()
-          },
-        })
-      return h(
-        'div',
-        { class: 'bs-item' },
-        preview(it),
-        listen,
-        h('strong', { textContent: t(it.name) }),
-        it.text && h('span', { class: 'bs-item-text', textContent: t(it.text) }),
-        it.helper &&
-          h('span', { class: 'bs-item-text', textContent: t('Owned: {n}', { n: save.helpers[it.helper] }) }),
-        action,
-      )
-    })
+      })
     panel.replaceChildren(
       panelHead(
         t('Shop'),
@@ -280,7 +295,7 @@ export function shopPanel(
         ),
       ),
       tabs,
-      h('div', { class: 'bs-items' }, ...items),
+      heroes || h('div', { class: 'bs-items' }, ...items),
     )
   }
   render()

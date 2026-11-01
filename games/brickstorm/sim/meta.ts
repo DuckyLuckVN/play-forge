@@ -1,10 +1,11 @@
 // Run-level actions outside the normal turn loop: revives and run-start helpers.
 import { rollChoices } from './boosts'
 import { MAX_COLS, MAX_ROWS } from './config'
-import { dims } from './dims'
+import { baseRows, dims } from './dims'
 import { liftBoss } from './boss'
 import { randomInt } from '@forge/core/rng'
-import { damageBrick, killBrick } from './damage'
+import { damageBrick, killBrick, oncePerBoss } from './damage'
+import { heal, POTION_HEAL, REVIVE_HEALTH } from './health'
 import { applyPickup, laserRow, openPickOrAim } from './run'
 import type { ActiveHelper, RunState, StartHelper } from './types'
 
@@ -13,7 +14,7 @@ export function reviveCost(s: RunState): number {
   return 100 * (s.revivesUsed + 1)
 }
 
-/** After game over: clears the 3 rows nearest the danger line and plays on. The caller has paid. */
+/** After game over: clears the 3 rows nearest the danger line, brings health back to half and plays on. The caller has paid. */
 export function revive(s: RunState): void {
   if (s.phase !== 'over') return
   const { dangerRow } = dims(s)
@@ -21,6 +22,7 @@ export function revive(s: RunState): void {
   s.bricks = s.bricks.filter((b) => b.row < dangerRow - 2)
   s.pickups = s.pickups.filter((p) => p.row < dangerRow - 2)
   s.revivesUsed++
+  heal(s, Math.max(0, s.maxHp * REVIVE_HEALTH - s.hp), 'revive')
   s.events.push({ type: 'revive' })
   // Same turn: aim again (the next volley brings the next row).
   openPickOrAim(s)
@@ -46,6 +48,8 @@ export function applyHelpers(s: RunState, use: Partial<Record<StartHelper, boole
  */
 export function useHelper(s: RunState, id: ActiveHelper): boolean {
   if (s.phase !== 'aim') return false
+  // A potion at full health would be wasted: keep it.
+  if (id === 'potion' && s.hp >= s.maxHp) return false
   s.combo = 0 // helper kills pay the base coin rate, not the last volley's combo
   switch (id) {
     case 'pushBack': {
@@ -60,7 +64,8 @@ export function useHelper(s: RunState, id: ActiveHelper): boolean {
     }
     case 'rowBomb': {
       const lowest = Math.max(-1, ...s.bricks.map((b) => b.row))
-      for (const b of s.bricks.filter((b) => b.row === lowest)) killBrick(s, b, 0)
+      // The boss takes one big hit, not one per part in the row.
+      for (const b of oncePerBoss(s.bricks.filter((b) => b.row === lowest))) killBrick(s, b, 0)
       break
     }
     case 'freeze':
@@ -83,7 +88,7 @@ export function useHelper(s: RunState, id: ActiveHelper): boolean {
       const per = new Map<number, number>()
       for (const b of s.bricks) per.set(b.col, (per.get(b.col) ?? 0) + 1)
       const col = [...per.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0]
-      for (const b of s.bricks.filter((b) => b.col === col)) killBrick(s, b, 0)
+      for (const b of oncePerBoss(s.bricks.filter((b) => b.col === col))) killBrick(s, b, 0)
       break
     }
     case 'laserGrid': {
@@ -109,6 +114,9 @@ export function useHelper(s: RunState, id: ActiveHelper): boolean {
     case 'pierceShot':
       s.pierceNext = true
       break
+    case 'potion':
+      heal(s, s.maxHp * POTION_HEAL, 'potion')
+      break
   }
   s.events.push({ type: 'helper', id })
   openPickOrAim(s) // a level-up from Row Bomb opens its pick now
@@ -119,7 +127,7 @@ export function useHelper(s: RunState, id: ActiveHelper): boolean {
 export function growBoard(s: RunState, axis: 'col' | 'row'): void {
   if (s.phase !== 'grow') return
   if (axis === 'col' && s.cols >= MAX_COLS) return
-  if (axis === 'row' && s.rows >= MAX_ROWS) return
+  if (axis === 'row' && baseRows(s) >= MAX_ROWS) return
   if (axis === 'col') s.cols++
   else s.rows++
   s.growPending = false

@@ -218,26 +218,6 @@
     white-space: normal;
     line-height: 1.1;
   }
-  /* Pick cards as compact rows so all three fit on a phone. */
-  .bs-cards {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .bs-card.pf-btn {
-    grid-template-columns: 48px minmax(0, 1fr);
-    gap: 2px 12px;
-    min-height: 0;
-    padding: 10px 12px;
-  }
-  .bs-card.pf-btn > .bs-card-icon {
-    grid-row: 1 / 4;
-    align-self: center;
-    width: 48px;
-    height: 48px;
-  }
-  .bs-card-icon svg {
-    width: 48px;
-    height: 48px;
-  }
   .pf-overlay .pf-heading {
     font-size: 28px;
   }
@@ -713,12 +693,6 @@
   display: block;
 }
 
-/* A pick card that needs a slot freed first. */
-.bs-card .bs-swap {
-  color: var(--pf-coral, #ff6b6b);
-  font-weight: 700;
-}
-
 /* An empty boost slot: a dashed socket waiting for a boost. */
 .bs-tile.bs-socket {
   border-style: dashed;
@@ -972,4 +946,325 @@
 .bs-card .bs-rarity {
   font-size: 11px;
   opacity: 0.8;
+}
+
+/* ---------- Heroes ---------- */
+.bs-heroes {
+  display: grid;
+  gap: 12px;
+}
+.bs-hero-portrait {
+  display: inline-flex;
+  line-height: 0;
+}
+.bs-hero-portrait svg {
+  border-radius: 14px;
+}
+.bs-hero-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px 14px;
+  align-items: start;
+  padding: 12px;
+  border: 2px solid var(--hero, var(--pf-rim));
+  border-radius: 16px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--hero) 22%, var(--pf-pit)), var(--pf-pit) 70%);
+}
+.bs-hero-card > .pf-btn {
+  grid-column: 1 / -1;
+}
+.bs-hero-info {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.bs-hero-name {
+  font-size: 22px;
+}
+.bs-hero-title {
+  color: var(--pf-haze);
+  font-size: 14px;
+}
+.bs-hero-hp {
+  color: #ff8fa3;
+  font-weight: 700;
+  font-size: 15px;
+}
+.bs-hero-perks {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+  display: grid;
+  gap: 2px;
+}
+.bs-hero-perks .good {
+  color: #69db7c;
+}
+.bs-hero-perks .bad {
+  color: #ff8787;
+}
+.bs-hero-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 8px;
+}
+.bs-hero-tile {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  border: 2px solid var(--pf-rim);
+  border-radius: 14px;
+  background: var(--pf-pit);
+  color: var(--pf-chalk);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    transform 0.12s,
+    border-color 0.12s;
+}
+.bs-hero-tile:hover {
+  transform: translateY(-2px);
+}
+.bs-hero-tile.active {
+  border-color: var(--hero);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--hero) 45%, transparent);
+}
+.bs-hero-tile.locked .bs-hero-portrait {
+  filter: grayscale(0.75) brightness(0.7);
+}
+.bs-hero-tile-name {
+  font-size: 13px;
+  font-weight: 700;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bs-hero-tile-tag {
+  font-size: 12px;
+  color: var(--pf-haze);
+}
+.bs-hero-tile .bs-coins,
+.bs-hero-tile > span:last-child {
+  font-size: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bs-hero-tile {
+    transition: none;
+  }
+}
+.bs-danger-hp {
+  color: #ff8787;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.bs-hero-stage {
+  border-radius: 14px;
+  background: radial-gradient(
+    circle at 50% 85%,
+    color-mix(in srgb, var(--hero) 35%, transparent),
+    transparent 70%
+  );
+}
+
+/* Slots full: one quiet line over the cards. */
+.bs-slots-full {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--pf-haze);
+}
+.bs-slot-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+.bs-slot-dots i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #b48cff;
+  box-shadow: 0 0 6px rgb(180 140 255 / 0.6);
+}
+.bs-card .bs-tag.swap {
+  background: rgb(255 107 107 / 0.18);
+  color: #ff8787;
+  font-size: 13px;
+  padding: 0 7px;
+}
+
+/* Phones: the skills as full-width rows (icon · name and text · price), rarity as the left edge. */
+@media (max-width: 560px) {
+  .bs-cards {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .bs-card-wrap > .bs-card.pf-btn {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    column-gap: 12px;
+    row-gap: 2px;
+    align-items: center;
+    min-height: 0;
+    padding: 10px 12px 10px 10px;
+    border-width: 2px;
+    border-left-width: 6px;
+  }
+  .bs-card > .bs-card-icon {
+    grid-column: 1;
+    grid-row: 1 / span 3;
+    width: 44px;
+    height: 44px;
+  }
+  .bs-card > .bs-card-icon svg {
+    width: 44px;
+    height: 44px;
+  }
+  .bs-card > .bs-card-meta,
+  .bs-card > strong,
+  .bs-card > span:not(.bs-card-icon):not(.bs-ribbon) {
+    grid-column: 2;
+  }
+  .bs-card > strong {
+    font-size: 17px;
+  }
+  .bs-card > span:not(.bs-card-icon):not(.bs-ribbon) {
+    font-size: 14px;
+    line-height: 1.25;
+  }
+  .bs-card .bs-card-foot {
+    grid-column: 3;
+    grid-row: 1 / span 3;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 2px;
+    width: auto;
+    margin: 0;
+    /* Room for the hold button above. */
+    padding-top: 22px;
+  }
+  .bs-card .bs-card-foot .bs-price {
+    padding-top: 0;
+  }
+  .bs-lock {
+    top: 8px;
+    right: 8px;
+    padding: 2px 6px;
+    font-size: 11px;
+  }
+  .bs-card.stashed .bs-card-foot {
+    grid-column: 2 / span 2;
+    padding-top: 0;
+  }
+}
+
+/* Shop tabs wrap instead of hiding off the edge: every tab is always in view. */
+.bs-tabs {
+  flex-wrap: wrap;
+  overflow-x: visible;
+}
+@media (max-width: 560px) {
+  .bs-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .bs-tabs .bs-tab {
+    min-width: 0;
+    padding: 8px 4px;
+    font-size: 14px;
+    border: 2px solid var(--pf-rim);
+  }
+  .bs-tabs .bs-tab.active {
+    border-color: var(--pf-yolk);
+  }
+  .bs-items {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .bs-hero-card {
+    grid-template-columns: 110px minmax(0, 1fr);
+    padding: 10px;
+    gap: 8px 10px;
+  }
+  .bs-hero-card .bs-hero-stage {
+    width: 110px !important;
+    height: 121px !important;
+  }
+  .bs-hero-perks {
+    font-size: 13px;
+  }
+  .bs-hero-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .bs-hero-tile .bs-hero-portrait svg {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* The swap badge: a round red ⇄ you can't miss. */
+.bs-card .bs-tag.swap {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  background: #ff6b6b;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow:
+    0 0 0 2px rgb(0 0 0 / 0.25),
+    0 0 10px rgb(255 107 107 / 0.6);
+}
+/* The price: a gold pill (green when free). */
+.bs-card .bs-price {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px 3px 4px;
+  border-radius: 999px;
+  background: var(--pf-yolk);
+  color: var(--pf-ink, #1b1d2b);
+  font-weight: 800;
+  font-size: 16px;
+  box-shadow: 0 2px 0 rgb(0 0 0 / 0.3);
+}
+.bs-card .bs-price .bs-coins {
+  color: var(--pf-ink, #1b1d2b);
+}
+.bs-card .bs-price.free {
+  padding: 3px 10px;
+  background: #4be3a0;
+}
+.bs-card:disabled .bs-price {
+  filter: grayscale(0.6);
+}
+
+/* The skill pick: more room for the three cards. */
+.pf-panel.bs-pick {
+  width: min(780px, 100%);
+}
+/* Price numbers: dark on the gold pill so they read. */
+.bs-card .bs-price span,
+.bs-card .bs-price .bs-coins span {
+  color: var(--pf-ink, #1b1d2b);
+  font-weight: 800;
+}
+
+/* A first-time event card: picture and title, what it does, "Got it". */
+.bs-event-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.bs-event-head .pf-heading {
+  font-size: 26px;
 }

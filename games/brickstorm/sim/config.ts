@@ -14,12 +14,16 @@ export const TOP = 56
 export const BOARD_W = COLS * CELL
 /** Where balls rest between volleys. */
 export const FLOOR_Y = TOP + ROWS * CELL + 48
-export const BOARD_H = FLOOR_Y + 24
+/** Strip under the floor for the hero's health bar. */
+export const HEALTH_STRIP = 24
+export const BOARD_H = FLOOR_Y + 24 + HEALTH_STRIP
 /** Gap of 2 × inset between neighbouring bricks. */
 export const BRICK_INSET = 2
 
 export const BALL_R = 7
 export const PICKUP_R = 12
+/** The ball waits (and is thrown) this far above the floor: in the hero's hand. */
+export const LAUNCH_LIFT = 14
 /** Units per second at 1× speed. */
 /** Path length of the dotted aim guide, before Eagle Eye. */
 export const GUIDE_LENGTH = 260
@@ -73,5 +77,5 @@ export const DANGER_ROW = ROWS - 1
 /** Pixel and row geometry for a board of a given size. */
 export function boardSize(cols: number, rows: number) {
   const floorY = TOP + rows * CELL + 48
-  return { cols, rows, dangerRow: rows - 1, boardW: cols * CELL, floorY, boardH: floorY + 24 }
+  return { cols, rows, dangerRow: rows - 1, boardW: cols * CELL, floorY, boardH: floorY + 24 + HEALTH_STRIP }
 }

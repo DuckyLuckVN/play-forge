@@ -7,7 +7,7 @@ import { FONT, theme } from '@forge/ui/theme'
 import { ArenaPainter, type ArenaId } from './arenas'
 import { drawBoss, drawRoleBrick } from './boss-art'
 import { BossGlide } from './boss-glide'
-import { bossHidesGuide } from './sim/boss'
+import { BOSS_ROOM, bossHidesGuide } from './sim/boss'
 import { drawCoin, formatCoins } from './coin'
 import { drawBall, TRAIL_STYLE } from './cosmetics'
 import { t } from './i18n'
@@ -15,7 +15,13 @@ import {
   barShake,
   COIN_FLY,
   GROW_FX_LIFE,
+  ARENA_LAND,
+  ARENA_OPEN,
+  ARENA_SQUEEZE,
+  BOSS_DEATH_BOOM,
+  HEAL_COLOR,
   hpColor,
+  SHOCKWAVE_LIFE,
   type Juice,
   LEVEL_POP_LIFE,
   orbAlpha,
@@ -23,13 +29,27 @@ import {
   TOUGHER_LIFE,
   XP_ORB_FLY,
 } from './juice'
-import { modsOf } from './sim/boosts'
-import { BALL_R, boardSize, CELL, COLS, COMBO_TIERS, LEVEL_POWER, PICKUP_R, ROWS, TOP } from './sim/config'
+import { runMods } from './sim/boosts'
+import {
+  BALL_R,
+  boardSize,
+  CELL,
+  COLS,
+  COMBO_TIERS,
+  HEALTH_STRIP,
+  LEVEL_POWER,
+  PICKUP_R,
+  ROWS,
+  TOP,
+} from './sim/config'
 import { traceGuide } from './sim/physics'
 import { restingBall } from './sim/run'
+import { comboPower } from './sim/damage'
 import { dims, type Dims } from './sim/dims'
-import { brickRect, cellCenter, hitRects } from './sim/rows'
-import type { BrickKind, PickupKind, Rect, RunState } from './sim/types'
+import { brickRect, brickShape, cellCenter, hitShapes } from './sim/rows'
+import type { Brick, BrickKind, PickupKind, Rect, RunState } from './sim/types'
+import type { HeroAvatar } from './hero-avatar'
+import { BrickTween } from './brick-tween'
 
 const TRAIL = 4
 const XP_COLOR = '#4be3a0'
@@ -142,9 +162,121 @@ export function drawPickupGlyph(
     ctx.beginPath()
     ctx.arc(x, y, PICKUP_R, 0, Math.PI * 2)
     ctx.stroke()
+  } else if (kind === 'heart') {
+    const beat = 1 + 0.08 * Math.max(0, Math.sin(time * 6))
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.scale(beat, beat)
+    ctx.fillStyle = 'rgb(255 107 129 / 0.3)'
+    ctx.beginPath()
+    ctx.arc(0, 0, PICKUP_R + 4, 0, Math.PI * 2)
+    ctx.fill()
+    heartPath(ctx, 0, 1, PICKUP_R - 1)
+    ctx.fillStyle = '#ff6b81'
+    ctx.fill()
+    ctx.strokeStyle = theme.night
+    ctx.lineWidth = 2
+    ctx.stroke()
+    ctx.fillStyle = 'rgb(255 255 255 / 0.7)'
+    ctx.beginPath()
+    ctx.arc(-4, -3, 2.5, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
   } else {
     drawCoin(ctx, x, y, PICKUP_R - 1)
   }
+}
+
+/** A heart shape `r` wide-ish, centred on (x, y); fill or stroke it after. */
+export function heartPath(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): void {
+  ctx.beginPath()
+  ctx.moveTo(x, y + r * 0.9)
+  ctx.bezierCurveTo(x - r * 1.4, y - r * 0.1, x - r * 0.7, y - r * 1.2, x, y - r * 0.45)
+  ctx.bezierCurveTo(x + r * 0.7, y - r * 1.2, x + r * 1.4, y - r * 0.1, x, y + r * 0.9)
+  ctx.closePath()
+}
+
+/** Outline path of a shaped brick (a triangle with its corners softened like a square's, or an orb). */
+export function shapedBrickPath(
+  ctx: CanvasRenderingContext2D,
+  b: Pick<Brick, 'col' | 'row' | 'shape'>,
+): void {
+  const shape = brickShape(b)
+  ctx.beginPath()
+  if ('circle' in shape) {
+    ctx.arc(shape.circle.x, shape.circle.y, shape.circle.r, 0, Math.PI * 2)
+    return
+  }
+  if (!('poly' in shape)) return
+  // Rounded corners: start mid-edge, arcTo through each corner.
+  const p = shape.poly
+  const mid = (i: number) => [(p[i][0] + p[(i + 1) % 3][0]) / 2, (p[i][1] + p[(i + 1) % 3][1]) / 2] as const
+  ctx.moveTo(...mid(2))
+  for (let i = 0; i < 3; i++) {
+    // The right angle rounds like a square brick; the 45° tips stay sharp,
+    // so the triangle reaches the same edges as a square.
+    const prev = p[(i + 2) % 3]
+    const next = p[(i + 1) % 3]
+    const right =
+      Math.abs((prev[0] - p[i][0]) * (next[0] - p[i][0]) + (prev[1] - p[i][1]) * (next[1] - p[i][1])) < 1e-6
+    ctx.arcTo(p[i][0], p[i][1], ...mid(i), right ? 9 : 0.5)
+  }
+  ctx.closePath()
+}
+
+/** A triangle or orb brick, lit like a square brick: no rim, a soft light band along its top edge. */
+function drawShapedBrick(ctx: CanvasRenderingContext2D, b: Brick, color: string): void {
+  shapedBrickPath(ctx, b)
+  ctx.fillStyle = color
+  ctx.fill()
+  ctx.save()
+  ctx.clip()
+  const r = brickRect(b)
+  ctx.fillStyle = 'rgb(255 255 255 / 0.18)'
+  ctx.strokeStyle = 'rgb(255 255 255 / 0.18)'
+  if (b.shape === 'orb') {
+    // A curved shine, upper-left.
+    ctx.lineWidth = 4
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.arc(r.x + r.w / 2, r.y + r.h / 2, r.w / 2 - 6, Math.PI * 1.1, Math.PI * 1.55)
+    ctx.stroke()
+  } else if (b.shape === 'tri-tl' || b.shape === 'tri-tr') {
+    // A flat top edge: the same band a square has.
+    const inset = b.shape === 'tri-tl' ? { x: r.x + 6, w: r.w - 18 } : { x: r.x + 12, w: r.w - 18 }
+    ctx.fillRect(inset.x, r.y + 4, inset.w, 4)
+  } else {
+    // The top is the slanted side: a thin glint hugging it, on its upper half (the light is from above).
+    const left = b.shape === 'tri-br'
+    const tipX = left ? r.x + r.w : r.x
+    const dir = left ? -1 : 1
+    ctx.lineWidth = 3
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    // Inset 4 px into the brick, perpendicular to the slant.
+    const off = 4 / Math.SQRT2
+    ctx.moveTo(tipX + dir * (8 - off), r.y + 8 + off)
+    ctx.lineTo(tipX + dir * (r.w * 0.55 - off), r.y + r.h * 0.55 + off)
+    ctx.stroke()
+  }
+  ctx.restore()
+}
+
+/** Where a shaped brick's number and glyph go: a box around a triangle's centroid, or the orb's middle. */
+function shapeLabelRect(b: Brick): Rect {
+  const r = brickRect(b)
+  if (b.shape === 'orb' || !b.shape) return r
+  const right = b.shape === 'tri-tr' || b.shape === 'tri-br'
+  const bottom = b.shape === 'tri-bl' || b.shape === 'tri-br'
+  const cx = r.x + r.w * (right ? 2 / 3 : 1 / 3)
+  const cy = r.y + r.h * (bottom ? 2 / 3 : 1 / 3)
+  const w = r.w * 0.5
+  return { x: cx - w / 2, y: cy - w / 2, w, h: w }
+}
+
+/** Health bar colour: green, then yellow, then red as it runs out. */
+export function healthColor(share: number): string {
+  return share > 0.5 ? HEAL_COLOR : share > 0.25 ? '#ffd43b' : theme.coral
 }
 
 /** Where a boss looks: the first ball in flight, else the ball waiting to launch. */
@@ -159,6 +291,16 @@ export class BoardRenderer {
   private arenaPainter = new ArenaPainter()
   /** The equipped arena (background). */
   arena: ArenaId = 'indigo'
+  /** Bricks glide to their new row instead of jumping. */
+  private tween = new BrickTween()
+  private tweenAt = 0
+  /** A new or resumed run: its bricks appear where they are, no glide. */
+  resetTween(): void {
+    this.tween.reset()
+  }
+
+  /** The hero standing by the ball (set by the game). */
+  avatar: HeroAvatar | null = null
   /** Equipped ball skin and trail ids, e.g. 'ball:star'. */
   ball = 'ball:classic'
   trail = 'trail:none'
@@ -184,10 +326,22 @@ export class BoardRenderer {
     this.shake.apply(ctx)
     this.drawBoard(ctx, s, time)
     if (s) {
+      this.tween.update([...s.bricks.filter((b) => b.kind !== 'boss'), ...s.pickups], time - this.tweenAt)
+      this.tweenAt = time
+    }
+    if (s) this.drawHealth(ctx, s, juice, time)
+    if (s) {
       this.drawPickups(ctx, s, time)
       this.drawBricks(ctx, s, time)
       this.drawMovingBoss(ctx, s, time, juice)
+      this.drawBossDeath(ctx, juice, time)
+      this.drawArenaFx(ctx, juice, time)
       if (s.phase === 'aim' && aim !== null) this.drawGuide(ctx, s, aim)
+      // The hero first, so the ball it holds is drawn in its hand.
+      if (this.avatar) {
+        this.avatar.drawBall = (c, x, y, r) => drawBall(c, this.ball, x, y, r, time)
+        this.avatar.draw(ctx, this.d.floorY)
+      }
       this.drawBalls(ctx, s, time, juice.zaps)
     }
     if (juice.growFx) this.drawGrowFx(ctx, juice.growFx)
@@ -211,6 +365,102 @@ export class BoardRenderer {
       ctx.fillStyle = `rgb(255 255 255 / ${juice.flash * 0.45})`
       ctx.fillRect(0, 0, this.d.boardW, this.d.boardH)
     }
+    if (juice.hurtFlash > 0) {
+      // A red vignette: strongest at the edges, so the board stays readable.
+      const { boardW: w, boardH: h } = this.d
+      const g = ctx.createRadialGradient(
+        w / 2,
+        h / 2,
+        Math.min(w, h) * 0.3,
+        w / 2,
+        h / 2,
+        Math.max(w, h) * 0.75,
+      )
+      g.addColorStop(0, 'rgb(255 60 60 / 0)')
+      g.addColorStop(1, `rgb(255 60 60 / ${0.55 * juice.hurtFlash})`)
+      ctx.fillStyle = g
+      ctx.fillRect(0, 0, w, h)
+    }
+  }
+
+  /**
+   * The hero's health, in a strip under the floor, out of the way of play:
+   * a heart, the bar (a ghost of lost health drains after a crash), "72 / 100".
+   */
+  private drawHealth(ctx: CanvasRenderingContext2D, s: RunState, juice: Juice, time: number): void {
+    const share = Math.max(0, Math.min(1, s.hp / s.maxHp))
+    const low = share <= 0.25
+    const still = prefersReducedMotion()
+    const cy = this.d.floorY + 24 + HEALTH_STRIP / 2 - 1
+    const bh = 10
+    const by = cy - bh / 2
+    // Heart: beats faster when low, jolts on a hit.
+    const beat = still ? 1 : 1 + (low ? 0.15 : 0.06) * Math.max(0, Math.sin(time * (low ? 10 : 4)))
+    const jolt = still ? 0 : juice.heroHurt * 3 * (Math.random() * 2 - 1)
+    ctx.save()
+    ctx.translate(18 + jolt, cy + 1)
+    ctx.scale(beat, beat)
+    heartPath(ctx, 0, 0, 8)
+    ctx.fillStyle = juice.heroHurt > 0.3 ? '#ffffff' : '#ff6b81'
+    ctx.fill()
+    ctx.strokeStyle = theme.night
+    ctx.lineWidth = 2
+    ctx.stroke()
+    ctx.restore()
+    const x0 = 34
+    const w = this.d.boardW - 12 - x0
+    ctx.fillStyle = 'rgb(0 0 0 / 0.45)'
+    ctx.beginPath()
+    ctx.roundRect(x0, by, w, bh, 5)
+    ctx.fill()
+    const ghost = Math.max(0, Math.min(1, (juice.hpGhost ?? s.hp) / s.maxHp))
+    if (ghost > share) {
+      ctx.fillStyle = 'rgb(255 255 255 / 0.75)'
+      ctx.beginPath()
+      ctx.roundRect(x0, by, w * ghost, bh, 5)
+      ctx.fill()
+    }
+    ctx.save()
+    ctx.globalAlpha = low && !still ? 0.6 + 0.4 * Math.sin(time * 9) : 1
+    if (juice.healGlow > 0) {
+      ctx.shadowColor = HEAL_COLOR
+      ctx.shadowBlur = 14 * juice.healGlow
+    }
+    ctx.fillStyle = healthColor(share)
+    ctx.beginPath()
+    ctx.roundRect(x0, by, Math.max(share > 0 ? 5 : 0, w * share), bh, 5)
+    ctx.fill()
+    ctx.restore()
+    // Shine and 25-health ticks, so a big pool reads as big.
+    ctx.fillStyle = 'rgb(255 255 255 / 0.25)'
+    ctx.fillRect(x0 + 3, by + 2, Math.max(0, w * share - 6), 2)
+    ctx.fillStyle = 'rgb(0 0 0 / 0.3)'
+    for (let v = 25; v < s.maxHp; v += 25) ctx.fillRect(x0 + (w * v) / s.maxHp - 0.5, by + 2, 1, bh - 4)
+    ctx.font = `800 10px ${FONT}`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.lineWidth = 3
+    ctx.strokeStyle = theme.night
+    const label = `${Math.ceil(s.hp)} / ${s.maxHp}`
+    ctx.strokeText(label, x0 + w / 2, cy + 0.5)
+    ctx.fillStyle = theme.chalk
+    ctx.fillText(label, x0 + w / 2, cy + 0.5)
+    // "−18" / "+20" rising from the bar's end.
+    const pop = juice.hpPop
+    if (pop) {
+      ctx.save()
+      ctx.globalAlpha = Math.max(0, Math.min(1, (1.4 - pop.age) / 0.4))
+      ctx.font = `800 ${pop.amount < 0 ? 16 : 14}px ${FONT}`
+      ctx.textAlign = 'right'
+      const text = pop.amount < 0 ? `−${-pop.amount}` : `+${pop.amount}`
+      const y = by - 6 - pop.age * 14
+      ctx.strokeText(text, x0 + w, y)
+      ctx.fillStyle = pop.amount < 0 ? theme.coral : HEAL_COLOR
+      ctx.fillText(text, x0 + w, y)
+      ctx.restore()
+    }
+    juice.width = this.d.boardW
+    juice.healY = by
   }
 
   private drawBoard(ctx: CanvasRenderingContext2D, s: RunState | null, time: number): void {
@@ -239,10 +489,26 @@ export class BoardRenderer {
     ctx.textBaseline = 'middle'
     for (const b of s.bricks) {
       if (b.kind === 'boss') continue // drawn as one body by drawBoss
+      const dy = this.tween.dy(b.id)
+      ctx.save()
+      if (dy) {
+        ctx.translate(0, dy)
+        // Sliding in from above: fade in as it arrives.
+        ctx.globalAlpha = Math.max(0, Math.min(1, 1 + dy / CELL + 0.4))
+      }
+      this.drawBrick(ctx, s, b, time)
+      ctx.restore()
+    }
+  }
+
+  private drawBrick(ctx: CanvasRenderingContext2D, s: RunState, b: Brick, time: number): void {
+    {
       const r = brickRect(b)
       if (b.role) {
         // Summoned by a boss skill: its own look (ice has no number).
-        if (drawRoleBrick(ctx, b, time)) continue
+        if (drawRoleBrick(ctx, b, time)) return
+      } else if (b.shape) {
+        drawShapedBrick(ctx, b, b.kind === 'gold' ? '#ffc83d' : hpColor(b.hp, s.turn))
       } else {
         ctx.fillStyle = b.kind === 'gold' ? '#ffc83d' : hpColor(b.hp, s.turn)
         ctx.beginPath()
@@ -251,17 +517,22 @@ export class BoardRenderer {
         ctx.fillStyle = 'rgb(255 255 255 / 0.18)'
         ctx.fillRect(r.x + 6, r.y + 4, r.w - 12, 4)
       }
-      drawKindGlyph(ctx, b.kind, r, time)
+      // A triangle's glyph and number sit in its fat half, around its centroid.
+      const label = b.shape && !b.role ? shapeLabelRect(b) : r
+      drawKindGlyph(ctx, b.kind, label, time)
       const hp = compactNumber(Math.ceil(b.hp))
       ctx.fillStyle = theme.night
-      ctx.font = `700 ${hp.length >= 4 ? 15 : 20}px ${FONT}`
-      fillFitText(ctx, hp, r.x + r.w / 2, r.y + r.h / 2 + 1, r.w - 6)
+      const small = b.shape && b.shape !== 'orb'
+      ctx.font = `700 ${hp.length >= 4 || small ? 14 : 20}px ${FONT}`
+      fillFitText(ctx, hp, label.x + label.w / 2, label.y + label.h / 2 + 1, label.w - 2)
     }
   }
 
   private drawPickups(ctx: CanvasRenderingContext2D, s: RunState, time: number): void {
     for (const p of s.pickups) {
-      const { x, y } = cellCenter(p.col, p.row)
+      const c = cellCenter(p.col, p.row)
+      const x = c.x
+      const y = c.y + this.tween.dy(p.id)
       if (p.used) {
         // A fired laser stays charged until the volley ends.
         ctx.fillStyle = `rgb(255 111 181 / ${0.25 + 0.15 * Math.sin(time * 12)})`
@@ -279,8 +550,8 @@ export class BoardRenderer {
       s.launchX,
       rest.y,
       aim,
-      modsOf(s.boosts).guideLength,
-      hitRects(s.bricks),
+      runMods(s).guideLength,
+      hitShapes(s.bricks),
       this.d.boardW,
       this.d.floorY,
       rest.r,
@@ -363,9 +634,12 @@ export class BoardRenderer {
     // Balls waiting at the launch point, and balls that already landed.
     const home = s.phase === 'volley' ? (s.nextLaunchX ?? s.launchX) : s.launchX
     const waiting = s.phase === 'volley' ? s.balls.some((b) => b.status !== 'flying') : true
-    if (waiting) drawBall(ctx, this.ball, s.phase === 'volley' ? s.launchX : home, rest.y, rest.r, time)
+    // Between volleys the hero holds the ball (and draws it); during one, the queue waits at the launch point.
+    if (waiting && (s.phase === 'volley' || !this.avatar))
+      drawBall(ctx, this.ball, s.phase === 'volley' ? s.launchX : home, rest.y, rest.r, time)
+    // The first ball home rests on the floor until the hero picks it up.
     if (s.phase === 'volley' && s.nextLaunchX !== null) {
-      drawBall(ctx, this.ball, s.nextLaunchX, rest.y, rest.r, time)
+      drawBall(ctx, this.ball, s.nextLaunchX, this.d.floorY - rest.r, rest.r, time)
     }
     if (s.phase === 'aim') {
       const n = s.doubleVolleys > 0 ? s.ballCount * 2 : s.ballCount
@@ -406,7 +680,7 @@ export class BoardRenderer {
     }
 
     // A big combo makes the bar and its badge tremble.
-    const tremble = prefersReducedMotion() ? 0 : barShake(juice.comboMult)
+    const tremble = prefersReducedMotion() ? 0 : barShake(juice.barMult)
     ctx.save()
     if (tremble > 0) ctx.translate((Math.random() * 2 - 1) * tremble, (Math.random() * 2 - 1) * tremble)
     // XP bar: eases toward the real XP, heats up during a rush (glow, fire,
@@ -597,7 +871,8 @@ export class BoardRenderer {
     const tallyFont = `700 ${heat >= 2 ? 20 : 17}px ${FONT}`
     const multFont = `800 19px ${FONT}`
     const text = tally ? `+${compactNumber(Math.round(tally.amount))} XP` : ''
-    const mult = `×${juice.comboShown}`
+    // Says what it multiplies: XP.
+    const mult = t('XP ×{m}', { m: juice.comboShown })
     ctx.font = tallyFont
     const tw = tally ? ctx.measureText(text).width : 0
     ctx.font = multFont
@@ -672,7 +947,7 @@ export class BoardRenderer {
 
   private drawCombo(ctx: CanvasRenderingContext2D, s: RunState): void {
     if (s.phase !== 'volley' || s.combo < 5) return
-    const tier = COMBO_TIERS.length - 1 - COMBO_TIERS.findIndex(([min]) => s.combo >= min)
+    const tier = COMBO_TIERS.length - 1 - COMBO_TIERS.findIndex(([min]) => comboPower(s) >= min)
     ctx.font = `700 ${18 + tier * 7}px ${FONT}`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'top'
@@ -732,7 +1007,140 @@ export class BoardRenderer {
     ctx.translate(this.glide.x + mx, this.glide.y + my)
     ctx.scale(1 + squash, 1 - squash)
     ctx.translate(-mx, -my)
-    drawBoss(ctx, s, time, { hit: juice.bossHit, look: bossLook(s), cast: juice.bossCast })
+    drawBoss(ctx, s, time, {
+      hit: juice.bossHit,
+      look: bossLook(s),
+      cast: juice.bossCast,
+      smug: juice.bossSmug,
+      gloat: juice.bossGloat,
+    })
+    ctx.restore()
+    // It talks back: a laugh when it hurts you, a sneer when your hit bounces off.
+    const say = juice.bossGloat > 0.25 ? t('HA HA!') : juice.bossSmug > 0.4 ? t('Heh.') : null
+    if (say) {
+      const top = Math.min(...parts.map((b) => b.row))
+      const alpha = Math.min(1, (juice.bossGloat > 0.25 ? juice.bossGloat : juice.bossSmug) * 2)
+      const bx = this.glide.x + mx
+      const by = TOP + top * CELL - 12 + this.glide.y
+      ctx.save()
+      ctx.globalAlpha = alpha
+      ctx.font = `800 16px ${FONT}`
+      const w = ctx.measureText(say).width + 16
+      ctx.fillStyle = theme.chalk
+      ctx.beginPath()
+      ctx.roundRect(bx - w / 2, Math.max(TOP + 2, by - 24), w, 24, 12)
+      ctx.fill()
+      ctx.fillStyle = theme.night
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(say, bx, Math.max(TOP + 2, by - 24) + 12.5)
+      ctx.restore()
+    }
+  }
+
+  /**
+   * A dying boss: its body shakes harder and harder, flashes white faster and
+   * cracks open while explosions go off; after the finale, a shockwave ring.
+   */
+  private drawBossDeath(ctx: CanvasRenderingContext2D, juice: Juice, time: number): void {
+    const d = juice.bossDeath
+    if (d?.ghost && !d.finished) {
+      const k = Math.min(1, d.age / BOSS_DEATH_BOOM)
+      const still = prefersReducedMotion()
+      const jitter = still ? 0 : 2 + 7 * k
+      ctx.save()
+      ctx.translate((Math.random() * 2 - 1) * jitter, (Math.random() * 2 - 1) * jitter)
+      // Swells a little as it is about to burst.
+      const cx = d.box.x + d.box.w / 2
+      const cy = d.box.y + d.box.h / 2
+      const swell = 1 + 0.08 * k * k
+      ctx.translate(cx, cy)
+      ctx.scale(swell, swell)
+      ctx.translate(-cx, -cy)
+      const blink = Math.sin(time * (8 + 30 * k)) > 0.3 ? 0.4 + 0.6 * k : 0
+      drawBoss(ctx, { boss: d.ghost.boss, bricks: d.ghost.parts }, time, { hit: blink, cast: k })
+      // Cracks of light spreading across the body.
+      ctx.strokeStyle = `rgb(255 240 200 / ${0.5 + 0.5 * k})`
+      ctx.lineWidth = 2 + 2 * k
+      ctx.shadowColor = '#ffc83d'
+      ctx.shadowBlur = 12
+      ctx.beginPath()
+      const cracks = 3 + Math.floor(9 * k)
+      for (let i = 0; i < cracks; i++) {
+        // Fixed per crack (seeded by i), so they grow instead of flickering.
+        const a = i * 2.39996
+        const len = Math.min(d.box.w, d.box.h) * 0.5 * Math.min(1, k * 1.6 - i * 0.05)
+        if (len <= 0) continue
+        ctx.moveTo(cx, cy)
+        const mx = cx + Math.cos(a) * len * 0.5 + Math.sin(i * 7) * 6
+        const my = cy + Math.sin(a) * len * 0.5 + Math.cos(i * 5) * 6
+        ctx.lineTo(mx, my)
+        ctx.lineTo(cx + Math.cos(a + 0.2) * len, cy + Math.sin(a + 0.2) * len)
+      }
+      ctx.stroke()
+      ctx.restore()
+    }
+    const w = juice.shockwave
+    if (w) {
+      const k = w.age / SHOCKWAVE_LIFE
+      ctx.save()
+      ctx.strokeStyle = `rgb(255 255 255 / ${1 - k})`
+      ctx.lineWidth = 14 * (1 - k) + 2
+      ctx.beginPath()
+      ctx.arc(w.x, w.y, 20 + ease.outCubic(k) * this.d.boardW * 0.9, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.strokeStyle = `rgb(255 200 61 / ${0.7 * (1 - k)})`
+      ctx.lineWidth = 6 * (1 - k) + 1
+      ctx.beginPath()
+      ctx.arc(w.x, w.y, 10 + ease.outCubic(k) * this.d.boardW * 0.6, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.restore()
+    }
+  }
+
+  /**
+   * The arena growing for a boss: the new rows sit under a dark cover with a
+   * glowing edge that pulses (the rumble), then slides down to open them.
+   * Shrinking: the floor flashes and bars squeeze in from the bottom.
+   */
+  private drawArenaFx(ctx: CanvasRenderingContext2D, juice: Juice, time: number): void {
+    const a = juice.arenaFx
+    juice.floorY = this.d.floorY
+    if (!a) return
+    const w = this.d.boardW
+    const floor = this.d.floorY + BALL_R
+    ctx.save()
+    if (a.grow) {
+      const bandTop = floor - BOSS_ROOM * CELL
+      const k = Math.max(0, Math.min(1, (a.age - ARENA_OPEN) / (ARENA_LAND - ARENA_OPEN)))
+      const edge = bandTop + ease.outCubic(k) * (floor - bandTop)
+      if (k < 1) {
+        ctx.fillStyle = 'rgb(10 8 25 / 0.82)'
+        ctx.fillRect(0, edge, w, floor - edge)
+        const pulse = a.age < ARENA_OPEN ? 0.5 + 0.5 * Math.sin(time * 40) : 1
+        ctx.shadowColor = '#ffc83d'
+        ctx.shadowBlur = 18
+        ctx.fillStyle = `rgb(255 200 61 / ${0.6 + 0.4 * pulse})`
+        ctx.fillRect(0, edge - 2, w, 4)
+      }
+    } else {
+      const k = Math.min(1, a.age / ARENA_SQUEEZE)
+      const h = (1 - ease.outCubic(k)) * CELL * 0.6
+      ctx.fillStyle = 'rgb(10 8 25 / 0.75)'
+      ctx.fillRect(0, floor - h, w, h)
+      ctx.shadowColor = theme.coral
+      ctx.shadowBlur = 14
+      ctx.fillStyle = `rgb(255 107 107 / ${1 - k * 0.6})`
+      ctx.fillRect(0, floor - h - 2, w, 3)
+    }
+    // After the thud: a light line along the new floor that fades.
+    const land = a.grow ? ARENA_LAND : ARENA_SQUEEZE
+    if (a.age > land) {
+      const f = 1 - (a.age - land) / 0.6
+      ctx.shadowBlur = 0
+      ctx.fillStyle = `rgb(255 255 255 / ${0.6 * f})`
+      ctx.fillRect(0, floor - 1, w, 2)
+    }
     ctx.restore()
   }
 

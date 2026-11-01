@@ -144,6 +144,31 @@ describe('save', () => {
 })
 
 describe('soundtracks', () => {
+  it('keeps a v5 run from before heroes: it carries on as the Rookie at full health', () => {
+    const storage = memoryStorage()
+    const save = bankRun(fresh(), createRun(1), 0).save
+    save.run!.simVersion = 5
+    const old = save.run!.state as unknown as Record<string, unknown>
+    delete old.hero
+    delete old.hp
+    delete old.maxHp
+    delete old.kills
+    storage.setItem(SAVE_KEY, JSON.stringify(save))
+    const loaded = loadSave(storage)
+    expect(loaded.droppedRun).toBe(false)
+    expect(loaded.save.run!.simVersion).toBe(SIM_VERSION)
+    expect(loaded.save.run!.state).toMatchObject({ hero: 'rookie', hp: 100, maxHp: 100, kills: 0 })
+  })
+
+  it('gives older saves the Rookie (owned and equipped) and potion slot', () => {
+    const old = { ...fresh(), owned: ['ball:classic'], equipped: { ball: 'ball:classic' }, helpers: {} }
+    const storage = new Map([[SAVE_KEY, JSON.stringify(old)]])
+    const { save } = loadSave({ getItem: (k: string) => storage.get(k) ?? null } as unknown as Storage)
+    expect(save.owned).toContain('hero:rookie')
+    expect(save.equipped.hero).toBe('hero:rookie')
+    expect(save.helpers.potion).toBe(0)
+  })
+
   it('gives older saves the default track, owned and equipped', () => {
     const old = { ...fresh(), owned: ['ball:classic'], equipped: { ball: 'ball:classic' } }
     const storage = new Map([[SAVE_KEY, JSON.stringify(old)]])

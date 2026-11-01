@@ -10,7 +10,7 @@ describe('boost stats', () => {
       damageMult: 1.4,
       coinMult: 1,
       speedMult: 1,
-      pierceEvery: 0,
+      pierceChance: 0,
       critChance: 0.05,
       bounceStep: 0.5,
     })

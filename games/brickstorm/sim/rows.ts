@@ -2,7 +2,8 @@ import { random, randomInt } from '@forge/core/rng'
 import { modsOf } from './boosts'
 import { BRICK_INSET, CELL, TOP } from './config'
 import { columnOrder, patternAt, patternLimit } from './patterns'
-import type { BrickKind, PickupKind, Rect, RunState } from './types'
+import type { HitShape } from './physics'
+import type { Brick, BrickKind, BrickShape, PickupKind, Rect, RunState } from './types'
 
 export function brickRect(b: { col: number; row: number }): Rect {
   return {
@@ -45,6 +46,48 @@ export function hitRects(bricks: readonly { col: number; row: number; kind: stri
       h: CELL - t - gap(0, 1),
     }
   })
+}
+
+/** A shaped brick's outline: a triangle's 3 corners, or an orb's circle; a square is its rect. */
+export function brickShape(b: Pick<Brick, 'col' | 'row' | 'shape'>): HitShape {
+  const r = brickRect(b)
+  if (!b.shape) return r
+  if (b.shape === 'orb') return { circle: { x: r.x + r.w / 2, y: r.y + r.h / 2, r: r.w / 2 } }
+  const tl = [r.x, r.y] as const
+  const tr = [r.x + r.w, r.y] as const
+  const bl = [r.x, r.y + r.h] as const
+  const br = [r.x + r.w, r.y + r.h] as const
+  const poly = {
+    'tri-tl': [tl, tr, bl],
+    'tri-tr': [tl, tr, br],
+    'tri-bl': [tl, bl, br],
+    'tri-br': [tr, br, bl],
+  }[b.shape]
+  return { poly }
+}
+
+/** What each brick collides with: its shape, or for the boss its seamless rect. */
+export function hitShapes(bricks: readonly Brick[]): HitShape[] {
+  const rects = hitRects(bricks)
+  // A shaped boss part (a horn, a fist) collides as its shape; square parts join seamlessly.
+  return bricks.map((b, i) => (b.shape ? brickShape(b) : rects[i]))
+}
+
+/** Shapes a new brick may take, and each one's share of a square brick's health (it is smaller). */
+export const SHAPE_HP: Record<BrickShape, number> = {
+  'tri-tl': 0.6,
+  'tri-tr': 0.6,
+  'tri-bl': 0.6,
+  'tri-br': 0.6,
+  orb: 0.8,
+}
+const SHAPES = Object.keys(SHAPE_HP) as BrickShape[]
+/** First turn shaped bricks appear. */
+export const SHAPES_FROM = 8
+
+/** Chance a new brick is shaped: 12% from turn 8, slowly rising to 25%. */
+export function shapeChance(turn: number): number {
+  return turn < SHAPES_FROM ? 0 : Math.min(0.25, 0.12 + 0.001 * (turn - SHAPES_FROM))
 }
 
 export function cellCenter(col: number, row: number): { x: number; y: number } {
@@ -94,7 +137,7 @@ export function lateHardness(turn: number): number {
 }
 /** From this turn hp also compounds, so even a snowballing run ends. */
 const LATE_FROM = 60
-const LATE_GROWTH = 1.025
+const LATE_GROWTH = 1.035
 
 /**
  * Typical brick hp on a turn. It holds flat for a stretch of turns and then
@@ -114,8 +157,13 @@ const HP_PER_BALL = 1.4
 const HP_PER_BALL_LATE = 1.7
 
 /** Most hp a new brick may have: what the run's balls can deal, so a run short on balls stays playable. */
+/** From LATE_FROM the cap also compounds by this much a turn: a strong build buys time, not forever. */
+export const CAP_GROWTH = 1.02
+
 export function hpCap(state: RunState): number {
-  const perBall = HP_PER_BALL + (HP_PER_BALL_LATE - HP_PER_BALL) * lateHardness(state.turn)
+  const perBall =
+    (HP_PER_BALL + (HP_PER_BALL_LATE - HP_PER_BALL) * lateHardness(state.turn)) *
+    CAP_GROWTH ** Math.max(0, state.turn - LATE_FROM)
   return Math.max(1, Math.round(perBall * state.ballCount * modsOf(state.boosts).damageMult))
 }
 
@@ -147,9 +195,13 @@ export function spawnRow(state: RunState): void {
   const take = () => free.splice(randomInt(rng, free.length), 1)[0]
   /** Takes `col` if given (a pattern's pick), else a random free column. */
   const add = (kind: BrickKind, col?: number, boost = 1) => {
-    const hp = brickHp(state, boost)
+    // Some bricks are triangles or orbs: odd angles to bounce off, a little less health.
+    const shape = random(rng) < shapeChance(turn) ? SHAPES[randomInt(rng, SHAPES.length)] : undefined
+    const hp = Math.max(1, Math.round(brickHp(state, boost) * (shape ? SHAPE_HP[shape] : 1)))
     const c = col === undefined ? take() : free.splice(free.indexOf(col), 1)[0]
-    state.bricks.push({ id: state.nextId++, col: c, row: 0, hp, maxHp: hp, kind, split: false })
+    const brick: Brick = { id: state.nextId++, col: c, row: 0, hp, maxHp: hp, kind, split: false }
+    if (shape) brick.shape = shape
+    state.bricks.push(brick)
   }
 
   if (turn % 10 === 0) {
@@ -193,4 +245,16 @@ export function spawnRow(state: RunState): void {
     pickup('fire', 0.06)
     pickup('laser', 0.05)
   }
+  if (turn >= HEART_FROM) pickup('heart', heartChance(state))
+}
+
+/** First turn a heart pickup may appear. */
+export const HEART_FROM = 6
+/**
+ * Chance a row offers a heart: none at full health, more the more is missing,
+ * so a hurt hero gets a way back without the run going soft.
+ */
+export function heartChance(s: Pick<RunState, 'hp' | 'maxHp'>): number {
+  const missing = s.maxHp > 0 ? 1 - s.hp / s.maxHp : 0
+  return missing <= 0 ? 0 : 0.03 + 0.12 * missing
 }

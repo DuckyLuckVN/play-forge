@@ -5,7 +5,8 @@ import { drawBall } from './cosmetics'
 import { GUIDE, runStats } from './guide'
 import { t } from './i18n'
 import { BOOST_ICONS } from './icons'
-import { drawKindGlyph, drawPickupGlyph } from './render'
+import { drawKindGlyph, drawPickupGlyph, shapedBrickPath } from './render'
+import { CELL, TOP } from './sim/config'
 import type { Helpers } from './save'
 import { BOOSTS, boostSlots, slottedBoosts } from './sim/boosts'
 import type { ActiveHelper, BoostId, BrickKind, PickupKind, RunState } from './sim/types'
@@ -24,6 +25,7 @@ export const ACTIVE_HELPERS: Array<{ id: ActiveHelper; name: string; glyph: stri
   { id: 'overcharge', name: 'Overcharge', glyph: '⚡', text: '×2 damage next volley' },
   { id: 'vacuum', name: 'Vacuum', glyph: '◎', text: 'Collect every pickup on the board' },
   { id: 'pierceShot', name: 'Pierce Shot', glyph: '➹', text: 'Balls pierce 2 bricks next volley' },
+  { id: 'potion', name: 'Potion', glyph: '✚', text: 'Heal half your health' },
 ]
 
 export function statsPanel(s: RunState, bestTurn: number): HTMLElement {
@@ -195,6 +197,43 @@ export function sample(id: string): HTMLCanvasElement {
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     drawKindGlyph(ctx, kind as BrickKind, r, 0.3)
+  } else if (group === 'attack') {
+    // A red warning badge.
+    ctx.fillStyle = theme.coral
+    ctx.beginPath()
+    ctx.arc(size / 2, size / 2, 18, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(size / 2 - 2.5, size / 2 - 11, 5, 14)
+    ctx.fillRect(size / 2 - 2.5, size / 2 + 6, 5, 5)
+  } else if (group === 'storm') {
+    // A lightning bolt in a storm cloud.
+    ctx.fillStyle = '#5c5f80'
+    ctx.beginPath()
+    ctx.arc(18, 20, 9, 0, Math.PI * 2)
+    ctx.arc(28, 16, 11, 0, Math.PI * 2)
+    ctx.arc(36, 22, 8, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = theme.yolk
+    ctx.beginPath()
+    ctx.moveTo(27, 22)
+    ctx.lineTo(20, 34)
+    ctx.lineTo(26, 34)
+    ctx.lineTo(22, 44)
+    ctx.lineTo(33, 29)
+    ctx.lineTo(27, 29)
+    ctx.lineTo(31, 22)
+    ctx.closePath()
+    ctx.fill()
+  } else if (group === 'shape') {
+    // Drawn at board scale around cell (0, 0), shrunk to fit.
+    ctx.save()
+    ctx.scale(size / CELL, size / CELL)
+    ctx.translate(0, -TOP)
+    shapedBrickPath(ctx, { col: 0, row: 0, shape: kind === 'orb' ? 'orb' : 'tri-bl' })
+    ctx.restore()
+    ctx.fillStyle = '#b48cff'
+    ctx.fill()
   } else if (group === 'pickup') {
     drawPickupGlyph(ctx, kind as PickupKind, size / 2, size / 2, 0.3)
   } else if (kind === 'fire') {

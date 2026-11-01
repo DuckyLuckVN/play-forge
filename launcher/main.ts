@@ -5,6 +5,7 @@ import { playSound, UI_SOUNDS } from '@forge/audio/sound'
 import { LOUNGE } from '@forge/audio/tracks'
 import { translator } from '@forge/core/i18n'
 import { audioMenu } from '@forge/ui/audio-menu'
+import { langMenu } from '@forge/ui/lang-menu'
 import { h } from '@forge/ui/dom'
 import { applyTheme } from '@forge/ui/theme'
 import games from '../games/games.json'
@@ -81,7 +82,7 @@ const steps = [
 ].map(([title, text]) => [t(title), t(text)])
 
 document.body.append(
-  h('div', { class: 'lc-bar' }, audioMenu()),
+  h('div', { class: 'lc-bar' }, langMenu(), audioMenu()),
   h(
     'main',
     { class: 'lc' },

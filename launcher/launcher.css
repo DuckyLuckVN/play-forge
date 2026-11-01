@@ -3,6 +3,8 @@
   top: 12px;
   right: 16px;
   z-index: 15;
+  display: flex;
+  gap: 8px;
 }
 
 .lc {

@@ -9,6 +9,7 @@ import { Particles } from '@forge/fx/particles'
 import { Shake } from '@forge/fx/shake'
 import { createCanvas2D } from '@forge/render2d/canvas'
 import { audioMenu } from '@forge/ui/audio-menu'
+import { langMenu } from '@forge/ui/lang-menu'
 import { h, icon, toast } from '@forge/ui/dom'
 import { icons } from '@forge/ui/icons'
 import { applyTheme } from '@forge/ui/theme'
@@ -66,7 +67,7 @@ const bar = h(
   { class: 'pf-bar' },
   home,
   h('h1', { class: 'pf-bar-title', textContent: 'Brickstorm' }),
-  h('div', { class: 'pf-bar-actions' }, guideBtn, shopBarBtn, pauseBtn, audioMenu()),
+  h('div', { class: 'pf-bar-actions' }, guideBtn, shopBarBtn, pauseBtn, langMenu(), audioMenu()),
 )
 
 const boardEl = h('div', { class: 'bs-board' })

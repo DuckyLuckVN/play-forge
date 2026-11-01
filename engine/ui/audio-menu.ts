@@ -5,7 +5,7 @@ import {
   setAudioSettings,
   UI_SOUNDS,
 } from '../audio/sound'
-import { getLang, LANGS, setLang, translator } from '../core/i18n'
+import { translator } from '../core/i18n'
 import { h, icon } from './dom'
 import { icons } from './icons'
 
@@ -17,39 +17,10 @@ const t = translator({
   'Turn sound on': 'Bật âm thanh',
   'Mute everything': 'Tắt hết âm thanh',
   'Sound settings': 'Cài đặt âm thanh',
-  Language: 'Ngôn ngữ',
 })
 
-/** Language switch: reloads the page in the chosen language. */
-function languagePicker(): HTMLElement {
-  const group = h(
-    'div',
-    { class: 'pf-segmented', role: 'radiogroup' } as never,
-    ...LANGS.map((l) => {
-      const on = l.id === getLang()
-      const b = h('button', {
-        class: `pf-segment${on ? ' on' : ''}`,
-        type: 'button',
-        textContent: l.label,
-        onclick: () => setLang(l.id),
-      })
-      b.setAttribute('role', 'radio')
-      b.setAttribute('aria-checked', String(on))
-      b.lang = l.id
-      return b
-    }),
-  )
-  group.setAttribute('aria-label', t('Language'))
-  return h(
-    'div',
-    { class: 'pf-option' },
-    h('span', { class: 'pf-option-label', textContent: t('Language') }),
-    group,
-  )
-}
-
 /**
- * Sound button with a popover: music volume, effects volume, mute and language.
+ * Sound button with a popover: music volume, effects volume, mute.
  * Settings are shared by every game and saved in localStorage.
  */
 export function audioMenu(): HTMLElement {
@@ -72,14 +43,7 @@ export function audioMenu(): HTMLElement {
   const mute = h('button', { class: 'pf-btn wide', type: 'button' })
   mute.onclick = () => setAudioSettings({ muted: !getAudioSettings().muted })
 
-  const pop = h(
-    'div',
-    { class: 'pf-popover', role: 'dialog' } as never,
-    music.row,
-    sfx.row,
-    mute,
-    languagePicker(),
-  )
+  const pop = h('div', { class: 'pf-popover', role: 'dialog' } as never, music.row, sfx.row, mute)
   pop.setAttribute('aria-label', t('Sound settings'))
   pop.hidden = true
   const root = h('div', { class: 'pf-popover-anchor' }, button, pop)

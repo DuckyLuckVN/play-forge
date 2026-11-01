@@ -116,7 +116,7 @@ To test multiplayer locally without the internet, open the game in two tabs with
    - `scores(state)`: drives the score chips in the top bar and the scores on the seats after a match.
    - `outcome(state, selfId)`: the result headline, plus `win` / `lose` / `draw` / `done` to pick the end sound.
 6. Add a `cover.svg` (320×200) and an entry in `games/games.json`. The launcher and the README games table update from it (`npm run build` or `npm run readme`).
-7. Languages (English and Vietnamese): wrap on-screen text in `t('English text', { params })` from `translator(VI)` in `@forge/core/i18n`, with `{name}` placeholders. Add the Vietnamese to the game's dictionary (see `games/brickstorm/i18n.ts`); anything missing shows in English. The player picks a language in the sound menu, and the page reloads in it. Add the game's description to the launcher's dictionary in `launcher/main.ts`.
+7. Languages (English and Vietnamese): wrap on-screen text in `t('English text', { params })` from `translator(VI)` in `@forge/core/i18n`, with `{name}` placeholders. Add the Vietnamese to the game's dictionary (see `games/brickstorm/i18n.ts`); anything missing shows in English. The player picks a language from the language button in the header (`langMenu()` from `@forge/ui/lang-menu`), and the page reloads in it. Add the game's description to the launcher's dictionary in `launcher/main.ts`.
 
 ## Deploy
 

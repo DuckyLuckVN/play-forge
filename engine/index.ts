@@ -50,6 +50,7 @@ export { createOfflineTransport, randomId, type Transport } from './net/transpor
 export { createTrysteroTransport } from './net/trystero'
 export { createCanvas2D, type Canvas2D } from './render2d/canvas'
 export { audioMenu } from './ui/audio-menu'
+export { langMenu } from './ui/lang-menu'
 export { h, icon, toast } from './ui/dom'
 export { icons } from './ui/icons'
 export { applyTheme, FONT, PLAYER_COLORS, playerColor, theme } from './ui/theme'

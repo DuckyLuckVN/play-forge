@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { holdBoost, holdCost, pickBoost, pickCost, rollChoices, skipPick } from './boosts'
+import { holdBoost, holdCost, pickBoost, pickCost, reroll, rollChoices, skipPick } from './boosts'
 import { spawnBoss } from './boss'
 import { damageBrick } from './damage'
 import { openPickOrAim } from './run'
@@ -21,12 +21,25 @@ function picking(
 }
 
 describe('pick prices', () => {
-  it('the first level-up of a run is free; later ones cost more each level', () => {
-    expect(pickCost(picking(2), 'twin')).toBe(0)
+  it('only the first level-up of a run is free; later ones cost more each level', () => {
+    expect(pickCost(picking(1), 'twin')).toBe(0)
+    expect(pickCost(picking(2), 'twin')).toBeGreaterThan(0)
     const a = pickCost(picking(3), 'twin')
     const b = pickCost(picking(6), 'twin')
     expect(a).toBeGreaterThan(0)
     expect(b).toBeGreaterThan(a)
+  })
+
+  it('rarer boosts cost more', () => {
+    const at = (id: BoostId) => pickCost(picking(5), id)
+    // keeper, lightning, bombball: common, rare, epic, all at the default weight.
+    expect(at('lightning')).toBeGreaterThan(at('keeper'))
+    expect(at('bombball')).toBeGreaterThan(at('lightning'))
+  })
+
+  it('strong boosts cost more than weak ones of the same rarity', () => {
+    expect(pickCost(picking(5), 'damage')).toBeGreaterThan(pickCost(picking(5), 'keeper'))
+    expect(pickCost(picking(5), 'magnet')).toBeLessThan(pickCost(picking(5), 'keeper'))
   })
 
   it('upgrading a boost you own costs more than a new one, more per level', () => {
@@ -53,7 +66,7 @@ describe('pick prices', () => {
 })
 
 describe('holding a boost', () => {
-  it('keeps a card for the next level-up, as an extra card', () => {
+  it('keeps a card for the next level-up: it comes back first, with 2 new ones', () => {
     const s = picking(4)
     holdBoost(s, 'twin')
     expect(s.held).toBe('twin')
@@ -62,7 +75,8 @@ describe('holding a boost', () => {
     s.pendingPicks = 1
     s.phase = 'pick'
     s.choices = rollChoices(s)
-    expect(s.choices).toContain('twin')
+    expect(s.choices).toHaveLength(3)
+    expect(s.choices[0]).toBe('twin')
     expect(s.choices.filter((id) => id === 'twin')).toHaveLength(1)
   })
 
@@ -82,12 +96,50 @@ describe('holding a boost', () => {
 
   it('one at a time, and each hold costs more', () => {
     const s = picking(4)
-    const first = holdCost(s)
+    const first = holdCost(s, 'big')
     holdBoost(s, 'twin')
     holdBoost(s, 'big')
     expect(s.held).toBe('twin')
     expect(s.choices).toContain('big')
-    expect(holdCost(s)).toBeGreaterThan(first)
+    expect(holdCost(s, 'big')).toBeGreaterThan(first)
+  })
+
+  it('a reroll on the screen where you held a skill does not bring it back', () => {
+    for (let seed = 1; seed <= 50; seed++) {
+      const s = picking(4)
+      s.rng = { seed }
+      holdBoost(s, 'twin')
+      reroll(s)
+      expect(s.choices).not.toContain('twin')
+      // The held card keeps its spot on screen, so the reroll draws 2, not 3.
+      expect(s.choices).toHaveLength(2)
+      expect(s.held).toBe('twin')
+    }
+  })
+
+  it('the held skill comes back first on the next pick screen, and stays first through a reroll there', () => {
+    const s = picking(4)
+    s.pendingPicks = 2
+    holdBoost(s, 'twin')
+    pickBoost(s, 'damage')
+    expect(s.choices[0]).toBe('twin')
+    reroll(s)
+    expect(s.choices[0]).toBe('twin')
+  })
+
+  it('a bonus (+2 balls, Double Down) cannot be held', () => {
+    const s = picking(4, {}, ['balls', 'double', 'twin'])
+    holdBoost(s, 'balls')
+    holdBoost(s, 'double')
+    expect(s.held ?? null).toBeNull()
+    expect(s.choices).toEqual(['balls', 'double', 'twin'])
+  })
+
+  it('holding a rarer boost costs more, and costs even on a free pick', () => {
+    const s = picking(4, {}, ['keeper', 'lightning', 'bombball'])
+    expect(holdCost(s, 'lightning')).toBeGreaterThan(holdCost(s, 'keeper'))
+    expect(holdCost(s, 'bombball')).toBeGreaterThan(holdCost(s, 'lightning'))
+    expect(holdCost(picking(1), 'keeper')).toBeGreaterThan(0)
   })
 })
 

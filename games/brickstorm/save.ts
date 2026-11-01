@@ -1,10 +1,12 @@
 // Brickstorm's saved progress, kept in localStorage. Bump `version` and add a
 // migration in `migrate` when the shape changes. Bump SIM_VERSION when
-// RunState's shape changes, so old saved runs are dropped instead of loaded.
+// RunState's shape changes, so old saved runs are dropped instead of loaded
+// (or upgraded in `upgradeRun`, when that is safe).
+import { xpToNext } from './sim/boosts'
 import type { RunState } from './sim/types'
 
 export const SAVE_KEY = 'play-forge:brickstorm:save'
-export const SIM_VERSION = 4
+export const SIM_VERSION = 5
 
 export interface Equipped {
   ball: string
@@ -123,6 +125,21 @@ function validRun(run: unknown): run is SavedRun {
   )
 }
 
+/** XP to the next level before sim v5 (1 XP per brick broken). */
+const v4XpToNext = (level: number) => 8 + 6 * level
+
+/**
+ * Brings an older saved run up to SIM_VERSION where that is safe. v4 → v5 only
+ * rescaled XP, so the bar keeps the same share of the level.
+ */
+function upgradeRun(run: unknown): unknown {
+  if (!isObject(run) || run.simVersion !== 4 || !isObject(run.state)) return run
+  const { level, xp } = run.state
+  if (!count(level) || !count(xp)) return run
+  const state = { ...run.state, xp: (Math.min(xp, v4XpToNext(level)) / v4XpToNext(level)) * xpToNext(level) }
+  return { ...run, simVersion: 5, state }
+}
+
 /** Turns stored data into a v2 save; null if it isn't a save at all. */
 function migrate(data: unknown): { save: Save; droppedRun: boolean } | null {
   if (!isObject(data) || !count(data.bestTurn) || !count(data.bestCombo)) return null
@@ -149,8 +166,9 @@ function migrate(data: unknown): { save: Save; droppedRun: boolean } | null {
     }
   }
   if (Array.isArray(data.seen)) save.seen = data.seen.filter((x) => typeof x === 'string')
-  const droppedRun = data.run !== null && data.run !== undefined && !validRun(data.run)
-  save.run = droppedRun ? null : ((data.run as SavedRun | null) ?? null)
+  const run = upgradeRun(data.run)
+  const droppedRun = run !== null && run !== undefined && !validRun(run)
+  save.run = droppedRun ? null : ((run as SavedRun | null) ?? null)
   return { save, droppedRun }
 }
 
@@ -202,11 +220,12 @@ export function recordRun(save: Save, turn: number, bestCombo: number): Save {
  * in one step, so a coin is never paid twice and never lost.
  */
 export function bankRun(save: Save, s: RunState, banked: number): { save: Save; banked: number } {
-  const gained = Math.max(0, s.coins - banked)
+  // Usually a gain; a loss when a boss taxed the run since the last bank.
+  const change = s.coins - banked
   return {
     save: {
       ...save,
-      coins: save.coins + gained,
+      coins: Math.max(0, save.coins + change),
       run: { simVersion: SIM_VERSION, banked: s.coins, state: { ...structuredClone(s), events: [] } },
     },
     banked: s.coins,
@@ -216,7 +235,7 @@ export function bankRun(save: Save, s: RunState, banked: number): { save: Save; 
 /** Runs are saved only at turn boundaries, never mid-volley or after game over. */
 /** Coins the player has right now: the wallet plus this run's coins not banked yet. */
 export function walletTotal(save: Save, run: RunState | null, banked: number): number {
-  return save.coins + (run ? Math.max(0, run.coins - banked) : 0)
+  return Math.max(0, save.coins + (run ? run.coins - banked : 0))
 }
 
 export function canBank(phase: RunState['phase']): boolean {

@@ -80,8 +80,17 @@ export function coinAmount(n: number | string, cls = 'bs-coins'): HTMLElement {
     'span',
     { class: cls },
     icon,
-    h('span', { textContent: typeof n === 'number' ? n.toLocaleString() : n }),
+    h('span', { textContent: typeof n === 'number' ? formatCoins(n) : n }),
   )
+}
+
+/** Below this, coins show in full (12,345); from here on, short (123k). */
+const SHORT_FROM = 100_000
+
+/** The one way coins are written everywhere (HUD, badge, wallet, prices). */
+export function formatCoins(n: number): string {
+  const whole = Math.floor(n)
+  return whole < SHORT_FROM ? whole.toLocaleString() : shortCoins(whole)
 }
 
 /** 1234 → "1.2k", for small badges. */

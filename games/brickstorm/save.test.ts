@@ -16,6 +16,7 @@ import {
   writeSave,
   type Save,
 } from './save'
+import { xpToNext } from './sim/boosts'
 import { createRun } from './sim/run'
 
 function memoryStorage(): Storage {
@@ -88,12 +89,26 @@ describe('save', () => {
   it('drops a run from another sim version but keeps the wallet', () => {
     const storage = memoryStorage()
     const save = bankRun({ ...fresh(), coins: 70 }, createRun(1), 0).save
-    save.run!.simVersion = SIM_VERSION - 1
+    save.run!.simVersion = 3
     storage.setItem(SAVE_KEY, JSON.stringify(save))
     const loaded = loadSave(storage)
     expect(loaded.droppedRun).toBe(true)
     expect(loaded.save.run).toBeNull()
     expect(loaded.save.coins).toBe(70)
+  })
+
+  it('keeps a v4 run, carrying its XP bar over to the new XP scale', () => {
+    const storage = memoryStorage()
+    const save = bankRun(fresh(), createRun(1), 0).save
+    save.run!.simVersion = 4
+    save.run!.state.level = 2
+    save.run!.state.xp = 10 // old scale: 10 of 20 to the next level
+    storage.setItem(SAVE_KEY, JSON.stringify(save))
+    const loaded = loadSave(storage)
+    expect(loaded.droppedRun).toBe(false)
+    expect(loaded.save.run!.simVersion).toBe(SIM_VERSION)
+    expect(loaded.save.run!.state.level).toBe(2)
+    expect(loaded.save.run!.state.xp / xpToNext(2)).toBeCloseTo(0.5)
   })
 
   it('drops a malformed run but keeps the wallet', () => {
@@ -158,6 +173,28 @@ describe('wallet', () => {
     const save = bankRun(first.save, s, first.banked).save
     expect(save.coins).toBe(45)
     expect(save.run).toMatchObject({ simVersion: SIM_VERSION, banked: 45 })
+  })
+
+  it('takes coins the run lost (a boss tax) back out of the wallet, then refunds them once', () => {
+    const s = createRun(2)
+    s.coins = 100
+    let { save, banked } = bankRun({ ...fresh(), coins: 50 }, s, 0)
+    expect(save.coins).toBe(150)
+    s.coins = 90 // taxed
+    expect(walletTotal(save, s, banked)).toBe(140)
+    ;({ save, banked } = bankRun(save, s, banked))
+    expect(save.coins).toBe(140)
+    s.coins = 100 // refunded when the boss falls
+    save = bankRun(save, s, banked).save
+    expect(save.coins).toBe(150)
+  })
+
+  it('never takes the wallet below zero', () => {
+    const s = createRun(2)
+    s.coins = 10
+    const save = { ...fresh(), coins: 0 }
+    expect(walletTotal(save, s, 40)).toBe(0)
+    expect(bankRun(save, s, 40).save.coins).toBe(0)
   })
 
   it('stores a copy of the run, not a live reference', () => {

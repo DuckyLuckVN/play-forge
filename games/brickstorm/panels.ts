@@ -2,7 +2,7 @@
 import { h } from '@forge/ui/dom'
 import { theme } from '@forge/ui/theme'
 import { drawBall } from './cosmetics'
-import { coinAmount, shortCoins } from './coin'
+import { coinAmount } from './coin'
 import { GUIDE, runStats } from './guide'
 import { t } from './i18n'
 import { BOOST_ICONS } from './icons'
@@ -49,7 +49,7 @@ export function navPanel(onShop: () => void, onGuide: () => void, coins: number)
     'button',
     { class: 'pf-btn primary bs-shop-btn', type: 'button', onclick: onShop },
     h('span', { textContent: t('Shop') }),
-    coinAmount(shortCoins(coins)),
+    coinAmount(coins),
   )
   shop.setAttribute('aria-label', t('Shop ({n} coins)', { n: coins }))
   return h(
@@ -75,15 +75,13 @@ function infoButton(label: string, onInfo: () => void): HTMLButtonElement {
 }
 
 /**
- * Owned boosts as tiles, then an empty socket for each free slot, then the
- * one-off boosts (+2 balls, Double Down) that take no slot. Tapping a boost
- * (or its ⓘ) shows what it does.
+ * Owned skills as tiles, then an empty socket for each free slot. Bonus
+ * skills (+2 balls, Double Down) take no slot, so they aren't listed; a
+ * running Double Down shows as an active effect. Tapping a skill (or its ⓘ)
+ * shows what it does.
  */
 export function boostsPanel(s: RunState, onInfo: (id: BoostId) => void): HTMLElement {
   const slotted = slottedBoosts(s.boosts)
-  const instant = (Object.keys(s.boosts) as BoostId[]).filter(
-    (id) => (s.boosts[id] ?? 0) > 0 && !slotted.includes(id),
-  )
   const free = Math.max(0, boostSlots(s) - slotted.length)
   const sockets = Array.from({ length: free }, () => {
     const socket = h(
@@ -92,21 +90,20 @@ export function boostsPanel(s: RunState, onInfo: (id: BoostId) => void): HTMLEle
       h('span', { class: 'bs-socket-ring' }),
       h('span', { class: 'bs-tile-name', textContent: t('Empty slot') }),
     )
-    socket.setAttribute('aria-label', t('Empty boost slot'))
+    socket.setAttribute('aria-label', t('Empty skill slot'))
     return socket
   })
   return h(
     'div',
     { class: 'bs-side-block' },
-    h('h3', { textContent: t('Boosts') }),
-    h(
-      'div',
-      { class: 'bs-tiles' },
-      ...slotted.map((id) => boostTile(s, id, onInfo)),
-      ...sockets,
-      ...instant.map((id) => boostTile(s, id, onInfo)),
-    ),
-    !slotted.length && h('p', { class: 'bs-side-empty', textContent: t('Level up to pick boosts.') }),
+    h('h3', { textContent: t('Skills') }),
+    h('div', { class: 'bs-tiles' }, ...slotted.map((id) => boostTile(s, id, onInfo)), ...sockets),
+    !slotted.length && h('p', { class: 'bs-side-empty', textContent: t('Level up to pick skills.') }),
+    s.doubleVolleys > 0 &&
+      h('p', {
+        class: 'bs-active-effect',
+        textContent: t('Double Down: {n} shots left', { n: s.doubleVolleys }),
+      }),
   )
 }
 

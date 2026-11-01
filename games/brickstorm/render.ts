@@ -8,12 +8,23 @@ import { ArenaPainter, type ArenaId } from './arenas'
 import { drawBoss, drawRoleBrick } from './boss-art'
 import { BossGlide } from './boss-glide'
 import { bossHidesGuide } from './sim/boss'
-import { drawCoin } from './coin'
+import { drawCoin, formatCoins } from './coin'
 import { drawBall, TRAIL_STYLE } from './cosmetics'
 import { t } from './i18n'
-import { COIN_FLY, GROW_FX_LIFE, hpColor, type Juice, TOUGHER_LIFE } from './juice'
+import {
+  barShake,
+  COIN_FLY,
+  GROW_FX_LIFE,
+  hpColor,
+  type Juice,
+  LEVEL_POP_LIFE,
+  orbAlpha,
+  orbPoint,
+  TOUGHER_LIFE,
+  XP_ORB_FLY,
+} from './juice'
 import { modsOf } from './sim/boosts'
-import { BALL_R, boardSize, CELL, COLS, COMBO_TIERS, PICKUP_R, ROWS, TOP } from './sim/config'
+import { BALL_R, boardSize, CELL, COLS, COMBO_TIERS, LEVEL_POWER, PICKUP_R, ROWS, TOP } from './sim/config'
 import { traceGuide } from './sim/physics'
 import { restingBall } from './sim/run'
 import { dims, type Dims } from './sim/dims'
@@ -24,6 +35,9 @@ const TRAIL = 4
 const XP_COLOR = '#4be3a0'
 /** XP bar colour by heat: calm, glowing, on fire, white-hot. */
 const XP_HEAT_COLOR = [XP_COLOR, XP_COLOR, '#ffc83d', '#fff6d6']
+/** White-hot bar: a bolt flickers BOLT_RATE times a second, each for BOLT_SHOW of the cycle. */
+const BOLT_RATE = 2
+const BOLT_SHOW = 0.12
 
 /** A glyph in the corner (or frame) that tells special bricks apart. */
 export function drawKindGlyph(ctx: CanvasRenderingContext2D, kind: BrickKind, r: Rect, time: number): void {
@@ -155,6 +169,8 @@ export class BoardRenderer {
   private d: Dims = boardSize(COLS, ROWS)
   private glide = new BossGlide()
   private lastTime = 0
+  /** Where the HUD wallet's coin is drawn, so flying coins land on it. */
+  private coinIconX = 0
 
   draw(s: RunState | null, juice: Juice, aim: number | null, time: number): void {
     this.d = s ? dims(s) : boardSize(COLS, ROWS)
@@ -180,8 +196,9 @@ export class BoardRenderer {
     this.particles.draw(ctx)
     ctx.restore()
     if (s) {
-      this.drawHud(ctx, s, juice)
+      this.drawHud(ctx, s, juice, time)
       this.drawCombo(ctx, s)
+      this.drawLevelPop(ctx, juice)
     }
     this.drawCoinFlyers(ctx, juice)
     this.drawTougher(ctx, juice)
@@ -319,14 +336,7 @@ export class BoardRenderer {
         ctx.globalAlpha = 1
         drawBall(ctx, 'ball:flame', b.x, b.y, b.r * 1.2, time, b.vx, b.vy)
       } else if (b.kind === 'bomb') {
-        ctx.fillStyle = '#2b1d00'
-        ctx.beginPath()
-        ctx.arc(b.x, b.y, b.r * 1.15, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.fillStyle = Math.sin(time * 30) > 0 ? theme.coral : theme.yolk
-        ctx.beginPath()
-        ctx.arc(b.x + b.r * 0.6, b.y - b.r * 0.6, b.r * 0.4, 0, Math.PI * 2)
-        ctx.fill()
+        this.drawBombBall(ctx, b.x, b.y, b.r, time)
       } else {
         drawBall(ctx, this.ball, b.x, b.y, b.r, time, b.vx, b.vy)
       }
@@ -363,29 +373,65 @@ export class BoardRenderer {
     }
   }
 
-  private drawHud(ctx: CanvasRenderingContext2D, s: RunState, juice: Juice): void {
+  private drawHud(ctx: CanvasRenderingContext2D, s: RunState, juice: Juice, time: number): void {
     ctx.textBaseline = 'middle'
     ctx.font = `700 20px ${FONT}`
     ctx.fillStyle = theme.chalk
     ctx.textAlign = 'left'
     fillFitText(ctx, t('Turn {n}', { n: s.turn }), 12, TOP / 2 - 4, this.d.boardW * 0.4)
     ctx.textAlign = 'right'
+    // The wallet: the same number as the shop and the pick screen.
     ctx.fillStyle = theme.yolk
-    const coins = compactNumber(Math.floor(juice.shownCoins))
+    const coins = formatCoins(juice.shownCoins)
     ctx.fillText(coins, this.d.boardW - 12, TOP / 2 - 4)
-    drawCoin(ctx, this.d.boardW - 24 - ctx.measureText(coins).width, TOP / 2 - 4, 10)
+    this.coinIconX = this.d.boardW - 24 - ctx.measureText(coins).width
+    drawCoin(ctx, this.coinIconX, TOP / 2 - 4, 10)
+    // "+N" under the wallet as coins come in.
+    const gain = juice.coinTally
+    if (gain) {
+      ctx.save()
+      ctx.globalAlpha = Math.min(1, Math.max(0, (1.2 - gain.age) / 0.4))
+      ctx.font = `700 12px ${FONT}`
+      ctx.textAlign = 'right'
+      ctx.lineWidth = 3
+      ctx.strokeStyle = theme.night
+      const text = `+${formatCoins(gain.amount)}`
+      ctx.strokeText(text, this.d.boardW - 12, TOP / 2 + 12)
+      ctx.fillText(text, this.d.boardW - 12, TOP / 2 + 12)
+      ctx.restore()
+    }
 
+    // A big combo makes the bar and its badge tremble.
+    const tremble = prefersReducedMotion() ? 0 : barShake(juice.comboMult)
+    ctx.save()
+    if (tremble > 0) ctx.translate((Math.random() * 2 - 1) * tremble, (Math.random() * 2 - 1) * tremble)
     // XP bar: eases toward the real XP, heats up during a rush (glow, fire,
-    // white-hot) and flashes when it fills.
-    const w = this.d.boardW - 24
+    // white-hot) and flashes when it fills. The "Lv N" badge at its left says
+    // which level it fills toward, and pops when a level is gained.
     const fill = juice.shownXp % 1
     const heat = juice.xpHeat
     const color = XP_HEAT_COLOR[heat]
     const grow = juice.xpGlow * 3 + (heat >= 3 ? 3 : 0)
     const y = TOP - 12 - grow / 2
+    const pop = juice.levelPop && juice.levelPop.age < 0.3 ? 1 + 0.6 * (1 - juice.levelPop.age / 0.3) : 1
+    ctx.font = `800 12px ${FONT}`
+    const badge = t('Lv {n}', { n: Math.floor(juice.shownXp) + 1 })
+    const badgeW = ctx.measureText(badge).width
+    ctx.save()
+    ctx.translate(12 + badgeW / 2, TOP - 9)
+    ctx.scale(pop, pop)
+    ctx.textAlign = 'center'
+    ctx.lineWidth = 3
+    ctx.strokeStyle = theme.night
+    ctx.strokeText(badge, 0, 0)
+    ctx.fillStyle = juice.levelPop ? theme.yolk : XP_COLOR
+    ctx.fillText(badge, 0, 0)
+    ctx.restore()
+    const x0 = 12 + badgeW + 6
+    const w = this.d.boardW - 12 - x0
     ctx.fillStyle = 'rgb(255 255 255 / 0.1)'
     ctx.beginPath()
-    ctx.roundRect(12, y, w, 6 + grow, 3)
+    ctx.roundRect(x0, y, w, 6 + grow, 3)
     ctx.fill()
     ctx.save()
     if (juice.xpGlow > 0) {
@@ -394,19 +440,27 @@ export class BoardRenderer {
     }
     ctx.fillStyle = color
     ctx.beginPath()
-    ctx.roundRect(12, y, Math.max(6, w * fill), 6 + grow, 3)
+    ctx.roundRect(x0, y, Math.max(6, w * fill), 6 + grow, 3)
     ctx.fill()
     ctx.restore()
+    // Nearly there: a shine sweeps the bar to build up to the level.
+    if (fill > 0.8 && !prefersReducedMotion()) {
+      const sweep = x0 + ((time * 1.5) % 1) * w * fill
+      const left = Math.max(x0, sweep - 8)
+      const right = Math.min(x0 + w * fill, sweep + 8)
+      ctx.fillStyle = `rgb(255 255 255 / ${(0.45 * (fill - 0.8)) / 0.2})`
+      if (right > left) ctx.fillRect(left, y, right - left, 6 + grow)
+    }
     if (juice.xpFlash > 0) {
       ctx.fillStyle = `rgb(255 255 255 / ${0.8 * juice.xpFlash})`
       ctx.beginPath()
-      ctx.roundRect(12, y, w, 6 + grow, 3)
+      ctx.roundRect(x0, y, w, 6 + grow, 3)
       ctx.fill()
     }
     // On fire: flames lick up from the filled part of the bar.
     if (heat >= 2 && !prefersReducedMotion()) {
       for (let i = 0; i < heat; i++) {
-        this.particles.burst(12 + Math.random() * Math.max(6, w * fill), y, {
+        this.particles.burst(x0 + Math.random() * Math.max(6, w * fill), y, {
           count: 1,
           color: heat >= 3 ? ['#ffffff', '#fff3b0', '#ffc83d'] : ['#ff9f43', '#ffc83d', '#ff6b6b'],
           speed: 70,
@@ -419,8 +473,54 @@ export class BoardRenderer {
         })
       }
     }
+    // White-hot: now and then a single thin bolt flickers over part of the bar.
+    if (heat >= 3 && !prefersReducedMotion() && (time * BOLT_RATE) % 1 < BOLT_SHOW) {
+      const filled = Math.max(6, w * fill)
+      const from = x0 + filled * Math.random() * 0.5
+      const to = Math.min(x0 + filled, from + filled * (0.3 + Math.random() * 0.3))
+      const mid = y + (6 + grow) / 2
+      const points: Array<[number, number]> = [[from, mid]]
+      for (let x = from + 8; x < to; x += 8) points.push([x, mid + (Math.random() - 0.5) * 6])
+      points.push([to, mid])
+      ctx.save()
+      ctx.lineJoin = 'round'
+      // One path, two strokes: a faint wide one under a thin white core.
+      for (const [color, width] of [
+        ['rgb(159 216 255 / 0.35)', 3],
+        ['#ffffff', 1],
+      ] as const) {
+        ctx.strokeStyle = color
+        ctx.lineWidth = width
+        ctx.beginPath()
+        for (const [px, py] of points) ctx.lineTo(px, py)
+        ctx.stroke()
+      }
+      ctx.restore()
+    }
+    // XP orbs from hit bricks, curving out to the side wall and up into the
+    // bar where it's filled up to, clear of the bricks' numbers.
+    const ends = { tip: x0 + Math.max(6, w * fill), y: y + 3, boardW: this.d.boardW }
+    for (const o of juice.xpOrbs) {
+      const k = ease.inOutCubic(Math.min(1, o.age / XP_ORB_FLY))
+      const { x: ox, y: oy } = orbPoint(o.x0, o.y0, k, ends)
+      // A faint halo under a solid core: the look of a glow without a (slow) blur.
+      // Hidden over its brick so the number stays readable; fades in once clear.
+      const shown = orbAlpha(Math.hypot(ox - o.x0, oy - o.y0))
+      if (shown <= 0) continue
+      const r = 2.5 - 1 * k
+      ctx.fillStyle = XP_COLOR
+      ctx.globalAlpha = 0.25 * shown
+      ctx.beginPath()
+      ctx.arc(ox, oy, r * 1.8, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.globalAlpha = 0.95 * shown
+      ctx.beginPath()
+      ctx.arc(ox, oy, r, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.globalAlpha = 1
+    }
     for (; juice.xpSparks > 0; juice.xpSparks--) {
-      this.particles.burst(12 + Math.max(6, w * fill), y + 3, {
+      this.particles.burst(x0 + Math.max(6, w * fill), y + 3, {
         count: 6,
         color: [XP_COLOR, theme.chalk],
         speed: 140,
@@ -429,6 +529,7 @@ export class BoardRenderer {
         gravity: 300,
       })
     }
+    ctx.restore()
     // "+N XP" in the HUD, popping as it grows.
     const tally = juice.xpTally
     if (tally) {
@@ -443,12 +544,87 @@ export class BoardRenderer {
       ctx.textBaseline = 'middle'
       ctx.lineWidth = 4
       ctx.strokeStyle = theme.night
-      const text = `+${compactNumber(tally.amount)} XP`
+      // The combo's multiplier has its own place, above the bar; the tally just counts.
+      const text = `+${compactNumber(Math.round(tally.amount))} XP`
       ctx.strokeText(text, 0, 0)
       ctx.fillStyle = heat >= 2 ? XP_HEAT_COLOR[heat] : XP_COLOR
       ctx.fillText(text, 0, 0)
       ctx.restore()
     }
+  }
+
+  /**
+   * A bomb ball, made to stand out on the dark board: a pulsing red warning halo
+   * (like the fire ball's orange one), a dark body with a bright red rim and a
+   * shine, and a lit fuse with a flickering spark.
+   */
+  private drawBombBall(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, time: number): void {
+    const body = r * 1.3
+    ctx.save()
+    ctx.fillStyle = theme.coral
+    ctx.globalAlpha = 0.3 + 0.2 * Math.sin(time * 18)
+    ctx.beginPath()
+    ctx.arc(x, y, body * 1.8, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.globalAlpha = 1
+    // Body with a bright rim, then a shine.
+    ctx.fillStyle = '#1c1c28'
+    ctx.strokeStyle = theme.coral
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.arc(x, y, body, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+    ctx.fillStyle = 'rgb(255 255 255 / 0.75)'
+    ctx.beginPath()
+    ctx.arc(x - body * 0.35, y - body * 0.35, body * 0.25, 0, Math.PI * 2)
+    ctx.fill()
+    // A curled fuse sticking out of the top right.
+    const fx = x + body * 1.45
+    const fy = y - body * 1.55
+    ctx.strokeStyle = '#e8c48a'
+    ctx.lineWidth = 2
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.moveTo(x + body * 0.7, y - body * 0.7)
+    ctx.quadraticCurveTo(x + body * 1.4, y - body * 0.9, fx, fy)
+    ctx.stroke()
+    // The spark: flickers between white and yellow, and in size.
+    const flick = Math.sin(time * 40) > 0
+    ctx.fillStyle = flick ? '#ffffff' : theme.yolk
+    ctx.beginPath()
+    ctx.arc(fx, fy, r * (flick ? 0.38 : 0.28), 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  }
+
+  /** "LEVEL UP!" bursting out under the XP bar the moment it crosses the line. */
+  private drawLevelPop(ctx: CanvasRenderingContext2D, juice: Juice): void {
+    const pop = juice.levelPop
+    if (!pop) return
+    const scale =
+      pop.age < 0.15 ? 0.6 + 0.8 * (pop.age / 0.15) : 1.4 - 0.4 * Math.min(1, (pop.age - 0.15) / 0.15)
+    ctx.save()
+    ctx.globalAlpha = Math.min(1, (LEVEL_POP_LIFE - pop.age) / 0.3)
+    ctx.translate(this.d.boardW / 2, TOP + 44 - 10 * Math.min(1, pop.age / LEVEL_POP_LIFE))
+    ctx.scale(scale, scale)
+    ctx.font = `800 26px ${FONT}`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.lineWidth = 5
+    ctx.strokeStyle = theme.night
+    const text = pop.count > 1 ? t('LEVEL UP ×{n}!', { n: pop.count }) : t('LEVEL UP!')
+    ctx.strokeText(text, 0, 0)
+    ctx.fillStyle = theme.yolk
+    ctx.fillText(text, 0, 0)
+    // Every level makes balls hit harder: say so.
+    ctx.font = `700 14px ${FONT}`
+    ctx.lineWidth = 4
+    const bonus = t('+{p}% ball damage', { p: Math.round(LEVEL_POWER * 100 * pop.count) })
+    ctx.strokeText(bonus, 0, 22)
+    ctx.fillStyle = XP_COLOR
+    ctx.fillText(bonus, 0, 22)
+    ctx.restore()
   }
 
   private drawCombo(ctx: CanvasRenderingContext2D, s: RunState): void {
@@ -464,7 +640,7 @@ export class BoardRenderer {
   }
 
   private drawCoinFlyers(ctx: CanvasRenderingContext2D, juice: Juice): void {
-    const tx = this.d.boardW - 50
+    const tx = this.coinIconX
     const ty = TOP / 2 - 4
     for (const c of juice.coinFlyers) {
       const t = (c.age - c.delay) / COIN_FLY

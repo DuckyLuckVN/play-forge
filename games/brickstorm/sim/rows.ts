@@ -121,6 +121,11 @@ function brickHp(state: RunState, boost = 1): number {
   return Math.min(hp, hpCap(state))
 }
 
+/** Rows before this turn always offer a ball, so a run can get going. */
+export const BALL_SURE_UNTIL = 8
+/** After that, the share of rows that offer a ball (jackpot rows always do). */
+export const BALL_PICKUP_CHANCE = 0.7
+
 /** Adds a new row of bricks and pickups at row 0 for `state.turn`. */
 export function spawnRow(state: RunState): void {
   const { rng, turn } = state
@@ -144,7 +149,7 @@ export function spawnRow(state: RunState): void {
   const unlocked = (Object.keys(UNLOCK) as Array<keyof typeof UNLOCK>).filter((k) => turn >= UNLOCK[k])
   const chance = specialChance(turn)
   let specials = 0
-  // Always leave a column free, for the row's ball pickup, and no more bricks than the balls can handle.
+  // Always leave a column free, for the row's pickups, and no more bricks than the balls can handle.
   const wanted = Math.min(
     7,
     state.cols - 1,
@@ -168,7 +173,7 @@ export function spawnRow(state: RunState): void {
   const pickup = (kind: PickupKind, p: number) => {
     if (free.length && random(rng) < p) state.pickups.push({ id: state.nextId++, col: take(), row: 0, kind })
   }
-  pickup('ball', 1)
+  pickup('ball', turn < BALL_SURE_UNTIL ? 1 : BALL_PICKUP_CHANCE)
   pickup('coin', 0.1)
   if (turn >= 4) {
     pickup('fire', 0.06)

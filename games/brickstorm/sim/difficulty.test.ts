@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { killBrick } from './damage'
 import { patternAt } from './patterns'
-import { hpCap, hpScale, hpStepStart, maxBricksFor, spawnRow } from './rows'
+import {
+  hpCap,
+  hpScale,
+  hpStepStart,
+  maxBricksFor,
+  spawnRow,
+  BALL_PICKUP_CHANCE,
+  BALL_SURE_UNTIL,
+} from './rows'
 import { drainEvents, fire, startNextTurn } from './run'
 import { brick, empty, runVolley } from './testing'
 import type { RunState } from './types'
@@ -64,15 +72,25 @@ describe('difficulty', () => {
     }
   })
 
-  it('offers a ball pickup in every row', () => {
+  it('offers a ball pickup in every early row, then only in some', () => {
     for (let seed = 1; seed <= 200; seed++) {
-      for (const turn of [1, 3, 9, 30, 99]) {
+      for (const turn of [1, 3, BALL_SURE_UNTIL - 1]) {
         expect(
           rowAt(seed, turn).pickups.some((p) => p.kind === 'ball'),
           `${seed}@${turn}`,
         ).toBe(true)
       }
     }
+    let rows = 0
+    let balls = 0
+    for (let seed = 1; seed <= 400; seed++) {
+      for (const turn of [31, 47, 99]) {
+        rows++
+        if (rowAt(seed, turn).pickups.some((p) => p.kind === 'ball')) balls++
+      }
+    }
+    expect(balls / rows).toBeGreaterThan(BALL_PICKUP_CHANCE - 0.07)
+    expect(balls / rows).toBeLessThan(BALL_PICKUP_CHANCE + 0.07)
   })
 })
 

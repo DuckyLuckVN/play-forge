@@ -8,6 +8,7 @@ import type { SimEvent } from './sim/types'
 import { skillGroup, skillInfo } from './boss-skill-ui'
 import { IMPACT_STYLE } from './cosmetics'
 import { t } from './i18n'
+import { CELL } from './sim/config'
 import { BOSS_SOUNDS, BRICK_SOUNDS } from './sounds'
 
 const PENTA = [0, 2, 4, 7, 9]
@@ -47,7 +48,7 @@ export function hpColor(hp: number, turn: number): string {
 
 const MYSTERY_TEXT = {
   balls: t('+3 BALLS'),
-  pick: t('FREE BOOST'),
+  pick: t('FREE SKILL'),
   coins: t('+50 COINS'),
   fire: t('FIREBALLS!'),
 }
@@ -90,19 +91,79 @@ const HELPER_TEXT = {
 const BANNER_LIFE = 1.4
 const SOUND_GAP_MS = 30
 /** XP gained within this many seconds counts toward a rush. */
-const RUSH_WINDOW = 1
-/** Bar heat by how much of a level was gained within the window: glow, fire, white-hot. */
-const HEAT_AT = [0.3, 0.8, 1] as const
+const RUSH_WINDOW = 1.5
+/** Bar heat by how much of a level was gained within the window: glow, fire, white-hot (lightning). */
+const HEAT_AT = [0.1, 0.25, 0.5] as const
 /** Seconds the "+N XP" tally stays after the last gain. */
 const TALLY_HOLD = 1.2
 /** Seconds between XP ticks (at most 8 a second). */
 const XP_TICK_GAP = 0.125
 /** Seconds the level-up celebration plays before the pick screen opens. */
-export const LEVEL_UP_INTRO = 1.2
+export const LEVEL_UP_INTRO = 0.8
 /** Seconds the "bricks are tougher" notice shows. */
 export const TOUGHER_LIFE = 2.2
 /** Seconds the new column or row glows after the board grows. */
 export const GROW_FX_LIFE = 1.4
+
+/** Where the XP bar is filled up to, for orbs flying into it. */
+export interface BarEnds {
+  tip: number
+  y: number
+  boardW: number
+}
+
+/**
+ * An XP orb's position at progress `k` (0..1) for a hit brick at (x0, y0): it
+ * curves out sideways to the nearest side wall and up into the XP bar where it
+ * is filled up to (a quadratic curve bent at the wall, level with the brick).
+ */
+export function orbPoint(x0: number, y0: number, k: number, bar: BarEnds): { x: number; y: number } {
+  const left = x0 < bar.boardW / 2
+  const wallX = left ? ORB_WALL_INSET : bar.boardW - ORB_WALL_INSET
+  const a = (1 - k) * (1 - k)
+  const b = 2 * (1 - k) * k
+  const c = k * k
+  return { x: a * x0 + b * wallX + c * bar.tip, y: (a + b) * y0 + c * bar.y }
+}
+
+/**
+ * An orb's opacity by how far it has travelled from its brick's centre: hidden
+ * while over the brick, so the brick's number stays readable, then fading in.
+ */
+export function orbAlpha(travelled: number): number {
+  return Math.max(0, Math.min(1, (travelled - CELL * 0.45) / (CELL * 0.35)))
+}
+
+/** How far from the side walls the orbs travel. */
+const ORB_WALL_INSET = 6
+/** Most XP orbs in flight at once. */
+const MAX_XP_ORBS = 24
+/** Seconds an XP orb takes to reach the bar. */
+export const XP_ORB_FLY = 0.6
+/** Volume of an XP tick outside a rush: there, but quiet. */
+const CALM_TICK_VOLUME = 0.35
+
+/** Seconds the level badge pops and "LEVEL UP!" shows after the bar crosses the line. */
+export const LEVEL_POP_LIFE = 1
+/** Fewest seconds between level chimes, so a multi-level burst stays musical. */
+const CHIME_GAP = 0.2
+
+/** The level chime: an arpeggio with a sparkle on top, a little higher each level (capped). */
+export function levelChime(level: number): Tone[] {
+  const up = 2 ** (Math.min(Math.max(level, 1) - 1, 12) / 24)
+  return pitched(
+    [...BRICK_SOUNDS.levelUp, { freq: 2093, to: 3136, dur: 0.18, wave: 'sine', vol: 0.18, at: 0.2 }],
+    up,
+  )
+}
+
+/** XP bar tremble (units) by combo XP multiplier: none at first, stronger at ×1.5 and FEVER. */
+const BAR_SHAKE: Record<number, number> = { 1.5: 0.8, 2: 1.8 }
+
+/** How far the XP bar trembles for a live combo of `mult` (0: still). */
+export function barShake(mult: number): number {
+  return BAR_SHAKE[mult] ?? 0
+}
 
 /** A short XP tick whose pitch climbs an octave as the bar fills. */
 export function xpTick(fill: number): Tone[] {
@@ -127,6 +188,10 @@ export class Juice {
   /** Coins as shown on the HUD; eases toward the real total. */
   shownCoins = 0
   private targetCoins = 0
+  /** Coins just earned, shown as "+N" under the HUD wallet; `age` is seconds since the last gain. */
+  coinTally: { amount: number; age: number } | null = null
+  /** XP orbs flying from a hit brick to the XP bar. */
+  xpOrbs: Array<{ x0: number; y0: number; age: number }> = []
   /** Coins flying from a broken brick to the HUD counter. */
   coinFlyers: Array<{ x0: number; y0: number; age: number; delay: number }> = []
   /** 0..1 white flash on the boss after it takes damage. */
@@ -151,6 +216,11 @@ export class Juice {
   xpFlash = 0
   /** Spark bursts waiting to be thrown off the end of the XP bar (the renderer takes them). */
   xpSparks = 0
+  /** XP multiplier from the live combo (1: none); while above 1 the XP bar burns. */
+  comboMult = 1
+  /** The level badge popping after the bar crossed the line; `count` levels in this burst. */
+  levelPop: { age: number; count: number } | null = null
+  private lastChime = -Infinity
   private xpGains: Array<{ at: number; amount: number }> = []
   private clock = 0
   private lastXpTick = -Infinity
@@ -178,6 +248,8 @@ export class Juice {
         return this.play('launch', BRICK_SOUNDS.launch)
       case 'hit': {
         this.play('hit', hitSound(e.combo))
+        // Every hit feeds the XP bar; an orb shows it (capped so big volleys stay readable).
+        if (this.xpOrbs.length < MAX_XP_ORBS) this.xpOrbs.push({ x0: e.x, y0: e.y, age: 0 })
         if (e.crit) this.particles.text(e.x, e.y, t('CRIT'), { color: theme.yolk, size: 16 })
         const level = ANNOUNCER.filter(([at]) => e.combo >= at).length
         if (level > this.announced) {
@@ -231,8 +303,9 @@ export class Juice {
       case 'danger':
         return playSound(BRICK_SOUNDS.danger)
       case 'levelUp':
+        // The chime plays when the bar visibly crosses the line (see updateXp).
         this.leveled = true
-        return playSound(BRICK_SOUNDS.levelUp)
+        return
       case 'over':
         this.shake.add(0.6)
         return playSound(BRICK_SOUNDS.over)
@@ -285,7 +358,7 @@ export class Juice {
         return playSound(pitched(BRICK_SOUNDS.kill, 1.6))
       case 'bossDown':
         this.show(t('BOSS DOWN! +{coins}', { coins: e.coins }), 1)
-        this.particles.text(e.x, e.y + 40, t('+1 BOOST SLOT!'), { color: '#4be3a0', size: 22, rise: 60 })
+        this.particles.text(e.x, e.y + 40, t('+1 SKILL SLOT!'), { color: '#4be3a0', size: 22, rise: 60 })
         this.banner!.big = true
         this.shake.add(0.8)
         celebrate()
@@ -341,9 +414,18 @@ export class Juice {
     }
   }
 
-  /** The real coin total the HUD counter should ease toward. */
-  setCoins(coins: number): void {
-    if (coins < this.targetCoins) this.shownCoins = coins // a new run
+  /**
+   * The wallet the HUD counter shows. A gain eases up and pops "+N"; spending
+   * drops it at once; `snap` jumps straight there (a new or resumed run).
+   */
+  setCoins(coins: number, snap = false): void {
+    if (snap || coins < this.targetCoins) {
+      this.shownCoins = coins
+      if (snap) this.coinTally = null
+    } else if (coins > this.targetCoins) {
+      const gain = coins - this.targetCoins
+      this.coinTally = { amount: (this.coinTally?.amount ?? 0) + gain, age: 0 }
+    }
     this.targetCoins = coins
   }
 
@@ -358,6 +440,11 @@ export class Juice {
     }
     if (total > this.targetXp) this.xpGains.push({ at: this.clock, amount: total - this.targetXp })
     this.targetXp = total
+  }
+
+  /** The live combo's XP multiplier each frame (1 when there is none). */
+  setComboXp(mult: number): void {
+    this.comboMult = mult
   }
 
   /** The boss's hp each frame (null: no boss), so a hit flashes its body. */
@@ -378,7 +465,7 @@ export class Juice {
   /** Starts the level-up celebration that plays before the pick screen. */
   startLevelUp(): void {
     this.levelUp = { age: 0 }
-    this.show(this.leveled || !this.freePick ? t('LEVEL UP!') : t('FREE BOOST!'), 0.6)
+    this.show(this.leveled || !this.freePick ? t('LEVEL UP!') : t('FREE SKILL!'), 0.6)
     this.banner!.big = true
     this.leveled = this.freePick = false
     this.xpFlash = 1
@@ -402,7 +489,9 @@ export class Juice {
     this.xpFlash = Math.max(0, this.xpFlash - dt * 2)
     this.xpGains = this.xpGains.filter((g) => this.clock - g.at < RUSH_WINDOW)
     const recent = this.xpGains.reduce((sum, g) => sum + g.amount, 0)
-    const heat = HEAT_AT.filter((at) => recent >= at).length
+    // A live combo keeps the bar on fire (white-hot at ×2), as a big rush of XP does.
+    const comboHeat = this.comboMult >= 2 ? 3 : this.comboMult > 1 ? 2 : 0
+    const heat = Math.max(comboHeat, HEAT_AT.filter((at) => recent >= at).length)
     if (heat === 3 && this.xpHeat < 3) playSound(BRICK_SOUNDS.whoosh)
     this.xpHeat = heat
     this.xpGlow = heat > 0 ? 1 : Math.max(0, this.xpGlow - dt * 2)
@@ -414,14 +503,32 @@ export class Juice {
     if (gap > 0) {
       const before = this.shownXp
       this.shownXp = Math.min(this.targetXp, this.shownXp + Math.max(0.05, gap * 5) * dt)
-      if (Math.floor(this.shownXp) > Math.floor(before)) this.xpFlash = 1
+      const crossed = Math.floor(this.shownXp) - Math.floor(before)
+      if (crossed > 0) this.popLevel(crossed)
     }
-    if (this.xpGlow > 0 && gap > 0 && this.clock - this.lastXpTick >= XP_TICK_GAP) {
+    // Every gain ticks; a rush ticks louder and throws sparks off the bar.
+    if (gap > 0 && this.clock - this.lastXpTick >= XP_TICK_GAP) {
       this.lastXpTick = this.clock
-      this.xpSparks++
-      playSound(xpTick(this.shownXp % 1))
+      if (this.xpGlow > 0) this.xpSparks++
+      playSound(xpTick(this.shownXp % 1), this.xpGlow > 0 ? 1 : CALM_TICK_VOLUME)
     }
     if (this.levelUp) this.levelUp.age += dt
+    if (this.levelPop) {
+      this.levelPop.age += dt
+      if (this.levelPop.age >= LEVEL_POP_LIFE) this.levelPop = null
+    }
+  }
+
+  /** The bar just crossed `n` level lines: flash, pop the badge, a small shake and a chime (play never slows). */
+  private popLevel(n: number): void {
+    this.xpFlash = 1
+    this.xpSparks += 3 + n
+    this.levelPop = { age: 0, count: (this.levelPop?.count ?? 0) + n }
+    if (!prefersReducedMotion()) this.shake.add(0.15)
+    if (this.clock - this.lastChime >= CHIME_GAP) {
+      this.lastChime = this.clock
+      playSound(levelChime(Math.floor(this.shownXp)))
+    }
   }
 
   private flyCoins(x: number, y: number, n: number): void {
@@ -465,6 +572,12 @@ export class Juice {
     const due = this.queue.filter((q) => q.at <= 1e-9)
     this.queue = this.queue.filter((q) => q.at > 1e-9)
     for (const q of due) this.playChain(q.e)
+    for (const o of this.xpOrbs) o.age += dt
+    this.xpOrbs = this.xpOrbs.filter((o) => o.age < XP_ORB_FLY)
+    if (this.coinTally) {
+      this.coinTally.age += dt
+      if (this.coinTally.age > TALLY_HOLD) this.coinTally = null
+    }
     for (const c of this.coinFlyers) c.age += dt
     this.coinFlyers = this.coinFlyers.filter((c) => c.age < c.delay + COIN_FLY)
     const gap = this.targetCoins - this.shownCoins

@@ -19,7 +19,7 @@ import {
   TICK,
 } from './config'
 import { random } from '@forge/core/rng'
-import { modsOf, rollChoices, type Mods } from './boosts'
+import { levelPower, modsOf, rollChoices, type Mods } from './boosts'
 import { damageBrick, explode, zap } from './damage'
 import { dims } from './dims'
 export { comboMultiplier } from './damage'
@@ -290,7 +290,7 @@ function hitBrick(s: RunState, ball: Ball, brick: Brick, mods: Mods, power: numb
   }
   const crit = mods.critChance > 0 && random(s.rng) < mods.critChance
   const damage =
-    (power * mods.damageMult + ball.bounceBonus) *
+    (power * mods.damageMult * levelPower(s.level) + ball.bounceBonus) *
     (s.fever ? 2 : 1) *
     (crit ? 3 : 1) *
     (s.overcharged ? 2 : 1)

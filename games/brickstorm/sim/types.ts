@@ -263,6 +263,10 @@ export interface RunState {
   choices: BoostId[]
   /** A boost the player paid to see again at the next level-up. */
   held?: BoostId | null
+  /** Pick screens in a row with no epic card, for bad-luck protection. Missing in older saves. */
+  epicDry?: number
+  /** The held boost was set aside on the current pick screen: it waits for the next one, even through a reroll. */
+  heldNow?: boolean
   /** Holds bought this run (each costs more). */
   holdsUsed?: number
   rerollsUsed: number

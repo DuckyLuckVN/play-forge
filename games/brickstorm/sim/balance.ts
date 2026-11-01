@@ -18,6 +18,8 @@ export interface RunResult {
   coins: number
   levels: number
   firstLevelTurn: number | null
+  /** Levels reached by the end of each turn listed in LEVEL_CHECKS. */
+  levelsAt: number[]
   /** Bosses met and beaten. */
   bossesMet: number
   bossesBeaten: number
@@ -119,6 +121,9 @@ function aimerAngle(s: RunState, rng: { seed: number }): number {
   )
 }
 
+/** Turns the report samples the level at, to show the pace of level-ups. */
+const LEVEL_CHECKS = [10, 30, 60, 90] as const
+
 export function simulateRun(seed: number, bot: Bot, maxTurns = 150): RunResult {
   const s = createRun(seed)
   const aimRng = { seed: seed ^ 0x9e3779b9 }
@@ -126,6 +131,7 @@ export function simulateRun(seed: number, bot: Bot, maxTurns = 150): RunResult {
   let bossesMet = 0
   let bossesBeaten = 0
   let spent = 0
+  const levelsAt: number[] = []
   while (s.phase !== 'over' && s.turn < maxTurns) {
     if (s.phase === 'grow') {
       growBoard(s, s.cols < MAX_COLS ? 'col' : 'row')
@@ -148,8 +154,9 @@ export function simulateRun(seed: number, bot: Bot, maxTurns = 150): RunResult {
       if (e.type === 'bossDown') bossesBeaten++
     }
     if (firstLevelTurn === null && s.level > 0) firstLevelTurn = s.turn
+    for (const [i, at] of LEVEL_CHECKS.entries()) if (s.turn <= at) levelsAt[i] = s.level
   }
-  return { turns: s.turn, coins: s.coins, levels: s.level, firstLevelTurn, bossesMet, bossesBeaten }
+  return { turns: s.turn, coins: s.coins, levels: s.level, firstLevelTurn, levelsAt, bossesMet, bossesBeaten }
 }
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
@@ -183,6 +190,7 @@ export function balanceReport(seeds: number, bots: Bot[] = ['random', 'aimer', '
         ` | coins ${median(runs.map((r) => r.coins))}` +
         ` | level-ups ${median(runs.map((r) => r.levels))}` +
         ` | first level-up turn ${median(runs.map((r) => r.firstLevelTurn ?? 999))}` +
+        ` | level at turn ${LEVEL_CHECKS.map((at, i) => `${at}:${median(runs.map((r) => r.levelsAt[i]))}`).join(' ')}` +
         ` | bosses beaten ${sum(runs.map((r) => r.bossesBeaten))}/${sum(runs.map((r) => r.bossesMet))}` +
         ` | turns min/max ${Math.min(...runs.map((r) => r.turns))}/${Math.max(...runs.map((r) => r.turns))}`,
     )

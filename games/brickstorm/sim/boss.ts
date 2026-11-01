@@ -3,13 +3,14 @@
 // share one hp pool. While it lives no rows spawn, but it still drops a row
 // each turn like any brick. Later bosses are bigger and have more skills.
 import { random, randomInt } from '@forge/core/rng'
-import { modsOf } from './boosts'
+import { levelPower, modsOf, xpToNext } from './boosts'
 import { bossParts, crushUnderBoss, moveBoss } from './boss-kit'
 import { BOSS_SHAPES, shapeOf, shapeSize } from './boss-shapes'
 import { BOSS_SKILLS, type BossHit, type BossSkill, type Face, SKILL_IDS } from './boss-skills'
+import { BOSS_XP_PER_TURN } from './config'
 import { cellCenter, hpScale } from './rows'
 import type { Ball, Boss, BossSkillId, BossTier, Brick, RunState } from './types'
-import type { DamageSource } from './damage'
+import { gainXp, type DamageSource } from './damage'
 
 export { bossParts } from './boss-kit'
 
@@ -20,7 +21,7 @@ export const BOSS_NOUNS = ['Golem', 'Titan', 'Colossus', 'Warden', 'Behemoth', '
 /** How many face styles boss-ui can draw. */
 export const BOSS_FACES = 6
 /** Boss hp: about this many of the run's ball hits, kept between 3 and 12 bricks' worth (the body is solid, so balls can't rattle around inside it). */
-const HITS_PER_BALL = 6
+const HITS_PER_BALL = 8
 /** Row Bomb (or anything that would delete a part) takes this share of max hp instead. */
 const BIG_HIT = 0.2
 /** The reward: this many coins per turn, with coin boosts counting at most MAX_COIN_MULT. */
@@ -32,9 +33,15 @@ export function bossTier(turn: number): BossTier {
   return Math.max(1, Math.min(3, Math.floor(turn / BOSS_EVERY))) as BossTier
 }
 
+/** XP for killing a boss on `turn`: more the later it is, but at most the one level you're on. */
+export function bossXp(turn: number, level: number): number {
+  return Math.min(BOSS_XP_PER_TURN * turn, xpToNext(level))
+}
+
 export function bossHp(s: RunState): number {
   const typical = hpScale(s.turn)
-  const firepower = s.ballCount * modsOf(s.boosts).damageMult * HITS_PER_BALL
+  // Real firepower: balls × boost damage × the bonus from levels reached.
+  const firepower = s.ballCount * modsOf(s.boosts).damageMult * levelPower(s.level) * HITS_PER_BALL
   return Math.round(Math.max(typical * 3, Math.min(typical * 12, firepower)))
 }
 
@@ -153,6 +160,8 @@ export function damageBoss(
   s.coins += coins
   s.pendingPicks++
   s.freePicks = (s.freePicks ?? 0) + 1
+  // No XP per hit on a boss: it all comes now, more the later the boss.
+  gainXp(s, bossXp(s.turn, s.level))
   s.bossesBeaten = (s.bossesBeaten ?? 0) + 1
   for (const skill of skillsOf(boss)) skill.defeated?.(s, boss, { x, y })
   s.events.push({ type: 'bossDown', x, y, coins })

@@ -38,6 +38,12 @@ describe('runStats', () => {
     expect(stats['Balls']).toBe('12')
     expect(stats['Best turn']).toBe('40')
   })
+
+  it('counts level power in damage per hit', () => {
+    const s = empty()
+    s.level = 5
+    expect(Object.fromEntries(runStats(s, 0))['Damage per hit']).toBe('1.2')
+  })
 })
 
 describe('boostDetail', () => {

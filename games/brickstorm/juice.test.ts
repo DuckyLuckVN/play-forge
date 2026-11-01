@@ -1,7 +1,20 @@
 import { describe, expect, it, vi } from 'vitest'
 import { playSound } from '@forge/audio/sound'
 import { theme } from '@forge/ui/theme'
-import { comboPitch, GROW_FX_LIFE, hitSound, hpColor, Juice, pitched } from './juice'
+import {
+  barShake,
+  comboPitch,
+  GROW_FX_LIFE,
+  hitSound,
+  hpColor,
+  Juice,
+  LEVEL_POP_LIFE,
+  levelChime,
+  orbAlpha,
+  orbPoint,
+  pitched,
+} from './juice'
+import { CELL } from './sim/config'
 import { BOSS_SOUNDS, BRICK_SOUNDS } from './sounds'
 
 vi.mock('@forge/audio/sound', () => ({ playSound: vi.fn() }))
@@ -140,6 +153,27 @@ describe('Juice', () => {
     expect(j.shownCoins).toBe(100)
   })
 
+  it('snaps the counter to the wallet when a run starts, then pops +N as coins come in', () => {
+    const j = juice()
+    j.setCoins(500, true)
+    expect(j.shownCoins).toBe(500)
+    expect(j.coinTally).toBeNull()
+    j.setCoins(507)
+    expect(j.coinTally?.amount).toBe(7)
+    j.setCoins(510)
+    expect(j.coinTally?.amount).toBe(10)
+    j.update(3)
+    expect(j.coinTally).toBeNull()
+  })
+
+  it('drops the counter at once when coins are spent', () => {
+    const j = juice()
+    j.setCoins(500, true)
+    j.setCoins(470)
+    expect(j.shownCoins).toBe(470)
+    expect(j.coinTally).toBeNull()
+  })
+
   it('flies no coins for a kill that paid none', () => {
     const j = juice()
     j.handle({ type: 'kill', id: 1, x: 50, y: 300, maxHp: 1, kind: 'normal', coins: 0 })
@@ -198,7 +232,7 @@ describe('XP bar', () => {
     expect(ticks.at(-1)!).toBeGreaterThan(ticks[0])
   })
 
-  it('stays calm on a slow trickle of XP', () => {
+  it('ticks softly on a slow trickle of XP, without heating up', () => {
     const j = juice()
     vi.mocked(playSound).mockClear()
     for (let i = 0; i < 10; i++) {
@@ -206,7 +240,19 @@ describe('XP bar', () => {
       j.update(0.5)
     }
     expect(j.xpGlow).toBe(0)
-    expect(playSound).not.toHaveBeenCalled()
+    const vols = vi.mocked(playSound).mock.calls.map(([, v]) => v)
+    expect(vols.length).toBeGreaterThan(0)
+    for (const v of vols) expect(v).toBeLessThan(1)
+  })
+
+  it('sends an XP orb from a hit brick to the bar, capped in a big volley', () => {
+    const j = juice()
+    j.handle({ type: 'hit', x: 10, y: 200, combo: 1, crit: false })
+    expect(j.xpOrbs).toHaveLength(1)
+    for (let i = 0; i < 500; i++) j.handle({ type: 'hit', x: 10, y: 200, combo: 1, crit: false })
+    expect(j.xpOrbs.length).toBeLessThanOrEqual(24)
+    j.update(2)
+    expect(j.xpOrbs).toHaveLength(0)
   })
 
   it('ticks at most 8 times a second', () => {
@@ -216,8 +262,118 @@ describe('XP bar', () => {
       j.setXp(i, 0.9)
       j.update(1 / 60)
     }
-    const ticks = vi.mocked(playSound).mock.calls.filter(([s]) => s !== BRICK_SOUNDS.whoosh)
+    // Ticks are single tones; the whoosh and level chimes are chords.
+    const ticks = vi.mocked(playSound).mock.calls.filter(([s]) => (s as unknown[]).length === 1)
     expect(ticks.length).toBeLessThanOrEqual(8)
+  })
+})
+
+describe('xp orb path', () => {
+  const bar = { tip: 200, y: 44, boardW: 392 }
+  it('starts at the brick', () => {
+    expect(orbPoint(100, 400, 0, bar)).toEqual({ x: 100, y: 400 })
+  })
+
+  it('ends where the bar is filled up to, from either side', () => {
+    expect(orbPoint(100, 400, 1, bar)).toEqual({ x: 200, y: 44 })
+    expect(orbPoint(300, 400, 1, bar)).toEqual({ x: 200, y: 44 })
+  })
+
+  it('heads out sideways to the wall before it rises', () => {
+    // Straight to the tip would be at x 175 halfway; the curve is out toward the wall.
+    const mid = orbPoint(150, 400, 0.5, bar)
+    expect(mid.x).toBeLessThan(100)
+    expect(mid.y).toBeGreaterThan(200)
+  })
+
+  it('is invisible over its brick (so the number stays readable), then fades in', () => {
+    expect(orbAlpha(0)).toBe(0)
+    expect(orbAlpha(CELL * 0.4)).toBe(0)
+    expect(orbAlpha(CELL * 0.6)).toBeGreaterThan(0)
+    expect(orbAlpha(CELL)).toBe(1)
+  })
+})
+
+describe('combo on the XP bar', () => {
+  it('sets the bar on fire while a combo multiplies XP, white-hot at ×2', () => {
+    const j = juice()
+    j.setComboXp(1.25)
+    j.update(0.05)
+    expect(j.xpHeat).toBe(2)
+    expect(j.xpGlow).toBe(1)
+    j.setComboXp(2)
+    j.update(0.05)
+    expect(j.xpHeat).toBe(3)
+  })
+
+  it('shakes the bar harder the bigger the combo', () => {
+    expect(barShake(1)).toBe(0)
+    expect(barShake(1.25)).toBe(0)
+    expect(barShake(1.5)).toBeGreaterThan(0)
+    expect(barShake(2)).toBeGreaterThan(barShake(1.5))
+    expect(barShake(2)).toBeLessThanOrEqual(2.5) // a tremble, never a blur
+  })
+
+  it('cools back down when the combo ends', () => {
+    const j = juice()
+    j.setComboXp(1.5)
+    j.update(0.05)
+    j.setComboXp(1)
+    j.update(0.05)
+    expect(j.xpHeat).toBe(0)
+  })
+
+  it('a big XP rush still heats the bar beyond the combo', () => {
+    const j = juice()
+    j.setComboXp(1.25)
+    j.setXp(0, 0)
+    j.setXp(0, 0.6)
+    j.update(0.05)
+    expect(j.xpHeat).toBe(3)
+  })
+})
+
+describe('level-up moment on the bar', () => {
+  it('pops the level and chimes as the bar crosses the line, without slowing play', () => {
+    const j = juice()
+    vi.mocked(playSound).mockClear()
+    j.setXp(0, 0.9, true)
+    j.setXp(1, 0.1)
+    while (j.shownXp < 1) j.update(1 / 60)
+    expect(j.levelPop).toMatchObject({ count: 1 })
+    const chimes = vi.mocked(playSound).mock.calls.filter(([s]) => (s as unknown[]).length > 2)
+    expect(chimes).toHaveLength(1)
+  })
+
+  it('counts several levels gained together', () => {
+    const j = juice()
+    j.setXp(0, 0.5, true)
+    j.setXp(2, 0.1)
+    while (j.shownXp < 2) j.update(1 / 60)
+    expect(j.levelPop?.count).toBe(2)
+  })
+
+  it('fades out after a moment', () => {
+    const j = juice()
+    j.setXp(0, 0.9, true)
+    j.setXp(1, 0.1)
+    for (let i = 0; i < 30; i++) j.update(1 / 60)
+    expect(j.levelPop).not.toBeNull()
+    j.update(LEVEL_POP_LIFE)
+    expect(j.levelPop).toBeNull()
+  })
+
+  it('does not pop for a resumed or new run', () => {
+    const j = juice()
+    j.setXp(3, 0.5, true)
+    j.update(0.1)
+    j.setXp(0, 0)
+    j.update(0.1)
+    expect(j.levelPop).toBeNull()
+  })
+
+  it('chimes higher at higher levels', () => {
+    expect(levelChime(8)[0].freq).toBeGreaterThan(levelChime(1)[0].freq)
   })
 })
 
@@ -228,9 +384,9 @@ describe('level-up intro', () => {
     j.handle({ type: 'levelUp' })
     j.startLevelUp()
     expect(j.banner).toMatchObject({ text: 'LEVEL UP!', big: true })
-    expect(playSound).toHaveBeenCalledTimes(2)
+    expect(playSound).toHaveBeenCalledTimes(1) // the fanfare; the chime plays as the bar crosses
     expect(j.levelUpDone).toBe(false)
-    j.update(1)
+    j.update(0.6)
     expect(j.levelUpDone).toBe(false)
     j.update(0.3)
     expect(j.levelUpDone).toBe(true)
@@ -247,7 +403,7 @@ describe('level-up intro', () => {
     const j = juice()
     j.handle({ type: 'mystery', x: 0, y: 0, reward: 'pick' })
     j.startLevelUp()
-    expect(j.banner?.text).toBe('FREE BOOST!')
+    expect(j.banner?.text).toBe('FREE SKILL!')
   })
 })
 
@@ -274,10 +430,11 @@ describe('XP tally and heat', () => {
       j.update(0.05)
       return j
     }
-    expect(rush(0.1).xpHeat).toBe(0)
-    expect(rush(0.4).xpHeat).toBe(1)
-    expect(rush(0.9).xpHeat).toBe(2)
-    expect(rush(1.5).xpHeat).toBe(3)
+    // Reachable in a good volley: a tenth of a level glows, half a level is white-hot.
+    expect(rush(0.05).xpHeat).toBe(0)
+    expect(rush(0.12).xpHeat).toBe(1)
+    expect(rush(0.3).xpHeat).toBe(2)
+    expect(rush(0.6).xpHeat).toBe(3)
   })
 
   it('whooshes once when the bar goes white-hot', () => {

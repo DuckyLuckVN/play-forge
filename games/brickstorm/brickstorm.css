@@ -421,6 +421,20 @@
   color: var(--pf-yolk);
   white-space: nowrap;
 }
+/* The shop wallet, with a note for coins still on their way from the current shot. */
+.bs-wallet-wrap {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.1;
+}
+.bs-wallet-pending {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pf-yolk);
+  opacity: 0.75;
+  white-space: nowrap;
+}
 /* A coin icon next to an amount. */
 .bs-coins,
 .bs-wallet {
@@ -571,6 +585,16 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
   gap: 8px;
+}
+/* A running instant boost (Double Down) under the slots. */
+.bs-active-effect {
+  margin: 10px 0 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgb(90 184 255 / 0.14);
+  color: #5ab8ff;
+  font-size: 13px;
+  font-weight: 700;
 }
 .bs-tile {
   position: relative;
@@ -737,7 +761,7 @@
   box-shadow: inset 0 0 8px rgb(0 0 0 / 0.5);
 }
 
-/* Pick cards: is it a new boost or a level-up of one you have? */
+/* Pick card tags: a level-up of a skill you have, synergy, held. */
 .bs-card .bs-tag {
   justify-self: start;
   padding: 2px 8px;
@@ -745,10 +769,6 @@
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.03em;
-}
-.bs-card .bs-tag.new {
-  background: rgb(75 227 160 / 0.18);
-  color: #4be3a0;
 }
 .bs-card .bs-tag.up {
   background: rgb(255 200 61 / 0.18);
@@ -843,14 +863,29 @@
   opacity: 0.45;
   cursor: default;
 }
-.bs-held-note {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin: 0;
+/* A card held on this screen: still in its place, greyed out, saying where it went. */
+.bs-card.stashed.pf-btn,
+.bs-card.stashed.pf-btn:disabled {
+  opacity: 1;
+  cursor: default;
+  border-style: dashed;
+}
+.bs-card .bs-stashed svg,
+.bs-card .bs-stashed .pf-icon {
   color: #ffc83d;
-  font-size: 14px;
+  stroke: #ffc83d;
+}
+/* Grey the content, keep the gold "held" line bright. */
+.bs-card.stashed > :not(.bs-stashed) {
+  filter: grayscale(1);
+  opacity: 0.45;
+}
+.bs-card .bs-stashed {
+  justify-content: flex-start;
+  gap: 6px;
+  color: #ffc83d;
+  font-size: 13px;
+  font-weight: 700;
 }
 .bs-pick-actions {
   display: flex;
@@ -911,4 +946,51 @@
   justify-content: center;
   color: var(--pf-haze);
   font-size: 14px;
+}
+
+/* Bonus cards (+2 balls, Double Down): same layout as a skill card, told apart
+   by a two-tone ribbon border and a BONUS ribbon across the top-right corner
+   (bonuses can't be held, so the lock never sits there). */
+.bs-card.bonus.pf-btn {
+  overflow: hidden;
+  border: 3px solid transparent;
+  background:
+    linear-gradient(var(--face), var(--face)) padding-box,
+    repeating-linear-gradient(45deg, #ff6fb5 0 10px, #ffc83d 10px 20px) border-box;
+  --edge: #ff6fb5;
+}
+.bs-card.bonus .bs-card-icon {
+  color: #ffc83d;
+}
+.bs-card .bs-ribbon {
+  position: absolute;
+  top: 14px;
+  right: -30px;
+  width: 110px;
+  padding: 3px 0;
+  transform: rotate(45deg);
+  background: #ff6fb5;
+  color: var(--pf-night);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-align: center;
+  box-shadow: 0 2px 0 rgb(0 0 0 / 0.25);
+  pointer-events: none;
+}
+/* Price on the left, rarity quietly on the right, pinned to the bottom. */
+.bs-card .bs-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  margin-top: auto;
+}
+.bs-card .bs-card-foot .bs-price {
+  margin-top: 0;
+}
+.bs-card .bs-rarity {
+  font-size: 11px;
+  opacity: 0.8;
 }

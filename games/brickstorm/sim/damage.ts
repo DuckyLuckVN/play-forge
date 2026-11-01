@@ -2,7 +2,7 @@
 // kills, coins, XP and on-death effects are counted exactly once.
 import { modsOf, xpToNext } from './boosts'
 import { random, randomInt } from '@forge/core/rng'
-import { CELL, COMBO_TIERS } from './config'
+import { CELL, COMBO_TIERS, KILL_XP, XP_COMBO_TIERS, XP_PER_BRICK } from './config'
 import { dims } from './dims'
 import { bigHit, bossRoleHit, bossRoleKill, damageBoss } from './boss'
 import type { BossHit } from './boss-skills'
@@ -15,6 +15,15 @@ export function comboMultiplier(combo: number): number {
   return COMBO_TIERS.find(([min]) => combo >= min)![1]
 }
 
+export function xpComboMultiplier(combo: number): number {
+  return XP_COMBO_TIERS.find(([min]) => combo >= min)![1]
+}
+
+/** XP for `base` points of work, scaled by the combo and Brain. */
+function earnXp(s: RunState, base: number): void {
+  if (base > 0) gainXp(s, base * xpComboMultiplier(s.combo) * modsOf(s.boosts).xpMult)
+}
+
 export function damageBrick(
   s: RunState,
   brick: Brick,
@@ -25,11 +34,15 @@ export function damageBrick(
 ): void {
   if (!s.bricks.includes(brick)) return // already destroyed earlier in this chain
   if (brick.kind === 'boss') {
+    // A boss pays no XP per hit, only when it falls (see damageBoss).
     return damageBoss(s, amount, source, { ...hit, col: brick.col, at: cellCenter(brick.col, brick.row) })
   }
   if (brick.role === 'ice') return // a boss's ice wall melts on its own
   // Armour shrugs off plain ball hits; fire, explosions, lightning and lasers get through.
+  const before = brick.hp
   brick.hp -= brick.kind === 'armored' && source === 'ball' ? Math.min(amount, 1) : amount
+  // XP for the share of the brick knocked off; overkill earns nothing.
+  earnXp(s, (XP_PER_BRICK * (before - Math.max(0, brick.hp))) / brick.maxHp)
   if (brick.role) bossRoleHit(s, brick, amount, source)
   if (brick.hp <= 0) killBrick(s, brick, depth)
 }
@@ -57,7 +70,7 @@ export function killBrick(s: RunState, brick: Brick, depth: number): void {
   if (brick.kind === 'gold') coins += base * 2
   else if (random(s.rng) < COIN_DROP) coins += base
   s.coins += coins
-  gainXp(s, mods.xpMult)
+  earnXp(s, KILL_XP)
   const { x, y } = cellCenter(brick.col, brick.row)
   s.events.push({ type: 'kill', id: brick.id, x, y, maxHp: brick.maxHp, kind: brick.kind, coins })
   onDeath(s, brick, depth)

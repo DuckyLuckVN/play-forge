@@ -26,6 +26,17 @@ function withBoss(traits: BossTrait[] = [], seed = 1): RunState {
   return s
 }
 
+describe('boss hp', () => {
+  it('counts the damage bonus from levels, so levelling does not trivialise bosses', () => {
+    const low = withBoss()
+    const high = beforeBoss()
+    high.turn = BOSS_EVERY
+    high.level = 8
+    // Same balls and boosts, more levels: a tougher boss (until the 12× cap).
+    expect(bossHp(high)).toBeGreaterThan(bossHp(low))
+  })
+})
+
 describe('boss', () => {
   it('arrives every 30 turns instead of a row, as a small body at the top', () => {
     const s = beforeBoss()
@@ -117,7 +128,9 @@ describe('boss', () => {
     expect(s.boss).toBeNull()
     expect(bossParts(s)).toHaveLength(0)
     expect(s.coins).toBeGreaterThan(coins)
-    expect(s.pendingPicks).toBe(1)
+    // One free reward pick; the boss's damage XP can level you up for more.
+    expect(s.freePicks).toBe(1)
+    expect(s.pendingPicks).toBeGreaterThanOrEqual(1)
     expect(drainEvents(s).find((e) => e.type === 'bossDown')).toBeTruthy()
   })
 

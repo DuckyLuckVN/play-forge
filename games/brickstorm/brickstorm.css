@@ -669,3 +669,8 @@
   height: 56px;
   color: var(--pf-yolk);
 }
+
+/* Long words (often in translations) wrap instead of pushing cards and panels wider. */
+:is(.bs-stage, .pf-overlay) :is(h2, h3, p, li, strong, span, button) {
+  overflow-wrap: anywhere;
+}

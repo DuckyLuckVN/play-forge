@@ -1,4 +1,5 @@
 // How a boss looks and reads: one big body over its parts, its name and traits.
+import { compactNumber, fillFitText } from '@forge/ui/text'
 import { FONT, theme } from '@forge/ui/theme'
 import { t } from './i18n'
 import { bossBody } from './sim/rows'
@@ -133,7 +134,7 @@ export function drawBoss(ctx: CanvasRenderingContext2D, s: RunState, time: numbe
   ctx.textBaseline = 'middle'
   ctx.font = `700 11px ${FONT}`
   ctx.fillStyle = accent
-  ctx.fillText(bossName(boss).toUpperCase(), cx, y + 11)
+  fillFitText(ctx, bossName(boss).toUpperCase(), cx, y + 11, w - 24)
   const barW = w - 24
   ctx.fillStyle = 'rgb(0 0 0 / 0.45)'
   ctx.beginPath()
@@ -146,10 +147,8 @@ export function drawBoss(ctx: CanvasRenderingContext2D, s: RunState, time: numbe
   ctx.font = `700 13px ${FONT}`
   ctx.lineWidth = 3
   ctx.strokeStyle = theme.night
-  const hp = String(Math.ceil(boss.hp))
-  ctx.strokeText(hp, cx, y + h - 13)
   ctx.fillStyle = theme.chalk
-  ctx.fillText(hp, cx, y + h - 13)
+  fillFitText(ctx, compactNumber(Math.ceil(boss.hp)), cx, y + h - 13, barW, true)
 
   // Shield bubble.
   if (boss.traits.includes('shield')) {

@@ -2,6 +2,7 @@ import type { Particles } from '@forge/fx/particles'
 import type { Shake } from '@forge/fx/shake'
 import { ease, prefersReducedMotion } from '@forge/fx/tween'
 import type { Canvas2D } from '@forge/render2d/canvas'
+import { compactNumber, fillFitText, fitScale } from '@forge/ui/text'
 import { FONT, theme } from '@forge/ui/theme'
 import { ArenaPainter, type ArenaId } from './arenas'
 import { drawBoss } from './boss-ui'
@@ -122,7 +123,7 @@ export function drawPickupGlyph(
     ctx.arc(x, y, PICKUP_R, 0, Math.PI * 2)
     ctx.stroke()
   } else {
-    drawCoin(ctx, x, y, PICKUP_R - 1, time * 3)
+    drawCoin(ctx, x, y, PICKUP_R - 1)
   }
 }
 
@@ -186,11 +187,6 @@ export class BoardRenderer {
     ctx.beginPath()
     ctx.roundRect(0, TOP, this.d.boardW, this.d.floorY + BALL_R - TOP, 10)
     ctx.fill()
-    ctx.fillStyle = 'rgb(255 255 255 / 0.025)'
-    for (let r = 0; r < this.d.rows; r++) {
-      for (let c = (r % 2) as number; c < this.d.cols; c += 2)
-        ctx.fillRect(c * CELL, TOP + r * CELL, CELL, CELL)
-    }
     const y = TOP + this.d.dangerRow * CELL
     const danger = s?.bricks.some((b) => b.row === this.d.dangerRow - 1) ?? false
     const pulse = danger ? 0.55 + 0.45 * Math.sin(time * 8) : 0.25
@@ -219,10 +215,10 @@ export class BoardRenderer {
       ctx.fillStyle = 'rgb(255 255 255 / 0.18)'
       ctx.fillRect(r.x + 6, r.y + 4, r.w - 12, 4)
       drawKindGlyph(ctx, b.kind, r, time)
-      const hp = Math.ceil(b.hp)
+      const hp = compactNumber(Math.ceil(b.hp))
       ctx.fillStyle = theme.night
-      ctx.font = `700 ${hp >= 1000 ? 15 : 20}px ${FONT}`
-      ctx.fillText(String(hp), r.x + r.w / 2, r.y + r.h / 2 + 1)
+      ctx.font = `700 ${hp.length >= 4 ? 15 : 20}px ${FONT}`
+      fillFitText(ctx, hp, r.x + r.w / 2, r.y + r.h / 2 + 1, r.w - 6)
     }
   }
 
@@ -349,10 +345,10 @@ export class BoardRenderer {
     ctx.font = `700 20px ${FONT}`
     ctx.fillStyle = theme.chalk
     ctx.textAlign = 'left'
-    ctx.fillText(t('Turn {n}', { n: s.turn }), 12, TOP / 2 - 4)
+    fillFitText(ctx, t('Turn {n}', { n: s.turn }), 12, TOP / 2 - 4, this.d.boardW * 0.4)
     ctx.textAlign = 'right'
     ctx.fillStyle = theme.yolk
-    const coins = String(Math.floor(juice.shownCoins))
+    const coins = compactNumber(Math.floor(juice.shownCoins))
     ctx.fillText(coins, this.d.boardW - 12, TOP / 2 - 4)
     drawCoin(ctx, this.d.boardW - 24 - ctx.measureText(coins).width, TOP / 2 - 4, 10)
 
@@ -424,7 +420,7 @@ export class BoardRenderer {
       ctx.textBaseline = 'middle'
       ctx.lineWidth = 4
       ctx.strokeStyle = theme.night
-      const text = `+${Math.round(tally.amount)} XP`
+      const text = `+${compactNumber(tally.amount)} XP`
       ctx.strokeText(text, 0, 0)
       ctx.fillStyle = heat >= 2 ? XP_HEAT_COLOR[heat] : XP_COLOR
       ctx.fillText(text, 0, 0)
@@ -467,7 +463,7 @@ export class BoardRenderer {
     ctx.font = `700 14px ${FONT}`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    const w = ctx.measureText(text).width + 24
+    const w = Math.min(ctx.measureText(text).width + 24, this.d.boardW - 24)
     const x = this.d.boardW / 2
     const y = TOP + 16 + Math.min(0, (age - 0.25) * 40)
     ctx.fillStyle = 'rgb(255 107 107 / 0.92)'
@@ -475,7 +471,7 @@ export class BoardRenderer {
     ctx.roundRect(x - w / 2, y - 12, w, 24, 12)
     ctx.fill()
     ctx.fillStyle = theme.chalk
-    ctx.fillText(text, x, y + 1)
+    fillFitText(ctx, text, x, y + 1, w - 16)
     ctx.restore()
   }
 
@@ -492,7 +488,7 @@ export class BoardRenderer {
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     // Long banners shrink to fit the board.
-    const fit = Math.min(1, (this.d.boardW - 32) / ctx.measureText(b.text).width)
+    const fit = fitScale(ctx.measureText(b.text).width, this.d.boardW - 32)
     ctx.scale(fit, fit)
     ctx.lineWidth = b.big ? 10 : 8
     ctx.strokeStyle = theme.night

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { AIM_MIN, BALL_R, BOARD_W, COLS, DANGER_ROW, MIN_VY_RATIO, RECALL_AFTER } from './config'
 import { brickRect } from './rows'
-import { canRecall, createRun, drainEvents, fire, recall, speedMultiplier, step } from './run'
+import { canRecall, createRun, drainEvents, fire, recall, restingBall, speedMultiplier, step } from './run'
+import { dims } from './dims'
 import { brick, empty, runVolley } from './testing'
 import type { RunState } from './types'
 
@@ -164,5 +165,18 @@ describe('turn loop', () => {
       turn: 25,
       coins: 50,
     })
+  })
+})
+
+describe('waiting ball', () => {
+  it('sits on the floor at the size the run fires', () => {
+    const s = empty()
+    expect(restingBall(s)).toEqual({ y: dims(s).floorY - BALL_R, r: BALL_R })
+    s.boosts = { big: 2 }
+    const r = BALL_R * 1.4
+    expect(restingBall(s).r).toBeCloseTo(r)
+    expect(restingBall(s).y).toBeCloseTo(dims(s).floorY - r)
+    fire(s, Math.PI / 2)
+    expect(s.balls[0].r).toBeCloseTo(restingBall(s).r)
   })
 })

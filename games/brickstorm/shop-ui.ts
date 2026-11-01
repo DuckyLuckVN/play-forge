@@ -3,12 +3,14 @@ import { playSound } from '@forge/audio/sound'
 import { h } from '@forge/ui/dom'
 import { FONT, theme } from '@forge/ui/theme'
 import { ArenaPainter, type ArenaId } from './arenas'
+import { playMusic } from '@forge/audio/music'
 import { coinAmount } from './coin'
+import { trackFor } from './music'
 import { drawBall, IMPACT_STYLE, TRAIL_STYLE } from './cosmetics'
 import { t } from './i18n'
+import { panelHead } from './panels'
 import type { Save } from './save'
 import { buy, CATALOG, equip, type ItemKind, type ShopItem } from './shop'
-import { BOARD_W } from './sim/config'
 import { BRICK_SOUNDS } from './sounds'
 
 const TABS: Array<[ItemKind, string]> = [
@@ -16,6 +18,7 @@ const TABS: Array<[ItemKind, string]> = [
   ['trail', t('Trails')],
   ['arena', t('Arenas')],
   ['impact', t('Impacts')],
+  ['music', t('Music')],
   ['helper', t('Helpers')],
 ]
 
@@ -30,9 +33,56 @@ const HELPER_GLYPH: Record<string, string> = {
   'helper:freeze': '❄',
   'helper:firePack': '🔥',
   'helper:surge': '×1.5',
+  'helper:powerStart': '⚔',
+  'helper:goldStart': '$',
+  'helper:eagleStart': '◉',
+  'helper:megaBomb': '☢',
+  'helper:colBomb': '⇣',
+  'helper:laserGrid': '≡',
+  'helper:midasTouch': '♛',
+  'helper:ballRain': '+10',
+  'helper:overcharge': '⚡',
+  'helper:vacuum': '◎',
+  'helper:pierceShot': '➹',
 }
 
 const arenaPainter = new ArenaPainter()
+
+function drawArenaPreview(ctx: CanvasRenderingContext2D, arena: ArenaId, time: number): void {
+  // The whole scene, laid out for a square, drawn at 3× and scaled down.
+  const size = PREVIEW * 3
+  ctx.save()
+  ctx.scale(1 / 3, 1 / 3)
+  arenaPainter.draw(ctx, arena, 1, false, time, { boardW: size, boardH: size, floorY: size * 0.88 })
+  ctx.restore()
+}
+
+/** Arena previews on the open tab; they animate while the shop is open. */
+let livePreviews: Array<{ ctx: CanvasRenderingContext2D; arena: ArenaId }> = []
+
+let animating = false
+/** The soundtrack being listened to in the shop, if any. */
+let previewing: string | null = null
+
+/** True while the shop plays a soundtrack preview (the game leaves the music alone). */
+export function isPreviewingMusic(): boolean {
+  return previewing !== null
+}
+
+function animatePreviews(panel: HTMLElement): void {
+  if (animating) return
+  animating = true
+  const start = performance.now()
+  const frame = (now: number) => {
+    if (!panel.isConnected || !livePreviews.length) {
+      animating = false
+      return
+    }
+    for (const p of livePreviews) drawArenaPreview(p.ctx, p.arena, 4 + (now - start) / 1000)
+    requestAnimationFrame(frame)
+  }
+  requestAnimationFrame(frame)
+}
 
 function preview(it: ShopItem): HTMLCanvasElement {
   const canvas = h('canvas', { width: PREVIEW * 2, height: PREVIEW * 2 })
@@ -63,10 +113,8 @@ function preview(it: ShopItem): HTMLCanvasElement {
       break
     }
     case 'arena':
-      ctx.save()
-      ctx.scale(PREVIEW / BOARD_W, PREVIEW / BOARD_W)
-      arenaPainter.draw(ctx, key as ArenaId, 1, false, 4)
-      ctx.restore()
+      drawArenaPreview(ctx, key, 4)
+      livePreviews.push({ ctx, arena: key })
       break
     case 'impact': {
       const style = IMPACT_STYLE[it.id]
@@ -83,6 +131,21 @@ function preview(it: ShopItem): HTMLCanvasElement {
           ctx.fill()
         } else ctx.fillRect(c + Math.cos(a) * d, c + Math.sin(a) * d, s, s)
       }
+      break
+    }
+    case 'music': {
+      // An equaliser under a note, its own shape for each track.
+      const seed = [...key].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) >>> 0, 7)
+      const bars = Array.from({ length: 6 }, (_, i) => 6 + ((seed >> (i * 4)) % 22))
+      bars.forEach((hgt, i) => {
+        ctx.fillStyle = i % 2 ? '#b48cff' : '#5ab8ff'
+        ctx.fillRect(10 + i * 9, PREVIEW - 12 - hgt, 6, hgt)
+      })
+      ctx.fillStyle = theme.yolk
+      ctx.font = `700 26px ${FONT}`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('♪', c, c - 10)
       break
     }
     case 'helper':
@@ -117,6 +180,7 @@ export function shopPanel(getSave: () => Save, setSave: (s: Save) => void, onBac
           onclick: () => {
             tab = kind
             render()
+            animatePreviews(panel)
           },
         })
         b.setAttribute('role', 'tab')
@@ -124,6 +188,7 @@ export function shopPanel(getSave: () => Save, setSave: (s: Save) => void, onBac
         return b
       }),
     )
+    livePreviews = []
     const items = CATALOG.filter((i) => i.kind === tab).map((it) => {
       const owned = it.kind !== 'helper' && save.owned.includes(it.id)
       const equipped = it.kind !== 'helper' && save.equipped[it.kind] === it.id
@@ -166,10 +231,23 @@ export function shopPanel(getSave: () => Save, setSave: (s: Save) => void, onBac
           t('Buy {name} for {price} coins', { name: t(it.name), price: it.price }),
         )
       }
+      const listen =
+        it.kind === 'music' &&
+        h('button', {
+          class: 'pf-btn quiet bs-listen',
+          type: 'button',
+          textContent: previewing === it.id ? t('♪ Playing') : t('▶ Listen'),
+          onclick: () => {
+            previewing = it.id
+            playMusic(trackFor(it.id))
+            render()
+          },
+        })
       return h(
         'div',
         { class: 'bs-item' },
         preview(it),
+        listen,
         h('strong', { textContent: t(it.name) }),
         it.text && h('span', { class: 'bs-item-text', textContent: t(it.text) }),
         it.helper &&
@@ -178,17 +256,19 @@ export function shopPanel(getSave: () => Save, setSave: (s: Save) => void, onBac
       )
     })
     panel.replaceChildren(
-      h(
-        'div',
-        { class: 'bs-shop-head' },
-        h('h2', { class: 'pf-heading', textContent: t('Shop') }),
+      panelHead(
+        t('Shop'),
+        () => {
+          previewing = null
+          onBack()
+        },
         coinAmount(save.coins, 'bs-wallet'),
       ),
       tabs,
       h('div', { class: 'bs-items' }, ...items),
-      h('button', { class: 'pf-btn quiet', type: 'button', textContent: t('Back'), onclick: onBack }),
     )
   }
   render()
+  animatePreviews(panel)
   return panel
 }

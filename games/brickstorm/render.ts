@@ -2,17 +2,22 @@ import type { Particles } from '@forge/fx/particles'
 import type { Shake } from '@forge/fx/shake'
 import { ease, prefersReducedMotion } from '@forge/fx/tween'
 import type { Canvas2D } from '@forge/render2d/canvas'
+import { compactNumber, fillFitText, fitScale } from '@forge/ui/text'
 import { FONT, theme } from '@forge/ui/theme'
 import { ArenaPainter, type ArenaId } from './arenas'
+import { drawBoss, drawRoleBrick } from './boss-art'
+import { BossGlide } from './boss-glide'
+import { bossHidesGuide } from './sim/boss'
 import { drawCoin } from './coin'
 import { drawBall, TRAIL_STYLE } from './cosmetics'
 import { t } from './i18n'
-import { COIN_FLY, hpColor, type Juice, TOUGHER_LIFE } from './juice'
+import { COIN_FLY, GROW_FX_LIFE, hpColor, type Juice, TOUGHER_LIFE } from './juice'
 import { modsOf } from './sim/boosts'
 import { BALL_R, boardSize, CELL, COLS, COMBO_TIERS, PICKUP_R, ROWS, TOP } from './sim/config'
 import { traceGuide } from './sim/physics'
+import { restingBall } from './sim/run'
 import { dims, type Dims } from './sim/dims'
-import { brickRect, cellCenter } from './sim/rows'
+import { brickRect, cellCenter, hitRects } from './sim/rows'
 import type { BrickKind, PickupKind, Rect, RunState } from './sim/types'
 
 const TRAIL = 4
@@ -120,8 +125,14 @@ export function drawPickupGlyph(
     ctx.arc(x, y, PICKUP_R, 0, Math.PI * 2)
     ctx.stroke()
   } else {
-    drawCoin(ctx, x, y, PICKUP_R - 1, time * 3)
+    drawCoin(ctx, x, y, PICKUP_R - 1)
   }
+}
+
+/** Where a boss looks: the first ball in flight, else the ball waiting to launch. */
+function bossLook(s: RunState): { x: number; y: number } {
+  const ball = s.balls.find((b) => b.status === 'flying')
+  return ball ? { x: ball.x, y: ball.y } : { x: s.launchX, y: dims(s).floorY }
 }
 
 export class BoardRenderer {
@@ -142,6 +153,8 @@ export class BoardRenderer {
 
   /** Board geometry for the frame being drawn. */
   private d: Dims = boardSize(COLS, ROWS)
+  private glide = new BossGlide()
+  private lastTime = 0
 
   draw(s: RunState | null, juice: Juice, aim: number | null, time: number): void {
     this.d = s ? dims(s) : boardSize(COLS, ROWS)
@@ -153,9 +166,11 @@ export class BoardRenderer {
     if (s) {
       this.drawPickups(ctx, s, time)
       this.drawBricks(ctx, s, time)
+      this.drawMovingBoss(ctx, s, time, juice)
       if (s.phase === 'aim' && aim !== null) this.drawGuide(ctx, s, aim)
       this.drawBalls(ctx, s, time, juice.zaps)
     }
+    if (juice.growFx) this.drawGrowFx(ctx, juice.growFx)
     for (const l of juice.lasers) {
       ctx.fillStyle = '#ff6fb5'
       ctx.globalAlpha = l.life / 0.3
@@ -183,11 +198,6 @@ export class BoardRenderer {
     ctx.beginPath()
     ctx.roundRect(0, TOP, this.d.boardW, this.d.floorY + BALL_R - TOP, 10)
     ctx.fill()
-    ctx.fillStyle = 'rgb(255 255 255 / 0.025)'
-    for (let r = 0; r < this.d.rows; r++) {
-      for (let c = (r % 2) as number; c < this.d.cols; c += 2)
-        ctx.fillRect(c * CELL, TOP + r * CELL, CELL, CELL)
-    }
     const y = TOP + this.d.dangerRow * CELL
     const danger = s?.bricks.some((b) => b.row === this.d.dangerRow - 1) ?? false
     const pulse = danger ? 0.55 + 0.45 * Math.sin(time * 8) : 0.25
@@ -207,38 +217,53 @@ export class BoardRenderer {
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     for (const b of s.bricks) {
+      if (b.kind === 'boss') continue // drawn as one body by drawBoss
       const r = brickRect(b)
-      ctx.fillStyle = b.kind === 'gold' ? '#ffc83d' : hpColor(b.hp, s.turn)
-      ctx.beginPath()
-      ctx.roundRect(r.x, r.y, r.w, r.h, 9)
-      ctx.fill()
-      ctx.fillStyle = 'rgb(255 255 255 / 0.18)'
-      ctx.fillRect(r.x + 6, r.y + 4, r.w - 12, 4)
+      if (b.role) {
+        // Summoned by a boss skill: its own look (ice has no number).
+        if (drawRoleBrick(ctx, b, time)) continue
+      } else {
+        ctx.fillStyle = b.kind === 'gold' ? '#ffc83d' : hpColor(b.hp, s.turn)
+        ctx.beginPath()
+        ctx.roundRect(r.x, r.y, r.w, r.h, 9)
+        ctx.fill()
+        ctx.fillStyle = 'rgb(255 255 255 / 0.18)'
+        ctx.fillRect(r.x + 6, r.y + 4, r.w - 12, 4)
+      }
       drawKindGlyph(ctx, b.kind, r, time)
-      const hp = Math.ceil(b.hp)
+      const hp = compactNumber(Math.ceil(b.hp))
       ctx.fillStyle = theme.night
-      ctx.font = `700 ${hp >= 1000 ? 15 : 20}px ${FONT}`
-      ctx.fillText(String(hp), r.x + r.w / 2, r.y + r.h / 2 + 1)
+      ctx.font = `700 ${hp.length >= 4 ? 15 : 20}px ${FONT}`
+      fillFitText(ctx, hp, r.x + r.w / 2, r.y + r.h / 2 + 1, r.w - 6)
     }
   }
 
   private drawPickups(ctx: CanvasRenderingContext2D, s: RunState, time: number): void {
     for (const p of s.pickups) {
       const { x, y } = cellCenter(p.col, p.row)
+      if (p.used) {
+        // A fired laser stays charged until the volley ends.
+        ctx.fillStyle = `rgb(255 111 181 / ${0.25 + 0.15 * Math.sin(time * 12)})`
+        ctx.beginPath()
+        ctx.arc(x, y, PICKUP_R + 6, 0, Math.PI * 2)
+        ctx.fill()
+      }
       drawPickupGlyph(ctx, p.kind, x, y + Math.sin(time * 4 + p.id) * 3, time)
     }
   }
 
   private drawGuide(ctx: CanvasRenderingContext2D, s: RunState, aim: number): void {
+    const rest = restingBall(s)
     const pts = traceGuide(
       s.launchX,
-      this.d.floorY - BALL_R,
+      rest.y,
       aim,
       modsOf(s.boosts).guideLength,
-      s.bricks.map(brickRect),
+      hitRects(s.bricks),
       this.d.boardW,
       this.d.floorY,
-    )
+      rest.r,
+    ).slice(0, bossHidesGuide(s) ? 2 : undefined)
     ctx.strokeStyle = 'rgb(244 241 255 / 0.7)'
     ctx.lineWidth = 3
     ctx.lineCap = 'round'
@@ -320,13 +345,13 @@ export class BoardRenderer {
       ctx.globalAlpha = 1
     }
 
+    const rest = restingBall(s)
     // Balls waiting at the launch point, and balls that already landed.
     const home = s.phase === 'volley' ? (s.nextLaunchX ?? s.launchX) : s.launchX
     const waiting = s.phase === 'volley' ? s.balls.some((b) => b.status !== 'flying') : true
-    if (waiting)
-      drawBall(ctx, this.ball, s.phase === 'volley' ? s.launchX : home, this.d.floorY - BALL_R, BALL_R, time)
+    if (waiting) drawBall(ctx, this.ball, s.phase === 'volley' ? s.launchX : home, rest.y, rest.r, time)
     if (s.phase === 'volley' && s.nextLaunchX !== null) {
-      drawBall(ctx, this.ball, s.nextLaunchX, this.d.floorY - BALL_R, BALL_R, time)
+      drawBall(ctx, this.ball, s.nextLaunchX, rest.y, rest.r, time)
     }
     if (s.phase === 'aim') {
       const n = s.doubleVolleys > 0 ? s.ballCount * 2 : s.ballCount
@@ -343,10 +368,10 @@ export class BoardRenderer {
     ctx.font = `700 20px ${FONT}`
     ctx.fillStyle = theme.chalk
     ctx.textAlign = 'left'
-    ctx.fillText(t('Turn {n}', { n: s.turn }), 12, TOP / 2 - 4)
+    fillFitText(ctx, t('Turn {n}', { n: s.turn }), 12, TOP / 2 - 4, this.d.boardW * 0.4)
     ctx.textAlign = 'right'
     ctx.fillStyle = theme.yolk
-    const coins = String(Math.floor(juice.shownCoins))
+    const coins = compactNumber(Math.floor(juice.shownCoins))
     ctx.fillText(coins, this.d.boardW - 12, TOP / 2 - 4)
     drawCoin(ctx, this.d.boardW - 24 - ctx.measureText(coins).width, TOP / 2 - 4, 10)
 
@@ -418,7 +443,7 @@ export class BoardRenderer {
       ctx.textBaseline = 'middle'
       ctx.lineWidth = 4
       ctx.strokeStyle = theme.night
-      const text = `+${Math.round(tally.amount)} XP`
+      const text = `+${compactNumber(tally.amount)} XP`
       ctx.strokeText(text, 0, 0)
       ctx.fillStyle = heat >= 2 ? XP_HEAT_COLOR[heat] : XP_COLOR
       ctx.fillText(text, 0, 0)
@@ -451,6 +476,88 @@ export class BoardRenderer {
     }
   }
 
+  /** The boss, eased from where it was when it moves, with dust (or a teleport puff) as it goes. */
+  private drawMovingBoss(ctx: CanvasRenderingContext2D, s: RunState, time: number, juice: Juice): void {
+    this.glide.update(Math.min(0.1, Math.max(0, time - this.lastTime)))
+    this.lastTime = time
+    const parts = s.bricks.filter((b) => b.kind === 'boss')
+    if (!s.boss || !parts.length) return
+    const col = Math.min(...parts.map((b) => b.col))
+    const row = Math.min(...parts.map((b) => b.row))
+    const fromX = this.glide.x
+    const { dc, dr } = this.glide.track(s.boss, col, row)
+    if (dc || dr > 1 || dr < 0) {
+      const xs = parts.map((b) => cellCenter(b.col, b.row))
+      const cx = xs.reduce((a, p) => a + p.x, 0) / xs.length
+      const cy = xs.reduce((a, p) => a + p.y, 0) / xs.length
+      if (s.boss.traits.includes('blink') && Math.abs(dc) > 0) {
+        // Teleport: a puff where it was and where it lands.
+        for (const x of [cx + fromX - dc * CELL, cx]) {
+          this.particles.burst(x, cy, { count: 24, color: ['#d68cff', '#ffffff'], speed: 260, life: 0.5 })
+        }
+        this.glide.x = 0 // a teleport snaps, the puffs sell it
+      } else {
+        this.particles.burst(cx - Math.sign(dc) * 60, cy + 30, {
+          count: 14,
+          color: ['#b9b3d9', '#ffffff'],
+          speed: 120,
+        })
+      }
+    }
+    // A little squash when it's hit.
+    const pts = parts.map((b) => cellCenter(b.col, b.row))
+    const mx = pts.reduce((a, p) => a + p.x, 0) / pts.length
+    const my = pts.reduce((a, p) => a + p.y, 0) / pts.length
+    const squash = 0.035 * juice.bossHit
+    ctx.save()
+    ctx.translate(this.glide.x + mx, this.glide.y + my)
+    ctx.scale(1 + squash, 1 - squash)
+    ctx.translate(-mx, -my)
+    drawBoss(ctx, s, time, { hit: juice.bossHit, look: bossLook(s), cast: juice.bossCast })
+    ctx.restore()
+  }
+
+  /** The column or row the board just gained: a glow that fades, a light sweeping along it, sparks at its edge. */
+  private drawGrowFx(ctx: CanvasRenderingContext2D, fx: { axis: 'col' | 'row'; age: number }): void {
+    const k = fx.age / GROW_FX_LIFE
+    const col = fx.axis === 'col'
+    const band = col
+      ? { x: (this.d.cols - 1) * CELL, y: TOP, w: CELL, h: this.d.floorY - TOP }
+      : { x: 0, y: TOP + (this.d.dangerRow - 1) * CELL, w: this.d.boardW, h: CELL }
+    ctx.save()
+    ctx.globalAlpha = 1 - k
+    ctx.fillStyle = 'rgb(75 227 160 / 0.22)'
+    ctx.fillRect(band.x, band.y, band.w, band.h)
+    // A bright line sweeping along the new space.
+    const sweep = ease.outCubic(Math.min(1, k * 1.6))
+    const g = col
+      ? ctx.createLinearGradient(0, band.y, 0, band.y + band.h)
+      : ctx.createLinearGradient(band.x, 0, band.x + band.w, 0)
+    g.addColorStop(Math.max(0, sweep - 0.15), 'rgb(75 227 160 / 0)')
+    g.addColorStop(sweep, 'rgb(200 255 230 / 0.9)')
+    g.addColorStop(Math.min(1, sweep + 0.02), 'rgb(75 227 160 / 0)')
+    ctx.fillStyle = g
+    ctx.fillRect(band.x, band.y, band.w, band.h)
+    // Sparks drifting out of the outer edge.
+    ctx.fillStyle = '#c8ffe6'
+    for (let i = 0; i < 14; i++) {
+      const along = ((i * 0.618) % 1) * (col ? band.h : band.w)
+      const out = k * 30 * (0.5 + ((i * 0.37) % 1))
+      const x = col ? band.x + band.w - 4 + out * 0.3 : band.x + along
+      const y = col ? band.y + along : band.y + band.h - 4 + out * 0.3
+      ctx.beginPath()
+      ctx.arc(
+        x + (col ? 0 : Math.sin(i + k * 9) * 3),
+        y + (col ? Math.sin(i + k * 9) * 3 : 0),
+        2.2 * (1 - k) + 0.5,
+        0,
+        Math.PI * 2,
+      )
+      ctx.fill()
+    }
+    ctx.restore()
+  }
+
   /** "▲ Tougher bricks" under the HUD on the turn a new hp stretch starts. */
   private drawTougher(ctx: CanvasRenderingContext2D, juice: Juice): void {
     const age = juice.tougherAge
@@ -461,7 +568,7 @@ export class BoardRenderer {
     ctx.font = `700 14px ${FONT}`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    const w = ctx.measureText(text).width + 24
+    const w = Math.min(ctx.measureText(text).width + 24, this.d.boardW - 24)
     const x = this.d.boardW / 2
     const y = TOP + 16 + Math.min(0, (age - 0.25) * 40)
     ctx.fillStyle = 'rgb(255 107 107 / 0.92)'
@@ -469,7 +576,7 @@ export class BoardRenderer {
     ctx.roundRect(x - w / 2, y - 12, w, 24, 12)
     ctx.fill()
     ctx.fillStyle = theme.chalk
-    ctx.fillText(text, x, y + 1)
+    fillFitText(ctx, text, x, y + 1, w - 16)
     ctx.restore()
   }
 
@@ -485,6 +592,9 @@ export class BoardRenderer {
     ctx.font = `700 ${b.big ? 60 : 46}px ${FONT}`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
+    // Long banners shrink to fit the board.
+    const fit = fitScale(ctx.measureText(b.text).width, this.d.boardW - 32)
+    ctx.scale(fit, fit)
     ctx.lineWidth = b.big ? 10 : 8
     ctx.strokeStyle = theme.night
     ctx.strokeText(b.text, 0, 0)

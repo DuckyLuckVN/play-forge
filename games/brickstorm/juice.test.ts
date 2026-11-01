@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { playSound } from '@forge/audio/sound'
 import { theme } from '@forge/ui/theme'
-import { comboPitch, hitSound, hpColor, Juice, pitched } from './juice'
-import { BRICK_SOUNDS } from './sounds'
+import { comboPitch, GROW_FX_LIFE, hitSound, hpColor, Juice, pitched } from './juice'
+import { BOSS_SOUNDS, BRICK_SOUNDS } from './sounds'
 
 vi.mock('@forge/audio/sound', () => ({ playSound: vi.fn() }))
 vi.mock('@forge/fx/confetti', () => ({ celebrate: vi.fn() }))
@@ -291,5 +291,74 @@ describe('XP tally and heat', () => {
     const whooshes = vi.mocked(playSound).mock.calls.filter(([s]) => s === BRICK_SOUNDS.whoosh)
     expect(whooshes).toHaveLength(1)
     expect(calls).toBeGreaterThan(0)
+  })
+})
+
+describe('grow effect', () => {
+  it('lights the new edge when the board grows, then fades out', () => {
+    const j = juice()
+    j.handle({ type: 'grow', axis: 'col' })
+    expect(j.growFx).toEqual({ axis: 'col', age: 0 })
+    j.update(GROW_FX_LIFE / 2)
+    expect(j.growFx?.age).toBeCloseTo(GROW_FX_LIFE / 2)
+    j.update(GROW_FX_LIFE)
+    expect(j.growFx).toBeNull()
+  })
+})
+
+describe('boss skill shouts', () => {
+  it('a skill going off flares the boss and shouts its name there', () => {
+    particles.text.mockClear()
+    const j = juice()
+    j.handle({ type: 'bossSkill', id: 'mason', x: 100, y: 80 })
+    expect(j.bossCast).toBe(1)
+    expect(particles.text).toHaveBeenCalledWith(
+      100,
+      expect.any(Number),
+      'MASON!',
+      expect.objectContaining({ color: expect.any(String) }),
+    )
+    j.update(1)
+    expect(j.bossCast).toBe(0)
+  })
+
+  it('a popped ball bursts', () => {
+    particles.burst.mockClear()
+    juice().handle({ type: 'pop', x: 10, y: 20 })
+    expect(particles.burst).toHaveBeenCalled()
+  })
+})
+
+describe('boss hits and casts', () => {
+  it('a hit on the boss sparks in its colour and thunks, lower as it weakens', () => {
+    vi.mocked(playSound).mockClear()
+    particles.burst.mockClear()
+    const j = juice()
+    j.handle({ type: 'bossHit', x: 50, y: 60, life: 0.9, skill: 'shield' })
+    expect(particles.burst).toHaveBeenCalledWith(
+      50,
+      60,
+      expect.objectContaining({ color: expect.arrayContaining(['#7fe7ff']) }),
+    )
+    const strong = vi.mocked(playSound).mock.calls.at(-1)![0] as Array<{ freq: number }>
+    vi.mocked(playSound).mockClear()
+    juice().handle({ type: 'bossHit', x: 50, y: 60, life: 0.1, skill: 'shield' })
+    const weak = vi.mocked(playSound).mock.calls.at(-1)![0] as Array<{ freq: number }>
+    expect(weak[0].freq).toBeLessThan(strong[0].freq)
+  })
+
+  it('a blocked hit tinks', () => {
+    vi.mocked(playSound).mockClear()
+    juice().handle({ type: 'bossBlock', x: 1, y: 2 })
+    expect(playSound).toHaveBeenCalledWith(BOSS_SOUNDS.block, expect.anything())
+  })
+
+  it('each kind of skill sounds different when cast', () => {
+    vi.mocked(playSound).mockClear()
+    juice().handle({ type: 'bossSkill', id: 'mason', x: 0, y: 0 })
+    juice().handle({ type: 'bossSkill', id: 'frenzy', x: 0, y: 0 })
+    const sounds = vi.mocked(playSound).mock.calls.map((c) => c[0])
+    expect(sounds).toContain(BOSS_SOUNDS.summon)
+    expect(sounds).toContain(BOSS_SOUNDS.rage)
   })
 })

@@ -4,6 +4,8 @@ import { modsOf, xpToNext } from './boosts'
 import { random, randomInt } from '@forge/core/rng'
 import { CELL, COMBO_TIERS } from './config'
 import { dims } from './dims'
+import { bigHit, bossRoleHit, bossRoleKill, damageBoss } from './boss'
+import type { BossHit } from './boss-skills'
 import { cellCenter } from './rows'
 import type { Brick, RunState } from './types'
 
@@ -19,10 +21,16 @@ export function damageBrick(
   amount: number,
   source: DamageSource,
   depth = 0,
+  hit: Omit<BossHit, 'source'> = {},
 ): void {
   if (!s.bricks.includes(brick)) return // already destroyed earlier in this chain
+  if (brick.kind === 'boss') {
+    return damageBoss(s, amount, source, { ...hit, col: brick.col, at: cellCenter(brick.col, brick.row) })
+  }
+  if (brick.role === 'ice') return // a boss's ice wall melts on its own
   // Armour shrugs off plain ball hits; fire, explosions, lightning and lasers get through.
   brick.hp -= brick.kind === 'armored' && source === 'ball' ? Math.min(amount, 1) : amount
+  if (brick.role) bossRoleHit(s, brick, amount, source)
   if (brick.hp <= 0) killBrick(s, brick, depth)
 }
 
@@ -39,7 +47,9 @@ export function gainXp(s: RunState, amount: number): void {
 export function killBrick(s: RunState, brick: Brick, depth: number): void {
   const i = s.bricks.indexOf(brick)
   if (i < 0) return
+  if (brick.kind === 'boss') return bigHit(s)
   s.bricks.splice(i, 1)
+  if (brick.role) bossRoleKill(s, brick)
   const mods = modsOf(s.boosts)
   // Only some bricks drop a coin; gold always pays, triple.
   const base = Math.max(1, Math.round(comboMultiplier(s.combo) * mods.coinMult))

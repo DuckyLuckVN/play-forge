@@ -2,7 +2,7 @@ import '@forge/ui/base.css'
 import './brickstorm.css'
 import { playMusic } from '@forge/audio/music'
 import { playSound, setMusicDuck, UI_SOUNDS } from '@forge/audio/sound'
-import { ARCADE, LOUNGE } from '@forge/audio/tracks'
+import { LOUNGE } from '@forge/audio/tracks'
 import { startRenderLoop } from '@forge/core/loop'
 import { randomSeed } from '@forge/core/rng'
 import { Particles } from '@forge/fx/particles'
@@ -13,25 +13,66 @@ import { langMenu } from '@forge/ui/lang-menu'
 import { h, icon, toast } from '@forge/ui/dom'
 import { icons } from '@forge/ui/icons'
 import { applyTheme } from '@forge/ui/theme'
+import { bossIntro } from './boss-ui'
+import { dangerHint } from './danger-hint'
+import { growCard } from './grow-ui'
 import { coinAmount, shortCoins } from './coin'
+import { BOSS, trackFor } from './music'
 import { rarityName, t } from './i18n'
 import { toBoard } from './input'
 import { Juice } from './juice'
 import { BoardRenderer } from './render'
 import { ARENAS, type ArenaId } from './arenas'
-import { bankRun, canBank, clearRun, loadSave, recordRun, spend, walletTotal, writeSave } from './save'
-import { shopPanel } from './shop-ui'
+import {
+  bankRun,
+  canBank,
+  clearRun,
+  loadSave,
+  recordRun,
+  resetSave,
+  spend,
+  undoReset,
+  walletTotal,
+  writeSave,
+  type Save,
+} from './save'
+import { isPreviewingMusic, shopPanel } from './shop-ui'
 import { applyHelpers, growBoard, revive, reviveCost, useHelper } from './sim/meta'
 import { dims } from './sim/dims'
 import { boostDetail, GUIDE, newlySeen } from './guide'
 import { NoticeQueue } from './notices'
-import { ACTIVE_HELPERS, boostsPanel, guidePanel, helpersPanel, navPanel, sample, statsPanel } from './panels'
+import {
+  ACTIVE_HELPERS,
+  boostsPanel,
+  guidePanel,
+  helpersPanel,
+  navPanel,
+  closeButton,
+  panelHead,
+  sample,
+  statsPanel,
+} from './panels'
 import { BOOST_ICONS } from './icons'
-import { BOOSTS, isSynergy, pickBoost, reroll, rerollCost, xpToNext, xpTotal } from './sim/boosts'
+import {
+  BOOSTS,
+  boostSlots,
+  holdBoost,
+  holdCost,
+  pickCost,
+  skipPick,
+  isSynergy,
+  needsReplace,
+  pickBoost,
+  reroll,
+  rerollCost,
+  slottedBoosts,
+  xpToNext,
+  xpTotal,
+} from './sim/boosts'
 import { AIM_MIN, BOARD_H, BOARD_W, boardSize, COLS, MAX_COLS, MAX_ROWS, ROWS, TICK } from './sim/config'
 import { aimFromPointer } from './sim/physics'
 import { canRecall, createRun, drainEvents, fire, recall, speedMultiplier, step } from './sim/run'
-import type { ActiveHelper, BoostId, RunState } from './sim/types'
+import type { ActiveHelper, BoostId, RunState, StartHelper } from './sim/types'
 
 const CONTROLS = () => t('Drag to aim and release to launch. Keys: ←/→ aim, Space launch, F fast, Esc pause.')
 const AIM_STEP = (1.5 * Math.PI) / 180
@@ -66,7 +107,7 @@ function updateShopCoins() {
   const total = walletTotal(save, run, banked)
   if (total === shownWallet) return
   shownWallet = total
-  shopCoins.textContent = shortCoins(total)
+  shopCoins.replaceChildren(coinAmount(shortCoins(total)))
   shopBarBtn.setAttribute('aria-label', t('Shop ({n} coins)', { n: total }))
 }
 const guideBtn = button('?', () => openGuideFromBar(), 'icon bs-guide-btn')
@@ -100,6 +141,11 @@ const controls = h('div', { class: 'bs-controls' }, fastBtn, recallBtn, drawerBt
 const notices = new NoticeQueue()
 const noticeEl = h('button', { class: 'bs-notice', type: 'button', onclick: () => notices.dismiss() })
 noticeEl.hidden = true
+/** "Danger! Use Push Back" when bricks near the line; closed for the rest of that turn. */
+const dangerEl = h('div', { class: 'bs-danger', role: 'alert' })
+dangerEl.hidden = true
+let dangerShown = ''
+let dangerClosedTurn = -1
 let noticeShown: object | null = null
 const leftSide = h('aside', { class: 'bs-side left' })
 const rightSide = h('aside', { class: 'bs-side right' })
@@ -107,7 +153,7 @@ const stage = h(
   'main',
   { class: 'pf-stage bs-stage' },
   leftSide,
-  h('div', { class: 'bs-center' }, boardEl, controls, noticeEl),
+  h('div', { class: 'bs-center' }, boardEl, controls, noticeEl, dangerEl),
   rightSide,
 )
 const overlay = h('div', { class: 'pf-overlay' })
@@ -144,6 +190,12 @@ let dragging = false
 let acc = 0
 let panel = ''
 let overShown = false
+/** The boss the notice card last explained. */
+let bossAnnounced: object | null = null
+/** Boost slots the player has been shown; more means a boss just gave one. */
+let slotsSeen = 0
+/** A fresh start just happened: the home screen offers to undo it. */
+let justReset = false
 /** The run's total XP last frame, for the "+N XP" tally. */
 let xpSeen = 0
 /** The level-up celebration for the current pick has started. */
@@ -179,6 +231,14 @@ function applyCosmetics() {
   document.body.style.background = ARENAS[renderer.arena]?.bottom ?? ''
 }
 applyCosmetics()
+
+/** Swaps in a whole different save (fresh start, undo): its look and music too, not just its numbers. */
+function replaceSave(next: Save) {
+  save = next
+  leaveRun()
+  applyCosmetics()
+  playMusic(LOUNGE)
+}
 
 // ---------- Screens ----------
 function show(el: HTMLElement | null, key = '') {
@@ -230,9 +290,50 @@ function showHome() {
       saved && primary(t('Continue · Turn {n}', { n: saved.state.turn }), resumeRun),
       saved ? button(t('New run'), confirmNewRun, 'wide') : primary(t('Play'), showHelpers),
       button(t('Shop'), () => showShop(showHome), 'wide'),
+      justReset
+        ? h(
+            'div',
+            { class: 'bs-reset-done', role: 'status' },
+            h('span', { textContent: t('Progress erased. Fresh start!') }),
+            button(t('Undo'), () => {
+              const back = undoReset()
+              if (back) replaceSave(back)
+              justReset = false
+              showHome()
+            }),
+          )
+        : button(t('Fresh start…'), confirmFreshStart, 'quiet'),
       h('p', { class: 'pf-note', textContent: CONTROLS() }),
     ),
     'home',
+  )
+}
+
+/** Erasing everything can't be done by a stray tap: it says what goes and asks first. */
+function confirmFreshStart() {
+  show(
+    h(
+      'div',
+      { class: 'pf-panel' },
+      panelHead(t('Fresh start?'), showHome),
+      h('p', {
+        class: 'pf-lede',
+        textContent: t(
+          'This erases all your progress: coins, items, helpers, best scores and your saved run. Language and sound settings stay.',
+        ),
+      }),
+      button(
+        t('Erase everything'),
+        () => {
+          replaceSave(resetSave())
+          justReset = true
+          showHome()
+        },
+        'wide bs-danger-btn',
+      ),
+      primary(t('Keep my progress'), showHome),
+    ),
+    'fresh-start',
   )
 }
 
@@ -241,7 +342,7 @@ function confirmNewRun() {
     h(
       'div',
       { class: 'pf-panel' },
-      h('h2', { class: 'pf-heading', textContent: t('Start over?') }),
+      panelHead(t('Start over?'), showHome),
       h('p', {
         class: 'pf-lede',
         textContent: t('Your run at turn {n} will be lost. Coins you earned are kept.', {
@@ -253,7 +354,6 @@ function confirmNewRun() {
         persist()
         showHelpers()
       }),
-      button(t('Back'), showHome, 'quiet'),
     ),
     'confirm',
   )
@@ -322,15 +422,9 @@ function showDetail(title: string, body: string, extra: string, back: () => void
     h(
       'div',
       { class: 'pf-panel bs-detail' },
-      h(
-        'div',
-        { class: 'bs-shop-head' },
-        h('h2', { class: 'pf-heading', textContent: title }),
-        iconHtml ? art : null,
-      ),
+      panelHead(title, back, iconHtml ? art : null),
       h('p', { class: 'pf-lede', textContent: body }),
       extra && h('p', { class: 'bs-side-empty', textContent: extra }),
-      primary(t('Got it'), back),
     ),
     `detail-${title}`,
   )
@@ -365,7 +459,7 @@ function confirmHelper(id: ActiveHelper, back = holdRun(), onCancel = back) {
     h(
       'div',
       { class: 'pf-panel bs-detail' },
-      h('h2', { class: 'pf-heading', textContent: t('Use {name}?', { name: t(a.name) }) }),
+      panelHead(t('Use {name}?', { name: t(a.name) }), onCancel),
       h('p', { class: 'pf-lede', textContent: `${t(a.text)}.` }),
       h('p', {
         class: 'bs-side-empty',
@@ -378,7 +472,6 @@ function confirmHelper(id: ActiveHelper, back = holdRun(), onCancel = back) {
         back()
         useActiveHelper(id)
       }),
-      button(t('Cancel'), onCancel, 'quiet'),
     ),
     `confirm-${id}`,
   )
@@ -397,6 +490,7 @@ function openDrawer() {
     h(
       'div',
       { class: 'pf-panel wide bs-shop' },
+      panelHead(t('Boosts & helpers'), close),
       statsPanel(s, save.bestTurn),
       boostsPanel(s, (id) => boostInfo(id, reopen)),
       helpersPanel(
@@ -405,7 +499,6 @@ function openDrawer() {
         (id) => confirmHelper(id, close, reopen),
         (id) => helperInfo(id, reopen),
       ),
-      primary(t('Close'), close),
     ),
     'drawer',
   )
@@ -473,6 +566,37 @@ function announceNewKinds(s: RunState) {
   persist()
 }
 
+/** Points at a helper (or the shop) when bricks are about to reach the line. */
+function updateDanger() {
+  const s = run
+  const hint = s && !paused && !panel && s.turn !== dangerClosedTurn ? dangerHint(s, save.helpers) : null
+  const key = hint ? `${s!.turn}:${'use' in hint ? hint.use : 'shop'}` : ''
+  if (key === dangerShown) return
+  dangerShown = key
+  dangerEl.hidden = !hint
+  if (!hint || !s) return
+  const close = closeButton(() => {
+    dangerClosedTurn = s.turn
+    updateDanger()
+  })
+  if ('use' in hint) {
+    const name = t(ACTIVE_HELPERS.find((x) => x.id === hint.use)!.name)
+    dangerEl.replaceChildren(
+      h('strong', { textContent: t('Danger!') }),
+      h('span', { textContent: t('{name} can save you.', { name }) }),
+      button(t('Use {name}', { name }), () => confirmHelper(hint.use), 'primary'),
+      close,
+    )
+  } else {
+    dangerEl.replaceChildren(
+      h('strong', { textContent: t('Danger!') }),
+      h('span', { textContent: t('Helpers like Push Back can save a run.') }),
+      button(t('Shop'), openShopFromBar, 'primary'),
+      close,
+    )
+  }
+}
+
 /** Shows the current notice, ticking only while the game is in view. */
 function updateNotice(dt: number) {
   if (run && !paused && !panel && run.phase !== 'pick') notices.update(dt)
@@ -494,16 +618,24 @@ function updateNotice(dt: number) {
 }
 
 /** Before a run: switch on owned helpers (Head Start, Lucky Start). */
+const START_HELPERS: StartHelper[] = ['headStart', 'luckyStart', 'powerStart', 'goldStart', 'eagleStart']
+
 function showHelpers() {
-  const owned = (['headStart', 'luckyStart'] as const).filter((k) => save.helpers[k] > 0)
-  if (!owned.length) return startRun({ headStart: false, luckyStart: false })
-  const use = { headStart: false, luckyStart: false }
-  const LABEL = { headStart: t('Head Start: +5 balls'), luckyStart: t('Lucky Start: a free boost') }
+  const owned = START_HELPERS.filter((k) => save.helpers[k] > 0)
+  if (!owned.length) return startRun({})
+  const use: Partial<Record<StartHelper, boolean>> = {}
+  const LABEL: Record<StartHelper, string> = {
+    headStart: t('Head Start: +5 balls'),
+    luckyStart: t('Lucky Start: a free boost'),
+    powerStart: t('Power Start: Heavy Hitter ×2'),
+    goldStart: t('Gold Start: Gold Rush ×2'),
+    eagleStart: t('Eagle Start: Eagle Eye'),
+  }
   show(
     h(
       'div',
       { class: 'pf-panel' },
-      h('h2', { class: 'pf-heading', textContent: t('Use helpers?') }),
+      panelHead(t('Use helpers?'), showHome),
       ...owned.map((k) => {
         const box = h('input', { type: 'checkbox', onchange: () => (use[k] = box.checked) })
         return h(
@@ -514,15 +646,16 @@ function showHelpers() {
         )
       }),
       primary(t('Start'), () => startRun(use)),
-      button(t('Back'), showHome, 'quiet'),
     ),
     'helpers',
   )
 }
 
 function beginRun(s: RunState) {
+  justReset = false
   run = s
   overShown = false
+  slotsSeen = boostSlots(s)
   juice.turn = s.turn
   juice.setXp(s.level, s.xp / xpToNext(s.level), true)
   xpSeen = xpTotal(s.level, s.xp)
@@ -533,14 +666,14 @@ function beginRun(s: RunState) {
   particles.clear()
   controls.hidden = false
   pauseBtn.hidden = false
-  playMusic(ARCADE)
+  playMusic(trackFor(save.equipped.music))
   show(null)
 }
 
-function startRun(use: { headStart: boolean; luckyStart: boolean }) {
+function startRun(use: Partial<Record<StartHelper, boolean>>) {
   const seed = params.has('seed') ? Number(params.get('seed')) | 0 : randomSeed()
   const s = createRun(seed)
-  for (const k of ['headStart', 'luckyStart'] as const) {
+  for (const k of START_HELPERS) {
     if (use[k] && save.helpers[k] > 0) save.helpers = { ...save.helpers, [k]: save.helpers[k] - 1 }
     else use[k] = false
   }
@@ -556,6 +689,93 @@ function resumeRun() {
   beginRun(structuredClone(save.run.state))
 }
 
+/** After a boss: a callout on the pick screen that a boost slot was unlocked (shown once). */
+function slotCallout(s: RunState): HTMLElement | null {
+  const slots = boostSlots(s)
+  if (slots <= slotsSeen) return null
+  slotsSeen = slots
+  return h(
+    'div',
+    { class: 'bs-slot-callout', role: 'status' },
+    h('span', { class: 'bs-socket-ring' }),
+    h(
+      'div',
+      {},
+      h('strong', { textContent: t('New boost slot!') }),
+      h('span', { textContent: t('Boss beaten: you can now hold {n} boosts.', { n: slots }) }),
+    ),
+  )
+}
+
+/** Takes an offered boost (dropping `replace` for it when slots are full), then the next screen. */
+const LOCK_ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>'
+
+/** Pays `cost` from the wallet (this run's coins are banked first); false if it's short. */
+function pay(cost: number): boolean {
+  if (cost <= 0) return true
+  checkpoint()
+  const paid = spend(save, cost)
+  if (!paid) return false
+  save = paid
+  return true
+}
+
+const canPay = (cost: number) => walletTotal(save, run, banked) >= cost
+
+/** Pays for and takes an offered boost (dropping `replace` for it when slots are full), then the next screen. */
+function takeBoost(id: BoostId, replace?: BoostId) {
+  if (!run || !pay(pickCost(run, id))) return
+  pickBoost(run, id, replace)
+  checkpoint()
+  if (run.phase === 'pick') showPick()
+  else show(null)
+}
+
+/** Slots are full: the player picks which owned boost to drop for `id`, or goes back. */
+function showSwap(id: BoostId) {
+  if (!run) return
+  const s = run
+  const owned = slottedBoosts(s.boosts)
+  show(
+    h(
+      'div',
+      { class: 'pf-panel wide' },
+      panelHead(t('Swap for {name}?', { name: t(BOOSTS[id].name) }), showPick),
+      h('p', {
+        class: 'pf-lede',
+        textContent: t(
+          'Your boost slots are full ({n}/{max}). Pick one to drop for it. Each boss you beat adds a slot.',
+          { n: owned.length, max: boostSlots(s) },
+        ),
+      }),
+      h(
+        'div',
+        { class: 'bs-cards' },
+        ...owned.map((old) => {
+          const b = BOOSTS[old]
+          const art = h('span', { class: 'bs-card-icon' })
+          art.innerHTML = BOOST_ICONS[old]
+          const card = h(
+            'button',
+            { class: `pf-btn bs-card ${b.rarity}`, type: 'button', onclick: () => takeBoost(id, old) },
+            art,
+            h('strong', { textContent: t(b.name) }),
+            h('span', { textContent: t(b.text) }),
+          )
+          card.setAttribute(
+            'aria-label',
+            t('Drop {name} (level {n})', { name: t(b.name), n: s.boosts[old] ?? 0 }),
+          )
+          card.append(h('small', { textContent: `×${s.boosts[old]}` }))
+          return card
+        }),
+      ),
+    ),
+    `pick-swap-${id}`,
+  )
+}
+
 function showPick() {
   if (!run) return
   const s = run
@@ -563,32 +783,73 @@ function showPick() {
   // the player hasn't seen yet.
   const shownAt = performance.now()
   const settled = () => performance.now() - shownAt >= PICK_GRACE_MS
+  const holding = holdCost(s)
   const cards = s.choices.map((id) => {
     const b = BOOSTS[id]
     const synergy = isSynergy(s, id)
+    const held = s.held === id
+    const price = pickCost(s, id)
     const art = h('span', { class: 'bs-card-icon' })
     art.innerHTML = BOOST_ICONS[id]
     const card = h(
       'button',
       {
-        class: `pf-btn bs-card ${b.rarity}${synergy ? ' synergy' : ''}`,
+        class: `pf-btn bs-card ${b.rarity}${synergy ? ' synergy' : ''}${held ? ' held' : ''}`,
         type: 'button',
         onclick: () => {
           if (!settled()) return
-          pickBoost(s, id)
-          checkpoint()
-          if (s.phase === 'pick') showPick()
-          else show(null)
+          if (needsReplace(s, id)) return showSwap(id)
+          takeBoost(id)
         },
       },
-      synergy && h('em', { class: 'bs-ribbon', textContent: t('SYNERGY') }),
       art,
-      h('small', { textContent: rarityName(b.rarity) }),
+      // One line of labels: rarity, new or a level-up (never reads as a new slot), synergy, held.
+      h(
+        'div',
+        { class: 'bs-card-meta' },
+        h('small', { textContent: rarityName(b.rarity) }),
+        h('span', {
+          class: `bs-tag ${s.boosts[id] ? 'up' : 'new'}`,
+          textContent: s.boosts[id]
+            ? t('Lv {from} → {to}', { from: s.boosts[id] ?? 0, to: (s.boosts[id] ?? 0) + 1 })
+            : t('NEW'),
+        }),
+        synergy && h('span', { class: 'bs-tag synergy', textContent: t('SYNERGY') }),
+        held && h('span', { class: 'bs-tag held', textContent: t('HELD') }),
+      ),
       h('strong', { textContent: t(b.name) }),
       h('span', { textContent: t(b.text) }),
+      needsReplace(s, id) && h('small', { class: 'bs-swap', textContent: t('Slots full: swap one out') }),
+      h('span', { class: 'bs-price' }, price ? coinAmount(price) : t('FREE')),
     )
-    return card
+    card.disabled = !canPay(price)
+    // A lock in the corner: pay to see this boost again at the next level-up (one at a time).
+    const name = t(b.name)
+    const lock =
+      !s.held &&
+      h(
+        'button',
+        {
+          class: 'bs-lock',
+          type: 'button',
+          title: t('Hold {name} for your next level-up', { name }),
+          onclick: () => {
+            if (!settled() || !pay(holding)) return
+            holdBoost(s, id)
+            checkpoint()
+            showPick()
+          },
+        },
+        icon(LOCK_ICON),
+        coinAmount(holding),
+      )
+    if (lock) {
+      lock.disabled = !canPay(holding)
+      lock.setAttribute('aria-label', t('Hold {name} for your next level-up', { name }))
+    }
+    return h('div', { class: 'bs-card-wrap' }, card, lock)
   })
+  const heldAway = s.held && !s.choices.includes(s.held) ? t(BOOSTS[s.held].name) : null
   const heading = h('h2', {
     class: 'pf-heading',
     textContent: t('Level up! Pick a boost'),
@@ -613,19 +874,54 @@ function showPick() {
       checkpoint()
       showPick()
     },
-    'quiet',
+    'bs-reroll',
   )
   if (!token) rerollBtn.append(' ', coinAmount(cost))
   rerollBtn.disabled = !token && save.coins + (s.coins - banked) < cost
+  const skip = () => settled() && confirmSkip()
   show(
     h(
       'div',
       { class: 'pf-panel wide' },
-      h('div', { class: 'bs-shop-head' }, heading, wallet()),
+      h('div', { class: 'bs-shop-head' }, heading, wallet(), closeButton(skip)),
+      slotCallout(s),
       h('div', { class: 'bs-cards' }, ...cards),
-      rerollBtn,
+      heldAway &&
+        h(
+          'p',
+          { class: 'bs-held-note' },
+          icon(LOCK_ICON),
+          t('{name} is held for your next level-up.', { name: heldAway }),
+        ),
+      h('div', { class: 'bs-pick-actions' }, rerollBtn, button(t('Skip'), skip)),
     ),
-    `pick-${s.level}-${s.pendingPicks}-${s.rerollsUsed}`,
+    `pick-${s.level}-${s.pendingPicks}-${s.rerollsUsed}-${s.holdsUsed ?? 0}`,
+  )
+}
+
+/** Skipping a pick gives up its boost, so ask first. */
+function confirmSkip() {
+  if (!run) return
+  const s = run
+  show(
+    h(
+      'div',
+      { class: 'pf-panel' },
+      panelHead(t('Skip this level-up?'), showPick),
+      h('p', { class: 'pf-lede', textContent: t("You won't get a boost from this level-up.") }),
+      button(
+        t('Skip'),
+        () => {
+          skipPick(s)
+          checkpoint()
+          if (s.phase === 'pick') showPick()
+          else show(null)
+        },
+        'primary wide',
+      ),
+      button(t('Keep picking'), showPick, 'wide'),
+    ),
+    'pick-skip',
   )
 }
 
@@ -641,32 +937,21 @@ function showGrow() {
     checkpoint()
     if (s.phase !== 'pick') show(null)
   }
-  const col = button(
-    t('+1 column ({from} → {to})', { from: s.cols, to: s.cols + 1 }),
-    () => choose('col'),
-    'primary wide',
-  )
-  col.autofocus = true
-  col.disabled = s.cols >= MAX_COLS
-  const row = button(
-    t('+1 row ({from} → {to})', { from: s.rows, to: s.rows + 1 }),
-    () => choose('row'),
-    'wide',
-  )
-  row.disabled = s.rows >= MAX_ROWS
   show(
     h(
       'div',
-      { class: 'pf-panel' },
+      { class: 'pf-panel wide' },
       h('h2', { class: 'pf-heading', textContent: t('The storm grows!') }),
       h('p', {
         class: 'pf-lede',
-        textContent: t(
-          'Make the board bigger. A column gives your balls more room; a row gives you more time.',
-        ),
+        textContent: t('Choose how the board grows. It stays for the rest of this run.'),
       }),
-      col,
-      row,
+      h(
+        'div',
+        { class: 'bs-cards' },
+        growCard('col', s.cols, s.rows, s.cols >= MAX_COLS, () => choose('col')),
+        growCard('row', s.cols, s.rows, s.rows >= MAX_ROWS, () => choose('row')),
+      ),
     ),
     'grow',
   )
@@ -723,7 +1008,7 @@ function finish(s: RunState) {
       overShown = false
       controls.hidden = false
       pauseBtn.hidden = false
-      playMusic(ARCADE)
+      playMusic(trackFor(save.equipped.music))
       checkpoint()
       show(null)
     },
@@ -787,6 +1072,17 @@ startRenderLoop((dt, time) => {
   }
   if (s) {
     for (const e of drainEvents(s)) juice.handle(e)
+    juice.setBossHp(s.boss?.hp ?? null)
+    // Boss fights get their own music and a card explaining the boss.
+    if (s.phase !== 'over' && !isPreviewingMusic()) playMusic(s.boss ? BOSS : trackFor(save.equipped.music))
+    // A new boss waits on the aim screen until the player has read its card.
+    if (s.boss && s.boss !== bossAnnounced && s.phase === 'aim' && !panel && !paused) {
+      bossAnnounced = s.boss
+      show(
+        bossIntro(s.boss, () => show(null)),
+        'boss',
+      )
+    }
     juice.setCoins(s.coins)
     juice.setXp(s.level, s.xp / xpToNext(s.level))
     const xpNow = xpTotal(s.level, s.xp)
@@ -813,6 +1109,7 @@ startRenderLoop((dt, time) => {
   juice.update(dt)
   if (s && s.phase === 'aim') announceNewKinds(s)
   updateNotice(dt)
+  updateDanger()
   updateShopCoins()
   renderPanels(s, time)
   const d = s ? dims(s) : boardSize(COLS, ROWS)
@@ -853,6 +1150,13 @@ window.addEventListener('pointercancel', () => (dragging = false))
 window.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return
   if (run?.phase === 'pick' && !panel && (e.code === 'Space' || e.code === 'Enter')) juice.skipLevelUp()
+  // Esc closes a menu that has a ✕.
+  const closeX =
+    !overlay.hidden && e.code === 'Escape' && overlay.querySelector<HTMLButtonElement>('.bs-close')
+  if (closeX) {
+    closeX.click()
+    return
+  }
   if (e.code === 'Escape' || e.code === 'KeyP') {
     if (paused) resume()
     else pause()

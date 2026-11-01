@@ -1,5 +1,40 @@
 import type { Sound } from '@forge/audio/sound'
 
+/** Boss fights: a heavy thunk for hits, a tink for blocked ones, and a sound per kind of skill. */
+export const BOSS_SOUNDS = {
+  hit: [
+    { freq: 180, to: 70, dur: 0.12, wave: 'square', vol: 0.22 },
+    { freq: 900, to: 200, dur: 0.05, wave: 'noise', vol: 0.15 },
+  ],
+  block: [
+    { freq: 2600, to: 2200, dur: 0.06, wave: 'triangle', vol: 0.18 },
+    { freq: 3900, dur: 0.04, wave: 'sine', vol: 0.1, at: 0.02 },
+  ],
+  summon: [
+    { freq: 90, to: 60, dur: 0.35, wave: 'sawtooth', vol: 0.2 },
+    { freq: 660, dur: 0.08, wave: 'triangle', vol: 0.2, at: 0.1 },
+    { freq: 990, dur: 0.12, wave: 'triangle', vol: 0.2, at: 0.18 },
+  ],
+  defense: [
+    { freq: 300, to: 600, dur: 0.3, wave: 'sine', vol: 0.25 },
+    { freq: 1200, dur: 0.15, wave: 'triangle', vol: 0.12, at: 0.12 },
+  ],
+  movement: { freq: 300, to: 2200, dur: 0.28, wave: 'noise', vol: 0.28 },
+  weak: [
+    { freq: 3000, to: 900, dur: 0.15, wave: 'sawtooth', vol: 0.15 },
+    { freq: 6000, to: 2000, dur: 0.12, wave: 'noise', vol: 0.2 },
+  ],
+  tricks: [
+    { freq: 500, to: 900, dur: 0.12, wave: 'triangle', vol: 0.2 },
+    { freq: 900, to: 400, dur: 0.18, wave: 'triangle', vol: 0.2, at: 0.12 },
+  ],
+  rage: [
+    { freq: 110, to: 55, dur: 0.5, wave: 'sawtooth', vol: 0.32 },
+    { freq: 220, to: 90, dur: 0.4, wave: 'square', vol: 0.12, at: 0.05 },
+    { freq: 800, to: 100, dur: 0.4, wave: 'noise', vol: 0.2 },
+  ],
+} satisfies Record<string, Sound>
+
 export const BRICK_SOUNDS = {
   fire: { freq: 320, to: 520, dur: 0.08, wave: 'triangle', vol: 0.3 },
   launch: { freq: 900, to: 1400, dur: 0.035, wave: 'triangle', vol: 0.12 },

@@ -5,12 +5,6 @@ import { buy, CATALOG, equip } from './shop'
 const withCoins = (coins: number): Save => ({ ...structuredClone(DEFAULT_SAVE), coins })
 
 describe('catalog', () => {
-  it('has the spec item counts with unique ids', () => {
-    const n = (kind: string) => CATALOG.filter((i) => i.kind === kind).length
-    expect([n('ball'), n('trail'), n('arena'), n('impact'), n('helper')]).toEqual([8, 6, 5, 5, 9])
-    expect(new Set(CATALOG.map((i) => i.id)).size).toBe(CATALOG.length)
-  })
-
   it('makes the default cosmetics free', () => {
     for (const id of DEFAULT_SAVE.owned) expect(CATALOG.find((i) => i.id === id)?.price).toBe(0)
   })

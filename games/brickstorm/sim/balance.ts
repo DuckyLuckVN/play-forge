@@ -1,8 +1,8 @@
 // Headless bots that play whole runs, for tuning difficulty and the economy.
 // `npm run balance` prints medians against the targets in the v2 plan.
 import { random } from '@forge/core/rng'
-import { pickBoost } from './boosts'
-import { AIM_MIN } from './config'
+import { needsReplace, pickBoost, pickCost, skipPick, slottedBoosts } from './boosts'
+import { AIM_MIN, MAX_COLS } from './config'
 import { dims } from './dims'
 import { growBoard } from './meta'
 import { aimFromPointer } from './physics'
@@ -18,6 +18,9 @@ export interface RunResult {
   coins: number
   levels: number
   firstLevelTurn: number | null
+  /** Bosses met and beaten. */
+  bossesMet: number
+  bossesBeaten: number
 }
 
 /** Boosts the bots take first; anything else in the offer otherwise. */
@@ -35,6 +38,34 @@ const PREFER: BoostId[] = [
 const GREEDY_ANGLES = 6
 /** Bots recall a volley after this long, like an impatient player. */
 const BOT_RECALL = 10
+
+/** How much the bot likes a boost: its place in PREFER, unlisted ones last. */
+const rank = (id: BoostId) => (PREFER.includes(id) ? PREFER.indexOf(id) : PREFER.length)
+
+/**
+ * The bot's pick: its favourite offer it can pay for (from this run's coins),
+ * dropping its least favourite owned boost when slots are full; it skips when
+ * it can afford nothing. Returns the coins it spent.
+ */
+function botPick(s: RunState, wallet: number): number {
+  const affordable = s.choices.filter((id) => pickCost(s, id) <= wallet)
+  if (!affordable.length) {
+    skipPick(s)
+    return 0
+  }
+  const take = (id: BoostId, replace?: BoostId) => {
+    const cost = pickCost(s, id)
+    pickBoost(s, id, replace)
+    return cost
+  }
+  const best = [...affordable].sort((a, b) => rank(a) - rank(b))[0]
+  if (!needsReplace(s, best)) return take(best)
+  const worst = slottedBoosts(s.boosts).sort((a, b) => rank(b) - rank(a))[0]
+  // Not worth a swap: level up something it has instead, if offered.
+  const keep = affordable.find((id) => !needsReplace(s, id))
+  if (rank(best) >= rank(worst) && keep) return take(keep)
+  return take(best, worst)
+}
 
 function playVolley(s: RunState): void {
   for (let i = 0; s.phase === 'volley'; i++) {
@@ -92,13 +123,16 @@ export function simulateRun(seed: number, bot: Bot, maxTurns = 150): RunResult {
   const s = createRun(seed)
   const aimRng = { seed: seed ^ 0x9e3779b9 }
   let firstLevelTurn: number | null = null
+  let bossesMet = 0
+  let bossesBeaten = 0
+  let spent = 0
   while (s.phase !== 'over' && s.turn < maxTurns) {
     if (s.phase === 'grow') {
-      growBoard(s, s.cols < 10 ? 'col' : 'row')
+      growBoard(s, s.cols < MAX_COLS ? 'col' : 'row')
       continue
     }
     if (s.phase === 'pick') {
-      pickBoost(s, PREFER.find((id) => s.choices.includes(id)) ?? s.choices[0])
+      spent += botPick(s, s.coins - spent)
       continue
     }
     const angle =
@@ -109,12 +143,16 @@ export function simulateRun(seed: number, bot: Bot, maxTurns = 150): RunResult {
           : greedyAngle(s)
     fire(s, angle)
     playVolley(s)
-    drainEvents(s)
+    for (const e of drainEvents(s)) {
+      if (e.type === 'boss') bossesMet++
+      if (e.type === 'bossDown') bossesBeaten++
+    }
     if (firstLevelTurn === null && s.level > 0) firstLevelTurn = s.turn
   }
-  return { turns: s.turn, coins: s.coins, levels: s.level, firstLevelTurn }
+  return { turns: s.turn, coins: s.coins, levels: s.level, firstLevelTurn, bossesMet, bossesBeaten }
 }
 
+const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
 const median = (xs: number[]) => {
   const v = [...xs].sort((a, b) => a - b)
   return v.length ? v[Math.floor(v.length / 2)] : NaN
@@ -145,6 +183,7 @@ export function balanceReport(seeds: number, bots: Bot[] = ['random', 'aimer', '
         ` | coins ${median(runs.map((r) => r.coins))}` +
         ` | level-ups ${median(runs.map((r) => r.levels))}` +
         ` | first level-up turn ${median(runs.map((r) => r.firstLevelTurn ?? 999))}` +
+        ` | bosses beaten ${sum(runs.map((r) => r.bossesBeaten))}/${sum(runs.map((r) => r.bossesMet))}` +
         ` | turns min/max ${Math.min(...runs.map((r) => r.turns))}/${Math.max(...runs.map((r) => r.turns))}`,
     )
   }

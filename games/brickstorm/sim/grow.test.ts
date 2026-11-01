@@ -60,11 +60,18 @@ describe('board growth', () => {
     expect(s.cols).toBe(COLS)
   })
 
+  it('grows up to 12 columns', () => {
+    const s = toTurn50()
+    s.cols = 11
+    growBoard(s, 'col')
+    expect(s.cols).toBe(12)
+  })
+
   it('respects the caps', () => {
     const s = toTurn50()
-    s.cols = 10
+    s.cols = 12
     growBoard(s, 'col')
-    expect(s.cols).toBe(10)
+    expect(s.cols).toBe(12)
     expect(s.phase).toBe('grow')
     s.rows = 16
     s.phase = 'aim'

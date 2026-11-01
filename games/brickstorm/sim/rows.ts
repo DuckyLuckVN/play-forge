@@ -1,6 +1,7 @@
 import { random, randomInt } from '@forge/core/rng'
 import { modsOf } from './boosts'
 import { BRICK_INSET, CELL, TOP } from './config'
+import { columnOrder, patternAt, patternLimit } from './patterns'
 import type { BrickKind, PickupKind, Rect, RunState } from './types'
 
 export function brickRect(b: { col: number; row: number }): Rect {
@@ -12,12 +13,46 @@ export function brickRect(b: { col: number; row: number }): Rect {
   }
 }
 
+/** One rect around all of the boss's parts, so it is solid with no seams; null without a boss. */
+export function bossBody(bricks: readonly { col: number; row: number; kind: string }[]): Rect | null {
+  const rects = bricks.filter((b) => b.kind === 'boss').map(brickRect)
+  if (!rects.length) return null
+  const x = Math.min(...rects.map((r) => r.x))
+  const y = Math.min(...rects.map((r) => r.y))
+  return {
+    x,
+    y,
+    w: Math.max(...rects.map((r) => r.x + r.w)) - x,
+    h: Math.max(...rects.map((r) => r.y + r.h)) - y,
+  }
+}
+
+/**
+ * The rect each brick collides with. A boss part reaches all the way to any
+ * neighbouring part, so the body is solid with no seams but keeps its shape.
+ */
+export function hitRects(bricks: readonly { col: number; row: number; kind: string }[]): Rect[] {
+  const boss = new Set(bricks.filter((b) => b.kind === 'boss').map((b) => `${b.col},${b.row}`))
+  return bricks.map((b) => {
+    if (b.kind !== 'boss') return brickRect(b)
+    const gap = (dc: number, dr: number) => (boss.has(`${b.col + dc},${b.row + dr}`) ? 0 : BRICK_INSET)
+    const l = gap(-1, 0)
+    const t = gap(0, -1)
+    return {
+      x: b.col * CELL + l,
+      y: TOP + b.row * CELL + t,
+      w: CELL - l - gap(1, 0),
+      h: CELL - t - gap(0, 1),
+    }
+  })
+}
+
 export function cellCenter(col: number, row: number): { x: number; y: number } {
   return { x: (col + 0.5) * CELL, y: TOP + (row + 0.5) * CELL }
 }
 
 /** Turn each special brick kind starts appearing. */
-export const UNLOCK: Record<Exclude<BrickKind, 'normal'>, number> = {
+export const UNLOCK: Record<Exclude<BrickKind, 'normal' | 'boss'>, number> = {
   gold: 3,
   bomb: 5,
   mystery: 6,
@@ -75,10 +110,13 @@ export function maxBricksFor(balls: number): number {
   return 1 + Math.floor(balls / 2)
 }
 
-function brickHp(state: RunState): number {
+/** Most extra hp a brick gets when a pattern trims its row. */
+const TRIM_BOOST_MAX = 1.6
+
+function brickHp(state: RunState, boost = 1): number {
   const { rng, turn } = state
   // Close to the turn's typical value, so the numbers read as "about this turn".
-  let hp = Math.max(1, Math.round(hpScale(turn) * (0.9 + 0.2 * random(rng))))
+  let hp = Math.max(1, Math.round(hpScale(turn) * boost * (0.9 + 0.2 * random(rng))))
   if (turn >= 10 && random(rng) < 0.1) hp *= 2
   return Math.min(hp, hpCap(state))
 }
@@ -88,9 +126,11 @@ export function spawnRow(state: RunState): void {
   const { rng, turn } = state
   const free = Array.from({ length: state.cols }, (_, i) => i)
   const take = () => free.splice(randomInt(rng, free.length), 1)[0]
-  const add = (kind: BrickKind) => {
-    const hp = brickHp(state)
-    state.bricks.push({ id: state.nextId++, col: take(), row: 0, hp, maxHp: hp, kind, split: false })
+  /** Takes `col` if given (a pattern's pick), else a random free column. */
+  const add = (kind: BrickKind, col?: number, boost = 1) => {
+    const hp = brickHp(state, boost)
+    const c = col === undefined ? take() : free.splice(free.indexOf(col), 1)[0]
+    state.bricks.push({ id: state.nextId++, col: c, row: 0, hp, maxHp: hp, kind, split: false })
   }
 
   if (turn % 10 === 0) {
@@ -105,19 +145,25 @@ export function spawnRow(state: RunState): void {
   const chance = specialChance(turn)
   let specials = 0
   // Always leave a column free, for the row's ball pickup, and no more bricks than the balls can handle.
-  const count = Math.min(
+  const wanted = Math.min(
     7,
     state.cols - 1,
     maxBricksFor(state.ballCount),
     Math.max(2, 1 + randomInt(rng, 3) + Math.floor(turn / 15) + (turn >= 20 ? 1 : 0)),
   )
+  // Which columns get bricks follows the turn's pattern, so rows build shapes.
+  // A pattern with fewer bricks makes each one tougher, so the row is as hard.
+  const pattern = patternAt(state.seed, turn)
+  const count = Math.min(wanted, patternLimit(pattern, state.cols))
+  const boost = Math.min(TRIM_BOOST_MAX, wanted / count)
+  const order = columnOrder(pattern, state.cols, turn, () => random(rng))
   for (let i = 0; i < count; i++) {
     let kind: BrickKind = 'normal'
     if (unlocked.length && specials < MAX_SPECIALS_PER_ROW && random(rng) < chance) {
       kind = unlocked[randomInt(rng, unlocked.length)]
       specials++
     }
-    add(kind)
+    add(kind, order[i], boost)
   }
   const pickup = (kind: PickupKind, p: number) => {
     if (free.length && random(rng) < p) state.pickups.push({ id: state.nextId++, col: take(), row: 0, kind })

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { killBrick } from './damage'
+import { patternAt } from './patterns'
 import { hpCap, hpScale, hpStepStart, maxBricksFor, spawnRow } from './rows'
 import { drainEvents, fire, startNextTurn } from './run'
 import { brick, empty, runVolley } from './testing'
@@ -52,9 +53,10 @@ describe('difficulty', () => {
     expect(hpScale(100) / hpScale(52)).toBeGreaterThan(5)
   })
 
-  it('spawns 2..6 bricks on 7 columns, at least 3 from turn 20', () => {
+  it('spawns 2..6 bricks on 7 columns, at least 3 from turn 20 (scattered rows)', () => {
     for (let seed = 1; seed <= 500; seed++) {
       for (const turn of [1, 9, 11, 21, 55, 199]) {
+        if (patternAt(seed, turn) !== 'scatter') continue
         const n = rowAt(seed, turn).bricks.length
         expect(n).toBeGreaterThanOrEqual(turn >= 20 ? 3 : 2)
         expect(n).toBeLessThanOrEqual(6) // a column stays free on a 7-wide board

@@ -8,7 +8,7 @@ import { t } from './i18n'
 import { BOOST_ICONS } from './icons'
 import { drawKindGlyph, drawPickupGlyph } from './render'
 import type { Helpers } from './save'
-import { BOOSTS } from './sim/boosts'
+import { BOOSTS, boostSlots, slottedBoosts } from './sim/boosts'
 import type { ActiveHelper, BoostId, BrickKind, PickupKind, RunState } from './sim/types'
 
 export const ACTIVE_HELPERS: Array<{ id: ActiveHelper; name: string; glyph: string; text: string }> = [
@@ -17,6 +17,14 @@ export const ACTIVE_HELPERS: Array<{ id: ActiveHelper; name: string; glyph: stri
   { id: 'freeze', name: 'Freeze', glyph: '❄', text: "Bricks don't drop after your next volley" },
   { id: 'firePack', name: 'Fire Pack', glyph: '🔥', text: 'Next volley starts with 5 fireballs' },
   { id: 'surge', name: 'Ball Surge', glyph: '×1.5', text: '+50% balls next volley' },
+  { id: 'megaBomb', name: 'Mega Bomb', glyph: '☢', text: 'Halve the health of every brick' },
+  { id: 'colBomb', name: 'Column Bomb', glyph: '⇣', text: 'Destroy the fullest column' },
+  { id: 'laserGrid', name: 'Laser Grid', glyph: '≡', text: 'Lasers across the 3 lowest rows' },
+  { id: 'midasTouch', name: 'Midas Touch', glyph: '♛', text: 'Turn 4 bricks into gold' },
+  { id: 'ballRain', name: 'Ball Rain', glyph: '+10', text: '+10 balls next volley' },
+  { id: 'overcharge', name: 'Overcharge', glyph: '⚡', text: '×2 damage next volley' },
+  { id: 'vacuum', name: 'Vacuum', glyph: '◎', text: 'Collect every pickup on the board' },
+  { id: 'pierceShot', name: 'Pierce Shot', glyph: '➹', text: 'Balls pierce 2 bricks next volley' },
 ]
 
 export function statsPanel(s: RunState, bestTurn: number): HTMLElement {
@@ -66,39 +74,57 @@ function infoButton(label: string, onInfo: () => void): HTMLButtonElement {
   return b
 }
 
-/** Owned boosts as tiles; tapping one (or its ⓘ) shows what it does. */
+/**
+ * Owned boosts as tiles, then an empty socket for each free slot, then the
+ * one-off boosts (+2 balls, Double Down) that take no slot. Tapping a boost
+ * (or its ⓘ) shows what it does.
+ */
 export function boostsPanel(s: RunState, onInfo: (id: BoostId) => void): HTMLElement {
-  const owned = (Object.keys(s.boosts) as BoostId[]).filter((id) => (s.boosts[id] ?? 0) > 0)
+  const slotted = slottedBoosts(s.boosts)
+  const instant = (Object.keys(s.boosts) as BoostId[]).filter(
+    (id) => (s.boosts[id] ?? 0) > 0 && !slotted.includes(id),
+  )
+  const free = Math.max(0, boostSlots(s) - slotted.length)
+  const sockets = Array.from({ length: free }, () => {
+    const socket = h(
+      'div',
+      { class: 'bs-tile bs-socket' },
+      h('span', { class: 'bs-socket-ring' }),
+      h('span', { class: 'bs-tile-name', textContent: t('Empty slot') }),
+    )
+    socket.setAttribute('aria-label', t('Empty boost slot'))
+    return socket
+  })
   return h(
     'div',
     { class: 'bs-side-block' },
-    h('h3', { textContent: owned.length ? t('Boosts · {n}', { n: owned.length }) : t('Boosts') }),
-    owned.length
-      ? h(
-          'div',
-          { class: 'bs-tiles' },
-          ...owned.map((id) => {
-            const b = BOOSTS[id]
-            const name = t(b.name)
-            const art = h('span', { class: 'bs-tile-icon' })
-            art.innerHTML = BOOST_ICONS[id]
-            const tile = h(
-              'button',
-              { class: `bs-tile ${b.rarity}`, type: 'button', onclick: () => onInfo(id) },
-              art,
-              h('span', { class: 'bs-tile-name', textContent: name }),
-              h('span', { class: 'bs-badge', textContent: `×${s.boosts[id]}` }),
-              infoButton(name, () => onInfo(id)),
-            )
-            tile.setAttribute(
-              'aria-label',
-              t('{name} level {n}. Show details', { name, n: s.boosts[id] ?? 0 }),
-            )
-            return tile
-          }),
-        )
-      : h('p', { class: 'bs-side-empty', textContent: t('Level up to pick boosts.') }),
+    h('h3', { textContent: t('Boosts') }),
+    h(
+      'div',
+      { class: 'bs-tiles' },
+      ...slotted.map((id) => boostTile(s, id, onInfo)),
+      ...sockets,
+      ...instant.map((id) => boostTile(s, id, onInfo)),
+    ),
+    !slotted.length && h('p', { class: 'bs-side-empty', textContent: t('Level up to pick boosts.') }),
   )
+}
+
+function boostTile(s: RunState, id: BoostId, onInfo: (id: BoostId) => void): HTMLElement {
+  const b = BOOSTS[id]
+  const name = t(b.name)
+  const art = h('span', { class: 'bs-tile-icon' })
+  art.innerHTML = BOOST_ICONS[id]
+  const tile = h(
+    'button',
+    { class: `bs-tile ${b.rarity}`, type: 'button', onclick: () => onInfo(id) },
+    art,
+    h('span', { class: 'bs-tile-name', textContent: name }),
+    h('span', { class: 'bs-badge', textContent: `×${s.boosts[id]}` }),
+    infoButton(name, () => onInfo(id)),
+  )
+  tile.setAttribute('aria-label', t('{name} level {n}. Show details', { name, n: s.boosts[id] ?? 0 }))
+  return tile
 }
 
 /** Owned mid-run helpers as tiles: tap to use (with a confirm), ⓘ for details. */
@@ -198,18 +224,38 @@ export function sample(id: string): HTMLCanvasElement {
   return canvas
 }
 
+const CLOSE_ICON =
+  '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>'
+
+/** The ✕ in a menu's top-right corner. */
+export function closeButton(onClose: () => void): HTMLButtonElement {
+  const b = h('button', { class: 'pf-btn icon bs-close', type: 'button', onclick: onClose })
+  b.innerHTML = CLOSE_ICON
+  b.title = t('Close')
+  b.setAttribute('aria-label', t('Close'))
+  return b
+}
+
+/** A menu's title row: heading, anything extra (wallet, icon), then the ✕. */
+export function panelHead(
+  title: string,
+  onClose: () => void,
+  ...extra: Array<Node | null | false>
+): HTMLElement {
+  return h(
+    'div',
+    { class: 'bs-shop-head bs-panel-head' },
+    h('h2', { class: 'pf-heading', textContent: title }),
+    ...extra.filter((x): x is Node => !!x),
+    closeButton(onClose),
+  )
+}
+
 export function guidePanel(onBack: () => void): HTMLElement {
-  const back = h('button', {
-    class: 'pf-btn primary wide',
-    type: 'button',
-    textContent: t('Got it'),
-    onclick: onBack,
-  })
-  back.autofocus = true
   return h(
     'div',
     { class: 'pf-panel wide bs-shop' },
-    h('h2', { class: 'pf-heading', textContent: t('Guide') }),
+    panelHead(t('Guide'), onBack),
     h(
       'ul',
       { class: 'bs-guide' },
@@ -222,6 +268,5 @@ export function guidePanel(onBack: () => void): HTMLElement {
         ),
       ),
     ),
-    back,
   )
 }

@@ -11,6 +11,8 @@ export interface Equipped {
   trail: string
   arena: string
   impact: string
+  /** Gameplay soundtrack. */
+  music: string
 }
 
 export interface Helpers {
@@ -23,6 +25,17 @@ export interface Helpers {
   freeze: number
   firePack: number
   surge: number
+  powerStart: number
+  goldStart: number
+  eagleStart: number
+  megaBomb: number
+  colBomb: number
+  laserGrid: number
+  midasTouch: number
+  ballRain: number
+  overcharge: number
+  vacuum: number
+  pierceShot: number
 }
 
 export interface SavedRun {
@@ -50,8 +63,14 @@ export const DEFAULT_SAVE: Save = {
   bestTurn: 0,
   bestCombo: 0,
   coins: 0,
-  owned: ['ball:classic', 'trail:none', 'arena:indigo', 'impact:shards'],
-  equipped: { ball: 'ball:classic', trail: 'trail:none', arena: 'arena:indigo', impact: 'impact:shards' },
+  owned: ['ball:classic', 'trail:none', 'arena:indigo', 'impact:shards', 'music:arcade'],
+  equipped: {
+    ball: 'ball:classic',
+    trail: 'trail:none',
+    arena: 'arena:indigo',
+    impact: 'impact:shards',
+    music: 'music:arcade',
+  },
   helpers: {
     headStart: 0,
     luckyStart: 0,
@@ -62,6 +81,17 @@ export const DEFAULT_SAVE: Save = {
     freeze: 0,
     firePack: 0,
     surge: 0,
+    powerStart: 0,
+    goldStart: 0,
+    eagleStart: 0,
+    megaBomb: 0,
+    colBomb: 0,
+    laserGrid: 0,
+    midasTouch: 0,
+    ballRain: 0,
+    overcharge: 0,
+    vacuum: 0,
+    pierceShot: 0,
   },
   seen: [],
   run: null,
@@ -201,4 +231,38 @@ export function clearRun(save: Save): Save {
 export function spend(save: Save, amount: number): Save | null {
   if (amount < 0 || save.coins < amount) return null
   return { ...save, coins: save.coins - amount }
+}
+
+/** Where a fresh start keeps the progress it erased, so it can be undone. */
+export const RESET_BACKUP_KEY = SAVE_KEY + ':before-reset'
+
+/**
+ * Fresh start: erases all progress (coins, items, helpers, bests, the saved
+ * run) and keeps the old save under RESET_BACKUP_KEY. Settings stored under
+ * other keys (language, sound) are left alone. Returns the new, empty save.
+ */
+export function resetSave(storage: Storage | null = safeLocalStorage()): Save {
+  try {
+    const raw = storage?.getItem(SAVE_KEY)
+    if (raw !== null && raw !== undefined) storage!.setItem(RESET_BACKUP_KEY, raw)
+    else storage?.removeItem(RESET_BACKUP_KEY)
+  } catch {
+    // Can't keep a copy: still reset, as asked.
+  }
+  const fresh = defaults()
+  writeSave(fresh, storage)
+  return fresh
+}
+
+/** Puts back the progress the last fresh start erased; null if there is none. */
+export function undoReset(storage: Storage | null = safeLocalStorage()): Save | null {
+  try {
+    const raw = storage?.getItem(RESET_BACKUP_KEY)
+    if (!raw) return null
+    storage!.setItem(SAVE_KEY, raw)
+    storage!.removeItem(RESET_BACKUP_KEY)
+    return loadSave(storage).save
+  } catch {
+    return null
+  }
 }

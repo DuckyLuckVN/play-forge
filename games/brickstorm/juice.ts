@@ -5,9 +5,10 @@ import type { Shake } from '@forge/fx/shake'
 import { prefersReducedMotion } from '@forge/fx/tween'
 import { theme } from '@forge/ui/theme'
 import type { SimEvent } from './sim/types'
+import { skillGroup, skillInfo } from './boss-skill-ui'
 import { IMPACT_STYLE } from './cosmetics'
 import { t } from './i18n'
-import { BRICK_SOUNDS } from './sounds'
+import { BOSS_SOUNDS, BRICK_SOUNDS } from './sounds'
 
 const PENTA = [0, 2, 4, 7, 9]
 
@@ -76,6 +77,14 @@ const HELPER_TEXT = {
   freeze: t('FROZEN!'),
   firePack: t('FIRE PACK!'),
   surge: t('BALL SURGE!'),
+  megaBomb: t('MEGA BOMB!'),
+  colBomb: t('COLUMN BOMB!'),
+  laserGrid: t('LASER GRID!'),
+  midasTouch: t('MIDAS TOUCH!'),
+  ballRain: t('BALL RAIN!'),
+  overcharge: t('OVERCHARGE!'),
+  vacuum: t('VACUUM!'),
+  pierceShot: t('PIERCE SHOT!'),
 }
 
 const BANNER_LIFE = 1.4
@@ -92,6 +101,8 @@ const XP_TICK_GAP = 0.125
 export const LEVEL_UP_INTRO = 1.2
 /** Seconds the "bricks are tougher" notice shows. */
 export const TOUGHER_LIFE = 2.2
+/** Seconds the new column or row glows after the board grows. */
+export const GROW_FX_LIFE = 1.4
 
 /** A short XP tick whose pitch climbs an octave as the bar fills. */
 export function xpTick(fill: number): Tone[] {
@@ -118,8 +129,15 @@ export class Juice {
   private targetCoins = 0
   /** Coins flying from a broken brick to the HUD counter. */
   coinFlyers: Array<{ x0: number; y0: number; age: number; delay: number }> = []
+  /** 0..1 white flash on the boss after it takes damage. */
+  bossHit = 0
+  /** 0..1 flare on the boss while one of its skills goes off. */
+  bossCast = 0
+  private bossHp: number | null = null
   /** Seconds since bricks got tougher (a new hp stretch), for the "▲" notice; null when not showing. */
   tougherAge: number | null = null
+  /** The board's newest column or row, lit up for a moment after it grows. */
+  growFx: { axis: 'col' | 'row'; age: number } | null = null
   /** XP as drawn, in levels (1.5 = halfway through the second level); eases toward the real value. */
   shownXp = 0
   private targetXp = 0
@@ -175,6 +193,13 @@ export class Juice {
           color: e.kind === 'gold' ? theme.yolk : hpColor(e.maxHp, this.turn),
           ...IMPACT_STYLE[this.impact],
         })
+        // Comic impacts pop a word now and then.
+        if (IMPACT_STYLE[this.impact]?.text && Math.random() < 0.3)
+          this.particles.text(e.x, e.y, IMPACT_STYLE[this.impact].text!, {
+            color: theme.yolk,
+            size: 16,
+            rise: 30,
+          })
         this.flyCoins(e.x, e.y, Math.min(e.coins, 5))
         if (e.kind === 'gold') {
           this.particles.burst(e.x, e.y, {
@@ -217,6 +242,64 @@ export class Juice {
       case 'tougher':
         this.tougherAge = 0
         return
+      case 'boss':
+        this.show(t('BOSS FIGHT!'), 0.8)
+        this.banner!.big = true
+        this.shake.add(0.6)
+        playSound(BRICK_SOUNDS.danger)
+        return playSound(pitched(BRICK_SOUNDS.explode, 0.6))
+      case 'bossSkill': {
+        // The boss shouts the skill's name ("MASON!") in its colour.
+        const info = skillInfo(e.id)
+        this.bossCast = 1
+        this.particles.text(e.x, e.y - 30, `${info.text.split(':')[0].toUpperCase()}!`, {
+          color: info.color,
+          size: 18,
+          rise: 40,
+        })
+        // Each kind of skill has its own sound and burst; rage shakes the screen.
+        const group = skillGroup(e.id)
+        this.particles.burst(e.x, e.y, {
+          count: group === 'rage' ? 40 : 24,
+          color: [info.color, '#ffffff'],
+          speed: group === 'rage' ? 420 : 240,
+          life: 0.6,
+        })
+        this.shake.add(group === 'rage' ? 0.5 : 0.15)
+        return this.play('cast', BOSS_SOUNDS[group])
+      }
+      case 'bossHit':
+        this.particles.burst(e.x, e.y, {
+          count: 6,
+          color: [e.skill ? skillInfo(e.skill).color : theme.chalk, '#ffffff'],
+          speed: 180,
+          life: 0.3,
+        })
+        // Deeper as it weakens: the fight sounds like it's going your way.
+        return this.play('bossHit', pitched(BOSS_SOUNDS.hit, 0.6 + 0.6 * e.life))
+      case 'bossBlock':
+        this.particles.burst(e.x, e.y, { count: 5, color: ['#9fe7ff', '#ffffff'], speed: 140, life: 0.25 })
+        return this.play('bossBlock', BOSS_SOUNDS.block)
+      case 'pop':
+        this.particles.burst(e.x, e.y, { count: 12, color: ['#ff4d6d', '#ffffff'] })
+        return playSound(pitched(BRICK_SOUNDS.kill, 1.6))
+      case 'bossDown':
+        this.show(t('BOSS DOWN! +{coins}', { coins: e.coins }), 1)
+        this.particles.text(e.x, e.y + 40, t('+1 BOOST SLOT!'), { color: '#4be3a0', size: 22, rise: 60 })
+        this.banner!.big = true
+        this.shake.add(0.8)
+        celebrate()
+        this.flyCoins(e.x, e.y, 20)
+        for (let i = 0; i < 3; i++) {
+          this.particles.burst(e.x, e.y, {
+            count: 30,
+            color: ['#ff9f43', '#ffc83d', '#b48cff', '#ffffff'],
+            speed: 260 + i * 120,
+            life: 0.8,
+          })
+        }
+        playSound(BRICK_SOUNDS.allClear)
+        return playSound(BRICK_SOUNDS.jackpot)
       case 'explode':
       case 'zap':
         // Chains ripple outward: each link plays a beat after the one before.
@@ -225,11 +308,14 @@ export class Juice {
       case 'milestone':
         this.show(t('TURN {turn}! +{coins}', { turn: e.turn, coins: e.coins }), 0.5)
         return playSound(BRICK_SOUNDS.jackpot)
-      case 'helper':
+      case 'helper': {
         this.show(HELPER_TEXT[e.id], 0.5)
-        if (e.id === 'rowBomb' || e.id === 'pushBack') this.shake.add(0.35)
-        return playSound(e.id === 'rowBomb' ? BRICK_SOUNDS.explode : BRICK_SOUNDS.secondWind)
+        const boom = e.id === 'rowBomb' || e.id === 'megaBomb' || e.id === 'colBomb'
+        if (boom || e.id === 'pushBack') this.shake.add(boom && e.id !== 'rowBomb' ? 0.6 : 0.35)
+        return playSound(boom ? BRICK_SOUNDS.explode : BRICK_SOUNDS.secondWind)
+      }
       case 'grow':
+        this.growFx = { axis: e.axis, age: 0 }
         this.show(e.axis === 'col' ? t('WIDER!') : t('TALLER!'), 0.6)
         return playSound(BRICK_SOUNDS.secondWind)
       case 'jackpot':
@@ -272,6 +358,12 @@ export class Juice {
     }
     if (total > this.targetXp) this.xpGains.push({ at: this.clock, amount: total - this.targetXp })
     this.targetXp = total
+  }
+
+  /** The boss's hp each frame (null: no boss), so a hit flashes its body. */
+  setBossHp(hp: number | null): void {
+    if (hp !== null && this.bossHp !== null && hp < this.bossHp) this.bossHit = 1
+    this.bossHp = hp
   }
 
   /** XP points just earned, for the "+N XP" tally. */
@@ -359,8 +451,14 @@ export class Juice {
 
   update(dt: number): void {
     this.clock += dt
+    this.bossHit = Math.max(0, this.bossHit - dt * 6)
+    this.bossCast = Math.max(0, this.bossCast - dt * 2)
     if (this.tougherAge !== null)
       this.tougherAge = this.tougherAge + dt > TOUGHER_LIFE ? null : this.tougherAge + dt
+    if (this.growFx) {
+      this.growFx.age += dt
+      if (this.growFx.age > GROW_FX_LIFE) this.growFx = null
+    }
     this.updateXp(dt)
     this.hitstop = Math.max(0, this.hitstop - dt)
     for (const q of this.queue) q.at -= dt

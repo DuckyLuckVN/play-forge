@@ -340,6 +340,21 @@ export const VI: Dictionary = {
   Plasma: 'Plasma',
   'Boom!': 'Bùm!',
   Supernova: 'Siêu Tân Tinh',
+  'Sky High': 'Trời Cao',
+  'Candy Land': 'Xứ Kẹo',
+  'Winter Peak': 'Đỉnh Tuyết',
+  'Firefly Forest': 'Rừng Đom Đóm',
+  'Blossom Moon': 'Trăng Hoa Anh Đào',
+  'Dune Sea': 'Biển Cát',
+  Thunderstorm: 'Giông Bão',
+  Aurora: 'Cực Quang',
+  'The Abyss': 'Vực Thẳm',
+  'Circuit Board': 'Bảng Mạch',
+  'Code Rain': 'Mưa Mã',
+  Volcano: 'Núi Lửa',
+  'Meteor Shower': 'Mưa Sao Băng',
+  'Spiral Galaxy': 'Thiên Hà Xoắn',
+  Hyperspace: 'Siêu Không Gian',
 }
 
 export const t = translator(VI)

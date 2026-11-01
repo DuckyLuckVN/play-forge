@@ -9,7 +9,6 @@ import { t } from './i18n'
 import { panelHead } from './panels'
 import type { Save } from './save'
 import { buy, CATALOG, equip, type ItemKind, type ShopItem } from './shop'
-import { BOARD_W } from './sim/config'
 import { BRICK_SOUNDS } from './sounds'
 
 const TABS: Array<[ItemKind, string]> = [
@@ -34,6 +33,35 @@ const HELPER_GLYPH: Record<string, string> = {
 }
 
 const arenaPainter = new ArenaPainter()
+
+function drawArenaPreview(ctx: CanvasRenderingContext2D, arena: ArenaId, time: number): void {
+  // The whole scene, laid out for a square, drawn at 3× and scaled down.
+  const size = PREVIEW * 3
+  ctx.save()
+  ctx.scale(1 / 3, 1 / 3)
+  arenaPainter.draw(ctx, arena, 1, false, time, { boardW: size, boardH: size, floorY: size * 0.88 })
+  ctx.restore()
+}
+
+/** Arena previews on the open tab; they animate while the shop is open. */
+let livePreviews: Array<{ ctx: CanvasRenderingContext2D; arena: ArenaId }> = []
+
+let animating = false
+
+function animatePreviews(panel: HTMLElement): void {
+  if (animating) return
+  animating = true
+  const start = performance.now()
+  const frame = (now: number) => {
+    if (!panel.isConnected || !livePreviews.length) {
+      animating = false
+      return
+    }
+    for (const p of livePreviews) drawArenaPreview(p.ctx, p.arena, 4 + (now - start) / 1000)
+    requestAnimationFrame(frame)
+  }
+  requestAnimationFrame(frame)
+}
 
 function preview(it: ShopItem): HTMLCanvasElement {
   const canvas = h('canvas', { width: PREVIEW * 2, height: PREVIEW * 2 })
@@ -64,10 +92,8 @@ function preview(it: ShopItem): HTMLCanvasElement {
       break
     }
     case 'arena':
-      ctx.save()
-      ctx.scale(PREVIEW / BOARD_W, PREVIEW / BOARD_W)
-      arenaPainter.draw(ctx, key as ArenaId, 1, false, 4)
-      ctx.restore()
+      drawArenaPreview(ctx, key, 4)
+      livePreviews.push({ ctx, arena: key })
       break
     case 'impact': {
       const style = IMPACT_STYLE[it.id]
@@ -118,6 +144,7 @@ export function shopPanel(getSave: () => Save, setSave: (s: Save) => void, onBac
           onclick: () => {
             tab = kind
             render()
+            animatePreviews(panel)
           },
         })
         b.setAttribute('role', 'tab')
@@ -125,6 +152,7 @@ export function shopPanel(getSave: () => Save, setSave: (s: Save) => void, onBac
         return b
       }),
     )
+    livePreviews = []
     const items = CATALOG.filter((i) => i.kind === tab).map((it) => {
       const owned = it.kind !== 'helper' && save.owned.includes(it.id)
       const equipped = it.kind !== 'helper' && save.equipped[it.kind] === it.id
@@ -185,5 +213,6 @@ export function shopPanel(getSave: () => Save, setSave: (s: Save) => void, onBac
     )
   }
   render()
+  animatePreviews(panel)
   return panel
 }

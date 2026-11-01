@@ -4,12 +4,12 @@ import { drainEvents, fire, step } from './run'
 import { brick, empty, runVolley } from './testing'
 
 describe('fireball', () => {
-  it('makes every 8th ball a fireball', () => {
+  it('makes every 12th ball a fireball at level 1', () => {
     const s = empty()
     s.boosts = { fireball: 1 }
-    s.ballCount = 8
+    s.ballCount = 12
     fire(s, Math.PI / 2)
-    expect(s.balls.map((b) => b.kind)).toEqual([...Array(7).fill('normal'), 'fire'])
+    expect(s.balls.map((b) => b.kind)).toEqual([...Array(11).fill('normal'), 'fire'])
   })
 
   it('burns through a column of bricks without bouncing', () => {
@@ -37,20 +37,20 @@ describe('bomb ball', () => {
     expect(s.bricks.filter((b) => b.row > 1)).toHaveLength(0)
   })
 
-  it('makes every 12th ball a bomb', () => {
+  it('makes every 16th ball a bomb at level 1', () => {
     const s = empty()
     s.boosts = { bombball: 1 }
-    s.ballCount = 12
+    s.ballCount = 16
     fire(s, Math.PI / 2)
-    expect(s.balls[11].kind).toBe('bomb')
-    expect(s.balls[10].kind).toBe('normal')
+    expect(s.balls[15].kind).toBe('bomb')
+    expect(s.balls[14].kind).toBe('normal')
   })
 })
 
 describe('twin shot', () => {
   it('splits each ball once on its first hit', () => {
     const s = empty()
-    s.boosts = { twin: 1 }
+    s.boosts = { twin: 3 } // level 3: every ball splits
     s.ballCount = 5
     for (let c = 0; c < 7; c++) brick(s, c, 3, 1e6)
     fire(s, Math.PI / 2 + 0.3)
@@ -71,7 +71,7 @@ describe('big balls', () => {
 })
 
 describe('chain lightning', () => {
-  it('arcs about 45% of hits to two bricks at level 3', () => {
+  it('arcs 14% of hits to three bricks at level 3 (about 0.42 arcs per hit)', () => {
     const s = empty()
     s.boosts = { lightning: 3 }
     let hits = 0
@@ -89,8 +89,8 @@ describe('chain lightning', () => {
         }
       })
     }
-    expect(zaps / hits).toBeGreaterThan(0.6)
-    expect(zaps / hits).toBeLessThan(1.2)
+    expect(zaps / hits).toBeGreaterThan(0.3)
+    expect(zaps / hits).toBeLessThan(0.6)
   })
 })
 

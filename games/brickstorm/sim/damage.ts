@@ -76,7 +76,7 @@ export function killBrick(s: RunState, brick: Brick, depth: number): void {
   onDeath(s, brick, depth)
   if (mods.aftershock) {
     const near = s.bricks.filter((b) => Math.abs(b.col - brick.col) + Math.abs(b.row - brick.row) === 1)
-    for (const b of near) damageBrick(s, b, 1 * mods.damageMult, 'blast', depth + 1)
+    for (const b of near) damageBrick(s, b, mods.aftershock * mods.damageMult, 'blast', depth + 1)
   }
 }
 

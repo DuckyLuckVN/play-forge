@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { BOOSTS, modsOf, SYNERGIES } from './boosts'
-import { DANGER_ROW, GUIDE_LENGTH, KILL_XP, TICK } from './config'
+import { COMBO_GAP, DANGER_ROW, GUIDE_LENGTH, KILL_XP, TICK } from './config'
 import { killBrick } from './damage'
 import { drainEvents, fire, step } from './run'
 import { brick, empty, runVolley } from './testing'
@@ -8,7 +8,7 @@ import { brick, empty, runVolley } from './testing'
 describe('aftershock', () => {
   it('hits the four neighbours of a destroyed brick', () => {
     const s = empty()
-    s.boosts = { aftershock: 1 }
+    s.boosts = { aftershock: 2 } // level 2: full ball damage
     const center = brick(s, 3, 5, 1)
     const around = [brick(s, 2, 5, 5), brick(s, 4, 5, 5), brick(s, 3, 4, 5), brick(s, 3, 6, 5)]
     const corner = brick(s, 2, 4, 5)
@@ -50,7 +50,7 @@ describe('combo keeper', () => {
       if (keeper) s.boosts = { keeper: 1 }
       fire(s, Math.PI / 2)
       s.combo = 5
-      s.sinceHit = 2.0 - TICK
+      s.sinceHit = COMBO_GAP + 0.5 - TICK // past the normal window, inside Keeper's
       step(s)
       expect(s.combo).toBe(keeper ? 5 : 0)
     }
@@ -69,7 +69,7 @@ describe('brain', () => {
 describe('glass cannon', () => {
   it('doubles damage', () => {
     expect(modsOf({ glass: 1 }).damageMult).toBe(2)
-    expect(modsOf({ glass: 1, damage: 2 }).damageMult).toBe(3)
+    expect(modsOf({ glass: 1, damage: 2 }).damageMult).toBeCloseTo(2.8)
   })
 
   it('drops bricks an extra row every 10th turn', () => {

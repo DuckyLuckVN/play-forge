@@ -218,6 +218,12 @@ export class Juice {
   xpSparks = 0
   /** XP multiplier from the live combo (1: none); while above 1 the XP bar burns. */
   comboMult = 1
+  /** The multiplier shown by the XP tally: the last one above 1, kept while it fades out. */
+  comboShown = 1
+  /** Seconds since the multiplier last stepped up (null: never), for its one slam. */
+  comboTierAge: number | null = null
+  /** 1 while a combo multiplies XP; fades to 0 in about 0.2 s after it ends. */
+  comboFade = 0
   /** The level badge popping after the bar crossed the line; `count` levels in this burst. */
   levelPop: { age: number; count: number } | null = null
   private lastChime = -Infinity
@@ -442,8 +448,13 @@ export class Juice {
     this.targetXp = total
   }
 
-  /** The live combo's XP multiplier each frame (1 when there is none). */
+  /** The live combo's XP multiplier each frame (1 when there is none); a new tier slams in once. */
   setComboXp(mult: number): void {
+    if (mult > 1 && mult > this.comboMult) {
+      this.comboShown = mult
+      this.comboTierAge = 0
+    }
+    if (mult > 1) this.comboFade = 1
     this.comboMult = mult
   }
 
@@ -513,6 +524,8 @@ export class Juice {
       playSound(xpTick(this.shownXp % 1), this.xpGlow > 0 ? 1 : CALM_TICK_VOLUME)
     }
     if (this.levelUp) this.levelUp.age += dt
+    if (this.comboTierAge !== null) this.comboTierAge += dt
+    if (this.comboMult <= 1) this.comboFade = Math.max(0, this.comboFade - dt * 5)
     if (this.levelPop) {
       this.levelPop.age += dt
       if (this.levelPop.age >= LEVEL_POP_LIFE) this.levelPop = null

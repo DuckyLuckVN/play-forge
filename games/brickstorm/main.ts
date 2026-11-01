@@ -100,18 +100,10 @@ home.append(icon(icons.home))
 const BAG_ICON =
   '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1 12H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>'
 const shopBarBtn = button('', () => openShopFromBar(), 'icon')
-// The wallet rides on the shop button, so players always know what they can spend.
-const shopCoins = h('span', { class: 'bs-bar-coins' })
-shopBarBtn.append(icon(BAG_ICON), shopCoins)
+// Just the bag: the wallet already shows in the HUD, the shop and the home screen.
+shopBarBtn.append(icon(BAG_ICON))
 shopBarBtn.title = t('Shop')
-let shownWallet = -1
-function updateShopCoins() {
-  const total = walletTotal(save, run, banked)
-  if (total === shownWallet) return
-  shownWallet = total
-  shopCoins.replaceChildren(coinAmount(total))
-  shopBarBtn.setAttribute('aria-label', t('Shop ({n} coins)', { n: total }))
-}
+shopBarBtn.setAttribute('aria-label', t('Shop'))
 const guideBtn = button('?', () => openGuideFromBar(), 'icon bs-guide-btn')
 guideBtn.title = t('Guide')
 guideBtn.setAttribute('aria-label', t('Guide: what bricks and pickups do'))
@@ -543,10 +535,7 @@ function renderPanels(s: RunState | null, time: number) {
     rightSide.replaceChildren()
     return
   }
-  leftSide.replaceChildren(
-    navPanel(openShopFromBar, openGuideFromBar, walletTotal(save, s, banked)),
-    statsPanel(s, save.bestTurn),
-  )
+  leftSide.replaceChildren(navPanel(openShopFromBar, openGuideFromBar), statsPanel(s, save.bestTurn))
   rightSide.replaceChildren(
     boostsPanel(s, (id) => boostInfo(id)),
     helpersPanel(
@@ -834,7 +823,8 @@ function showPick() {
           held && !stashed && h('span', { class: 'bs-tag held', textContent: t('HELD') }),
         ),
       h('strong', { textContent: t(b.name) }),
-      h('span', { textContent: t(b.text) }),
+      // An upgrade says what the next level does; a new skill says what level 1 does.
+      h('span', { textContent: owned > 0 ? boostDetail(id, owned + 1, false) : t(b.text) }),
       needsReplace(s, id) && h('small', { class: 'bs-swap', textContent: t('Slots full: swap one out') }),
       // Price, with the rarity quietly to its right; a held card says where it went instead.
       stashed
@@ -1130,7 +1120,6 @@ startRenderLoop((dt, time) => {
   if (s && s.phase === 'aim') announceNewKinds(s)
   updateNotice(dt)
   updateDanger()
-  updateShopCoins()
   renderPanels(s, time)
   const d = s ? dims(s) : boardSize(COLS, ROWS)
   if (view.width !== d.boardW || view.height !== d.boardH) view.setSize(d.boardW, d.boardH)

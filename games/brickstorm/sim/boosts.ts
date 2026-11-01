@@ -15,29 +15,29 @@ import type { BoostId, RunState } from './types'
 export type Rarity = 'common' | 'rare' | 'epic'
 
 export const BOOSTS: Record<BoostId, { name: string; text: string; rarity: Rarity; max: number }> = {
-  damage: { name: 'Heavy Hitter', text: '+25% ball damage', rarity: 'common', max: 99 },
+  damage: { name: 'Heavy Hitter', text: '+20% ball damage', rarity: 'common', max: 99 },
   balls: { name: 'Reinforcements', text: '+2 balls', rarity: 'common', max: 99 },
   coins: { name: 'Gold Rush', text: '+30% coins', rarity: 'common', max: 99 },
   speed: { name: 'Tailwind', text: '+15% ball speed', rarity: 'common', max: 5 },
-  pierce: { name: 'Piercing', text: 'Balls pass through their first brick', rarity: 'rare', max: 1 },
-  crit: { name: 'Lucky Strike', text: '+10% crit chance (crits deal 3×)', rarity: 'rare', max: 3 },
-  bouncy: { name: 'Rubber Walls', text: '+1 damage per wall bounce, stacking', rarity: 'epic', max: 1 },
+  pierce: { name: 'Piercing', text: 'Every 3rd ball passes through its first brick', rarity: 'rare', max: 3 },
+  crit: { name: 'Lucky Strike', text: '+5% crit chance (crits deal 3×)', rarity: 'rare', max: 3 },
+  bouncy: { name: 'Rubber Walls', text: '+0.5 damage per wall bounce, stacking', rarity: 'epic', max: 2 },
   double: { name: 'Double Down', text: 'Double your balls for the next 3 volleys', rarity: 'epic', max: 99 },
   fireball: {
     name: 'Fireball',
-    text: 'Every 8th ball is a fireball that burns through bricks',
+    text: 'Every 12th ball is a fireball that burns through bricks',
     rarity: 'rare',
     max: 3,
   },
-  bombball: { name: 'Bomb Ball', text: 'Every 12th ball explodes on its first hit', rarity: 'epic', max: 2 },
-  twin: { name: 'Twin Shot', text: 'Balls split in two on their first hit', rarity: 'rare', max: 1 },
+  bombball: { name: 'Bomb Ball', text: 'Every 16th ball explodes on its first hit', rarity: 'epic', max: 3 },
+  twin: { name: 'Twin Shot', text: 'Every 3rd ball splits in two on its first hit', rarity: 'rare', max: 3 },
   big: { name: 'Big Balls', text: '+20% ball size', rarity: 'common', max: 3 },
-  lightning: { name: 'Chain Lightning', text: '15% of hits arc to 2 nearby bricks', rarity: 'rare', max: 3 },
+  lightning: { name: 'Chain Lightning', text: '5% of hits arc to a nearby brick', rarity: 'rare', max: 3 },
   aftershock: {
     name: 'Aftershock',
-    text: 'Destroyed bricks damage their 4 neighbours',
+    text: 'Destroyed bricks deal half damage to their 4 neighbours',
     rarity: 'rare',
-    max: 1,
+    max: 3,
   },
   magnet: { name: 'Magnet', text: 'Grab pickups a whole cell away', rarity: 'common', max: 1 },
   midas: { name: 'Midas', text: '+1 coin for every brick destroyed', rarity: 'common', max: 5 },
@@ -103,19 +103,25 @@ export type Mods = ReturnType<typeof modsOf>
 export function modsOf(boosts: Partial<Record<BoostId, number>>) {
   const n = (id: BoostId) => boosts[id] ?? 0
   return {
-    damageMult: (1 + 0.25 * n('damage')) * (n('glass') ? 2 : 1),
+    damageMult: (1 + 0.2 * n('damage')) * (n('glass') ? 2 : 1),
     coinMult: 1 + 0.3 * n('coins'),
     speedMult: 1 + 0.15 * n('speed'),
-    pierce: n('pierce') ? 1 : 0,
-    critChance: 0.1 * n('crit'),
-    bouncy: n('bouncy') > 0,
+    // Skills start weak and grow with each level, so a build is worth investing in.
+    /** Every Nth ball pierces / splits (0 = never; 1 = every ball). */
+    pierceEvery: [0, 3, 2, 1][n('pierce')] ?? 1,
+    twinEvery: [0, 3, 2, 1][n('twin')] ?? 1,
+    critChance: 0.05 * n('crit'),
+    /** Damage a ball gains per wall bounce. */
+    bounceStep: 0.5 * n('bouncy'),
     /** Every Nth ball is a fireball / bomb (0 = never). */
-    fireEvery: [0, 8, 6, 4][n('fireball')] ?? 4,
-    bombEvery: [0, 12, 8][n('bombball')] ?? 8,
-    twin: n('twin') > 0,
+    fireEvery: [0, 12, 8, 5][n('fireball')] ?? 5,
+    bombEvery: [0, 16, 11, 7][n('bombball')] ?? 7,
     radius: BALL_R * (1 + 0.2 * n('big')),
-    zapChance: 0.15 * n('lightning'),
-    aftershock: n('aftershock') > 0,
+    zapChance: [0, 0.05, 0.09, 0.14][n('lightning')] ?? 0.14,
+    /** Bricks each lightning arc jumps to. */
+    zapArcs: Math.min(3, n('lightning')),
+    /** Neighbour damage from a broken brick, × ball damage (0 = no Aftershock). */
+    aftershock: 0.5 * n('aftershock'),
     pickupReach: n('magnet') ? CELL : 0,
     midas: n('midas'),
     comboGap: COMBO_GAP + n('keeper'),

@@ -35,6 +35,10 @@ const TRAIL = 4
 const XP_COLOR = '#4be3a0'
 /** XP bar colour by heat: calm, glowing, on fire, white-hot. */
 const XP_HEAT_COLOR = [XP_COLOR, XP_COLOR, '#ffc83d', '#fff6d6']
+/** The combo's XP multiplier colour by tier: warmer each step. */
+const COMBO_XP_COLOR: Record<number, string> = { 1.25: '#ffc83d', 1.5: '#ff9f43', 2: theme.coral }
+/** Seconds the multiplier takes to slam into place. */
+const COMBO_SLAM = 0.18
 /** White-hot bar: a bolt flickers BOLT_RATE times a second, each for BOLT_SHOW of the cycle. */
 const BOLT_RATE = 2
 const BOLT_SHOW = 0.12
@@ -530,27 +534,7 @@ export class BoardRenderer {
       })
     }
     ctx.restore()
-    // "+N XP" in the HUD, popping as it grows.
-    const tally = juice.xpTally
-    if (tally) {
-      const pop = tally.age < 0.15 ? 1 + 0.35 * (1 - tally.age / 0.15) : 1
-      ctx.save()
-      ctx.globalAlpha = Math.min(1, Math.max(0, (1.2 - tally.age) / 0.4))
-      // Centre of the HUD row, between the turn and the coins.
-      ctx.translate(this.d.boardW / 2, TOP / 2 - 4)
-      ctx.scale(pop, pop)
-      ctx.font = `700 ${heat >= 2 ? 20 : 17}px ${FONT}`
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.lineWidth = 4
-      ctx.strokeStyle = theme.night
-      // The combo's multiplier has its own place, above the bar; the tally just counts.
-      const text = `+${compactNumber(Math.round(tally.amount))} XP`
-      ctx.strokeText(text, 0, 0)
-      ctx.fillStyle = heat >= 2 ? XP_HEAT_COLOR[heat] : XP_COLOR
-      ctx.fillText(text, 0, 0)
-      ctx.restore()
-    }
+    this.drawXpTally(ctx, juice, heat)
   }
 
   /**
@@ -595,6 +579,65 @@ export class BoardRenderer {
     ctx.beginPath()
     ctx.arc(fx, fy, r * (flick ? 0.38 : 0.28), 0, Math.PI * 2)
     ctx.fill()
+    ctx.restore()
+  }
+
+  /**
+   * "+N XP" in the middle of the HUD, popping as it grows, and next to it the
+   * combo's XP multiplier ("×1.5") in the tier colour. The multiplier slams in
+   * once per tier (big → settled, white for an instant) and otherwise sits
+   * still; it fades out when the combo ends. The pair stays centred.
+   */
+  private drawXpTally(ctx: CanvasRenderingContext2D, juice: Juice, heat: number): void {
+    const tally = juice.xpTally
+    const showMult = juice.comboFade > 0 && juice.comboShown > 1
+    if (!tally && !showMult) return
+    const cx = this.d.boardW / 2
+    const cy = TOP / 2 - 4
+    const tallyFont = `700 ${heat >= 2 ? 20 : 17}px ${FONT}`
+    const multFont = `800 19px ${FONT}`
+    const text = tally ? `+${compactNumber(Math.round(tally.amount))} XP` : ''
+    const mult = `×${juice.comboShown}`
+    ctx.font = tallyFont
+    const tw = tally ? ctx.measureText(text).width : 0
+    ctx.font = multFont
+    const mw = showMult ? ctx.measureText(mult).width : 0
+    const gap = tally && showMult ? 8 : 0
+    const left = cx - (tw + gap + mw) / 2
+    ctx.save()
+    ctx.textBaseline = 'middle'
+    ctx.lineJoin = 'round'
+    ctx.strokeStyle = theme.night
+    if (tally) {
+      const pop = tally.age < 0.15 ? 1 + 0.35 * (1 - tally.age / 0.15) : 1
+      ctx.save()
+      ctx.globalAlpha = Math.min(1, Math.max(0, (1.2 - tally.age) / 0.4))
+      ctx.translate(left + tw / 2, cy)
+      ctx.scale(pop, pop)
+      ctx.font = tallyFont
+      ctx.textAlign = 'center'
+      ctx.lineWidth = 4
+      ctx.strokeText(text, 0, 0)
+      ctx.fillStyle = heat >= 2 ? XP_HEAT_COLOR[heat] : XP_COLOR
+      ctx.fillText(text, 0, 0)
+      ctx.restore()
+    }
+    if (showMult) {
+      const age = juice.comboTierAge ?? 1
+      const calm = prefersReducedMotion()
+      const slam = calm ? 1 : 1.6 - 0.6 * ease.outBack(Math.min(1, age / COMBO_SLAM))
+      ctx.save()
+      ctx.globalAlpha = juice.comboFade
+      ctx.translate(left + tw + gap + mw / 2, cy)
+      ctx.scale(slam, slam)
+      ctx.font = multFont
+      ctx.textAlign = 'center'
+      ctx.lineWidth = 4
+      ctx.strokeText(mult, 0, 0)
+      ctx.fillStyle = age < 0.04 && !calm ? '#ffffff' : (COMBO_XP_COLOR[juice.comboShown] ?? theme.yolk)
+      ctx.fillText(mult, 0, 0)
+      ctx.restore()
+    }
     ctx.restore()
   }
 

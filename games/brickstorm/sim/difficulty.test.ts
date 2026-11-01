@@ -122,7 +122,7 @@ describe('bricks follow the balls you have', () => {
     const s = empty()
     s.ballCount = 5
     const before = hpCap(s)
-    s.boosts = { damage: 4 }
+    s.boosts = { damage: 5 } // +20% each: ×2
     expect(hpCap(s)).toBeCloseTo(before * 2)
   })
 

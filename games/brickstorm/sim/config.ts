@@ -32,7 +32,7 @@ export const MIN_VY_RATIO = 0.15
 export const AIM_MIN = (8 * Math.PI) / 180
 
 /** Seconds without a hit before the combo resets. */
-export const COMBO_GAP = 1.5
+export const COMBO_GAP = 2.5
 export const FEVER_AT = 100
 /** [min combo, coin multiplier], highest first. */
 export const COMBO_TIERS = [

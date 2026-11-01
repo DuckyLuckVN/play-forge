@@ -21,7 +21,7 @@ describe('review fixes', () => {
 
   it('a twin split off a brick side does not hit that brick again', () => {
     const s = empty()
-    s.boosts = { twin: 1 }
+    s.boosts = { twin: 3 } // level 3: every ball splits
     const b = brick(s, 3, 5, 1000)
     fire(s, Math.PI / 2)
     const ball = s.balls[0]

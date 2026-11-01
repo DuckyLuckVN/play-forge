@@ -897,3 +897,18 @@
     animation: none;
   }
 }
+
+/* Fresh start: the erase button is red, and the undo row after it. */
+.bs-danger-btn.pf-btn {
+  --face: #7a1f2e;
+  --edge: #4a0f1a;
+  --text: #ffe3e8;
+}
+.bs-reset-done {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  color: var(--pf-haze);
+  font-size: 14px;
+}

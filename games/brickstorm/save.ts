@@ -232,3 +232,37 @@ export function spend(save: Save, amount: number): Save | null {
   if (amount < 0 || save.coins < amount) return null
   return { ...save, coins: save.coins - amount }
 }
+
+/** Where a fresh start keeps the progress it erased, so it can be undone. */
+export const RESET_BACKUP_KEY = SAVE_KEY + ':before-reset'
+
+/**
+ * Fresh start: erases all progress (coins, items, helpers, bests, the saved
+ * run) and keeps the old save under RESET_BACKUP_KEY. Settings stored under
+ * other keys (language, sound) are left alone. Returns the new, empty save.
+ */
+export function resetSave(storage: Storage | null = safeLocalStorage()): Save {
+  try {
+    const raw = storage?.getItem(SAVE_KEY)
+    if (raw !== null && raw !== undefined) storage!.setItem(RESET_BACKUP_KEY, raw)
+    else storage?.removeItem(RESET_BACKUP_KEY)
+  } catch {
+    // Can't keep a copy: still reset, as asked.
+  }
+  const fresh = defaults()
+  writeSave(fresh, storage)
+  return fresh
+}
+
+/** Puts back the progress the last fresh start erased; null if there is none. */
+export function undoReset(storage: Storage | null = safeLocalStorage()): Save | null {
+  try {
+    const raw = storage?.getItem(RESET_BACKUP_KEY)
+    if (!raw) return null
+    storage!.setItem(SAVE_KEY, raw)
+    storage!.removeItem(RESET_BACKUP_KEY)
+    return loadSave(storage).save
+  } catch {
+    return null
+  }
+}

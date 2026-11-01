@@ -6,6 +6,9 @@ import {
   DEFAULT_SAVE,
   loadSave,
   recordRun,
+  RESET_BACKUP_KEY,
+  resetSave,
+  undoReset,
   SAVE_KEY,
   SIM_VERSION,
   spend,
@@ -181,5 +184,43 @@ describe('wallet', () => {
       false,
       false,
     ])
+  })
+})
+
+describe('fresh start', () => {
+  const played = (): Save => ({
+    ...structuredClone(DEFAULT_SAVE),
+    bestTurn: 80,
+    coins: 5000,
+    owned: [...DEFAULT_SAVE.owned, 'ball:star'],
+    seen: ['brick:bomb'],
+  })
+
+  it('erases all progress and keeps a copy of it', () => {
+    const storage = memoryStorage()
+    writeSave(played(), storage)
+    storage.setItem('pf.lang', 'vi')
+    const fresh = resetSave(storage)
+    expect(fresh).toEqual(DEFAULT_SAVE)
+    expect(loadSave(storage).save).toEqual(DEFAULT_SAVE)
+    expect(JSON.parse(storage.getItem(RESET_BACKUP_KEY)!).coins).toBe(5000)
+    // Preferences are not progress.
+    expect(storage.getItem('pf.lang')).toBe('vi')
+  })
+
+  it('can be undone, once', () => {
+    const storage = memoryStorage()
+    writeSave(played(), storage)
+    resetSave(storage)
+    const back = undoReset(storage)
+    expect(back?.coins).toBe(5000)
+    expect(loadSave(storage).save.coins).toBe(5000)
+    expect(undoReset(storage)).toBeNull()
+  })
+
+  it('works with nothing saved yet', () => {
+    const storage = memoryStorage()
+    expect(resetSave(storage)).toEqual(DEFAULT_SAVE)
+    expect(undoReset(storage)).toBeNull()
   })
 })

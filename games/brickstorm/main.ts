@@ -23,7 +23,18 @@ import { toBoard } from './input'
 import { Juice } from './juice'
 import { BoardRenderer } from './render'
 import { ARENAS, type ArenaId } from './arenas'
-import { bankRun, canBank, clearRun, loadSave, recordRun, spend, walletTotal, writeSave } from './save'
+import {
+  bankRun,
+  canBank,
+  clearRun,
+  loadSave,
+  recordRun,
+  resetSave,
+  spend,
+  undoReset,
+  walletTotal,
+  writeSave,
+} from './save'
 import { isPreviewingMusic, shopPanel } from './shop-ui'
 import { applyHelpers, growBoard, revive, reviveCost, useHelper } from './sim/meta'
 import { dims } from './sim/dims'
@@ -182,6 +193,8 @@ let overShown = false
 let bossAnnounced: object | null = null
 /** Boost slots the player has been shown; more means a boss just gave one. */
 let slotsSeen = 0
+/** A fresh start just happened: the home screen offers to undo it. */
+let justReset = false
 /** The run's total XP last frame, for the "+N XP" tally. */
 let xpSeen = 0
 /** The level-up celebration for the current pick has started. */
@@ -268,9 +281,49 @@ function showHome() {
       saved && primary(t('Continue · Turn {n}', { n: saved.state.turn }), resumeRun),
       saved ? button(t('New run'), confirmNewRun, 'wide') : primary(t('Play'), showHelpers),
       button(t('Shop'), () => showShop(showHome), 'wide'),
+      justReset
+        ? h(
+            'div',
+            { class: 'bs-reset-done', role: 'status' },
+            h('span', { textContent: t('Progress erased. Fresh start!') }),
+            button(t('Undo'), () => {
+              save = undoReset() ?? save
+              justReset = false
+              showHome()
+            }),
+          )
+        : button(t('Fresh start…'), confirmFreshStart, 'quiet'),
       h('p', { class: 'pf-note', textContent: CONTROLS() }),
     ),
     'home',
+  )
+}
+
+/** Erasing everything can't be done by a stray tap: it says what goes and asks first. */
+function confirmFreshStart() {
+  show(
+    h(
+      'div',
+      { class: 'pf-panel' },
+      panelHead(t('Fresh start?'), showHome),
+      h('p', {
+        class: 'pf-lede',
+        textContent: t(
+          'This erases all your progress: coins, items, helpers, best scores and your saved run. Language and sound settings stay.',
+        ),
+      }),
+      button(
+        t('Erase everything'),
+        () => {
+          save = resetSave()
+          justReset = true
+          showHome()
+        },
+        'wide bs-danger-btn',
+      ),
+      primary(t('Keep my progress'), showHome),
+    ),
+    'fresh-start',
   )
 }
 
@@ -589,6 +642,7 @@ function showHelpers() {
 }
 
 function beginRun(s: RunState) {
+  justReset = false
   run = s
   overShown = false
   slotsSeen = boostSlots(s)

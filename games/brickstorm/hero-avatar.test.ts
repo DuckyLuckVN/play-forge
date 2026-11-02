@@ -154,6 +154,28 @@ describe('creature hands', () => {
     near(a.lastHands?.front, hold)
   })
 
+  it('holds the ball again right after a KO and revive (fall decays, it never quite reaches 0)', () => {
+    const a = new HeroAvatar('rookie')
+    run(a, 0.5, ctx({ hold }))
+    a.setMood('ko')
+    run(a, 1, ctx({ hold }))
+    a.setMood('revive')
+    run(a, 1.5, ctx({ hold }))
+    expect(a.mood).toBe('idle')
+    a.draw(fakeCanvas(), 760)
+    near(a.lastHands?.front, hold)
+  })
+
+  it('holds the ball from the first frames after reset(), even straight out of a KO', () => {
+    const a = new HeroAvatar('rookie')
+    a.setMood('ko')
+    run(a, 1, ctx({ hold }))
+    a.reset()
+    run(a, 1 / 60, ctx({ hold }))
+    a.draw(fakeCanvas(), 760)
+    near(a.lastHands?.front, hold)
+  })
+
   it('draws the held ball at the hold point, then the grip over it', () => {
     const a = new HeroAvatar('rookie')
     const balls: Array<[number, number, number]> = []

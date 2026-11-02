@@ -232,6 +232,8 @@ const lerp = (a: number, b: number, k: number) => a + (b - a) * k
 const HOLD_REACH = 12
 /** Moods in which the front hand stays on the held ball. */
 const HOLDS = new Set<Mood>(['idle', 'aim', 'worried', 'watch'])
+/** Hands can hold once the KO fall is this low: the pose blend only approaches 0, it never quite gets there. */
+const HOLD_FALL = 0.02
 
 export class HeroAvatar {
   hero: HeroDef
@@ -319,6 +321,8 @@ export class HeroAvatar {
     this.snapHands = true
     this.emote = null
     this.knock.x = this.knock.v = this.hop.x = this.hop.v = 0
+    // Stand straight up: no KO fall (or any other pose) left to blend out.
+    this.pose = { ...BASE }
   }
 
   private loadEmblem(): void {
@@ -903,7 +907,7 @@ export class HeroAvatar {
 
     if (this.hold) {
       f.hold = { ...toLocal(this.hold), r: this.hold.r / scale }
-      f.holding = HOLDS.has(this.mood) && !this.moving && this.pose.fall <= 0
+      f.holding = HOLDS.has(this.mood) && !this.moving && this.pose.fall < HOLD_FALL
     }
     const m = body.metrics(look, f)
     f.pose = body.pose?.(look, f) ?? f.pose
@@ -1140,7 +1144,7 @@ export class HeroAvatar {
     const FORE = 6.8
     /** Front-arm angles that put the hand on the held ball (two-bone IK), in this lean-rotated frame. */
     const reachBall = (): { s: number; e: number } | null => {
-      if (!this.hold || !HOLDS.has(this.mood) || this.moving || p.fall > 0) return null
+      if (!this.hold || !HOLDS.has(this.mood) || this.moving || p.fall >= HOLD_FALL) return null
       // Board point → local units → undo the lean around the hips.
       let lx = ((this.hold.x - x) * this.facing) / scale
       let ly = (this.hold.y - (floorY + hopY * scale)) / scale

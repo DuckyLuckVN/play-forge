@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import type { HeroHat } from '../sim/heroes'
 import { fakeCanvas, installPath2D } from '../test-canvas'
-import { Fit, drawHat } from './hats'
+import { Fit, TRICORN, drawHat } from './hats'
 import type { HeadBox } from './types'
 
 beforeAll(installPath2D)
@@ -64,10 +64,12 @@ describe('Fit', () => {
 })
 
 describe('drawHat', () => {
-  it.each(HATS)('%s fills at least one built path', (hat) => {
+  it.each(HATS)('%s paints at least one built path', (hat) => {
     const ctx = fakeCanvas()
     drawHat(ctx, hat, small, '#e8590c')
-    const filled = ctx.log.filter((r) => r.name === 'fill' && r.args[0] instanceof Path2D)
+    const filled = ctx.log.filter(
+      (r) => (r.name === 'fill' || r.name === 'stroke') && r.args[0] instanceof Path2D,
+    )
     expect(filled.length).toBeGreaterThan(0)
   })
 
@@ -91,5 +93,27 @@ describe('drawHat', () => {
     drawHat(ctx, hat, small, '#e8590c')
     const n = (s: string) => ctx.calls.filter((c) => c === s).length
     expect(n('save')).toBe(n('restore'))
+  })
+
+  it('halo is drawn in gold', () => {
+    const ctx = fakeCanvas()
+    drawHat(ctx, 'halo', small, '#e8590c')
+    expect(ctx.strokeStyle).toBe('#ffd43b')
+    expect(ctx.log.filter((r) => r.name === 'stroke')).toHaveLength(2)
+  })
+
+  it('tricorn tips sit above the front centre point', () => {
+    const f = new Fit(small)
+    const pts = [...(f.path(TRICORN) as unknown as Stub).d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map((m) => [
+      +m[1],
+      +m[2],
+    ])
+    const front = pts.reduce((a, b) => (b[1] > a[1] ? b : a))
+    const left = pts[0]
+    const right = pts.reduce((a, b) => (b[0] > a[0] ? b : a))
+    expect(left[1]).toBeLessThan(front[1])
+    expect(right[1]).toBeLessThan(front[1])
+    expect(left[0]).toBeLessThan(front[0])
+    expect(right[0]).toBeGreaterThan(front[0])
   })
 })

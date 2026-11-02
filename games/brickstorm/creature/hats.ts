@@ -2,7 +2,7 @@
 
 import type { HeroHat } from '../sim/heroes'
 import type { HeadBox } from './types'
-import { darkOf, gloss, group, lightOf, mix, paint, type Part } from './paint'
+import { OUTLINE, darkOf, gloss, group, lightOf, mix, paint, type Part } from './paint'
 
 type Ctx = CanvasRenderingContext2D
 
@@ -67,6 +67,10 @@ const gem = (f: Fit, cx: number, cy: number, r: number, c: string): Part => ({
   inner: true,
   lw: 1.2,
 })
+
+/** Silhouette: tips (first and fourth point pair) turned up, third point dips at the front centre. */
+export const TRICORN =
+  'M-1.45 -0.9 Q-1 -0.5 -0.55 -0.7 Q0 -1.1 0.55 -0.7 Q1 -0.5 1.45 -0.9 Q1.2 0.1 0.1 0.4 Q-1.2 0.1 -1.45 -0.9 Z'
 
 type HatPainter = (ctx: Ctx, f: Fit, c: string) => void
 
@@ -146,7 +150,17 @@ const HAT_PAINTERS: Record<Exclude<HeroHat, 'none'>, HatPainter> = {
     f.gloss(ctx, -0.65, -0.6, 0.16, 0.08, -1)
   },
   halo(ctx, f) {
-    group(ctx, [{ p: f.ring(0, -0.9, 1.05, 0.38, 0.14), c: GOLD, k: 1 }])
+    const ring = f.ell(0, -0.9, 1.05, 0.38)
+    const band = f.w * 0.22
+    ctx.lineCap = 'round'
+    ctx.strokeStyle = OUTLINE
+    ctx.lineWidth = band + 2.6
+    ctx.stroke(ring)
+    ctx.shadowColor = GOLD
+    ctx.shadowBlur = 8
+    ctx.strokeStyle = GOLD
+    ctx.lineWidth = band
+    ctx.stroke(ring)
     f.gloss(ctx, -0.55, -1.2, 0.2, 0.05, -0.2)
   },
   tophat(ctx, f, c) {
@@ -183,22 +197,23 @@ const HAT_PAINTERS: Record<Exclude<HeroHat, 'none'>, HatPainter> = {
     f.gloss(ctx, -0.4, -0.65, 0.2, 0.11, -0.6)
   },
   tricorn(ctx, f, c) {
-    const felt = mix(c, '#3b2f2f', 0.65)
+    const felt = mix(c, '#5a4638', 0.5)
     group(ctx, [
       {
-        p: f.path('M-1.45 -0.3 Q-0.7 0.5 0.1 0.45 Q0.9 0.5 1.45 -0.3 Q0 -0.15 -1.45 -0.3 Z'),
-        c: darkOf(felt),
-        k: 0.8,
-      },
-      {
-        p: f.path('M-1.05 -0.2 Q-0.95 -1.15 0 -1.15 Q0.95 -1.15 1.05 -0.2 Q0 0 -1.05 -0.2 Z'),
+        p: f.path(TRICORN),
         c: felt,
         k: 1.2,
       },
+      {
+        p: f.path('M-0.6 -0.65 Q-0.5 -1.1 0 -1.1 Q0.5 -1.1 0.6 -0.65 Q0 -0.5 -0.6 -0.65 Z'),
+        c: lightOf(felt),
+        k: 0.8,
+        inner: true,
+      },
     ])
-    f.line(ctx, 'M-1.4 -0.3 Q-0.7 0.45 0.1 0.4 Q0.9 0.45 1.4 -0.3', GOLD, 2.4)
-    paint(ctx, { p: f.ell(0.1, -0.6, 0.17, 0.17), c: mix(c, '#ffffff', 0.7), k: 0, lw: 1.2 })
-    f.gloss(ctx, -0.5, -0.8, 0.22, 0.09, -0.5)
+    f.line(ctx, 'M-1.45 -0.9 Q-1.2 0.1 0.1 0.4 Q1.2 0.1 1.45 -0.9', GOLD, 2.6)
+    paint(ctx, { p: f.ell(0.1, -0.1, 0.17, 0.17), c: '#ffffff', k: 0, lw: 1.2 })
+    f.gloss(ctx, -0.5, -0.75, 0.22, 0.07, -0.3)
   },
   spikes(ctx, f, c) {
     const s = mix(c, '#1e2a5a', 0.25)

@@ -74,6 +74,8 @@ const FOOT = { x: -5.5, y: -2.6, rx: 5.6, ry: 2.6 }
 /** Where a fallen critter's head comes to rest, cheek down, in front of the body. */
 const KO_HEAD: Pt = { x: 13, y: -10.2 }
 const KO_TILT = 0.45
+/** Drakon's snout (head frame). */
+const SNOUT = { x: FACE_X + 8.5, y: 4.6, rx: 6.2, ry: 4 }
 
 /** A variant's head and tail shapes, hat placement (head frame) and extras. */
 interface Shape {
@@ -84,6 +86,10 @@ interface Shape {
   cube: boolean
   /** Belly colour mix toward white (0 = none). */
   belly: number
+  /** Glowing slit eyes in the look's eye colour (Kage), drawn over the hat (the ninja mask). */
+  glowEyes?: boolean
+  /** Ear bases and leans [far, near] (head frame); default on top of the head. */
+  ears?: [[number, number, number], [number, number, number]]
 }
 
 const HAT: HeadBox = { x: 1.5, y: -6.5, rx: 10, ry: 7 }
@@ -97,9 +103,27 @@ const SHAPES: Record<Variant, Shape> = {
     belly: 0.45,
   },
   // The ninja mask pulls down over the eyes; Kage's eyes glow through it.
-  cat: { ear: 'point', tail: 'curl', hat: { x: FACE_X, y: -2.2, rx: 8.6, ry: 7 }, cube: false, belly: 0.25 },
+  cat: {
+    ear: 'point',
+    tail: 'curl',
+    hat: { x: FACE_X, y: -2.2, rx: 8.6, ry: 7 },
+    cube: false,
+    belly: 0.45,
+    glowEyes: true,
+  },
   lion: { ear: 'round', tail: 'tuft', hat: { x: 1.5, y: -9, rx: 8, ry: 5.5 }, cube: false, belly: 0.4 },
-  crystal: { ear: 'gem', tail: 'gem', hat: HAT, cube: false, belly: 0.35 },
+  // Crystal ears stick out beside the wizard hat.
+  crystal: {
+    ear: 'gem',
+    tail: 'gem',
+    hat: HAT,
+    cube: false,
+    belly: 0.35,
+    ears: [
+      [-10.5, -3, -1],
+      [9.5, -4.5, 0.9],
+    ],
+  },
   dragon: { ear: 'fin', tail: 'spade', hat: HAT, cube: false, belly: 0 },
   dice: { ear: 'square', tail: 'nub', hat: { x: 1, y: -7.5, rx: 8.5, ry: 6 }, cube: true, belly: 0 },
 }
@@ -121,17 +145,13 @@ function flourish(f: Frame): { k: number; age: number; cheer: boolean } {
 
 /** Kage's paw lick plays on its signature while idle (the near paw keeps the ball). */
 const licking = (v: Variant, f: Frame) =>
-  v === 'cat' && f.mood === 'idle' && sigOf(f) > 0.05 && f.pose.fall <= 0
+  v === 'cat' && f.mood === 'idle' && sigOf(f) > 0.05 && f.pose.fall < 0.02
 
-/** How far the critter sits up: 1 holding (or about to), lower on all fours or sad, higher rearing on cheer. */
-function rearOf(f: Frame): number {
-  let r = 1
-  if (f.mood === 'sad' || (!f.hold && (f.mood === 'idle' || f.mood === 'watch'))) r = 0.6
-  if (f.mood === 'cheer' || f.mood === 'cast' || f.mood === 'revive' || f.mood === 'wow') r = 1.2
-  if (!f.still && f.mood === 'cheer') r += 0.15 * easeOut(f.moodAge / 0.2)
-  if (!f.still && f.mood === 'pump') r += 0.3 * pulse(f.moodAge, 0.4)
-  return r - 0.3 * clamp(f.pose.crouch, -1, 1)
-}
+/**
+ * Torso tilt in units of REAR, from the blended `pose.rear` (0 all fours .. ~0.55 sitting up to hold .. 1 rearing):
+ * 0.6 on all fours, 1 holding, 1.35 rearing up; a crouch lowers it.
+ */
+const rearOf = (f: Frame): number => 0.6 + 0.75 * f.pose.rear - 0.3 * clamp(f.pose.crouch, -1, 1)
 
 /** Everything the rig does this frame (local units → the kit's frame). */
 interface Rig {
@@ -231,7 +251,11 @@ function boundsOf(pts: Pt[]): Rect {
 
 function metrics(look: CreatureLook, f: Frame): BodyMetrics {
   const v = variantOf(look)
-  const r = rigOf(v, f)
+  return metricsOf(v, rigOf(v, f), f)
+}
+
+/** Metrics from an already built rig (pose() needs both). */
+function metricsOf(v: Variant, r: Rig, f: Frame): BodyMetrics {
   const head = apply(r.head, { x: 0, y: 0 })
   const top = apply(r.head, { x: 0, y: -HEAD_RY - EAR_H * (1 - r.ko) })
   // While Kage licks its paw, the solver's head box shrinks to the crown so the paw may come up to the mouth.
@@ -276,8 +300,8 @@ const PLANT = new Set<Frame['mood']>(['idle', 'watch', 'aim', 'worried', 'throw'
 function pose(look: CreatureLook, f: Frame): Pose {
   const v = variantOf(look)
   const p = { ...f.pose }
-  const m = metrics(look, f)
   const r = rigOf(v, f)
+  const m = metricsOf(v, r, f)
   const t = f.t
   const wave = (ph: number) => (f.still ? 0 : 0.28 * Math.sin(t * 15 + ph))
   const plant = (socket: Pt, dx: number) => legTo(socket, { x: socket.x + dx, y: -HAND_R })
@@ -466,9 +490,10 @@ function paintGem(
 
 /** Crystal spikes down Nyx's back (spine frame, behind the torso so only the tips show). */
 const SPIKES: Array<[number, number, number, number]> = [
-  [-3, -7, 3.6, -0.8],
-  [3, -10, 4.4, -0.45],
-  [9, -11, 3.6, -0.1],
+  [-6, -5.5, 4.6, -0.95],
+  [0, -9, 5.6, -0.55],
+  [6, -10.5, 5.2, -0.2],
+  [11.5, -9.5, 3.8, 0.15],
 ]
 
 /** Dragon wings on the back: scenery only, they flap gently and spread on cheer (spine frame). */
@@ -504,7 +529,24 @@ function wings(ctx: Ctx, p: Paint): void {
 
 /** Behind the torso (spine frame): wings, spikes. */
 function backLayer(ctx: Ctx, p: Paint): void {
-  if (p.v === 'dragon') wings(ctx, p)
+  if (p.v === 'dragon') {
+    wings(ctx, p)
+    // Little dorsal spikes down the back.
+    for (const [x, y, rot] of [
+      [-5, -6.5, -0.9],
+      [0.5, -9.5, -0.5],
+      [6, -10.8, -0.2],
+    ])
+      group(ctx, [
+        {
+          p: new Path2D(
+            `M${x - 2.6} ${y + 2.5} L${x + Math.sin(rot) * 5.5} ${y - Math.cos(rot) * 5.5} L${x + 2.6} ${y + 2.5} Z`,
+          ),
+          c: darkOf(p.look.second),
+          k: 0.5,
+        },
+      ])
+  }
   if (p.v === 'crystal')
     for (const [x, y, w, rot] of SPIKES) paintGem(ctx, x, y, w, w * 1.8, rot, p.look.second, p)
 }
@@ -547,9 +589,12 @@ function pips(ctx: Ctx, x: number, y: number, h: number, n: number, c: string): 
   }
   ctx.fillStyle = c
   ctx.beginPath()
-  for (const [px, py] of spots[n]) ctx.ellipse(x + px, y + py, h * 0.16, h * 0.16, 0, 0, TAU)
+  for (const [px, py] of spots[n]) ctx.ellipse(x + px, y + py, h * 0.22, h * 0.22, 0, 0, TAU)
   ctx.fill()
 }
+
+/** Lucky's pips: deep teal, dark enough to read as a die's. */
+const pipColor = (look: CreatureLook) => mix(look.second, OUTLINE, 0.45)
 
 /** The face Lucky shows: a lucky 5, rolling through the faces on the signature and cheer. */
 function pipCount(p: Paint, seed: number): number {
@@ -568,8 +613,12 @@ function torso(ctx: Ctx, p: Paint): void {
     ctx.save()
     ctx.translate(TORSO.x, TORSO.y)
     ctx.rotate(-roll)
-    group(ctx, [{ p: box(-12, -11, 24, 21, 5), c: p.main, k: 0.9 }])
-    pips(ctx, -4.5, -3, 6.5, pipCount(p, 0), look.second)
+    // The top face in light, the side face with big dark pips.
+    group(ctx, [
+      { p: new Path2D('M-12 -9 L-8 -14.5 L15 -14.5 L12 -9 Z'), c: lightOf(p.main), k: 0.3 },
+      { p: box(-12, -11, 24, 21, 3), c: p.main, k: 0.9 },
+    ])
+    pips(ctx, -7, -4.5, 6, pipCount(p, 0), pipColor(look))
     gloss(ctx, -6, -6, 2.4, 1.2, -0.4)
     ctx.restore()
     return
@@ -580,13 +629,13 @@ function torso(ctx: Ctx, p: Paint): void {
     // Cream belly plates.
     ctx.save()
     ctx.clip(body)
-    paint(ctx, { p: ell(TORSO.x + 6, TORSO.y + 4, 7, 6, -0.4), c: look.second, k: 0.4, lw: 0 })
+    paint(ctx, { p: ell(TORSO.x + 4, TORSO.y + 3.5, 10, 6.5, -0.25), c: look.second, k: 0.4, lw: 0 })
     ctx.strokeStyle = darkOf(look.second)
-    ctx.lineWidth = 1
+    ctx.lineWidth = 1.3
     ctx.beginPath()
-    for (const k of [0, 1, 2]) {
-      ctx.moveTo(TORSO.x + 1 + k * 3.5, TORSO.y + 3 + k * 0.5)
-      ctx.lineTo(TORSO.x + 3 + k * 3.5, TORSO.y + 9)
+    for (const k of [0, 1, 2, 3]) {
+      ctx.moveTo(TORSO.x - 3 + k * 4, TORSO.y + 0.5 + k * 0.3)
+      ctx.lineTo(TORSO.x - 2 + k * 4.4, TORSO.y + 10)
     }
     ctx.stroke()
     ctx.restore()
@@ -771,7 +820,7 @@ function eyes(ctx: Ctx, p: Paint): void {
   const ex = [FACE_X - EYE_GAP, FACE_X + EYE_GAP]
   const y = 0.5
   const lick = licking(p.v, f)
-  const glow = look.eye !== OUTLINE
+  const glow = SHAPES[p.v].glowEyes
   ctx.lineCap = 'round'
   if (happy(f) || lick) {
     for (const x of ex) happyEye(ctx, x, y, 2.6, glow ? look.eye : OUTLINE, 2.4)
@@ -849,14 +898,14 @@ function eyes(ctx: Ctx, p: Paint): void {
 /** Nose and mouth (head frame): a little ω mouth; open when happy or roaring; o on KO; a frown. */
 function mouth(ctx: Ctx, p: Paint): void {
   const { f, v, sig, fl } = p
-  const x = FACE_X
-  const y = 4.2
+  const x = v === 'dragon' ? SNOUT.x - 2 : FACE_X
+  const y = v === 'dragon' ? SNOUT.y + 1 : 4.2
   // Nose.
   if (v === 'dragon') {
     ctx.fillStyle = OUTLINE
     ctx.beginPath()
-    ctx.ellipse(x + 3.2, y - 1, 0.7, 0.5, 0, 0, TAU)
-    ctx.ellipse(x + 5.4, y - 1.2, 0.7, 0.5, 0, 0, TAU)
+    ctx.ellipse(x + 3.6, y - 3.4, 0.8, 0.55, 0.3, 0, TAU)
+    ctx.ellipse(x + 6.2, y - 3.1, 0.8, 0.55, 0.3, 0, TAU)
     ctx.fill()
   } else if (v !== 'dice') {
     paint(ctx, {
@@ -915,26 +964,28 @@ function head(ctx: Ctx, p: Paint, k: DrawKit): void {
   const s = SHAPES[v]
   if (v === 'lion') mane(ctx, p)
   // Ears behind the head: the far one in shade.
-  ear(ctx, p, -6, -7.5, -0.35, true)
-  ear(ctx, p, 4.5, -8.5, 0.25, false)
+  const [far, near] = s.ears ?? [
+    [-6, -7.5, -0.35],
+    [4.5, -8.5, 0.25],
+  ]
+  ear(ctx, p, far[0], far[1], far[2], true)
+  ear(ctx, p, near[0], near[1], near[2], false)
   const shape = s.cube
-    ? box(-HEAD_RX + 0.5, -HEAD_RY + 0.5, HEAD_RX * 2 - 1, HEAD_RY * 2 - 1, 6)
+    ? box(-HEAD_RX + 0.5, -HEAD_RY + 0.5, HEAD_RX * 2 - 1, HEAD_RY * 2 - 1, 3.5)
     : ell(0, 0, HEAD_RX, HEAD_RY)
-  group(ctx, [{ p: shape, c: p.main, k: 1.1 }])
+  // Drakon's snout pokes out past the round head.
+  const snout =
+    v === 'dragon' ? [{ p: ell(SNOUT.x, SNOUT.y, SNOUT.rx, SNOUT.ry, -0.1), c: p.main, k: 0.8 }] : []
+  group(ctx, [...snout, { p: shape, c: p.main, k: 1.1 }])
+  if (snout.length)
+    paint(ctx, { p: ell(SNOUT.x, SNOUT.y, SNOUT.rx, SNOUT.ry, -0.1), c: p.main, k: 0.8, lw: 0 })
   gloss(ctx, -6, -6, 2.8, 1.5, -0.6)
-  if (v === 'dice') {
-    // Pips for cheeks, rolling with the body.
-    ctx.save()
-    ctx.globalAlpha *= 0.9
-    pips(ctx, -6.5, 3.5, 3.6, pipCount(p, 1) > 3 ? 2 : 1, look.second)
-    ctx.restore()
-  }
   if (v === 'crystal') {
     // A gem set in the brow.
     paintGem(ctx, FACE_X, -5.5, 1.8, 2.6, 0, look.second, p)
   }
   muzzle(ctx, p)
-  const masked = v === 'cat'
+  const masked = !!s.glowEyes
   if (!masked) {
     eyes(ctx, p)
     mouth(ctx, p)
@@ -950,14 +1001,18 @@ function head(ctx: Ctx, p: Paint, k: DrawKit): void {
 /** Glints on Nyx's spikes: one travels along them now and then (and on the signature); spine frame. */
 function glints(ctx: Ctx, p: Paint): void {
   if (p.f.still) return
-  const i = Math.floor(p.t * 0.7) % SPIKES.length
-  const k = pulse((p.t * 0.7) % 1, 0.35)
+  const i = Math.floor(p.t * 1.1) % SPIKES.length
+  const k = pulse((p.t * 1.1) % 1, 0.45)
   const [x, y, w] = SPIKES[i]
-  sparkle(ctx, x + 0.5, y - w * 1.2, 2.5 * k)
+  ctx.save()
+  ctx.shadowColor = '#ffffff'
+  ctx.shadowBlur = 6
+  sparkle(ctx, x + 0.5, y - w * 1.3, 4.5 * k)
+  ctx.restore()
   if (p.sig > 0) {
     const j = Math.min(SPIKES.length - 1, Math.floor(clamp(p.f.fidget) * SPIKES.length))
     const [sx, sy, sw] = SPIKES[j]
-    sparkle(ctx, sx, sy - sw * 1.4, 5 * p.sig)
+    sparkle(ctx, sx, sy - sw * 1.4, 6.5 * p.sig)
   }
 }
 
@@ -965,7 +1020,10 @@ function glints(ctx: Ctx, p: Paint): void {
 function effects(ctx: Ctx, p: Paint, m: BodyMetrics): void {
   const { v, f, fl, sig, look, t, r } = p
   if (f.still) return
-  const mouthAt = apply(r.head, { x: FACE_X + 7, y: 4 })
+  const mouthAt = apply(
+    r.head,
+    v === 'dragon' ? { x: SNOUT.x + SNOUT.rx - 0.5, y: SNOUT.y + 1.5 } : { x: FACE_X + 7, y: 4 },
+  )
   if (v === 'sprout' && fl.cheer && fl.age < 1.2) {
     // A burst of little leaves that flutter down.
     for (let i = 0; i < 5; i++) {
@@ -1049,7 +1107,7 @@ function effects(ctx: Ctx, p: Paint, m: BodyMetrics): void {
   if (v === 'dragon' && sig > 0.1) {
     // Smoke rings puff from the nostrils.
     const k = clamp(f.fidget)
-    const nose = apply(r.head, { x: FACE_X + 5, y: 2 })
+    const nose = apply(r.head, { x: SNOUT.x + 2, y: SNOUT.y - 2.5 })
     for (let i = 0; i < 2; i++) {
       const q = clamp(k * 1.6 - i * 0.4)
       if (q <= 0 || q >= 1) continue

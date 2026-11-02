@@ -27,6 +27,7 @@ const POSE: Pose = {
   mouthOpen: 0,
   smile: 0.35,
   blush: 0.15,
+  rear: 0,
 }
 
 const frame = (patch: Partial<Frame> = {}): Frame => ({

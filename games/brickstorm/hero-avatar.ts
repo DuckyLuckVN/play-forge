@@ -172,6 +172,11 @@ export interface Pose {
   /** −1 frown … +1 big smile. */
   smile: number
   blush: number
+  /**
+   * How far a four-legged body sits up, 0..1: 0 on all fours, about 0.55 sitting up to hold the ball, 1 rearing up
+   * on its hind legs. Blended like the rest, so the body never snaps between moods; bodies on two legs ignore it.
+   */
+  rear: number
 }
 
 const BASE: Pose = {
@@ -189,6 +194,7 @@ const BASE: Pose = {
   mouthOpen: 0,
   smile: 0.35,
   blush: 0.15,
+  rear: 0,
 }
 
 export type EyeStyle = 'normal' | 'happy' | 'squeeze' | 'wide' | 'xx'
@@ -234,6 +240,18 @@ const HOLD_REACH = 12
 const HOLDS = new Set<Mood>(['idle', 'aim', 'worried', 'watch'])
 /** Hands can hold once the KO fall is this low: the pose blend only approaches 0, it never quite gets there. */
 const HOLD_FALL = 0.02
+
+/** Sitting up to hold the ball (or aim, throw, pump). */
+const REAR_HOLD = 0.55
+/** Moods that rear right up on the hind legs. */
+const REAR_UP = new Set<Mood>(['cheer', 'cast', 'revive', 'wow'])
+/** Pose `rear` target: on all fours without a ball (or sad), sitting up with one, rearing up to celebrate. */
+export function rearFor(mood: Mood, hasBall: boolean): number {
+  if (REAR_UP.has(mood)) return 1
+  if (mood === 'pump') return 0.75
+  if (mood === 'sad' || mood === 'ko' || (!hasBall && (mood === 'idle' || mood === 'watch'))) return 0
+  return REAR_HOLD
+}
 
 export class HeroAvatar {
   hero: HeroDef
@@ -825,6 +843,7 @@ export class HeroAvatar {
         this.eyes = 'happy'
         break
     }
+    p.rear = rearFor(this.mood, this.hold !== null)
     // Running overrides arms and adds a forward lean.
     if (this.moving && this.mood !== 'ko') {
       const s = Math.sin(this.stride)

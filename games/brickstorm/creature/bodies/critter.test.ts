@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { EyeStyle, Mood, Pose } from '../../hero-avatar'
-import { HeroAvatar, type AvatarContext } from '../../hero-avatar'
+import { HeroAvatar, rearFor, type AvatarContext } from '../../hero-avatar'
 import type { HeroId } from '../../sim/heroes'
 import { fakeCanvas, installPath2D } from '../../test-canvas'
 import { solveHands } from '../hands'
@@ -28,9 +28,18 @@ const POSE: Pose = {
   mouthOpen: 0,
   smile: 0.35,
   blush: 0.15,
+  rear: 0,
 }
 
+/** A frame; the pose's `rear` follows the avatar's target for the mood and ball unless the patch sets one. */
 const frame = (patch: Partial<Frame> = {}): Frame => ({
+  ...base(patch),
+  pose: {
+    ...(patch.pose ?? POSE),
+    rear: patch.pose?.rear || rearFor(patch.mood ?? 'idle', !!patch.hold),
+  },
+})
+const base = (patch: Partial<Frame>): Frame => ({
   t: 1.3,
   still: false,
   mood: 'idle',
@@ -165,33 +174,26 @@ describe('critter body (Sprig, Kage, Aurelia, Nyx, Drakon, Lucky)', () => {
     }
   })
 
-  it('draws each variant × every mood × eyes without throwing, back paw before front, with its hat', () => {
-    // Every eye style once per mood, and every still × fidget × age combination with normal eyes.
-    const cases: Array<[EyeStyle, boolean, number, number]> = [
-      ...EYES.map((e): [EyeStyle, boolean, number, number] => [e, false, 0, 0.4]),
-      ...[false, true].flatMap((still) =>
-        [0, 0.5].flatMap((fidget) =>
-          [0.05, 0.4, 1.5].map((age): [EyeStyle, boolean, number, number] => ['normal', still, fidget, age]),
-        ),
+  it('draws each variant in every mood, eye style, still and fidget case without throwing, back paw first, with its hat', () => {
+    // About 40 draws per variant: every mood once, the other eye styles on idle, and still × fidget on the moods
+    // with one-shots (plus a cheer at three ages) — the same code paths as the full product, at a fraction of the cost.
+    const cases: Array<Partial<Frame>> = [
+      ...MOODS.map((mood) => ({ mood })),
+      ...EYES.filter((e) => e !== 'normal').map((eyes) => ({ eyes })),
+      ...(['idle', 'cheer', 'pump', 'hurt', 'ko'] as Mood[]).flatMap((mood) =>
+        [false, true].flatMap((still) => [0, 0.5].map((fidget) => ({ mood, still, fidget, moodAge: 0.3 }))),
       ),
+      ...[0.05, 0.6, 1.5].map((moodAge) => ({ mood: 'cheer' as Mood, moodAge })),
     ]
     for (const [, look] of LOOKS)
-      for (const mood of MOODS)
-        for (const [eyes, still, fidget, moodAge] of cases) {
-          const f = frame({
-            mood,
-            eyes,
-            still,
-            fidget,
-            moodAge,
-            pose: { ...POSE, fall: mood === 'ko' ? 1 : 0 },
-          })
-          const { kit, calls } = kitFor(look, f)
-          expect(() => critter.draw(fakeCanvas(), look, f, kit)).not.toThrow()
-          expect(calls.indexOf('back')).toBeLessThan(calls.indexOf('front'))
-          expect(calls).toContain('hat')
-        }
-  }, 20_000)
+      for (const c of cases) {
+        const f = frame({ moodAge: 0.4, ...c, pose: { ...POSE, fall: c.mood === 'ko' ? 1 : 0 } })
+        const { kit, calls } = kitFor(look, f)
+        expect(() => critter.draw(fakeCanvas(), look, f, kit)).not.toThrow()
+        expect(calls.indexOf('back')).toBeLessThan(calls.indexOf('front'))
+        expect(calls).toContain('hat')
+      }
+  })
 
   it('draws its paws without throwing, open or closed', () => {
     for (const [, look] of LOOKS) {
@@ -317,6 +319,41 @@ describe('critter body (Sprig, Kage, Aurelia, Nyx, Drakon, Lucky)', () => {
     expect(back.y).toBeLessThan(m.socketB.y - 6)
     expect(back.x).toBeGreaterThan(m.head.x + 6)
     expect(critter.metrics(kage, frame({ hold: HOLD, holding: true })).head.ry).toBeGreaterThan(m.head.ry)
+  })
+
+  it('never snaps its posture between moods: the head glides across cheer → idle and throw → watch', () => {
+    // Sprig: no flip or hop on its cheer, so any jump would be the rear-up snapping.
+    const h = { x: 100, y: 740, r: 5 }
+    /** The head each frame (the first metrics call of each draw). */
+    const steps = (a: HeroAvatar, seconds: number, c: AvatarContext) => {
+      const out: Array<{ x: number; y: number }> = []
+      for (let t = 0; t < seconds; t += 1 / 60) {
+        a.update(1 / 60, c)
+        const orig = critter.metrics
+        let head: { x: number; y: number } | null = null
+        critter.metrics = (l, f) => {
+          const m = orig(l, f)
+          head ??= m.head
+          return m
+        }
+        a.draw(fakeCanvas(), 760)
+        critter.metrics = orig
+        out.push(head!)
+      }
+      return out
+    }
+    const maxStep = (ps: Array<{ x: number; y: number }>) =>
+      Math.max(...ps.slice(1).map((p, i) => Math.hypot(p.x - ps[i].x, p.y - ps[i].y)))
+    const a = new HeroAvatar('ranger')
+    run(a, 0.5, actx({ hold: h }))
+    a.setMood('cheer')
+    const cheer = steps(a, 2.2, actx({ hold: h }))
+    expect(a.mood).toBe('idle')
+    expect(maxStep(cheer.slice(30))).toBeLessThan(1.5)
+    a.setMood('throw')
+    const thrown = steps(a, 1.2, actx({ watch: { x: 200, y: 300 } }))
+    expect(a.mood).toBe('watch')
+    expect(maxStep(thrown)).toBeLessThan(1.5)
   })
 
   it('holds the ball exactly in the front paw, mirrored and bigger too', () => {

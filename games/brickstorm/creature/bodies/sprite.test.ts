@@ -28,6 +28,7 @@ const POSE: Pose = {
   mouthOpen: 0,
   smile: 0.35,
   blush: 0.15,
+  rear: 0,
 }
 
 const frame = (patch: Partial<Frame> = {}): Frame => ({
@@ -156,26 +157,25 @@ describe('sprite body (Zip, Ember, Volta, Lumi, Boo)', () => {
     }
   })
 
-  it('draws each variant × every mood × eyes without throwing, back hand before front, with its hat', () => {
+  it('draws each variant in every mood, eye style, still and fidget case without throwing, back hand first, with its hat', () => {
+    // About 40 draws per variant: every mood once, the other eye styles on idle, and still × fidget on the moods
+    // with one-shots (plus a cheer at three ages) — the same code paths as the full product, at a fraction of the cost.
+    const cases: Array<Partial<Frame>> = [
+      ...MOODS.map((mood) => ({ mood })),
+      ...EYES.filter((e) => e !== 'normal').map((eyes) => ({ eyes })),
+      ...(['idle', 'cheer', 'pump', 'hurt', 'ko'] as Mood[]).flatMap((mood) =>
+        [false, true].flatMap((still) => [0, 0.5].map((fidget) => ({ mood, still, fidget, moodAge: 0.3 }))),
+      ),
+      ...[0.05, 0.6, 1.5].map((moodAge) => ({ mood: 'cheer' as Mood, moodAge })),
+    ]
     for (const [, look] of LOOKS)
-      for (const mood of MOODS)
-        for (const eyes of EYES)
-          for (const still of [false, true])
-            for (const fidget of [0, 0.5])
-              for (const moodAge of [0.05, 0.4, 1.5]) {
-                const f = frame({
-                  mood,
-                  eyes,
-                  still,
-                  fidget,
-                  moodAge,
-                  pose: { ...POSE, fall: mood === 'ko' ? 1 : 0 },
-                })
-                const { kit, calls } = kitFor(look, f)
-                expect(() => sprite.draw(fakeCanvas(), look, f, kit)).not.toThrow()
-                expect(calls.indexOf('back')).toBeLessThan(calls.indexOf('front'))
-                expect(calls).toContain('hat')
-              }
+      for (const c of cases) {
+        const f = frame({ moodAge: 0.4, ...c, pose: { ...POSE, fall: c.mood === 'ko' ? 1 : 0 } })
+        const { kit, calls } = kitFor(look, f)
+        expect(() => sprite.draw(fakeCanvas(), look, f, kit)).not.toThrow()
+        expect(calls.indexOf('back')).toBeLessThan(calls.indexOf('front'))
+        expect(calls).toContain('hat')
+      }
   })
 
   it('floating hands stay near the body (within four hand radii) in every free pose', () => {

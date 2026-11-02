@@ -87,9 +87,9 @@ export const CREATURE_LOOKS: Partial<Record<HeroId, CreatureLook>> = {
   ninja: {
     body: 'critter',
     variant: 'cat',
-    main: '#4a4e69',
-    second: '#22243a',
-    hand: '#6c7093',
+    main: '#8388b6',
+    second: '#2c2f4a',
+    hand: '#c3c6e6',
     eye: '#ffe066',
     signature: 'pawlick',
   },

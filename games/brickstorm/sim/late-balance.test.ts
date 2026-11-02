@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import { DANGER_ROW } from './config'
 import { BREACH_CAP, brickBreach, breachUnit } from './health'
-import { CAP_KNEE, hpCap } from './rows'
+import { CAP_GROWTH, CAP_KNEE, hpCap, KICK_FROM } from './rows'
 import { createRun } from './run'
 import { brick, empty } from './testing'
 
@@ -34,6 +34,16 @@ describe('hp cap and your build', () => {
 
   it('more balls still help a strong build: the cap grows slower than the ball count', () => {
     expect(capFor(300, {}) / capFor(150, {})).toBeLessThan(1.8)
+  })
+})
+
+describe('the very late game', () => {
+  it('past KICK_FROM bricks toughen faster: a strong build still meets its end', () => {
+    const at = (turn: number) => capFor(150, {}, turn)
+    // Before the kick only the usual growth applies.
+    expect(at(KICK_FROM) / at(KICK_FROM - 10)).toBeCloseTo(CAP_GROWTH ** 10, 1)
+    // After it, clearly more.
+    expect(at(KICK_FROM + 20) / at(KICK_FROM)).toBeGreaterThan(CAP_GROWTH ** 20 * 1.4)
   })
 })
 

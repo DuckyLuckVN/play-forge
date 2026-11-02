@@ -179,6 +179,9 @@ const HP_PER_BALL_LATE = 1.7
 
 /** From LATE_FROM the cap also compounds by this much a turn: a strong build buys time, not forever. */
 export const CAP_GROWTH = 1.024
+/** From this turn (only strong builds get here) the cap compounds by LATE_KICK a turn on top. */
+export const KICK_FROM = 135
+const LATE_KICK = 1.025
 /**
  * Firepower (balls × skill damage) where the cap stops tracking your build one
  * for one: about a typical turn-100 build. Below it nothing changes; above it
@@ -200,7 +203,8 @@ function capPower(power: number): number {
 export function hpCap(state: RunState): number {
   const perBall =
     (HP_PER_BALL + (HP_PER_BALL_LATE - HP_PER_BALL) * lateHardness(state.turn)) *
-    CAP_GROWTH ** Math.max(0, state.turn - LATE_FROM)
+    CAP_GROWTH ** Math.max(0, state.turn - LATE_FROM) *
+    LATE_KICK ** Math.max(0, state.turn - KICK_FROM)
   const power = state.ballCount * modsOf(state.boosts).damageMult
   return Math.max(1, Math.round(perBall * capPower(power)))
 }

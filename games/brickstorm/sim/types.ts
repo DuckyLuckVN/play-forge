@@ -143,6 +143,9 @@ export type BossRole =
   /** A stone block guarding a weak point. */
   | 'ward'
 
+/** A side of a brick (or the boss) a ball struck. */
+export type Face = 'top' | 'bottom' | 'left' | 'right'
+
 export interface Brick {
   id: number
   col: number
@@ -156,6 +159,8 @@ export interface Brick {
   role?: BossRole
   /** Turns left before a timed brick acts (hatches, melts…). */
   timer?: number
+  /** Thorn / spike bricks: the faces that carry spikes. Missing = every face (older saves). */
+  spikes?: Face[]
   /** Not a square: a triangle (named by its right-angle corner) or a round orb. Missing = square. */
   shape?: BrickShape
 }

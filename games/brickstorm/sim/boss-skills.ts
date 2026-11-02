@@ -21,11 +21,11 @@ import { CELL } from './config'
 import { dims } from './dims'
 import { breachUnit, hurtHero } from './health'
 import { cellCenter } from './rows'
+import { armSpikes, isSpiked, SPIKE_FACES, THORN_FACES } from './spikes'
 import type { DamageSource } from './damage'
-import type { Ball, Boss, BossSkillId, BossTier, Brick, RunState } from './types'
+import type { Ball, Boss, BossSkillId, BossTier, Brick, Face, RunState } from './types'
 
-/** Which side of the boss a ball struck. */
-export type Face = 'top' | 'bottom' | 'left' | 'right'
+export type { Face } from './types'
 
 export interface BossHit {
   source: DamageSource
@@ -66,7 +66,7 @@ export interface BossSkill {
   /** How fast a ball may move right now (1 = full speed). */
   slow?(s: RunState, boss: Boss, ball: Ball): number
   /** A brick it summoned took damage. */
-  roleHit?(s: RunState, boss: Boss, brick: Brick, amount: number, source: DamageSource): void
+  roleHit?(s: RunState, boss: Boss, brick: Brick, amount: number, source: DamageSource, face?: Face): void
   /** A brick it summoned was destroyed. */
   roleKill?(s: RunState, boss: Boss, brick: Brick): void
   /** The hero lost `amount` health (a crash or an attack). */
@@ -315,7 +315,7 @@ export const BOSS_SKILLS: Record<BossSkillId, BossSkill> = {
     tier: 3,
     turn: (s, boss) => {
       if (!every(s, boss, 3)) return
-      summon(s, pickCells(s, open(s, 1), 2), minionHp(s, 0.5), { role: 'spike' })
+      armSpikes(s, summon(s, pickCells(s, open(s, 1), 2), minionHp(s, 0.5), { role: 'spike' }), SPIKE_FACES)
       announce(s, 'spikes')
     },
   },
@@ -745,19 +745,24 @@ export const BOSS_SKILLS: Record<BossSkillId, BossSkill> = {
     // Spiky bricks across the lower board: every ball hit on one costs health.
     // Fire, bombs and lasers break them safely.
     spawn: (s) => {
-      summon(s, pickCells(s, low(s), 3), minionHp(s, 0.8), { role: 'thorn' })
+      armSpikes(s, summon(s, pickCells(s, low(s), 3), minionHp(s, 0.8), { role: 'thorn' }), THORN_FACES)
       s.events.push({ type: 'bossAttack', id: 'thorns', ...bossCenter(s) })
     },
     turn: (s, boss) => {
       const missing = 3 - roleBricks(s, 'thorn').length
       if (missing > 0 && every(s, boss, 3)) {
-        summon(s, pickCells(s, low(s), missing), minionHp(s, 0.8), { role: 'thorn' })
+        armSpikes(
+          s,
+          summon(s, pickCells(s, low(s), missing), minionHp(s, 0.8), { role: 'thorn' }),
+          THORN_FACES,
+        )
         announce(s, 'thorns')
       }
     },
     launch: (_s, boss) => setMem(boss, 'thornHurt', 0),
-    roleHit: (s, boss, brick, _amount, source) => {
+    roleHit: (s, boss, brick, _amount, source, face) => {
       if (brick.role !== 'thorn' || source !== 'ball') return
+      if (!isSpiked(brick, face)) return
       const done = mem(boss, 'thornHurt')
       const dmg = Math.min(breachUnit(s.turn) * THORN_HIT, s.maxHp * THORN_CAP - done)
       if (dmg <= 0) return
@@ -813,12 +818,16 @@ export const BOSS_SKILLS: Record<BossSkillId, BossSkill> = {
     turn: (s, boss) => {
       if (!every(s, boss, 4)) return
       const plain = s.bricks.filter((b) => b.kind === 'normal' && !b.role).sort((a, b) => b.row - a.row)
-      for (const b of plain.slice(0, 2)) b.role = 'thorn'
+      for (const b of plain.slice(0, 2)) {
+        b.role = 'thorn'
+        b.spikes = ['bottom'] // a curse sprouts from below, where the balls come from
+      }
       if (plain.length) s.events.push({ type: 'bossAttack', id: 'hex', ...bossCenter(s) })
     },
     launch: (_s, boss) => setMem(boss, 'thornHurt', 0),
-    roleHit: (s, boss, brick, _amount, source) => {
+    roleHit: (s, boss, brick, _amount, source, face) => {
       if (brick.role !== 'thorn' || source !== 'ball' || boss.traits.includes('thorns')) return
+      if (!isSpiked(brick, face)) return
       const done = mem(boss, 'thornHurt')
       const dmg = Math.min(breachUnit(s.turn) * THORN_HIT, s.maxHp * THORN_CAP - done)
       if (dmg <= 0) return

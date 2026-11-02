@@ -24,8 +24,8 @@ import { damageBrick } from './damage'
 import { cellCenter } from './rows'
 import { canRecall, drainEvents, fire, recall, startNextTurn, step } from './run'
 import { useHelper } from './meta'
-import { brick, empty } from './testing'
-import type { Ball, BossSkillId, RunState } from './types'
+import { ballAt, brick, empty } from './testing'
+import type { BossSkillId, RunState } from './types'
 
 /** A turn-30 run with a boss that has exactly `skills`, at the top, waiting to aim. */
 function fight(skills: BossSkillId[], shape = 'block', seed = 1): RunState {
@@ -46,20 +46,6 @@ const hit = (s: RunState, amount: number, source: 'ball' | 'fire' | 'blast' | 'b
   damageBrick(s, bossParts(s)[0], amount, source, 0, more)
 const left = (s: RunState) => Math.min(...bossParts(s).map((b) => b.col))
 const top = (s: RunState) => Math.min(...bossParts(s).map((b) => b.row))
-const ballAt = (x: number, y: number, vx = 0, vy = -600): Ball => ({
-  x,
-  y,
-  vx,
-  vy,
-  status: 'flying',
-  kind: 'normal',
-  r: 7,
-  split: false,
-  inside: [],
-  pierceLeft: 0,
-  bounceBonus: 0,
-  lastBrick: -1,
-})
 const skillEvents = (s: RunState, id: BossSkillId) =>
   drainEvents(s).filter((e) => e.type === 'bossSkill' && e.id === id).length
 
@@ -123,6 +109,7 @@ describe('boss skills: summon', () => {
     turns(s, 3)
     expect(roleBricks(s, 'spike')).toHaveLength(2)
     const spike = roleBricks(s, 'spike')[0]
+    spike.spikes = ['bottom'] // the ball comes from below
     const c = cellCenter(spike.col, spike.row)
     s.phase = 'volley'
     s.balls = [ballAt(c.x, c.y + CELL)]
@@ -570,7 +557,7 @@ describe('boss attacks: they hurt the hero', () => {
     const thorns = roleBricks(s, 'thorn')
     expect(thorns.length).toBeGreaterThan(0)
     const hp = s.hp
-    damageBrick(s, thorns[0], 1, 'ball')
+    damageBrick(s, thorns[0], 1, 'ball', 0, { face: thorns[0].spikes![0] })
     expect(s.hp).toBeLessThan(hp)
     expect(drainEvents(s).some((e) => e.type === 'heroHit')).toBe(true)
     const after = s.hp
@@ -583,7 +570,7 @@ describe('boss attacks: they hurt the hero', () => {
     const s = fight(['thorns'])
     const t = roleBricks(s, 'thorn')[0]
     t.hp = t.maxHp = 1e9
-    for (let i = 0; i < 500; i++) damageBrick(s, t, 1, 'ball')
+    for (let i = 0; i < 500; i++) damageBrick(s, t, 1, 'ball', 0, { face: t.spikes![0] })
     expect(s.maxHp - s.hp).toBeLessThanOrEqual(s.maxHp * 0.15 + 1e-6)
   })
 
@@ -622,6 +609,7 @@ describe('boss attacks: they hurt the hero', () => {
     s.boss!.turn = s.turn - 4
     bossTurn(s)
     expect(low.role).toBe('thorn')
+    expect(low.spikes).toEqual(['bottom'])
   })
 
   it('drain heals the boss from health the hero loses', () => {

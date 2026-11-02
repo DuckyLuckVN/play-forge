@@ -41,6 +41,7 @@ import type { Face } from './boss-skills'
 import { brickShape, cellCenter, hitShapes, hpStepStart, spawnRow } from './rows'
 import { HEART_HEAL, heal, heroFreezes, heroHitMult, heroTurnStart, resolveBreaches } from './health'
 import { DEFAULT_HERO, HEROES, heroOf, type HeroId } from './heroes'
+import { isSpiked } from './spikes'
 import { isStormTurn, stormWave } from './storm'
 import type { Ball, Brick, Pickup, RunState, SimEvent } from './types'
 
@@ -276,7 +277,7 @@ function bounceOffBricks(s: RunState, ball: Ball, mods: Mods, bricks: Brick[]): 
   if (touch === 'pass') return false
   if (touch === 'hit') hitBrick(s, ball, brick, mods, ball.kind === 'fire' ? 2 : 1, face)
   else s.events.push({ type: 'bossBlock', x: ball.x, y: ball.y })
-  if (brick.role === 'spike') {
+  if (brick.role === 'spike' && isSpiked(brick, face)) {
     ball.status = 'landed'
     s.events.push({ type: 'pop', x: ball.x, y: ball.y })
     return true

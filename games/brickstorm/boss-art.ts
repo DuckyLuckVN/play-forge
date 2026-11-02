@@ -9,7 +9,8 @@ import { phased } from './sim/boss-skills'
 import { BRICK_INSET, CELL, TOP } from './sim/config'
 import { dims } from './sim/dims'
 import { brickRect, cellCenter, hitRects } from './sim/rows'
-import type { Boss, BossRole, Brick, Rect, RunState } from './sim/types'
+import { isSpiked } from './sim/spikes'
+import type { Boss, BossRole, Brick, Face, Rect, RunState } from './sim/types'
 
 /** What drawBoss needs from the run; the boss card's preview fakes this. */
 export type BossView = Pick<RunState, 'boss' | 'bricks'> & Partial<Pick<RunState, 'cols' | 'rows' | 'turn'>>
@@ -1280,6 +1281,34 @@ const ROLE_COLOR: Record<BossRole, string> = {
   ward: '#6c7a89',
 }
 
+/** Spike teeth along each spiked face of `b` (only those faces bite), `inset` px in from the edge. */
+function drawSpikes(
+  ctx: CanvasRenderingContext2D,
+  b: Brick,
+  r: { x: number; y: number; w: number; h: number },
+  inset: number,
+  len: number,
+): void {
+  const n = 4
+  const edges: Record<Face, (t: number) => [number, number, number, number]> = {
+    top: (t) => [r.x + r.w * t, r.y + inset, 0, -1],
+    bottom: (t) => [r.x + r.w * t, r.y + r.h - inset, 0, 1],
+    left: (t) => [r.x + inset, r.y + r.h * t, -1, 0],
+    right: (t) => [r.x + r.w - inset, r.y + r.h * t, 1, 0],
+  }
+  for (const face of Object.keys(edges) as Face[]) {
+    if (!isSpiked(b, face)) continue
+    for (let i = 0; i < n; i++) {
+      const [x0, y0, dx, dy] = edges[face]((i + 0.5) / n)
+      ctx.beginPath()
+      ctx.moveTo(x0 - dy * 3.5, y0 - dx * 3.5)
+      ctx.lineTo(x0 + dx * len, y0 + dy * len)
+      ctx.lineTo(x0 + dy * 3.5, y0 + dx * 3.5)
+      ctx.fill()
+    }
+  }
+}
+
 /** A brick a boss summoned, in its role's colours with a glyph; returns false to also draw its hp. */
 export function drawRoleBrick(ctx: CanvasRenderingContext2D, b: Brick, time: number): boolean {
   const role = b.role
@@ -1351,22 +1380,7 @@ export function drawRoleBrick(ctx: CanvasRenderingContext2D, b: Brick, time: num
       ctx.fill()
       ctx.shadowBlur = 0
       ctx.fillStyle = '#c77dff'
-      const n = 4
-      for (let i = 0; i < n; i++) {
-        const t2 = (i + 0.5) / n
-        for (const [x0, y0, dx, dy] of [
-          [r.x + r.w * t2, r.y + 3, 0, -1],
-          [r.x + r.w * t2, r.y + r.h - 3, 0, 1],
-          [r.x + 3, r.y + r.h * t2, -1, 0],
-          [r.x + r.w - 3, r.y + r.h * t2, 1, 0],
-        ]) {
-          ctx.beginPath()
-          ctx.moveTo(x0 - dy * 3.5, y0 - dx * 3.5)
-          ctx.lineTo(x0 + dx * 7, y0 + dy * 7)
-          ctx.lineTo(x0 + dy * 3.5, y0 + dx * 3.5)
-          ctx.fill()
-        }
-      }
+      drawSpikes(ctx, b, r, 3, 7)
       ctx.restore()
       return false
     }
@@ -1448,19 +1462,7 @@ export function drawRoleBrick(ctx: CanvasRenderingContext2D, b: Brick, time: num
       }
       break
     case 'spike':
-      for (let i = 0; i < 4; i++) {
-        const x = r.x + 8 + (i * (r.w - 16)) / 3
-        for (const [y0, y1] of [
-          [r.y, r.y - 7],
-          [r.y + r.h, r.y + r.h + 7],
-        ]) {
-          ctx.beginPath()
-          ctx.moveTo(x - 4, y0)
-          ctx.lineTo(x, y1)
-          ctx.lineTo(x + 4, y0)
-          ctx.fill()
-        }
-      }
+      drawSpikes(ctx, b, r, 0, 7)
       break
     case 'totem':
       ctx.globalAlpha = 0.6 + 0.4 * Math.sin(time * 4)

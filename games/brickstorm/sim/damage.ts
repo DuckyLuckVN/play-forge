@@ -57,7 +57,7 @@ export function damageBrick(
   brick.hp -= brick.kind === 'armored' && source === 'ball' ? Math.min(amount, 1) : amount
   // XP for the share of the brick knocked off; overkill earns nothing.
   earnXp(s, (XP_PER_BRICK * (before - Math.max(0, brick.hp))) / brick.maxHp)
-  if (brick.role) bossRoleHit(s, brick, amount, source)
+  if (brick.role) bossRoleHit(s, brick, amount, source, hit.face)
   if (brick.hp <= 0) killBrick(s, brick, depth)
 }
 

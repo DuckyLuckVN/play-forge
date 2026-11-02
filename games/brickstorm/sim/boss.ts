@@ -272,10 +272,16 @@ export function bossForce(s: RunState, ball: Ball, dt: number): number {
 }
 
 /** A brick a skill summoned took damage. */
-export function bossRoleHit(s: RunState, brick: Brick, amount: number, source: DamageSource): void {
+export function bossRoleHit(
+  s: RunState,
+  brick: Brick,
+  amount: number,
+  source: DamageSource,
+  face?: Face,
+): void {
   const boss = s.boss
   if (!boss) return
-  for (const skill of skillsOf(boss)) skill.roleHit?.(s, boss, brick, amount, source)
+  for (const skill of skillsOf(boss)) skill.roleHit?.(s, boss, brick, amount, source, face)
 }
 
 /** A brick a skill summoned was destroyed. */

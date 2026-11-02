@@ -180,8 +180,8 @@ export const VI: Dictionary = {
   'Mirror Image: 2 decoys block a quarter of hits; breaking one hurts it.':
     'Phân thân: 2 bản sao chặn một phần tư cú đánh; phá một bản sao sẽ làm nó mất máu.',
   Spiked: 'Gai Góc',
-  'Spikes: spike bricks pop any ball that hits them for this volley.':
-    'Gai: gạch gai làm vỡ bóng chạm vào nó trong loạt bắn này.',
+  'Spikes: spike bricks pop any ball that hits a spiked side, for this volley.':
+    'Gai: gạch gai làm vỡ bóng chạm vào mặt có gai, trong loạt bắn này.',
   Splitting: 'Phân Bào',
   'Splitter Spawn: summons a splitter brick every turn.': 'Gạch tách: gọi một viên gạch tách đôi mỗi lượt.',
   Totemic: 'Vật Tổ',
@@ -605,8 +605,8 @@ export const VI: Dictionary = {
   '−{n} ♥ next turn': '−{n} ♥ lượt tới',
   'Tap me!': 'Chạm vào tôi!',
   Thorned: 'Gai Độc',
-  'Cursed Thorns: thorn bricks hurt you for every ball that hits them. Fire, bombs and lasers break them safely.':
-    'Gai Nguyền: mỗi quả bóng chạm gạch gai làm bạn mất máu. Lửa, bom và laser phá chúng an toàn.',
+  'Cursed Thorns: thorn bricks hurt you for every ball that hits a spiked side. Bare sides, fire, bombs and lasers are safe.':
+    'Gai Nguyền: mỗi quả bóng chạm mặt có gai làm bạn mất máu. Mặt trơn, lửa, bom và laser đều an toàn.',
   Bombarding: 'Pháo Kích',
   'Barrage: fires 2 missiles every 2 turns. They fall fast and hurt double if they reach the line. Shoot them down!':
     'Mưa Tên Lửa: cứ 2 lượt bắn 2 tên lửa. Chúng rơi nhanh và gây gấp đôi sát thương nếu chạm vạch. Bắn hạ chúng!',
@@ -614,8 +614,8 @@ export const VI: Dictionary = {
   'Ground Slam: every 3 turns all bricks drop a row, and you get hurt if any are near the line.':
     'Dậm Đất: cứ 3 lượt mọi viên gạch rơi xuống một hàng, và bạn mất máu nếu có gạch gần vạch.',
   Hexing: 'Ếm Bùa',
-  'Hex: every 4 turns turns the 2 lowest bricks into thorns that hurt you when hit.':
-    'Ếm Bùa: cứ 4 lượt biến 2 viên gạch thấp nhất thành gai, chạm vào là mất máu.',
+  'Hex: every 4 turns turns the 2 lowest bricks into thorns that hurt you when hit from below.':
+    'Ếm Bùa: cứ 4 lượt biến 2 viên gạch thấp nhất thành gai, chạm từ dưới lên là mất máu.',
   Vampiric: 'Hút Máu',
   'Life Drain: heals itself from every bit of health you lose.':
     'Hút Sinh Lực: hồi máu từ mọi lượng máu bạn mất.',

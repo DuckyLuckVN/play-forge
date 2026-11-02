@@ -10,5 +10,11 @@
     "title": "Brickstorm",
     "description": "Aim, launch, and break the storm. Endless solo brick breaker.",
     "players": "1"
+  },
+  {
+    "id": "caro",
+    "title": "Caro",
+    "description": "Five in a row. Play the computer, a friend on one device, or online. Draw on the board together.",
+    "players": "1–2"
   }
 ]

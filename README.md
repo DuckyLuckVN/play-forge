@@ -10,6 +10,7 @@ A collection of fun, interactive mini-games designed to bring people together. P
 | --- | --- | --- |
 | [Snake](https://duckyluckvn.github.io/play-forge/games/snake/) | 1–8 | Eat, grow, outlast. Solo or up to 8 players. |
 | [Brickstorm](https://duckyluckvn.github.io/play-forge/games/brickstorm/) | 1 | Aim, launch, and break the storm. Endless solo brick breaker. |
+| [Caro](https://duckyluckvn.github.io/play-forge/games/caro/) | 1–2 | Five in a row. Play the computer, a friend on one device, or online. Draw on the board together. |
 <!-- games:end -->
 
 - **Online:** the GitHub Pages links above (deployed automatically on every push to `main`).
@@ -55,11 +56,14 @@ engine/                  reusable library, imported as '@forge'
     theme.ts             design tokens: colours for CSS and canvas, player colours
     base.css             shared components: buttons, panels, seats, chips, toasts, countdown
     audio-menu.ts        sound button + music / effects volume popover
+    lang-menu.ts         language button (EN / VI); see core/i18n.ts for translator()
     dom.ts, icons.ts     tiny DOM helper, toasts, inline SVG icons
 launcher/                the game picker page (dist/index.html)
 games/
   games.json             launcher + README listing
   snake/                 main.ts (wiring), sim.ts (rules), render.ts, sounds.ts, cover.svg, tests
+  caro/                  turn-based example: rules.ts, ai.ts (3 levels), sim.ts, whiteboard.ts
+                         (shared drawing on its own transport channel), render.ts, i18n.ts (VI)
 scripts/                 build.mjs (single-file builds), readme.mjs (README games table)
 ```
 

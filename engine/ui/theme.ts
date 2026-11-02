@@ -1,3 +1,5 @@
+import { getLang } from '../core/i18n'
+
 /**
  * Design tokens: the single source of truth for colours. CSS reads them as
  * custom properties (applied by `applyTheme`), canvas renderers import them.
@@ -35,4 +37,6 @@ export function applyTheme(root: HTMLElement = document.documentElement): void {
   for (const [key, value] of Object.entries(theme)) {
     root.style.setProperty(`--pf-${key.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase())}`, value)
   }
+  // Screen readers and fonts follow the chosen language.
+  root.lang = getLang()
 }

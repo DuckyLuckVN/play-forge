@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { HeroAvatar, type AvatarContext, type Mood } from './hero-avatar'
 import { HERO_IDS } from './sim/heroes'
+import { fakeCanvas, installPath2D } from './test-canvas'
 
 vi.mock('@forge/fx/tween', () => ({ prefersReducedMotion: () => false }))
 
@@ -17,26 +18,7 @@ const ctx = (patch: Partial<AvatarContext> = {}): AvatarContext => ({
   ...patch,
 })
 
-/** A canvas context that accepts every call, so drawing can be smoke-tested without a browser. */
-function fakeCanvas(): CanvasRenderingContext2D {
-  const target: Record<string, unknown> = {}
-  const gradient = { addColorStop: () => undefined }
-  return new Proxy(target, {
-    get: (t, k) => (k in t ? t[k as string] : () => gradient),
-    set: (t, k, v) => {
-      t[k as string] = v
-      return true
-    },
-  }) as unknown as CanvasRenderingContext2D
-}
-
-// Node has no Path2D: a stand-in that records nothing.
-;(globalThis as { Path2D?: unknown }).Path2D ??= class {
-  moveTo() {}
-  lineTo() {}
-  quadraticCurveTo() {}
-  closePath() {}
-}
+installPath2D()
 
 const run = (a: HeroAvatar, seconds: number, c = ctx()) => {
   for (let t = 0; t < seconds; t += 1 / 60) a.update(1 / 60, c)

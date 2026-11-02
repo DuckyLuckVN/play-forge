@@ -144,7 +144,7 @@ class Spring {
 }
 
 /** Everything that blends between poses (angles in radians, 0 = arm hanging down, + = forward). */
-interface Pose {
+export interface Pose {
   crouch: number
   lean: number
   sF: number
@@ -182,7 +182,7 @@ const BASE: Pose = {
   blush: 0.15,
 }
 
-type EyeStyle = 'normal' | 'happy' | 'squeeze' | 'wide' | 'xx'
+export type EyeStyle = 'normal' | 'happy' | 'squeeze' | 'wide' | 'xx'
 
 /** How long each passing mood lasts (seconds) before going back to the base mood. */
 const MOOD_LIFE: Partial<Record<Mood, number>> = {

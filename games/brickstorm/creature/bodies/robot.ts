@@ -16,6 +16,7 @@ import {
   box,
   clamp,
   darkOf,
+  easeOut,
   ell,
   gloss,
   group,
@@ -24,6 +25,7 @@ import {
   look as wander,
   mix,
   paint,
+  smooth,
   ticks,
 } from '../paint'
 import type { BodyMetrics, BodyType, CreatureLook, DrawKit, Frame, HeadBox } from '../types'
@@ -245,12 +247,26 @@ function bombHead(ctx: Ctx, { look, f, t, hy }: HeadPaint): void {
   ctx.globalAlpha = 1
 }
 
-/** Gizmo's gear turn: a slow steady turn, a whir on cheer and the signature, spinning down on KO. */
-function gearTurn(f: Frame): number {
+/** The gear's look repeats every half turn (10 teeth, 4 bolts), so whole extra half turns end where they began. */
+const HALF = Math.PI
+/** Steady turn speed (rad/s). */
+const GEAR_SPEED = 0.6
+
+/**
+ * Gizmo's gear turn, always forward: a steady turn plus a whir of whole half turns on cheer (one turn), pump (half a
+ * turn) and the signature (two turns), so nothing jumps back when the mood ends. On KO it whirs and spins down.
+ */
+export function gearTurn(f: Frame): number {
   if (f.still) return 0
-  if (f.mood === 'ko') return 6 * (1 - Math.exp(-f.moodAge * 1.6))
-  const fl = flourish(f)
-  return f.t * 0.6 + 7 * fl.k * Math.min(f.moodAge, 1) + 9 * sigOf(f) * clamp(f.fidget)
+  const a = f.moodAge
+  if (f.mood === 'ko') {
+    // From the steady angle where the KO began: a burst of speed that decays (4 half turns in all).
+    return (f.t - a) * GEAR_SPEED + 4 * HALF * (1 - Math.exp(-a * 1.6))
+  }
+  const base = f.t * GEAR_SPEED
+  const whir =
+    f.mood === 'cheer' ? 2 * HALF * easeOut(a / 0.9) : f.mood === 'pump' ? HALF * easeOut(a / 0.4) : 0
+  return base + whir + 4 * HALF * smooth(clamp(f.fidget))
 }
 
 /** Gizmo: a brass gear head that turns round its round screen. */

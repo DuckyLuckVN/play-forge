@@ -301,4 +301,30 @@ describe('golem body (Bastion)', () => {
     expect(fillsOf(grakka, ko)).toContain('#3b2a33')
     expect(fillsOf(grakka, frame())).not.toContain('#3b2a33')
   })
+  it("keeps the torso shine inside its own (clipped) block, and Bastion's legs keep their 2.5 corners", () => {
+    /** Whether every torso gloss (2.2 × 1.1 at −0.3) is drawn under a clip. */
+    const glossClipped = (l: CreatureLook, f: Frame) => {
+      const c = fakeCanvas()
+      golem.draw(c, l, f, kitFor(golem, l, f).kit)
+      const stack = [false]
+      let n = 0
+      for (const r of c.log) {
+        if (r.name === 'save') stack.push(stack[stack.length - 1])
+        else if (r.name === 'restore') stack.pop()
+        else if (r.name === 'clip') stack[stack.length - 1] = true
+        else if (r.name === 'ellipse' && r.args[2] === 2.2 && r.args[3] === 1.1 && r.args[4] === -0.3) {
+          n++
+          if (!stack[stack.length - 1]) return false
+        }
+      }
+      return n > 0
+    }
+    const ko = frame({ mood: 'ko', moodAge: 0.5, pose: { fall: 0.5 } })
+    for (const [, l] of LOOKS) for (const f of [frame(), ko]) expect(glossClipped(l, f)).toBe(true)
+    const log = drawLog(golem, look, frame())
+    for (const x of [-12, 2]) {
+      expect(log).toContain(`"roundRect","args":[${x},-10,10,10,2.5]`)
+      expect(log).not.toContain(`"roundRect","args":[${x},-10,10,10,3.5]`)
+    }
+  })
 })

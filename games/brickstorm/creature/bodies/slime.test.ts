@@ -18,7 +18,7 @@ import {
   worstHold,
 } from './body-fixtures'
 import { BODIES } from './index'
-import { slime } from './slime'
+import { faceBoxOf, slime, slimeJellies } from './slime'
 
 vi.mock('@forge/fx/tween', () => ({ prefersReducedMotion: () => false }))
 
@@ -175,8 +175,19 @@ describe('slime body (Goldie)', () => {
 
   it('the twins stand side by side: the front hand on the front twin, the back hand on the back twin, one hat', () => {
     const m = slime.metrics(twins, held({ still: true }))
-    expect(m.socketF.x - m.socketB.x).toBeGreaterThan(30)
-    expect(m.bodyBox.w).toBeGreaterThan(44)
+    expect(m.socketF.x - m.socketB.x).toBeGreaterThan(20)
+    // The pair keeps one slime's footprint: centred, within ±26 (one slime is ±24); a hurt splat spreads a little more.
+    for (const t of [0, 0.5, 1.3, 2.1])
+      for (const [mood, w] of [
+        ['idle', 26],
+        ['watch', 26],
+        ['cheer', 26],
+        ['hurt', 28],
+      ] as Array<[Mood, number]>) {
+        const b = slime.metrics(twins, frame({ t, mood, moodAge: 0.2 })).bodyBox
+        expect(b.x).toBeGreaterThanOrEqual(-w)
+        expect(b.x + b.w).toBeLessThanOrEqual(w)
+      }
     const { calls, kit } = kitFor(slime, twins, held())
     slime.draw(fakeCanvas(), twins, held(), kit)
     // One hat, on the back twin (the front twin's would cover its face); the front twin has a jelly curl.
@@ -206,10 +217,11 @@ describe('slime body (Goldie)', () => {
         const f = frame({ mood, t, moodAge: 0.5 })
         const m = slime.metrics(twins, f)
         const h = handsOf(slime, twins, f)
+        // Out of each twin's own face (and the solver's box round both).
+        const faces = [m.head, ...slimeJellies(twins, f).map(faceBoxOf)]
         for (const hand of [h.front, h.back]) {
-          expect(
-            Math.hypot((hand.x - m.head.x) / m.head.rx, (hand.y - m.head.y) / m.head.ry),
-          ).toBeGreaterThan(1)
+          for (const e of faces)
+            expect(Math.hypot((hand.x - e.x) / e.rx, (hand.y - e.y) / e.ry)).toBeGreaterThan(1)
           expect(toBox(hand, m.bodyBox)).toBeLessThan(m.handR * 4)
         }
       }

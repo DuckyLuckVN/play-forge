@@ -70,7 +70,7 @@ function splatOf(f: Frame): number {
 }
 
 /** The jelly's deformation for this frame: everything the body does to its shape. */
-interface Jelly {
+export interface Jelly {
   /** Squash spring (+ = wider), before the top's extra. */
   sq: number
   splat: number
@@ -79,34 +79,49 @@ interface Jelly {
   lean: number
   crouch: number
   melt: number
-  /** Placement in the kit's frame: the blob's centre x, its lift (+ = up) and scale (1 for a single slime). */
+  /** Placement in the kit's frame: the blob's centre x, its lift (+ = up), its width and height scale (1 alone). */
   ox: number
   oy: number
   s: number
+  sy: number
+  /** The face's shift (blob units, + = forward); the front twin looks back a little so the held ball clears it. */
+  faceX: number
 }
+
+/** Where a slime stands, and how big it is; `twin` marks one of the pair. */
+interface Placement {
+  ox: number
+  s: number
+  sy: number
+  faceX: number
+  phase: number
+  delay: number
+  twin: boolean
+}
+const ALONE: Placement = { ox: 0, s: 1, sy: 1, faceX: 0, phase: 0, delay: 0, twin: false }
 
 type Variant = 'gold' | 'snow' | 'twins'
 const variantOf = (look: CreatureLook): Variant =>
   Object.hasOwn(KINDS, look.variant) ? (look.variant as Variant) : 'gold'
 
 /**
- * Pip & Pop: the front twin (small, in front, holds the ball; a jelly curl on top) and the back twin (taller, behind,
- * waves; wears the hat, so the front twin's hat never covers its face). Far enough apart that both faces show.
+ * Pip & Pop: the front twin (small, in front, holds the ball; a jelly curl on top) and the back twin (taller and
+ * slimmer, behind, waves; wears the hat, so the front twin's hat never covers its face). The pair keeps one slime's
+ * footprint (within ±26) and the back twin's face shows over the front twin's shoulder.
  */
-const TWINS = {
-  front: { ox: 1, s: 0.64, phase: 0, delay: 0 },
-  back: { ox: -17, s: 0.9, phase: Math.PI, delay: 0.18 },
+const TWINS: Record<'front' | 'back', Placement> = {
+  front: { ox: 4, s: 0.62, sy: 0.66, faceX: -3, phase: 0, delay: 0, twin: true },
+  back: { ox: -9, s: 0.7, sy: 0.86, faceX: -4, phase: Math.PI, delay: 0.18, twin: true },
 }
 /** The back twin waves for this long out of every `WAVE_EVERY` seconds. */
 const WAVE_FOR = 1.6
 const WAVE_EVERY = 4.5
 
-function jellyOf(f: Frame, at = { ox: 0, s: 1, phase: 0, delay: 0 }): Jelly {
+function jellyOf(f: Frame, at = ALONE): Jelly {
   // Twins bob in turn at rest, and hop in turn on a cheer (a pump is a little hop).
   const fl = flourish(f)
-  const bob = f.still || at.s === 1 ? 0 : 1.4 * Math.max(0, Math.sin(f.t * 3.2 + at.phase))
-  const hop =
-    at.s === 1 || !fl.k ? 0 : (fl.cheer ? 9 : 3) * pulse(f.moodAge - at.delay, fl.cheer ? 0.45 : 0.3)
+  const bob = f.still || !at.twin ? 0 : 1.4 * Math.max(0, Math.sin(f.t * 3.2 + at.phase))
+  const hop = !at.twin || !fl.k ? 0 : (fl.cheer ? 9 : 3) * pulse(f.moodAge - at.delay, fl.cheer ? 0.45 : 0.3)
   return {
     sq: -f.squash * 0.03,
     splat: splatOf(f),
@@ -117,6 +132,8 @@ function jellyOf(f: Frame, at = { ox: 0, s: 1, phase: 0, delay: 0 }): Jelly {
     ox: at.ox,
     oy: bob + hop,
     s: at.s,
+    sy: at.sy,
+    faceX: at.faceX,
   }
 }
 
@@ -134,7 +151,7 @@ function warp(j: Jelly, p: Pt): Pt {
   // Melting: the jelly slumps and spreads, the base most.
   x *= 1 + j.melt * (0.55 - 0.15 * k)
   y *= 1 - MELT_Y * j.melt
-  return { x: j.ox + x * j.s, y: (y - j.oy) * j.s }
+  return { x: j.ox + x * j.s, y: (y - j.oy) * j.sy }
 }
 
 /** SVG path in blob units, every `x y` pair warped (M L C Q Z only). */
@@ -170,6 +187,15 @@ function blobPath(j: Jelly, t: number, still: boolean): Path2D {
   )
 }
 
+/** One slime's face box in the kit's frame (the head box warped, scaled and shifted with the face). */
+export function faceBoxOf(j: Jelly): HeadBox {
+  const c = warp(j, { x: HEAD.x + j.faceX, y: HEAD.y })
+  return { x: c.x, y: c.y, rx: HEAD.rx * j.s, ry: HEAD.ry * j.sy * (1 - 0.6 * j.melt) }
+}
+
+/** The jellies of a look for a frame (for tests: each twin's own face). */
+export const slimeJellies = (look: CreatureLook, f: Frame): Jelly[] => jelliesOf(look, f)
+
 function metrics(look: CreatureLook, f: Frame): BodyMetrics {
   const js = jelliesOf(look, f)
   const pts = js.flatMap((j) =>
@@ -187,15 +213,13 @@ function metrics(look: CreatureLook, f: Frame): BodyMetrics {
   const melt = 1 - 0.6 * front.melt
   let head: HeadBox
   if (js.length > 1) {
-    // Twins: one box round both faces, so no hand ever crosses either.
-    const a = warp(back, HEAD)
-    const b = warp(front, HEAD)
-    head = {
-      x: (a.x + b.x) / 2,
-      y: (a.y + b.y) / 2,
-      rx: Math.abs(b.x - a.x) / 2 + HEAD.rx * front.s,
-      ry: (Math.abs(b.y - a.y) / 2 + HEAD.ry * back.s) * melt,
-    }
+    // Twins: the box round both faces (the solver keeps hands a circle of its larger half-size away from its centre).
+    const fs = js.map((j) => faceBoxOf(j))
+    const l = Math.min(...fs.map((h) => h.x - h.rx))
+    const r = Math.max(...fs.map((h) => h.x + h.rx))
+    const t = Math.min(...fs.map((h) => h.y - h.ry))
+    const b = Math.max(...fs.map((h) => h.y + h.ry))
+    head = { x: (l + r) / 2, y: (t + b) / 2, rx: (r - l) / 2, ry: ((b - t) / 2) * melt }
   } else {
     const c = warp(front, HEAD)
     head = { x: c.x, y: c.y, rx: HEAD.rx, ry: HEAD.ry * melt }
@@ -676,11 +700,16 @@ function blob(
   const g = (ph: number) => (f.still ? 0 : Math.sin(t * 3.4 + ph) * 0.6)
   const g1 = warp(j, { x: -12 + g(1), y: -36 + g(2) })
   const g2 = warp(j, { x: -18, y: -22 })
-  gloss(ctx, g1.x, g1.y, 4 * j.s, 2.4 * j.s * (1 - 0.6 * j.melt), -0.7)
+  gloss(ctx, g1.x, g1.y, 4 * j.s, 2.4 * j.sy * (1 - 0.6 * j.melt), -0.7)
   gloss(ctx, g2.x, g2.y, 1.6 * j.s, 1.1 * j.s, -0.7)
 
   ctx.save()
-  ride(ctx, j, { x: FACE.x, y: FACE.y + (f.still ? 0 : Math.sin(t * 3.4 + 2.5) * 0.5) }, 0.55 * j.s)
+  ride(
+    ctx,
+    j,
+    { x: FACE.x + j.faceX, y: FACE.y + (f.still ? 0 : Math.sin(t * 3.4 + 2.5) * 0.5) },
+    0.55 * j.sy,
+  )
   face(ctx, f, t)
   ctx.restore()
 
@@ -693,9 +722,9 @@ function placeHat(ctx: Ctx, k: DrawKit, j: Jelly): void {
   const hc = warp(j, HAT)
   const hs = warp(j, { x: HAT.x + 1, y: HAT.y })
   ctx.save()
-  ctx.translate(hc.x - 17 * j.melt * j.s, hc.y + 2 * j.melt * j.s)
+  ctx.translate(hc.x - 17 * j.melt * j.s, hc.y + 2 * j.melt * j.sy)
   ctx.rotate(Math.atan(j.lean * 0.7) - 0.7 * j.melt)
-  k.hat({ x: 0, y: 0, rx: HAT.rx * j.s * clamp((hs.x - hc.x) / j.s, 0.85, 1.15), ry: HAT.ry * j.s })
+  k.hat({ x: 0, y: 0, rx: HAT.rx * j.s * clamp((hs.x - hc.x) / j.s, 0.85, 1.15), ry: HAT.ry * j.sy })
   ctx.restore()
 }
 

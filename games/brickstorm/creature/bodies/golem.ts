@@ -110,8 +110,11 @@ interface Shape {
   hat: HeadBox
   torso: Box
   socket: Pt
-  /** Back and front leg blocks. */
+  /** Back and front leg blocks, and their corner radius. */
   legs: [Box, Box]
+  legR: number
+  /** The torso's shine (inside its outline, upper left). */
+  gloss: Pt
   /** How it goes down on KO: crumbling into blocks, or rolling back in one piece. */
   ko: 'crumble' | 'roll'
   /** The torso: whole (0), or its back (−1) or front (1) half once it crumbles. */
@@ -917,6 +920,8 @@ const SHAPES: Record<Variant, Shape> = {
       { x: -12, y: -10, w: 10, h: 10 },
       { x: 2, y: -10, w: 10, h: 10 },
     ],
+    legR: 2.5,
+    gloss: { x: TORSO.x + 4.5, y: TORSO.y + 3.5 },
     ko: 'crumble',
     torsoPath: brickTorso,
     torsoDetail: brickDetail,
@@ -938,6 +943,8 @@ const SHAPES: Record<Variant, Shape> = {
       { x: -13, y: -7, w: 10, h: 7 },
       { x: 3, y: -7, w: 10, h: 7 },
     ],
+    legR: 3.5,
+    gloss: { x: -10, y: -36 },
     ko: 'roll',
     torsoPath: boulderTorso,
     torsoDetail: boulderDetail,
@@ -958,6 +965,8 @@ const SHAPES: Record<Variant, Shape> = {
       { x: -14, y: -10, w: 12, h: 10 },
       { x: 2, y: -10, w: 12, h: 10 },
     ],
+    legR: 3,
+    gloss: { x: -8, y: -25 },
     ko: 'crumble',
     torsoPath: mountainTorso,
     torsoDetail: mountainDetail,
@@ -978,6 +987,8 @@ const SHAPES: Record<Variant, Shape> = {
       { x: -11, y: -9.5, w: 9, h: 9.5 },
       { x: 2, y: -9.5, w: 9, h: 9.5 },
     ],
+    legR: 3.5,
+    gloss: { x: -6.5, y: -26.5 },
     ko: 'crumble',
     torsoPath: lavaTorso,
     torsoDetail: lavaDetail,
@@ -1018,7 +1029,7 @@ function draw(ctx: Ctx, look: CreatureLook, f: Frame, k: DrawKit): void {
   ] as const) {
     ctx.save()
     along(ctx, mat)
-    group(ctx, [{ p: box(leg.x, leg.y, leg.w, leg.h, Math.min(leg.h / 2, 3.5)), c }])
+    group(ctx, [{ p: box(leg.x, leg.y, leg.w, leg.h, s.legR), c }])
     ctx.restore()
   }
 
@@ -1037,8 +1048,9 @@ function draw(ctx: Ctx, look: CreatureLook, f: Frame, k: DrawKit): void {
     ctx.save()
     ctx.clip(path)
     s.torsoDetail(ctx, p)
+    // The shine stays inside its own block (the clip), so it never floats off a falling half or the round rock.
+    gloss(ctx, s.gloss.x, s.gloss.y, 2.2, 1.1, -0.3)
     ctx.restore()
-    gloss(ctx, s.torso.x + 4.5, s.torso.y + 3.5, 2.2, 1.1, -0.3)
     if (s.emblem && path === halves[halves.length - 1][1]) k.emblem(s.emblem.x, s.emblem.y, s.emblem.size)
     ctx.restore()
   }

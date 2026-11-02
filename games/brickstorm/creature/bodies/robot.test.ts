@@ -17,7 +17,7 @@ import {
   worstHold,
 } from './body-fixtures'
 import { BODIES } from './index'
-import { ROBOT_PARTS, robot } from './robot'
+import { ROBOT_PARTS, gearTurn, robot } from './robot'
 
 vi.mock('@forge/fx/tween', () => ({ prefersReducedMotion: () => false }))
 
@@ -147,5 +147,23 @@ describe('robot body (Cubo, Boomer, Gizmo)', () => {
       expect(worst).not.toBeNull()
       expect(worst!).toBeLessThan(0.01)
     }
+  })
+  it("Gizmo's gear only ever turns forward: through a cheer, a pump, its signature and into a KO", () => {
+    /** Angles over a run, the mood starting at t = 1 (whole half turns look the same, so compare mod π). */
+    const run = (patch: (age: number) => FramePatch) =>
+      Array.from({ length: 90 }, (_, i) => i / 30).map((age) =>
+        gearTurn(frame({ t: 1 + age, ...patch(age) })),
+      )
+    const forward = (as: number[]) => {
+      for (let i = 1; i < as.length; i++) {
+        const d = (((as[i] - as[i - 1]) % Math.PI) + Math.PI) % Math.PI
+        // A step is a small forward move (never a big wrap that would read as backward).
+        expect(d).toBeLessThan(Math.PI / 2)
+      }
+    }
+    forward(run((age) => ({ mood: age < 1.5 ? 'cheer' : 'idle', moodAge: age < 1.5 ? age : age - 1.5 })))
+    forward(run((age) => ({ mood: age < 0.6 ? 'pump' : 'idle', moodAge: age < 0.6 ? age : age - 0.6 })))
+    forward(run((age) => ({ fidget: age < 1 ? age : 0 })))
+    forward(run((age) => (age < 1 ? { mood: 'idle' } : { mood: 'ko', moodAge: age - 1, pose: { fall: 1 } })))
   })
 })

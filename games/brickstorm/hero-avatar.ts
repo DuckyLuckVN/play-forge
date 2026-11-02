@@ -221,7 +221,6 @@ export class HeroAvatar {
   /** Drawing size, × board units (set by the game). */
   size = 1
   private hold: { x: number; y: number; r: number } | null = null
-  private head = new Spring(220, 13)
   private glanceIn = 2
   private glance: { x: number; y: number; age: number } | null = null
   private dust: Array<{ x: number; age: number; size: number }> = []
@@ -495,8 +494,6 @@ export class HeroAvatar {
       this.glance = { x: Math.random() * 2 - 1, y: Math.random() * 1.2 - 0.8, age: 0 }
     }
     if (this.glance && (this.glance.age += dt) > 0.5) this.glance = null
-    this.head.update(dt)
-    this.head.kick(-this.hop.v * dt * 0.6)
     for (const d of this.dust) d.age += dt
     this.dust = this.dust.filter((d) => d.age < 0.5)
     if (this.smear > 0) this.smear = Math.max(0, this.smear - dt * 5)

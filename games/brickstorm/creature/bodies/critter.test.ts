@@ -27,7 +27,6 @@ const POSE: Pose = {
   browUp: 0,
   mouthOpen: 0,
   smile: 0.35,
-  blush: 0.15,
   rear: 0,
 }
 
@@ -68,7 +67,7 @@ const CAST: Array<[HeroId, string, string]> = [
   ['dragon', 'dragon', 'puff'],
   ['gambler', 'dice', 'reroll'],
 ]
-const LOOKS = CAST.map(([id]) => [id, CREATURE_LOOKS[id]!] as const)
+const LOOKS = CAST.map(([id]) => [id, CREATURE_LOOKS[id]] as const)
 const HOLD = { x: 12, y: -21, r: 7 }
 
 const kitFor = (look: CreatureLook, f: Frame) => {
@@ -142,7 +141,7 @@ describe('critter body (Sprig, Kage, Aurelia, Nyx, Drakon, Lucky)', () => {
   it('is registered, and each critter hero has its variant and signature', () => {
     expect(BODIES.critter).toBe(critter)
     for (const [id, variant, signature] of CAST) {
-      const look = CREATURE_LOOKS[id]!
+      const look = CREATURE_LOOKS[id]
       expect(look.body).toBe('critter')
       expect(look.variant).toBe(variant)
       expect(look.signature).toBe(signature)
@@ -311,7 +310,7 @@ describe('critter body (Sprig, Kage, Aurelia, Nyx, Drakon, Lucky)', () => {
   it('plays its signature move on the fidget; Kage licks a raised paw', () => {
     for (const [, look] of LOOKS)
       expect(drawLog(look, frame({ fidget: 0.5 }))).not.toBe(drawLog(look, frame()))
-    const kage = CREATURE_LOOKS.ninja!
+    const kage = CREATURE_LOOKS.ninja
     const f = frame({ fidget: 0.5, hold: HOLD, holding: true })
     const m = critter.metrics(kage, f)
     const { back } = handsOf(kage, f)

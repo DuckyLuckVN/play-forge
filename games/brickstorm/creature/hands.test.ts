@@ -33,7 +33,6 @@ const pose = (over: Partial<Pose> = {}): Pose =>
     browUp: 0,
     mouthOpen: 0,
     smile: 0,
-    blush: 0,
     rear: 0,
     ...over,
   }) as Pose

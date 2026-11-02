@@ -28,14 +28,14 @@ const CAST: Array<[HeroId, string, string]> = [
   ['bomber', 'bomb', 'fuse'],
   ['tinker', 'gear', 'spin'],
 ]
-const LOOKS = CAST.map(([id]) => [id, CREATURE_LOOKS[id]!] as const)
-const look = CREATURE_LOOKS.rookie!
+const LOOKS = CAST.map(([id]) => [id, CREATURE_LOOKS[id]] as const)
+const look = CREATURE_LOOKS.rookie
 
 describe('robot body (Cubo, Boomer, Gizmo)', () => {
   it('is registered, and each robot hero has its variant and signature', () => {
     expect(BODIES.robot).toBe(robot)
     for (const [id, variant, signature] of CAST) {
-      const l = CREATURE_LOOKS[id]!
+      const l = CREATURE_LOOKS[id]
       expect(l).toMatchObject({ body: 'robot', variant, signature })
       for (const c of [l.main, l.second, l.hand, l.eye]) expect(c).toMatch(/^#[0-9a-f]{6}$/)
       // Every variant's head, face, ear and chest come from one table.
@@ -120,7 +120,7 @@ describe('robot body (Cubo, Boomer, Gizmo)', () => {
     expect(new Set(cheer).size).toBe(LOOKS.length)
     // Boomer fizzles with smoke and Gizmo's gear spins down: the KO keeps changing after the cube's screen is black.
     for (const id of ['bomber', 'tinker'] as const) {
-      const l = CREATURE_LOOKS[id]!
+      const l = CREATURE_LOOKS[id]
       const ko = (moodAge: number) =>
         drawLog(robot, l, frame({ mood: 'ko', moodAge, eyes: 'xx', pose: { fall: 1 } }))
       expect(ko(0.6)).not.toBe(ko(0.9))

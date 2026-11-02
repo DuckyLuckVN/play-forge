@@ -1,8 +1,8 @@
-/** Per-hero creature looks: body type, colours and signature move. Heroes without a look still draw the legacy figure. */
+/** Per-hero creature looks: body type, colours and signature move. Every hero has one. */
 import type { HeroId } from '../sim/heroes'
 import type { CreatureLook } from './types'
 
-export const CREATURE_LOOKS: Partial<Record<HeroId, CreatureLook>> = {
+export const CREATURE_LOOKS: Record<HeroId, CreatureLook> = {
   rookie: {
     body: 'robot',
     variant: 'cube',

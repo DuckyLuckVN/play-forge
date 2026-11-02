@@ -24,15 +24,15 @@ vi.mock('@forge/fx/tween', () => ({ prefersReducedMotion: () => false }))
 
 installPath2D()
 
-const look = CREATURE_LOOKS.baron!
+const look = CREATURE_LOOKS.baron
 const CAST: Array<[HeroId, string, string]> = [
   ['baron', 'gold', 'coinflip'],
   ['frost', 'snow', 'flurry'],
   ['juggler', 'twins', 'juggle'],
 ]
-const LOOKS = CAST.map(([id]) => [id, CREATURE_LOOKS[id]!] as const)
-const twins = CREATURE_LOOKS.juggler!
-const snow = CREATURE_LOOKS.frost!
+const LOOKS = CAST.map(([id]) => [id, CREATURE_LOOKS[id]] as const)
+const twins = CREATURE_LOOKS.juggler
+const snow = CREATURE_LOOKS.frost
 /** Gold-only paint: coin flecks, the belt, the coin. */
 const COIN_PAINT = ['#fff1a8', '#7a4a06', '#ffd43b']
 /** Every fill colour a draw sets. */
@@ -150,7 +150,7 @@ describe('slime body (Goldie)', () => {
   })
   it('frost and the juggler are slimes with their own variant and signature', () => {
     for (const [id, variant, signature] of CAST) {
-      const l = CREATURE_LOOKS[id]!
+      const l = CREATURE_LOOKS[id]
       expect(l).toMatchObject({ body: 'slime', variant, signature })
       for (const c of [l.main, l.second, l.hand, l.eye]) expect(c).toMatch(/^#[0-9a-f]{6}$/)
     }

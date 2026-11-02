@@ -20,7 +20,6 @@ export const POSE: Pose = {
   browUp: 0,
   mouthOpen: 0,
   smile: 0.35,
-  blush: 0.15,
   rear: 0,
 }
 

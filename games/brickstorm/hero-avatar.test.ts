@@ -227,28 +227,17 @@ describe('creature hands', () => {
   /** The rookie's solved back-hand target in board units (size 1, no knock or tremble). */
   const backTarget = (a: HeroAvatar, floorY = 760) => {
     const f = (a as unknown as { buildFrame(): Frame }).buildFrame()
-    const look = CREATURE_LOOKS.rookie!
-    const body = BODIES.robot!
+    const look = CREATURE_LOOKS.rookie
+    const body = BODIES.robot
     const m = body.metrics(look, f)
     const { back } = solveHands(m, body.pose!(look, f), null, false)
     return { x: a.x + back.x * a.facing, y: floorY + f.hop + back.y }
   }
 
   it('setHero snaps hands', () => {
-    // A legacy (no-look) hero, made by hiding one look for this test only, so it holds as heroes get converted.
-    const legacy = 'flash'
-    const saved = CREATURE_LOOKS[legacy]
-    const a = new HeroAvatar('rookie')
+    const a = new HeroAvatar('flash')
     run(a, 0.5, ctx({ hold }))
     a.draw(fakeCanvas(), 760)
-    delete CREATURE_LOOKS[legacy]
-    try {
-      a.setHero(legacy)
-      a.draw(fakeCanvas(), 760)
-      expect(a.lastHands).toBeNull() // legacy drawing
-    } finally {
-      CREATURE_LOOKS[legacy] = saved
-    }
     a.setHero('rookie') // cheer: not a hold mood, the hands are free
     a.update(1 / 60, ctx({ hold }))
     a.draw(fakeCanvas(), 760)
@@ -275,7 +264,7 @@ describe('creature hands', () => {
   })
 
   it('a body shift moves forward with the facing', () => {
-    const robot = BODIES.robot!
+    const robot = BODIES.robot
     robot.offsetX = () => 3
     try {
       for (const homeX of [100, 300]) {

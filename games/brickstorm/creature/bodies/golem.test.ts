@@ -26,14 +26,14 @@ vi.mock('@forge/fx/tween', () => ({ prefersReducedMotion: () => false }))
 
 installPath2D()
 
-const look = CREATURE_LOOKS.knight!
+const look = CREATURE_LOOKS.knight
 const CAST: Array<[HeroId, string, string]> = [
   ['knight', 'brick', 'scarf'],
   ['giant', 'boulder', 'yawn'],
   ['titan', 'mountain', 'rumble'],
   ['berserker', 'lava', 'steam'],
 ]
-const LOOKS = CAST.map(([id]) => [id, CREATURE_LOOKS[id]!] as const)
+const LOOKS = CAST.map(([id]) => [id, CREATURE_LOOKS[id]] as const)
 
 /** Every fill colour a draw sets. */
 function fillsOf(l: CreatureLook, f = frame()): string[] {
@@ -206,7 +206,7 @@ describe('golem body (Bastion)', () => {
   })
   it('giant, titan and berserker are golems with their own variant and signature', () => {
     for (const [id, variant, signature] of CAST) {
-      const l = CREATURE_LOOKS[id]!
+      const l = CREATURE_LOOKS[id]
       expect(l).toMatchObject({ body: 'golem', variant, signature })
       for (const c of [l.main, l.second, l.hand, l.eye]) expect(c).toMatch(/^#[0-9a-f]{6}$/)
     }
@@ -271,7 +271,7 @@ describe('golem body (Bastion)', () => {
   it('plays its signature: Bram yawns, Granite rumbles (a small shake), Grakka lets off steam', () => {
     for (const [, l] of LOOKS)
       expect(drawLog(golem, l, held({ fidget: 0.5 }))).not.toBe(drawLog(golem, l, held()))
-    const titan = CREATURE_LOOKS.titan!
+    const titan = CREATURE_LOOKS.titan
     const shake = [0.3, 0.4, 0.5, 0.6].map((fidget) =>
       Math.abs(golem.offsetX!(titan, held({ fidget, t: 1 + fidget }))),
     )
@@ -284,20 +284,20 @@ describe('golem body (Bastion)', () => {
   it('KO per variant: Bram rolls back and settles in one piece; Granite and Grakka crumble', () => {
     const ko = frame({ mood: 'ko', moodAge: 2, eyes: 'xx', pose: { fall: 1 } })
     const up = (l: CreatureLook) => golem.metrics(l, frame({ still: true }))
-    const bram = CREATURE_LOOKS.giant!
+    const bram = CREATURE_LOOKS.giant
     const a = up(bram)
     const b = golem.metrics(bram, ko)
     expect(a.head.x - b.head.x).toBeGreaterThan(8)
     expect(b.bodyBox.w).toBeLessThan(a.bodyBox.w * 1.4)
     for (const id of ['titan', 'berserker'] as const) {
-      const l = CREATURE_LOOKS[id]!
+      const l = CREATURE_LOOKS[id]
       const u = up(l)
       const d = golem.metrics(l, ko)
       expect(d.headTop).toBeGreaterThan(u.headTop + 20)
       expect(d.bodyBox.w).toBeGreaterThan(u.bodyBox.w * 1.2)
     }
     // Grakka's glow cools to dark rock on KO.
-    const grakka = CREATURE_LOOKS.berserker!
+    const grakka = CREATURE_LOOKS.berserker
     expect(fillsOf(grakka, ko)).toContain('#3b2a33')
     expect(fillsOf(grakka, frame())).not.toContain('#3b2a33')
   })

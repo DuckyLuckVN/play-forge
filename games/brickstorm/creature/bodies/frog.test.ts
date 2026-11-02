@@ -23,7 +23,7 @@ vi.mock('@forge/fx/tween', () => ({ prefersReducedMotion: () => false }))
 
 installPath2D()
 
-const look = CREATURE_LOOKS.monk!
+const look = CREATURE_LOOKS.monk
 
 describe('frog body (Master Ribbit)', () => {
   it('is registered, and the monk is a frog that catches flies', () => {

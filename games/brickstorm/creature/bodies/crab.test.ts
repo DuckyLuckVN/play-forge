@@ -27,7 +27,7 @@ vi.mock('@forge/fx/tween', () => ({ prefersReducedMotion: () => false }))
 
 installPath2D()
 
-const look = CREATURE_LOOKS.pirate!
+const look = CREATURE_LOOKS.pirate
 
 /** Every ellipse drawn, straight on the canvas or inside a path. */
 function ellipses(log: CallRecord[]): number[][] {

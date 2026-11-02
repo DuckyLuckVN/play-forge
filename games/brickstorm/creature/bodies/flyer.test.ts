@@ -28,13 +28,13 @@ const CAST: Array<[HeroId, string, string]> = [
   ['sage', 'owl', 'turn'],
   ['vampire', 'bat', 'wrap'],
 ]
-const LOOKS = CAST.map(([id]) => [id, CREATURE_LOOKS[id]!] as const)
+const LOOKS = CAST.map(([id]) => [id, CREATURE_LOOKS[id]] as const)
 
 describe('flyer body (Hoot, Count Flap)', () => {
   it('is registered, and each flyer hero has its variant and signature', () => {
     expect(BODIES.flyer).toBe(flyer)
     for (const [id, variant, signature] of CAST) {
-      const look = CREATURE_LOOKS[id]!
+      const look = CREATURE_LOOKS[id]
       expect(look.body).toBe('flyer')
       expect(look.variant).toBe(variant)
       expect(look.signature).toBe(signature)
@@ -178,9 +178,9 @@ describe('flyer body (Hoot, Count Flap)', () => {
       const back = flyer.metrics(look, frame({ mood: 'revive', pose: { fall: 0 } }))
       expect(back.headTop).toBeLessThan(down.headTop - 15)
     }
-    const owl = flyer.metrics(CREATURE_LOOKS.sage!, ko)
+    const owl = flyer.metrics(CREATURE_LOOKS.sage, ko)
     expect(owl.head.x).toBeLessThan(-5)
-    const bat = flyer.metrics(CREATURE_LOOKS.vampire!, ko)
+    const bat = flyer.metrics(CREATURE_LOOKS.vampire, ko)
     // Upside-down-ish: the head ends lower than the body's middle.
     expect(bat.head.y).toBeGreaterThan(bat.bodyBox.y + bat.bodyBox.h / 2)
   })
@@ -188,7 +188,7 @@ describe('flyer body (Hoot, Count Flap)', () => {
   it('plays its signature: Hoot turns its head, Count Flap wraps its far wing round the body', () => {
     for (const [, look] of LOOKS)
       expect(drawLog(flyer, look, held({ fidget: 0.5 }))).not.toBe(drawLog(flyer, look, held()))
-    const bat = CREATURE_LOOKS.vampire!
+    const bat = CREATURE_LOOKS.vampire
     const f = held({ fidget: 0.5 })
     const m = flyer.metrics(bat, f)
     const { back } = handsOf(flyer, bat, f)

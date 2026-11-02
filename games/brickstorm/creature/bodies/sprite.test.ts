@@ -27,7 +27,6 @@ const POSE: Pose = {
   browUp: 0,
   mouthOpen: 0,
   smile: 0.35,
-  blush: 0.15,
   rear: 0,
 }
 
@@ -59,7 +58,7 @@ const CAST: Array<[HeroId, string, string]> = [
   ['cleric', 'star', 'twinkle'],
   ['necro', 'ghost', 'fade'],
 ]
-const LOOKS = CAST.map(([id]) => [id, CREATURE_LOOKS[id]!] as const)
+const LOOKS = CAST.map(([id]) => [id, CREATURE_LOOKS[id]] as const)
 
 const kitFor = (look: CreatureLook, f: Frame) => {
   const m = sprite.metrics(look, f)
@@ -123,7 +122,7 @@ describe('sprite body (Zip, Ember, Volta, Lumi, Boo)', () => {
   it('is registered, and each sprite hero has its variant and signature', () => {
     expect(BODIES.sprite).toBe(sprite)
     for (const [id, variant, signature] of CAST) {
-      const look = CREATURE_LOOKS[id]!
+      const look = CREATURE_LOOKS[id]
       expect(look.body).toBe('sprite')
       expect(look.variant).toBe(variant)
       expect(look.signature).toBe(signature)
@@ -240,14 +239,14 @@ describe('sprite body (Zip, Ember, Volta, Lumi, Boo)', () => {
       expect(cheer).not.toBe(calm)
     }
     // Boo loops the loop: the whole body travels mid-cheer.
-    const boo = CREATURE_LOOKS.necro!
+    const boo = CREATURE_LOOKS.necro
     const rest = sprite.metrics(boo, frame({ mood: 'idle' }))
     const loop = sprite.metrics(boo, frame({ mood: 'cheer', moodAge: 0.45 }))
     expect(Math.hypot(loop.head.x - rest.head.x, loop.head.y - rest.head.y)).toBeGreaterThan(8)
   })
 
   it("Volta's bolt never reaches past the floor line (cheer flash, signature, bob low, KO drift)", () => {
-    const look = CREATURE_LOOKS.tempest!
+    const look = CREATURE_LOOKS.tempest
     const cases: Array<Partial<Frame>> = [
       { mood: 'cheer', moodAge: 0.02, eyes: 'happy' },
       { fidget: 0.5 },

@@ -9,7 +9,7 @@ import { robot } from './robot'
 import { slime } from './slime'
 import { sprite } from './sprite'
 
-export const BODIES: Partial<Record<BodyKind, BodyType>> = {
+export const BODIES: Record<BodyKind, BodyType> = {
   robot,
   slime,
   golem,

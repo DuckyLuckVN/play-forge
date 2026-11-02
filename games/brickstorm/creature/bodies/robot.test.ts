@@ -1,135 +1,151 @@
-import { describe, expect, it } from 'vitest'
-import type { EyeStyle, Mood, Pose } from '../../hero-avatar'
+import { describe, expect, it, vi } from 'vitest'
+import type { Mood } from '../../hero-avatar'
+import type { HeroId } from '../../sim/heroes'
 import { fakeCanvas, installPath2D } from '../../test-canvas'
-import { solveHands } from '../hands'
 import { CREATURE_LOOKS } from '../looks'
-import type { DrawKit, Frame } from '../types'
+import {
+  DRAW_CASES,
+  type FramePatch,
+  HOLD,
+  HOLD_POSES,
+  caseFrame,
+  drawLog,
+  frame,
+  handsOf,
+  held,
+  kitFor,
+  worstHold,
+} from './body-fixtures'
 import { BODIES } from './index'
-import { robot } from './robot'
+import { ROBOT_PARTS, robot } from './robot'
+
+vi.mock('@forge/fx/tween', () => ({ prefersReducedMotion: () => false }))
 
 installPath2D()
 
-const POSE: Pose = {
-  crouch: 0,
-  lean: 0,
-  sF: 0.15,
-  eF: 0.35,
-  sB: -0.15,
-  eB: 0.35,
-  tilt: 0,
-  fall: 0,
-  eyeOpen: 1,
-  brow: 0,
-  browUp: 0,
-  mouthOpen: 0,
-  smile: 0.35,
-  blush: 0.15,
-  rear: 0,
-}
-
-const frame = (patch: Partial<Frame> = {}): Frame => ({
-  t: 1.3,
-  still: false,
-  mood: 'idle',
-  moodAge: 0.1,
-  pose: { ...POSE },
-  eyes: 'normal',
-  blink: 0,
-  lookX: 1,
-  lookY: 0,
-  hop: 0,
-  squash: 0,
-  knock: 0,
-  smear: 0,
-  hold: null,
-  holding: false,
-  fidget: 0,
-  ...patch,
-})
-
+const CAST: Array<[HeroId, string, string]> = [
+  ['rookie', 'cube', 'glance'],
+  ['bomber', 'bomb', 'fuse'],
+  ['tinker', 'gear', 'spin'],
+]
+const LOOKS = CAST.map(([id]) => [id, CREATURE_LOOKS[id]!] as const)
 const look = CREATURE_LOOKS.rookie!
 
-const kitFor = (f: Frame) => {
-  const m = robot.metrics(look, f)
-  const calls: string[] = []
-  const kit: DrawKit = {
-    metrics: m,
-    hands: solveHands(m, f.pose, f.hold, f.holding),
-    backHand: () => calls.push('back'),
-    frontHand: () => calls.push('front'),
-    hat: () => calls.push('hat'),
-    emblem: () => calls.push('emblem'),
-  }
-  return { kit, calls }
-}
-
-const MOODS: Mood[] = [
-  'idle',
-  'aim',
-  'throw',
-  'watch',
-  'cheer',
-  'pump',
-  'wow',
-  'scared',
-  'worried',
-  'hurt',
-  'heal',
-  'cast',
-  'ko',
-  'revive',
-  'sad',
-]
-const EYES: EyeStyle[] = ['normal', 'happy', 'squeeze', 'wide', 'xx']
-
-describe('robot body (Cubo)', () => {
-  it('is registered, and rookie is a cube robot', () => {
+describe('robot body (Cubo, Boomer, Gizmo)', () => {
+  it('is registered, and each robot hero has its variant and signature', () => {
     expect(BODIES.robot).toBe(robot)
-    expect(look).toMatchObject({ body: 'robot', variant: 'cube', signature: 'glance' })
-  })
-
-  it('stands within ±20% of the old figure, with sockets at the shoulders', () => {
-    const m = robot.metrics(look, frame())
-    expect(m.headTop).toBeGreaterThanOrEqual(-60)
-    expect(m.headTop).toBeLessThanOrEqual(-40)
-    expect(m.armed).toBe(true)
-    expect(m.socketF.x).toBeGreaterThan(0)
-    expect(m.socketB.x).toBeLessThan(0)
-    expect(m.socketF.y).toBeGreaterThan(m.head.y)
-    // The held ball (≈ chest height, 12 units in front) is in reach.
-    const d = Math.hypot(12 - m.socketF.x, -14 - m.socketF.y)
-    expect(d).toBeLessThan(m.upper + m.fore)
-  })
-
-  it('draws every mood × eyes without throwing, back hand before front hand, with its hat', () => {
-    for (const mood of MOODS)
-      for (const eyes of EYES)
-        for (const still of [false, true]) {
-          const f = frame({ mood, eyes, still, pose: { ...POSE, fall: mood === 'ko' ? 1 : 0 } })
-          const { kit, calls } = kitFor(f)
-          expect(() => robot.draw(fakeCanvas(), look, f, kit)).not.toThrow()
-          expect(calls.indexOf('back')).toBeLessThan(calls.indexOf('front'))
-          expect(calls).toContain('hat')
-        }
-  })
-
-  it('raises both arms on cheer and pump, and on cast', () => {
-    for (const mood of ['cheer', 'pump', 'cast'] as Mood[]) {
-      const p = robot.pose!(look, frame({ mood }))
-      expect(Math.abs(p.sF)).toBeGreaterThan(1.9)
-      expect(Math.abs(p.sB)).toBeGreaterThan(1.9)
+    for (const [id, variant, signature] of CAST) {
+      const l = CREATURE_LOOKS[id]!
+      expect(l).toMatchObject({ body: 'robot', variant, signature })
+      for (const c of [l.main, l.second, l.hand, l.eye]) expect(c).toMatch(/^#[0-9a-f]{6}$/)
+      // Every variant's head, face, ear and chest come from one table.
+      expect(ROBOT_PARTS[variant as keyof typeof ROBOT_PARTS]).toBeTruthy()
     }
   })
 
-  it('keeps the pose untouched under reduced motion when idle', () => {
-    const f = frame({ still: true })
-    expect(robot.pose!(look, f)).toEqual(f.pose)
+  it('stands within ±20% of the old figure, with sockets at the shoulders and the ball in reach', () => {
+    for (const [, l] of LOOKS) {
+      const m = robot.metrics(l, frame({ still: true }))
+      expect(m.headTop).toBeGreaterThanOrEqual(-60)
+      expect(m.headTop).toBeLessThanOrEqual(-40)
+      expect(m.armed).toBe(true)
+      expect(m.socketF.x).toBeGreaterThan(0)
+      expect(m.socketB.x).toBeLessThan(0)
+      expect(m.socketF.y).toBeGreaterThan(m.head.y)
+      for (const b of [HOLD, { x: 12, y: -14 }])
+        expect(Math.hypot(b.x - m.socketF.x, b.y - m.socketF.y)).toBeLessThan(m.upper + m.fore)
+    }
+  })
+
+  it('draws each variant in every mood, eye style, still and fidget case, back hand first, with its hat', () => {
+    for (const [, l] of LOOKS)
+      for (const c of DRAW_CASES) {
+        const f = caseFrame(c)
+        const { kit, calls } = kitFor(robot, l, f)
+        expect(() => robot.draw(fakeCanvas(), l, f, kit)).not.toThrow()
+        expect(calls.indexOf('back')).toBeLessThan(calls.indexOf('front'))
+        expect(calls).toContain('hat')
+      }
+  })
+
+  it('draws a distinct head per variant', () => {
+    const logs = LOOKS.map(([, l]) => drawLog(robot, l, frame({ still: true })))
+    expect(new Set(logs).size).toBe(LOOKS.length)
+  })
+
+  it('raises both arms on cheer and pump, and on cast', () => {
+    for (const [, l] of LOOKS)
+      for (const mood of ['cheer', 'pump', 'cast'] as Mood[]) {
+        const p = robot.pose!(l, frame({ mood }))
+        expect(Math.abs(p.sF)).toBeGreaterThan(1.9)
+        expect(Math.abs(p.sB)).toBeGreaterThan(1.9)
+      }
+  })
+
+  it('rests the back hand at its side while holding (no wave)', () => {
+    for (const [, l] of LOOKS)
+      for (const [mood, patch] of HOLD_POSES) {
+        const f = held({ mood, pose: { ...patch } })
+        const m = robot.metrics(l, f)
+        const { back } = handsOf(robot, l, f)
+        expect(back.y).toBeGreaterThan(m.socketB.y)
+      }
+  })
+
+  it('holds a steady pose under reduced motion (no arm swing)', () => {
+    expect(robot.pose!(look, frame({ still: true, t: 1 }))).toEqual(
+      robot.pose!(look, frame({ still: true, t: 5.5 })),
+    )
+  })
+
+  it('moves in its idle loop, frozen under reduced motion (fuse sparks, gear turns)', () => {
+    for (const [, l] of LOOKS) {
+      expect(drawLog(robot, l, frame({ t: 1 }))).not.toBe(drawLog(robot, l, frame({ t: 1.4 })))
+      expect(drawLog(robot, l, frame({ t: 1, still: true }))).toBe(
+        drawLog(robot, l, frame({ t: 5.5, still: true })),
+      )
+      const still = (patch: FramePatch) => robot.metrics(l, frame({ still: true, ...patch }))
+      expect(still({ mood: 'hurt', moodAge: 0.1 }).bodyBox).toEqual(
+        still({ mood: 'hurt', moodAge: 1 }).bodyBox,
+      )
+    }
+  })
+
+  it('cheers with its own flourish per variant (the fuse flares, the gear whirs); KO per variant', () => {
+    const cheer = LOOKS.map(([, l]) => {
+      const c = drawLog(robot, l, frame({ mood: 'cheer', moodAge: 0.3, eyes: 'happy' }))
+      expect(c).not.toBe(drawLog(robot, l, frame({ mood: 'idle', moodAge: 0.3, eyes: 'happy' })))
+      return c
+    })
+    expect(new Set(cheer).size).toBe(LOOKS.length)
+    // Boomer fizzles with smoke and Gizmo's gear spins down: the KO keeps changing after the cube's screen is black.
+    for (const id of ['bomber', 'tinker'] as const) {
+      const l = CREATURE_LOOKS[id]!
+      const ko = (moodAge: number) =>
+        drawLog(robot, l, frame({ mood: 'ko', moodAge, eyes: 'xx', pose: { fall: 1 } }))
+      expect(ko(0.6)).not.toBe(ko(0.9))
+    }
+  })
+
+  it('plays its signature', () => {
+    for (const [, l] of LOOKS)
+      expect(drawLog(robot, l, held({ fidget: 0.5 }))).not.toBe(drawLog(robot, l, held()))
   })
 
   it('tips over with pose.fall (KO): the head moves sideways and down', () => {
-    const up = robot.metrics(look, frame())
-    const down = robot.metrics(look, frame({ mood: 'ko', pose: { ...POSE, fall: 1 } }))
-    expect(Math.abs(down.head.x - up.head.x)).toBeGreaterThan(20)
-    expect(down.head.y).toBeGreaterThan(up.head.y)
+    for (const [, l] of LOOKS) {
+      const up = robot.metrics(l, frame())
+      const down = robot.metrics(l, frame({ mood: 'ko', pose: { fall: 1 } }))
+      expect(Math.abs(down.head.x - up.head.x)).toBeGreaterThan(20)
+      expect(down.head.y).toBeGreaterThan(up.head.y)
+    }
+  })
+
+  it('holds the ball exactly in the front hand, mirrored and bigger too', () => {
+    for (const [id] of CAST) {
+      const worst = worstHold(id)
+      expect(worst).not.toBeNull()
+      expect(worst!).toBeLessThan(0.01)
+    }
   })
 })

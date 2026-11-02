@@ -213,12 +213,20 @@ describe('creature hands', () => {
   }
 
   it('setHero snaps hands', () => {
+    // A legacy (no-look) hero, made by hiding one look for this test only, so it holds as heroes get converted.
+    const legacy = 'flash'
+    const saved = CREATURE_LOOKS[legacy]
     const a = new HeroAvatar('rookie')
     run(a, 0.5, ctx({ hold }))
     a.draw(fakeCanvas(), 760)
-    a.setHero('flash')
-    a.draw(fakeCanvas(), 760)
-    expect(a.lastHands).toBeNull() // legacy drawing (flash has no creature look yet)
+    delete CREATURE_LOOKS[legacy]
+    try {
+      a.setHero(legacy)
+      a.draw(fakeCanvas(), 760)
+      expect(a.lastHands).toBeNull() // legacy drawing
+    } finally {
+      CREATURE_LOOKS[legacy] = saved
+    }
     a.setHero('rookie') // cheer: not a hold mood, the hands are free
     a.update(1 / 60, ctx({ hold }))
     a.draw(fakeCanvas(), 760)

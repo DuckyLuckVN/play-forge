@@ -19,7 +19,7 @@ import {
 } from './boss-kit'
 import { CELL } from './config'
 import { dims } from './dims'
-import { breachUnit, hurtHero } from './health'
+import { breachUnit, crashUnit, hurtHero } from './health'
 import { cellCenter } from './rows'
 import { armSpikes, isSpiked, SPIKE_FACES, THORN_FACES } from './spikes'
 import type { DamageSource } from './damage'
@@ -78,6 +78,8 @@ export interface BossSkill {
 const WARD_HP = 1
 /** A ball hit on a thorn hurts the hero this share of a crashing brick… */
 const THORN_HIT = 0.12
+/** A rocket that reaches the hero hurts this many full-brick crashes. */
+export const ROCKET_HIT = 0.75
 /** …but thorns take at most this share of max health per volley. */
 const THORN_CAP = 0.15
 /** A slam hurts like this many crashing bricks (if anything is near the line). */
@@ -772,13 +774,17 @@ export const BOSS_SKILLS: Record<BossSkillId, BossSkill> = {
   },
   barrage: {
     tier: 1,
-    // Every 2 turns (3 for a first boss) it fires 2 missiles from under itself; they fall 2 rows a
-    // turn and hurt double if they reach the line. Shoot them down.
+    // Every 2 turns (3 for a first boss) it arms 2 rockets under itself, aimed at
+    // the hero. You get one volley to shoot them down; the next boss turn the
+    // rest launch and hit the hero.
     turn: (s, boss) => {
-      const line = dims(s).dangerRow
-      const taken = (c: number, r: number) => s.bricks.some((b) => b.col === c && b.row === r)
-      for (const m of roleBricks(s, 'missile').sort((a, b) => b.row - a.row))
-        if (m.row + 1 < line && !taken(m.col, m.row + 1)) m.row++
+      const hero = { x: s.launchX, y: dims(s).floorY }
+      for (const m of roleBricks(s, 'missile')) {
+        s.bricks = s.bricks.filter((b) => b !== m)
+        const from = cellCenter(m.col, m.row)
+        s.events.push({ type: 'rocket', x: from.x, y: from.y, tx: hero.x, ty: hero.y })
+        hurtHero(s, crashUnit(s.turn) * ROCKET_HIT, hero, 'rocket')
+      }
       if (every(s, boss, (boss.tier ?? 1) === 1 ? 3 : 2)) {
         const { left, right, bottom } = bossBounds(s)
         const cells = freeCells(s, (c, r) => r === bottom + 1 && c >= left - 1 && c <= right + 1)
@@ -818,11 +824,18 @@ export const BOSS_SKILLS: Record<BossSkillId, BossSkill> = {
     turn: (s, boss) => {
       if (!every(s, boss, 4)) return
       const plain = s.bricks.filter((b) => b.kind === 'normal' && !b.role).sort((a, b) => b.row - a.row)
-      for (const b of plain.slice(0, 2)) {
+      const cursed = plain.slice(0, 2)
+      for (const b of cursed) {
         b.role = 'thorn'
         b.spikes = ['bottom'] // a curse sprouts from below, where the balls come from
       }
-      if (plain.length) s.events.push({ type: 'bossAttack', id: 'hex', ...bossCenter(s) })
+      if (cursed.length)
+        s.events.push({
+          type: 'bossAttack',
+          id: 'hex',
+          ...bossCenter(s),
+          targets: cursed.map((b) => cellCenter(b.col, b.row)),
+        })
     },
     launch: (_s, boss) => setMem(boss, 'thornHurt', 0),
     roleHit: (s, boss, brick, _amount, source, face) => {
@@ -838,7 +851,12 @@ export const BOSS_SKILLS: Record<BossSkillId, BossSkill> = {
   drain: {
     tier: 3,
     // Whatever health the hero loses, it drinks.
-    heroHurt: (s, boss, amount) => healBoss(s, boss, boss.maxHp * (amount / s.maxHp) * DRAIN_SHARE),
+    heroHurt: (s, boss, amount) => {
+      if (amount <= 0 || !bossParts(s).length) return
+      healBoss(s, boss, boss.maxHp * (amount / s.maxHp) * DRAIN_SHARE)
+      const to = bossCenter(s)
+      s.events.push({ type: 'drain', x: s.launchX, y: dims(s).floorY, tx: to.x, ty: to.y })
+    },
   },
 }
 

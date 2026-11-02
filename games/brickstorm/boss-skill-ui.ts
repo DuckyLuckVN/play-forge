@@ -22,7 +22,7 @@ export const SKILL_INFO: Record<BossSkillId, SkillInfo> = {
   barrage: {
     adj: t('Bombarding'),
     text: t(
-      'Barrage: fires 2 missiles every 2 turns. They fall fast and hurt double if they reach the line. Shoot them down!',
+      'Barrage: arms 2 rockets every 2 turns, aimed at you. Shoot them down in one volley, or they launch and hit you!',
     ),
     color: '#ff922b',
   },

@@ -24,7 +24,7 @@ export const STORM_EXPLAIN = {
 /** Banner for each boss attack as it lands. */
 export const ATTACK_TEXT = {
   slam: 'GROUND SLAM!',
-  barrage: 'MISSILES INCOMING!',
+  barrage: 'ROCKETS LOCKED ON!',
   hex: 'HEXED!',
   thorns: 'THORNS!',
 } as const
@@ -35,6 +35,9 @@ export const STORM_TEXT = {
   gold: 'STORM: GOLD RUSH!',
   bombs: 'STORM: BOMB WAVE!',
 } as const
+
+/** Seconds a boss rocket takes to fly to the hero. */
+export const ROCKET_FLY = 0.45
 
 /** Health and healing green. */
 export const HEAL_COLOR = '#69db7c'
@@ -222,6 +225,24 @@ export class Juice {
   turn = 1
   /** Lightning arcs to draw; the renderer reads this list. */
   zaps: Array<{ x1: number; y1: number; x2: number; y2: number; life: number }> = []
+  /**
+   * Boss attacks in flight, drawn by the renderer: a rocket (explodes on the
+   * hero at the end), a hex bolt, a thorn spark or a drain stream. `age` and
+   * `life` in seconds; a rocket carries the damage it shows on impact.
+   */
+  beams: Array<{
+    kind: 'rocket' | 'bolt' | 'stream'
+    x1: number
+    y1: number
+    x2: number
+    y2: number
+    color: string
+    age: number
+    life: number
+    damage?: number
+  }> = []
+  /** The hero's x (where boss attacks fly to); the renderer keeps it current. */
+  heroX = 0
   /** Laser beams to draw across a row. */
   lasers: Array<{ y: number; life: number }> = []
   /** Equipped brick-break effect id. */
@@ -282,6 +303,8 @@ export class Juice {
   private freePick = false
   /** Chain effects waiting for their ripple delay. */
   private queue: Array<{ e: Extract<SimEvent, { type: 'explode' | 'zap' }>; at: number }> = []
+  /** Bricks a boss smashed, bursting one after another: `in` seconds until each goes. */
+  private rubble: Array<{ x: number; y: number; in: number }> = []
   private announced = 0
   /** 0..1 after a hit bounced off the boss: it smirks. */
   bossSmug = 0
@@ -515,6 +538,15 @@ export class Juice {
         return playSound(HEALTH_SOUNDS.heal)
       case 'heroHit':
         this.bossGloat = 1
+        if (e.source === 'rocket') {
+          // The rocket is still flying: its impact shows the hit (see updateBeams).
+          const rocket = [...this.beams].reverse().find((b) => b.kind === 'rocket' && b.damage === undefined)
+          if (rocket) {
+            rocket.damage = e.damage
+            return
+          }
+        }
+        if (e.source === 'thorn') this.beam('bolt', e.x, e.y, this.heroX, this.floorY, '#c77dff', 0.25)
         // A boss attack hits the hero: a red bolt from the spot, the screen stings.
         this.hurtFlash = Math.max(this.hurtFlash, prefersReducedMotion() ? 0.3 : 0.6)
         this.heroHurt = 1
@@ -523,8 +555,30 @@ export class Juice {
         this.particles.text(e.x, e.y - 8, `−${e.damage}`, { color: theme.coral, size: 15, rise: 30 })
         return this.play('heroHit', e.source === 'slam' ? HEALTH_SOUNDS.bossCrash : HEALTH_SOUNDS.hurt, 0.7)
       case 'bossWarn':
+        if (e.id === 'step') return playSound(BOSS_SOUNDS.movement)
         this.show(t('⚠ GROUND SLAM NEXT TURN!'), 0.2)
         return playSound(BRICK_SOUNDS.danger)
+      case 'rocket':
+        this.beam('rocket', e.x, e.y, e.tx, e.ty, '#ff922b', ROCKET_FLY)
+        return playSound(BRICK_SOUNDS.whoosh)
+      case 'drain':
+        this.beam('stream', e.x, e.y, e.tx, e.ty, '#ff3b5c', 0.7)
+        return
+      case 'bossStep':
+        this.shake.add(0.2)
+        return playSound(pitched(BRICK_SOUNDS.explode, 0.45))
+      case 'bossCrush':
+        // The boss bulldozes through: the nearest bricks burst first, then outward.
+        for (const at of e.at)
+          this.rubble.push({ ...at, in: Math.random() * 0.12 + this.rubble.length * 0.04 })
+        this.shake.add(Math.min(0.8, 0.2 + 0.05 * e.at.length))
+        if (e.coins > 0)
+          this.particles.text(e.at[0].x, e.at[0].y - 10, `+${e.coins}`, {
+            color: theme.yolk,
+            size: 15,
+            rise: 34,
+          })
+        return playSound(pitched(BRICK_SOUNDS.explode, 0.55))
       case 'bossAttack': {
         this.bossCast = 1
         this.show(t(ATTACK_TEXT[e.id]), e.id === 'slam' ? 0.7 : 0.3)
@@ -553,6 +607,7 @@ export class Juice {
           return playSound(HEALTH_SOUNDS.bossCrash)
         }
         this.shake.add(0.3)
+        for (const to of e.targets ?? []) this.beam('bolt', e.x, e.y, to.x, to.y, skillInfo(e.id).color, 0.35)
         this.particles.burst(e.x, e.y, {
           count: 18,
           color: [skillInfo(e.id).color, '#ffffff'],
@@ -886,6 +941,40 @@ export class Juice {
     }
   }
 
+  private beam(
+    kind: Juice['beams'][number]['kind'],
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    color: string,
+    life: number,
+  ): void {
+    this.beams.push({ kind, x1, y1, x2, y2, color, age: 0, life })
+  }
+
+  /** Ages boss attacks in flight; a rocket that arrives explodes on the hero. */
+  private updateBeams(dt: number): void {
+    for (const b of this.beams) {
+      b.age += dt
+      if (b.kind !== 'rocket' || b.age < b.life) continue
+      this.particles.burst(b.x2, b.y2, {
+        count: 28,
+        color: ['#ff922b', '#ffc83d', '#ffffff'],
+        speed: 300,
+        life: 0.5,
+      })
+      this.shake.add(0.45)
+      this.hurtFlash = Math.max(this.hurtFlash, prefersReducedMotion() ? 0.3 : 0.6)
+      this.heroHurt = 1
+      if (b.damage)
+        this.particles.text(b.x2, b.y2 - 24, `−${b.damage}`, { color: theme.coral, size: 16, rise: 30 })
+      playSound(pitched(BRICK_SOUNDS.explode, 0.8))
+      this.play('heroHit', HEALTH_SOUNDS.hurt, 0.7)
+    }
+    this.beams = this.beams.filter((b) => b.age < b.life)
+  }
+
   private playChain(e: Extract<SimEvent, { type: 'explode' | 'zap' }>): void {
     if (e.type === 'explode') {
       this.particles.burst(e.x, e.y, {
@@ -921,6 +1010,19 @@ export class Juice {
     const due = this.queue.filter((q) => q.at <= 1e-9)
     this.queue = this.queue.filter((q) => q.at > 1e-9)
     for (const q of due) this.playChain(q.e)
+    this.updateBeams(dt)
+    for (const r of this.rubble) r.in -= dt
+    for (const r of this.rubble.filter((r) => r.in <= 0)) {
+      this.particles.burst(r.x, r.y, {
+        count: 12,
+        color: ['#8a83a8', '#c9c3e6', '#ff9f43'],
+        speed: 220,
+        gravity: 500,
+        life: 0.6,
+      })
+      this.play('rubble', pitched(BRICK_SOUNDS.kill, 0.7 + Math.random() * 0.3), 0.6)
+    }
+    this.rubble = this.rubble.filter((r) => r.in > 0)
     for (const o of this.xpOrbs) o.age += dt
     this.xpOrbs = this.xpOrbs.filter((o) => o.age < XP_ORB_FLY)
     if (this.coinTally) {

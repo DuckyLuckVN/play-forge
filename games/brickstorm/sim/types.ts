@@ -138,7 +138,7 @@ export type BossRole =
   | 'ice'
   /** Hurts the hero when a ball hits it. */
   | 'thorn'
-  /** Falls fast; hurts double if it crashes. */
+  /** A rocket aimed at the hero: launches next boss turn unless shot down. */
   | 'missile'
   /** A stone block guarding a weak point. */
   | 'ward'
@@ -270,11 +270,28 @@ export type SimEvent =
   /** A storm turn: a special wave arrives. */
   | { type: 'storm'; kind: StormKind }
   /** A boss attack hurt the hero directly (thorns, a slam…), at (x, y). */
-  | { type: 'heroHit'; damage: number; x: number; y: number; source: 'thorn' | 'slam' }
+  | { type: 'heroHit'; damage: number; x: number; y: number; source: 'thorn' | 'slam' | 'rocket' }
+  /** A boss rocket launched from (x, y) at the hero at (tx, ty). */
+  | { type: 'rocket'; x: number; y: number; tx: number; ty: number }
   /** A boss attack lands now (the ground slams, missiles launch, a hex curses), at (x, y). */
-  | { type: 'bossAttack'; id: 'slam' | 'barrage' | 'hex' | 'thorns'; x: number; y: number }
+  | {
+      type: 'bossAttack'
+      id: 'slam' | 'barrage' | 'hex' | 'thorns'
+      x: number
+      y: number
+      /** Hex: the bricks it cursed (a bolt flies to each). */
+      targets?: Array<{ x: number; y: number }>
+    }
+  /** A Drain boss drinks the hero's lost health: a life stream from (x, y) to the boss at (tx, ty). */
+  | { type: 'drain'; x: number; y: number; tx: number; ty: number }
   /** A boss attack is coming next turn. */
   | { type: 'bossWarn'; id: 'slam' }
+  /** The boss will step one column this way next turn. */
+  | { type: 'bossWarn'; id: 'step'; dir: 1 | -1 }
+  /** The boss moved one column (its telegraphed step). */
+  | { type: 'bossStep'; dir: 1 | -1 }
+  /** The boss smashed bricks in its way (arriving or moving): where they were, coins they paid. */
+  | { type: 'bossCrush'; at: Array<{ x: number; y: number }>; coins: number }
   /** The board grew for a boss fight (or shrank back after it). */
   | { type: 'arena'; grow: boolean }
   /** The next turn is a storm turn. */

@@ -30,7 +30,7 @@ export const BREACH_TURN_CAP = 0.6
 /** A boss crashing hurts like this many full bricks, then rises back to the top. */
 /** At tier 3; one less per tier below. */
 export const BOSS_BREACH = 6
-/** A boss missile crashing hurts this many times a brick. */
+/** A boss rocket crashing (pushed to the line before it launched) hurts this many times a brick. */
 export const MISSILE_BREACH = 2
 /** Share of max health a heart pickup heals. */
 export const HEART_HEAL = 0.2
@@ -46,8 +46,8 @@ export function breachUnit(turn: number): number {
   return BREACH_BASE * (1 + (Math.max(0, turn) / BREACH_DOUBLE_AT) ** BREACH_CURVE)
 }
 
-/** A full brick's crash on `turn`, capped at BREACH_CAP. */
-function cappedUnit(turn: number): number {
+/** A full brick's crash on `turn`, capped at BREACH_CAP (boss attacks scale from it too). */
+export function crashUnit(turn: number): number {
   return Math.min(BREACH_CAP, breachUnit(turn))
 }
 
@@ -55,7 +55,7 @@ function cappedUnit(turn: number): number {
 export function brickBreach(s: RunState, b: Brick): number {
   const left = Math.max(0, Math.min(1, b.hp / b.maxHp))
   const missile = b.role === 'missile' ? MISSILE_BREACH : 1
-  return cappedUnit(s.turn) * (BREACH_FLOOR + (1 - BREACH_FLOOR) * left) * missile * (heroOf(s).breach ?? 1)
+  return crashUnit(s.turn) * (BREACH_FLOOR + (1 - BREACH_FLOOR) * left) * missile * (heroOf(s).breach ?? 1)
 }
 
 /** Health the given bricks would take if they crashed now (a boss counts once). */
@@ -64,7 +64,7 @@ export function breachDamage(s: RunState, bricks: readonly Brick[]): number {
   const boss = bricks.some((b) => b.kind === 'boss')
   // Later bosses crash harder: 4 bricks' worth for the first, 5, then 6.
   const tier = s.boss?.tier ?? 1
-  const bossHit = boss ? cappedUnit(s.turn) * (BOSS_BREACH - 3 + tier) * (heroOf(s).breach ?? 1) : 0
+  const bossHit = boss ? crashUnit(s.turn) * (BOSS_BREACH - 3 + tier) * (heroOf(s).breach ?? 1) : 0
   const missiles = plain.filter((b) => b.role === 'missile').reduce((sum, b) => sum + brickBreach(s, b), 0)
   const crowd = plain
     .filter((b) => b.role !== 'missile')
@@ -107,7 +107,7 @@ export function hurtHero(
   s: RunState,
   amount: number,
   at: { x: number; y: number },
-  source: 'thorn' | 'slam',
+  source: 'thorn' | 'slam' | 'rocket',
 ): void {
   const damage = amount * (heroOf(s).breach ?? 1)
   if (damage <= 0 || s.hp <= 0) return

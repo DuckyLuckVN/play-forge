@@ -50,6 +50,7 @@ import { brickRect, brickShape, cellCenter, hitShapes } from './sim/rows'
 import type { Brick, BrickKind, PickupKind, Rect, RunState } from './sim/types'
 import type { HeroAvatar } from './hero-avatar'
 import { BrickTween } from './brick-tween'
+import { drawBeams } from './attack-fx'
 
 const TRAIL = 4
 const XP_COLOR = '#4be3a0'
@@ -343,6 +344,8 @@ export class BoardRenderer {
         this.avatar.draw(ctx, this.d.floorY)
       }
       this.drawBalls(ctx, s, time, juice.zaps)
+      juice.heroX = s.launchX
+      drawBeams(ctx, juice.beams, time)
     }
     if (juice.growFx) this.drawGrowFx(ctx, juice.growFx)
     for (const l of juice.lasers) {
@@ -506,7 +509,7 @@ export class BoardRenderer {
       const r = brickRect(b)
       if (b.role) {
         // Summoned by a boss skill: its own look (ice has no number).
-        if (drawRoleBrick(ctx, b, time)) return
+        if (drawRoleBrick(ctx, b, time, { x: s.launchX, y: this.d.floorY })) return
       } else if (b.shape) {
         drawShapedBrick(ctx, b, b.kind === 'gold' ? '#ffc83d' : hpColor(b.hp, s.turn))
       } else {

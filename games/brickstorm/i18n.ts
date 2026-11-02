@@ -608,8 +608,8 @@ export const VI: Dictionary = {
   'Cursed Thorns: thorn bricks hurt you for every ball that hits a spiked side. Bare sides, fire, bombs and lasers are safe.':
     'Gai Nguyền: mỗi quả bóng chạm mặt có gai làm bạn mất máu. Mặt trơn, lửa, bom và laser đều an toàn.',
   Bombarding: 'Pháo Kích',
-  'Barrage: fires 2 missiles every 2 turns. They fall fast and hurt double if they reach the line. Shoot them down!':
-    'Mưa Tên Lửa: cứ 2 lượt bắn 2 tên lửa. Chúng rơi nhanh và gây gấp đôi sát thương nếu chạm vạch. Bắn hạ chúng!',
+  'Barrage: arms 2 rockets every 2 turns, aimed at you. Shoot them down in one volley, or they launch and hit you!':
+    'Mưa Tên Lửa: cứ 2 lượt gắn 2 tên lửa nhắm vào bạn. Bắn hạ chúng trong một loạt, không thì chúng phóng tới trúng bạn!',
   Quaking: 'Địa Chấn',
   'Ground Slam: every 3 turns all bricks drop a row, and you get hurt if any are near the line.':
     'Dậm Đất: cứ 3 lượt mọi viên gạch rơi xuống một hàng, và bạn mất máu nếu có gạch gần vạch.',
@@ -626,7 +626,7 @@ export const VI: Dictionary = {
   'Got it': 'Đã hiểu',
   '⚠ GROUND SLAM NEXT TURN!': '⚠ LƯỢT TỚI DẬM ĐẤT!',
   'GROUND SLAM!': 'DẬM ĐẤT!',
-  'MISSILES INCOMING!': 'TÊN LỬA ĐANG TỚI!',
+  'ROCKETS LOCKED ON!': 'TÊN LỬA ĐÃ KHÓA MỤC TIÊU!',
   'HEXED!': 'BỊ ẾM!',
   'THORNS!': 'GAI ĐỘC!',
   'Heh.': 'Hừm.',

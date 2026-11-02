@@ -7,6 +7,7 @@ import { levelPower, modsOf, runMods, xpToNext } from './boosts'
 import { BOSS_HEAL, heal } from './health'
 import { heroOf } from './heroes'
 import { bossParts, crushUnderBoss, moveBoss } from './boss-kit'
+import { bossStep, tallyHit } from './boss-step'
 import { BOSS_SHAPES, shapeOf, shapeSize } from './boss-shapes'
 import { BOSS_SKILLS, type BossHit, type BossSkill, type Face, SKILL_IDS } from './boss-skills'
 import { BOSS_XP_PER_TURN } from './config'
@@ -89,7 +90,9 @@ export function rollTraits(s: RunState, tier = bossTier(s.turn)): BossSkillId[] 
 /** Skills that hurt the hero directly; every boss gets at least one. */
 export const ATTACKS: BossSkillId[] = ['thorns', 'barrage', 'slam', 'hex']
 /** Rows the board grows by while a boss is on it. */
-export const BOSS_ROOM = 2
+export const BOSS_ROOM = 4
+/** An arriving boss smashes the bricks within this many cells of its body. */
+const ARRIVAL_RING = 1
 
 /** A boss arrives: the board grows taller, so there is room for it, its summons and its attacks. */
 function growArena(s: RunState): void {
@@ -154,7 +157,7 @@ export function spawnBoss(s: RunState, traits = rollTraits(s), shape = rollShape
     if (shape) part.shape = shape
     s.bricks.push(part)
   }
-  crushUnderBoss(s)
+  crushUnderBoss(s, ARRIVAL_RING)
   for (const id of traits) BOSS_SKILLS[id]?.spawn?.(s, boss)
   s.events.push({ type: 'boss', noun, traits })
 }
@@ -194,6 +197,7 @@ export function damageBoss(
       })
     else if (amount > 0) s.events.push({ type: 'bossBlock', ...hit.at })
   }
+  if (source === 'ball' && hit.col !== undefined) tallyHit(s, boss, hit.col, dealt)
   const before = boss.hp
   boss.hp -= dealt
   boss.mem = { ...boss.mem, volley: (boss.mem?.volley ?? 0) + dealt }
@@ -319,4 +323,5 @@ export function bossTurn(s: RunState): void {
     return
   }
   for (const id of boss.traits) BOSS_SKILLS[id]?.turn?.(s, boss)
+  bossStep(s, boss)
 }

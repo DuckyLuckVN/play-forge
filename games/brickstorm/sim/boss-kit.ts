@@ -66,10 +66,25 @@ export function summon(
   })
 }
 
-/** Removes non-boss bricks sitting in the boss's cells (it moved onto them). */
-export function crushUnderBoss(s: RunState): void {
-  const cells = new Set(bossParts(s).map((p) => key(p.col, p.row)))
-  s.bricks = s.bricks.filter((b) => b.kind === 'boss' || !cells.has(key(b.col, b.row)))
+/** Coins a brick the boss smashes pays (gold pays triple). No XP: the boss did the work. */
+const CRUSH_COINS = 1
+
+/**
+ * Smashes non-boss bricks in the boss's cells, or within `ring` cells of them
+ * (an arrival clears room around itself). They pay a coin each and the
+ * effects get one `bossCrush` with where they were.
+ */
+export function crushUnderBoss(s: RunState, ring = 0): void {
+  const cells = new Set<string>()
+  for (const p of bossParts(s))
+    for (let dc = -ring; dc <= ring; dc++)
+      for (let dr = -ring; dr <= ring; dr++) cells.add(key(p.col + dc, p.row + dr))
+  const crushed = s.bricks.filter((b) => b.kind !== 'boss' && cells.has(key(b.col, b.row)))
+  if (!crushed.length) return
+  s.bricks = s.bricks.filter((b) => !crushed.includes(b))
+  const coins = crushed.reduce((sum, b) => sum + CRUSH_COINS * (b.kind === 'gold' ? 3 : 1), 0)
+  s.coins += coins
+  s.events.push({ type: 'bossCrush', at: crushed.map((b) => cellCenter(b.col, b.row)), coins })
 }
 
 /** Moves the whole boss, crushing what is in the way. */

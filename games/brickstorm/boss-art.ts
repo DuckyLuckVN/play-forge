@@ -230,6 +230,37 @@ export function drawBoss(ctx: CanvasRenderingContext2D, s: BossView, time: numbe
     ctx.fillStyle = `rgb(255 255 255 / ${0.55 * look.hit})`
     ctx.fill(body)
   }
+  const step = boss.mem?.step
+  if (step === 1 || step === -1) drawStepArrow(ctx, g.box, step, time)
+  ctx.restore()
+}
+
+/** The boss's next step, telegraphed: three chevrons beside its body, marching that way. */
+function drawStepArrow(
+  ctx: CanvasRenderingContext2D,
+  box: { x: number; y: number; w: number; h: number },
+  dir: 1 | -1,
+  time: number,
+): void {
+  const x0 = dir > 0 ? box.x + box.w + 6 : box.x - 6
+  const y = box.y + box.h / 2
+  ctx.save()
+  ctx.strokeStyle = '#ffd43b'
+  ctx.lineWidth = 3
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.shadowColor = '#ffd43b'
+  ctx.shadowBlur = 6
+  for (let i = 0; i < 3; i++) {
+    // Each chevron lights up in turn, so the row reads as motion.
+    ctx.globalAlpha = 0.35 + 0.65 * Math.max(0, Math.sin(time * 6 - i * 1.1))
+    const x = x0 + dir * i * 8
+    ctx.beginPath()
+    ctx.moveTo(x, y - 7)
+    ctx.lineTo(x + dir * 6, y)
+    ctx.lineTo(x, y + 7)
+    ctx.stroke()
+  }
   ctx.restore()
 }
 
@@ -1310,7 +1341,13 @@ function drawSpikes(
 }
 
 /** A brick a boss summoned, in its role's colours with a glyph; returns false to also draw its hp. */
-export function drawRoleBrick(ctx: CanvasRenderingContext2D, b: Brick, time: number): boolean {
+export function drawRoleBrick(
+  ctx: CanvasRenderingContext2D,
+  b: Brick,
+  time: number,
+  /** Where the hero stands: rockets aim there. */
+  hero?: { x: number; y: number },
+): boolean {
   const role = b.role
   if (!role) return false
   const r = brickRect(b)
@@ -1385,25 +1422,40 @@ export function drawRoleBrick(ctx: CanvasRenderingContext2D, b: Brick, time: num
       return false
     }
     case 'missile': {
-      // A falling warhead with a flickering exhaust above it.
+      // A rocket on its rail, nose on the hero, a dashed aim line pulsing: shoot it down this volley.
+      const to = hero ?? { x: cx, y: cy + 100 }
+      const angle = Math.atan2(to.y - cy, to.x - cx)
+      ctx.save()
+      ctx.strokeStyle = `rgb(255 107 107 / ${0.25 + 0.2 * Math.sin(time * 8)})`
+      ctx.lineWidth = 2
+      ctx.setLineDash([6, 6])
+      ctx.lineDashOffset = -time * 40
+      ctx.beginPath()
+      ctx.moveTo(cx, cy)
+      ctx.lineTo(to.x, to.y)
+      ctx.stroke()
+      ctx.restore()
       const flick = 0.7 + 0.3 * Math.sin(time * 30 + b.id)
+      const len = Math.min(r.w, r.h) * 0.42
+      ctx.translate(cx, cy)
+      ctx.rotate(angle)
       ctx.fillStyle = `rgb(255 200 61 / ${flick})`
       ctx.beginPath()
-      ctx.moveTo(cx - 7, r.y + 8)
-      ctx.lineTo(cx, r.y - 8 * flick)
-      ctx.lineTo(cx + 7, r.y + 8)
+      ctx.moveTo(-len * 0.7, -5)
+      ctx.lineTo(-len * 0.7 - 10 * flick, 0)
+      ctx.lineTo(-len * 0.7, 5)
       ctx.fill()
       ctx.fillStyle = ROLE_COLOR.missile
       ctx.beginPath()
-      ctx.moveTo(r.x + 8, r.y + 6)
-      ctx.lineTo(r.x + r.w - 8, r.y + 6)
-      ctx.lineTo(r.x + r.w - 8, r.y + r.h - 18)
-      ctx.lineTo(cx, r.y + r.h - 2)
-      ctx.lineTo(r.x + 8, r.y + r.h - 18)
+      ctx.moveTo(-len * 0.7, -len * 0.4)
+      ctx.lineTo(len * 0.45, -len * 0.4)
+      ctx.lineTo(len, 0)
+      ctx.lineTo(len * 0.45, len * 0.4)
+      ctx.lineTo(-len * 0.7, len * 0.4)
       ctx.closePath()
       ctx.fill()
       ctx.fillStyle = '#212529'
-      ctx.fillRect(r.x + 8, r.y + 14, r.w - 16, 4)
+      ctx.fillRect(-len * 0.35, -len * 0.4, 4, len * 0.8)
       ctx.restore()
       return false
     }

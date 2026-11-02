@@ -15,14 +15,14 @@ export const SKILL_INFO: Record<BossSkillId, SkillInfo> = {
   thorns: {
     adj: t('Thorned'),
     text: t(
-      'Cursed Thorns: thorn bricks hurt you for every ball that hits them. Fire, bombs and lasers break them safely.',
+      'Cursed Thorns: thorn bricks hurt you for every ball that hits a spiked side. Bare sides, fire, bombs and lasers are safe.',
     ),
     color: '#c77dff',
   },
   barrage: {
     adj: t('Bombarding'),
     text: t(
-      'Barrage: fires 2 missiles every 2 turns. They fall fast and hurt double if they reach the line. Shoot them down!',
+      'Barrage: arms 2 rockets every 2 turns, aimed at you. Shoot them down in one volley, or they launch and hit you!',
     ),
     color: '#ff922b',
   },
@@ -33,7 +33,7 @@ export const SKILL_INFO: Record<BossSkillId, SkillInfo> = {
   },
   hex: {
     adj: t('Hexing'),
-    text: t('Hex: every 4 turns turns the 2 lowest bricks into thorns that hurt you when hit.'),
+    text: t('Hex: every 4 turns turns the 2 lowest bricks into thorns that hurt you when hit from below.'),
     color: '#9d4edd',
   },
   drain: {
@@ -69,7 +69,7 @@ export const SKILL_INFO: Record<BossSkillId, SkillInfo> = {
   },
   spikes: {
     adj: t('Spiked'),
-    text: t('Spikes: spike bricks pop any ball that hits them for this volley.'),
+    text: t('Spikes: spike bricks pop any ball that hits a spiked side, for this volley.'),
     color: '#ff4d6d',
   },
   splitters: {

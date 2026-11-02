@@ -42,9 +42,22 @@ describe('revive', () => {
 
   it('costs more each time', () => {
     const s = empty()
-    expect(reviveCost(s)).toBe(100)
-    s.revivesUsed = 2
-    expect(reviveCost(s)).toBe(300)
+    s.turn = 30
+    const first = reviveCost(s)
+    s.revivesUsed = 1
+    expect(reviveCost(s)).toBeGreaterThan(first * 1.5)
+  })
+
+  it('costs more the deeper the run (cheap early, a real choice late)', () => {
+    const s = empty()
+    s.turn = 30
+    expect(reviveCost(s)).toBe(150)
+    s.turn = 100
+    expect(reviveCost(s)).toBe(360)
+    s.turn = 170
+    expect(reviveCost(s)).toBe(570)
+    s.revivesUsed = 1
+    expect(reviveCost(s)).toBe(910)
   })
 })
 

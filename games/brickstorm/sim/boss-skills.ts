@@ -12,6 +12,7 @@ import {
   mem,
   minionHp,
   moveBoss,
+  wardShape,
   pickCells,
   roleBricks,
   setMem,
@@ -19,18 +20,20 @@ import {
 } from './boss-kit'
 import { CELL } from './config'
 import { dims } from './dims'
-import { breachUnit, hurtHero } from './health'
+import { breachUnit, crashUnit, hurtHero } from './health'
 import { cellCenter } from './rows'
+import { armSpikes, isSpiked, SPIKE_FACES, THORN_FACES } from './spikes'
 import type { DamageSource } from './damage'
-import type { Ball, Boss, BossSkillId, BossTier, Brick, RunState } from './types'
+import type { Ball, Boss, BossSkillId, BossTier, Brick, Face, RunState } from './types'
 
-/** Which side of the boss a ball struck. */
-export type Face = 'top' | 'bottom' | 'left' | 'right'
+export type { Face } from './types'
 
 export interface BossHit {
   source: DamageSource
-  /** Set for ball hits. */
+  /** Set for ball hits: the main side struck. */
   face?: Face
+  /** Every side the struck surface faces (two on a slope); defaults to [face]. */
+  facing?: Face[]
   /** Column of the part that was hit, if known. */
   col?: number
   crit?: boolean
@@ -60,13 +63,13 @@ export interface BossSkill {
   /** Extra rows it moves after the board drops (negative: it stays or rises). */
   drop?(s: RunState, boss: Boss): number
   /** A ball touches it on `face`: hit it, bounce off harmlessly ('block'), or pass through. */
-  contact?(s: RunState, boss: Boss, ball: Ball, face: Face): 'hit' | 'block' | 'pass'
+  contact?(s: RunState, boss: Boss, ball: Ball, face: Face, facing: readonly Face[]): 'hit' | 'block' | 'pass'
   /** Bends a flying ball's velocity. */
   force?(s: RunState, boss: Boss, ball: Ball, dt: number): void
   /** How fast a ball may move right now (1 = full speed). */
   slow?(s: RunState, boss: Boss, ball: Ball): number
   /** A brick it summoned took damage. */
-  roleHit?(s: RunState, boss: Boss, brick: Brick, amount: number, source: DamageSource): void
+  roleHit?(s: RunState, boss: Boss, brick: Brick, amount: number, source: DamageSource, face?: Face): void
   /** A brick it summoned was destroyed. */
   roleKill?(s: RunState, boss: Boss, brick: Brick): void
   /** The hero lost `amount` health (a crash or an attack). */
@@ -78,6 +81,8 @@ export interface BossSkill {
 const WARD_HP = 1
 /** A ball hit on a thorn hurts the hero this share of a crashing brick… */
 const THORN_HIT = 0.12
+/** A rocket that reaches the hero hurts this many full-brick crashes. */
+export const ROCKET_HIT = 0.75
 /** …but thorns take at most this share of max health per volley. */
 const THORN_CAP = 0.15
 /** A slam hurts like this many crashing bricks (if anything is near the line). */
@@ -144,8 +149,11 @@ const fortify = (s: RunState, bricks: Brick[]) => {
       [b.col - 1, b.row],
       [b.col + 1, b.row],
     ])
-      if (c >= 0 && c < s.cols && r >= 0 && r < line - 1 && !taken(c, r))
-        summon(s, [[c, r]], minionHp(s, WARD_HP), { role: 'ward' })
+      if (c >= 0 && c < s.cols && r >= 0 && r < line - 1 && !taken(c, r)) {
+        const [ward] = summon(s, [[c, r]], minionHp(s, WARD_HP), { role: 'ward' })
+        const shape = wardShape(s, c, r)
+        if (shape) ward.shape = shape
+      }
 }
 /**
  * A weak point was hit: only a real hit (a ball or a fireball) counts, never
@@ -315,7 +323,7 @@ export const BOSS_SKILLS: Record<BossSkillId, BossSkill> = {
     tier: 3,
     turn: (s, boss) => {
       if (!every(s, boss, 3)) return
-      summon(s, pickCells(s, open(s, 1), 2), minionHp(s, 0.5), { role: 'spike' })
+      armSpikes(s, summon(s, pickCells(s, open(s, 1), 2), minionHp(s, 0.5), { role: 'spike' }), SPIKE_FACES)
       announce(s, 'spikes')
     },
   },
@@ -367,15 +375,18 @@ export const BOSS_SKILLS: Record<BossSkillId, BossSkill> = {
   },
   bulwark: {
     tier: 2,
-    contact: (_s, _b, _ball, face) => (face === 'left' || face === 'right' ? 'block' : 'hit'),
+    // Covers every surface facing a side, slopes included.
+    contact: (_s, _b, _ball, _face, facing) =>
+      facing.includes('left') || facing.includes('right') ? 'block' : 'hit',
   },
   shell: {
     tier: 1,
-    contact: (_s, _b, _ball, face) => (face === 'top' ? 'block' : 'hit'),
+    // Covers every upward surface, the slopes of its shoulders included.
+    contact: (_s, _b, _ball, _face, facing) => (facing.includes('top') ? 'block' : 'hit'),
   },
   underplate: {
     tier: 2,
-    damage: (_s, _b, amount, hit) => (hit.face === 'bottom' ? amount / 2 : amount),
+    damage: (_s, _b, amount, hit) => ((hit.facing ?? [hit.face]).includes('bottom') ? amount / 2 : amount),
   },
   phase: {
     tier: 2,
@@ -745,19 +756,24 @@ export const BOSS_SKILLS: Record<BossSkillId, BossSkill> = {
     // Spiky bricks across the lower board: every ball hit on one costs health.
     // Fire, bombs and lasers break them safely.
     spawn: (s) => {
-      summon(s, pickCells(s, low(s), 3), minionHp(s, 0.8), { role: 'thorn' })
+      armSpikes(s, summon(s, pickCells(s, low(s), 3), minionHp(s, 0.8), { role: 'thorn' }), THORN_FACES)
       s.events.push({ type: 'bossAttack', id: 'thorns', ...bossCenter(s) })
     },
     turn: (s, boss) => {
       const missing = 3 - roleBricks(s, 'thorn').length
       if (missing > 0 && every(s, boss, 3)) {
-        summon(s, pickCells(s, low(s), missing), minionHp(s, 0.8), { role: 'thorn' })
+        armSpikes(
+          s,
+          summon(s, pickCells(s, low(s), missing), minionHp(s, 0.8), { role: 'thorn' }),
+          THORN_FACES,
+        )
         announce(s, 'thorns')
       }
     },
     launch: (_s, boss) => setMem(boss, 'thornHurt', 0),
-    roleHit: (s, boss, brick, _amount, source) => {
+    roleHit: (s, boss, brick, _amount, source, face) => {
       if (brick.role !== 'thorn' || source !== 'ball') return
+      if (!isSpiked(brick, face)) return
       const done = mem(boss, 'thornHurt')
       const dmg = Math.min(breachUnit(s.turn) * THORN_HIT, s.maxHp * THORN_CAP - done)
       if (dmg <= 0) return
@@ -767,13 +783,17 @@ export const BOSS_SKILLS: Record<BossSkillId, BossSkill> = {
   },
   barrage: {
     tier: 1,
-    // Every 2 turns (3 for a first boss) it fires 2 missiles from under itself; they fall 2 rows a
-    // turn and hurt double if they reach the line. Shoot them down.
+    // Every 2 turns (3 for a first boss) it arms 2 rockets under itself, aimed at
+    // the hero. You get one volley to shoot them down; the next boss turn the
+    // rest launch and hit the hero.
     turn: (s, boss) => {
-      const line = dims(s).dangerRow
-      const taken = (c: number, r: number) => s.bricks.some((b) => b.col === c && b.row === r)
-      for (const m of roleBricks(s, 'missile').sort((a, b) => b.row - a.row))
-        if (m.row + 1 < line && !taken(m.col, m.row + 1)) m.row++
+      const hero = { x: s.launchX, y: dims(s).floorY }
+      for (const m of roleBricks(s, 'missile')) {
+        s.bricks = s.bricks.filter((b) => b !== m)
+        const from = cellCenter(m.col, m.row)
+        s.events.push({ type: 'rocket', x: from.x, y: from.y, tx: hero.x, ty: hero.y })
+        hurtHero(s, crashUnit(s.turn) * ROCKET_HIT, hero, 'rocket')
+      }
       if (every(s, boss, (boss.tier ?? 1) === 1 ? 3 : 2)) {
         const { left, right, bottom } = bossBounds(s)
         const cells = freeCells(s, (c, r) => r === bottom + 1 && c >= left - 1 && c <= right + 1)
@@ -813,12 +833,23 @@ export const BOSS_SKILLS: Record<BossSkillId, BossSkill> = {
     turn: (s, boss) => {
       if (!every(s, boss, 4)) return
       const plain = s.bricks.filter((b) => b.kind === 'normal' && !b.role).sort((a, b) => b.row - a.row)
-      for (const b of plain.slice(0, 2)) b.role = 'thorn'
-      if (plain.length) s.events.push({ type: 'bossAttack', id: 'hex', ...bossCenter(s) })
+      const cursed = plain.slice(0, 2)
+      for (const b of cursed) {
+        b.role = 'thorn'
+        b.spikes = ['bottom'] // a curse sprouts from below, where the balls come from
+      }
+      if (cursed.length)
+        s.events.push({
+          type: 'bossAttack',
+          id: 'hex',
+          ...bossCenter(s),
+          targets: cursed.map((b) => cellCenter(b.col, b.row)),
+        })
     },
     launch: (_s, boss) => setMem(boss, 'thornHurt', 0),
-    roleHit: (s, boss, brick, _amount, source) => {
+    roleHit: (s, boss, brick, _amount, source, face) => {
       if (brick.role !== 'thorn' || source !== 'ball' || boss.traits.includes('thorns')) return
+      if (!isSpiked(brick, face)) return
       const done = mem(boss, 'thornHurt')
       const dmg = Math.min(breachUnit(s.turn) * THORN_HIT, s.maxHp * THORN_CAP - done)
       if (dmg <= 0) return
@@ -829,7 +860,12 @@ export const BOSS_SKILLS: Record<BossSkillId, BossSkill> = {
   drain: {
     tier: 3,
     // Whatever health the hero loses, it drinks.
-    heroHurt: (s, boss, amount) => healBoss(s, boss, boss.maxHp * (amount / s.maxHp) * DRAIN_SHARE),
+    heroHurt: (s, boss, amount) => {
+      if (amount <= 0 || !bossParts(s).length) return
+      healBoss(s, boss, boss.maxHp * (amount / s.maxHp) * DRAIN_SHARE)
+      const to = bossCenter(s)
+      s.events.push({ type: 'drain', x: s.launchX, y: dims(s).floorY, tx: to.x, ty: to.y })
+    },
   },
 }
 

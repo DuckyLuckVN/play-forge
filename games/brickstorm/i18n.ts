@@ -180,8 +180,8 @@ export const VI: Dictionary = {
   'Mirror Image: 2 decoys block a quarter of hits; breaking one hurts it.':
     'Phân thân: 2 bản sao chặn một phần tư cú đánh; phá một bản sao sẽ làm nó mất máu.',
   Spiked: 'Gai Góc',
-  'Spikes: spike bricks pop any ball that hits them for this volley.':
-    'Gai: gạch gai làm vỡ bóng chạm vào nó trong loạt bắn này.',
+  'Spikes: spike bricks pop any ball that hits a spiked side, for this volley.':
+    'Gai: gạch gai làm vỡ bóng chạm vào mặt có gai, trong loạt bắn này.',
   Splitting: 'Phân Bào',
   'Splitter Spawn: summons a splitter brick every turn.': 'Gạch tách: gọi một viên gạch tách đôi mỗi lượt.',
   Totemic: 'Vật Tổ',
@@ -453,6 +453,18 @@ export const VI: Dictionary = {
     'Bóng thường chỉ trừ 1 mỗi cú. Lửa, bom và laser gây đủ sát thương.',
   'Splitter brick': 'Gạch tách',
   'Splits into two half-health bricks when broken.': 'Khi vỡ tách thành hai viên nửa máu.',
+  'Slime brick': 'Gạch nhớt',
+  'Sticky: a ball that hits it has a 30% chance to be swallowed for this volley.':
+    'Dính nhớp: bóng chạm vào có 30% bị nuốt mất trong loạt bắn này.',
+  'Water brick': 'Gạch nước',
+  'Douses fire balls into normal ones and puts out burning balls. Lightning can’t touch it.':
+    'Dập bóng lửa thành bóng thường và dập tắt bóng đang cháy. Sét không đánh được nó.',
+  'Fire brick': 'Gạch lửa',
+  'A normal ball that touches it catches fire and burns out after a few seconds. Water puts it out.':
+    'Bóng thường chạm vào sẽ bốc cháy và tàn sau vài giây. Nước dập tắt được.',
+  'Void brick': 'Gạch hư không',
+  'Swallows every ball that touches it. Fragile: break it fast.':
+    'Nuốt mọi quả bóng chạm vào. Mỏng manh: phá nó thật nhanh.',
   '+1 Ball': '+1 Bóng',
   'Touch it to add a ball for the rest of the run.': 'Chạm vào để có thêm một bóng đến hết lượt chơi.',
   Coin: 'Xu',
@@ -605,17 +617,17 @@ export const VI: Dictionary = {
   '−{n} ♥ next turn': '−{n} ♥ lượt tới',
   'Tap me!': 'Chạm vào tôi!',
   Thorned: 'Gai Độc',
-  'Cursed Thorns: thorn bricks hurt you for every ball that hits them. Fire, bombs and lasers break them safely.':
-    'Gai Nguyền: mỗi quả bóng chạm gạch gai làm bạn mất máu. Lửa, bom và laser phá chúng an toàn.',
+  'Cursed Thorns: thorn bricks hurt you for every ball that hits a spiked side. Bare sides, fire, bombs and lasers are safe.':
+    'Gai Nguyền: mỗi quả bóng chạm mặt có gai làm bạn mất máu. Mặt trơn, lửa, bom và laser đều an toàn.',
   Bombarding: 'Pháo Kích',
-  'Barrage: fires 2 missiles every 2 turns. They fall fast and hurt double if they reach the line. Shoot them down!':
-    'Mưa Tên Lửa: cứ 2 lượt bắn 2 tên lửa. Chúng rơi nhanh và gây gấp đôi sát thương nếu chạm vạch. Bắn hạ chúng!',
+  'Barrage: arms 2 rockets every 2 turns, aimed at you. Shoot them down in one volley, or they launch and hit you!':
+    'Mưa Tên Lửa: cứ 2 lượt gắn 2 tên lửa nhắm vào bạn. Bắn hạ chúng trong một loạt, không thì chúng phóng tới trúng bạn!',
   Quaking: 'Địa Chấn',
   'Ground Slam: every 3 turns all bricks drop a row, and you get hurt if any are near the line.':
     'Dậm Đất: cứ 3 lượt mọi viên gạch rơi xuống một hàng, và bạn mất máu nếu có gạch gần vạch.',
   Hexing: 'Ếm Bùa',
-  'Hex: every 4 turns turns the 2 lowest bricks into thorns that hurt you when hit.':
-    'Ếm Bùa: cứ 4 lượt biến 2 viên gạch thấp nhất thành gai, chạm vào là mất máu.',
+  'Hex: every 4 turns turns the 2 lowest bricks into thorns that hurt you when hit from below.':
+    'Ếm Bùa: cứ 4 lượt biến 2 viên gạch thấp nhất thành gai, chạm từ dưới lên là mất máu.',
   Vampiric: 'Hút Máu',
   'Life Drain: heals itself from every bit of health you lose.':
     'Hút Sinh Lực: hồi máu từ mọi lượng máu bạn mất.',
@@ -626,7 +638,8 @@ export const VI: Dictionary = {
   'Got it': 'Đã hiểu',
   '⚠ GROUND SLAM NEXT TURN!': '⚠ LƯỢT TỚI DẬM ĐẤT!',
   'GROUND SLAM!': 'DẬM ĐẤT!',
-  'MISSILES INCOMING!': 'TÊN LỬA ĐANG TỚI!',
+  'K.O.!': 'GỤC NGÃ!',
+  'ROCKETS LOCKED ON!': 'TÊN LỬA ĐÃ KHÓA MỤC TIÊU!',
   'HEXED!': 'BỊ ẾM!',
   'THORNS!': 'GAI ĐỘC!',
   'Heh.': 'Hừm.',

@@ -50,6 +50,7 @@ import { brickRect, brickShape, cellCenter, hitShapes } from './sim/rows'
 import type { Brick, BrickKind, PickupKind, Rect, RunState } from './sim/types'
 import type { HeroAvatar } from './hero-avatar'
 import { BrickTween } from './brick-tween'
+import { drawBeams } from './attack-fx'
 
 const TRAIL = 4
 const XP_COLOR = '#4be3a0'
@@ -62,6 +63,47 @@ const COMBO_SLAM = 0.18
 /** White-hot bar: a bolt flickers BOLT_RATE times a second, each for BOLT_SHOW of the cycle. */
 const BOLT_RATE = 2
 const BOLT_SHOW = 0.12
+
+/**
+ * A ball a Fire brick set burning: flames wrapping it, flickering faster and
+ * redder as its last second runs out.
+ */
+function drawBurning(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  left: number,
+  time: number,
+): void {
+  const urgent = left < 1
+  const rate = urgent ? 40 : 18
+  ctx.save()
+  ctx.globalAlpha = urgent ? 0.5 + 0.5 * Math.abs(Math.sin(time * rate)) : 0.75
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + time * 6
+    const h = r * (0.8 + 0.4 * Math.sin(time * rate + i))
+    ctx.fillStyle = i % 2 ? '#ffc83d' : urgent ? '#ff3b30' : '#ff922b'
+    ctx.beginPath()
+    ctx.arc(x + Math.cos(a) * r * 0.9, y + Math.sin(a) * r * 0.9 - h * 0.3, h * 0.55, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  ctx.restore()
+}
+
+/** Hazard bricks wear their element's colour instead of the hp colour. */
+export const HAZARD_FILL: Partial<Record<BrickKind, string>> = {
+  slime: '#63d471',
+  water: '#4dabf7',
+  fire: '#ff7b39',
+  void: '#1e1830',
+}
+
+/** A brick's body colour: gold, a hazard's element, or the hp colour. */
+function brickFill(b: Brick, turn: number): string {
+  if (b.kind === 'gold') return '#ffc83d'
+  return HAZARD_FILL[b.kind] ?? hpColor(b.hp, turn)
+}
 
 /** A glyph in the corner (or frame) that tells special bricks apart. */
 export function drawKindGlyph(ctx: CanvasRenderingContext2D, kind: BrickKind, r: Rect, time: number): void {
@@ -110,6 +152,72 @@ export function drawKindGlyph(ctx: CanvasRenderingContext2D, kind: BrickKind, r:
       ctx.roundRect(r.x + 2, r.y + 2, r.w - 4, r.h - 4, 8)
       ctx.stroke()
       break
+    case 'slime': {
+      // Gooey drips sagging off the bottom edge, and a glossy bubble.
+      ctx.fillStyle = '#3fae52'
+      for (const [fx, ph] of [
+        [0.25, 0],
+        [0.55, 2.1],
+        [0.8, 4.2],
+      ]) {
+        const sag = 4 + 3 * Math.sin(time * 3 + ph)
+        ctx.beginPath()
+        ctx.ellipse(r.x + r.w * fx, r.y + r.h - 2 + sag / 2, 3.5, sag, 0, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.fillStyle = 'rgb(255 255 255 / 0.5)'
+      ctx.beginPath()
+      ctx.arc(r.x + 10, r.y + 10, 3, 0, Math.PI * 2)
+      ctx.fill()
+      break
+    }
+    case 'water':
+      // Two ripples drifting across.
+      ctx.strokeStyle = 'rgb(255 255 255 / 0.55)'
+      ctx.lineWidth = 2
+      for (const y0 of [r.y + r.h * 0.3, r.y + r.h * 0.75]) {
+        ctx.beginPath()
+        for (let x = r.x + 5; x <= r.x + r.w - 5; x += 3) {
+          const y = y0 + Math.sin((x - r.x) / 6 + time * 4) * 2
+          if (x === r.x + 5) ctx.moveTo(x, y)
+          else ctx.lineTo(x, y)
+        }
+        ctx.stroke()
+      }
+      break
+    case 'fire': {
+      // Flame tongues licking up off the top edge.
+      for (let i = 0; i < 4; i++) {
+        const x = r.x + 7 + (i * (r.w - 14)) / 3
+        const h = 7 + 4 * Math.sin(time * 14 + i * 1.7)
+        ctx.fillStyle = i % 2 ? '#ffc83d' : '#ff922b'
+        ctx.beginPath()
+        ctx.moveTo(x - 4, r.y + 3)
+        ctx.quadraticCurveTo(x, r.y + 3 - h * 1.4, x + 4, r.y + 3)
+        ctx.fill()
+      }
+      break
+    }
+    case 'void': {
+      // A slow purple swirl pulling inward.
+      ctx.strokeStyle = '#9d4edd'
+      ctx.lineWidth = 2
+      ctx.shadowColor = '#9d4edd'
+      ctx.shadowBlur = 8
+      ctx.translate(r.x + r.w / 2, r.y + r.h / 2)
+      ctx.rotate(-time * 2)
+      for (let arm = 0; arm < 3; arm++) {
+        ctx.beginPath()
+        for (let t = 0; t <= 1; t += 0.1) {
+          const a = arm * ((Math.PI * 2) / 3) + t * 3
+          const rad = 4 + t * Math.min(r.w, r.h) * 0.38
+          if (t === 0) ctx.moveTo(Math.cos(a) * rad, Math.sin(a) * rad)
+          else ctx.lineTo(Math.cos(a) * rad, Math.sin(a) * rad)
+        }
+        ctx.stroke()
+      }
+      break
+    }
     case 'splitter':
       ctx.strokeStyle = theme.night
       ctx.lineWidth = 2
@@ -343,6 +451,8 @@ export class BoardRenderer {
         this.avatar.draw(ctx, this.d.floorY)
       }
       this.drawBalls(ctx, s, time, juice.zaps)
+      juice.heroX = s.launchX
+      drawBeams(ctx, juice.beams, time)
     }
     if (juice.growFx) this.drawGrowFx(ctx, juice.growFx)
     for (const l of juice.lasers) {
@@ -506,11 +616,11 @@ export class BoardRenderer {
       const r = brickRect(b)
       if (b.role) {
         // Summoned by a boss skill: its own look (ice has no number).
-        if (drawRoleBrick(ctx, b, time)) return
+        if (drawRoleBrick(ctx, b, time, { x: s.launchX, y: this.d.floorY })) return
       } else if (b.shape) {
-        drawShapedBrick(ctx, b, b.kind === 'gold' ? '#ffc83d' : hpColor(b.hp, s.turn))
+        drawShapedBrick(ctx, b, brickFill(b, s.turn))
       } else {
-        ctx.fillStyle = b.kind === 'gold' ? '#ffc83d' : hpColor(b.hp, s.turn)
+        ctx.fillStyle = brickFill(b, s.turn)
         ctx.beginPath()
         ctx.roundRect(r.x, r.y, r.w, r.h, 9)
         ctx.fill()
@@ -518,10 +628,10 @@ export class BoardRenderer {
         ctx.fillRect(r.x + 6, r.y + 4, r.w - 12, 4)
       }
       // A triangle's glyph and number sit in its fat half, around its centroid.
-      const label = b.shape && !b.role ? shapeLabelRect(b) : r
+      const label = b.shape && (!b.role || b.role === 'ward') ? shapeLabelRect(b) : r
       drawKindGlyph(ctx, b.kind, label, time)
       const hp = compactNumber(Math.ceil(b.hp))
-      ctx.fillStyle = theme.night
+      ctx.fillStyle = b.kind === 'void' ? theme.chalk : theme.night
       const small = b.shape && b.shape !== 'orb'
       ctx.font = `700 ${hp.length >= 4 || small ? 14 : 20}px ${FONT}`
       fillFitText(ctx, hp, label.x + label.w / 2, label.y + label.h / 2 + 1, label.w - 2)
@@ -615,6 +725,7 @@ export class BoardRenderer {
       } else {
         drawBall(ctx, this.ball, b.x, b.y, b.r, time, b.vx, b.vy)
       }
+      if (b.burn !== undefined) drawBurning(ctx, b.x, b.y, b.r, b.burn, time)
     }
     for (const z of zaps) {
       ctx.strokeStyle = '#bfe4ff'
@@ -1225,7 +1336,7 @@ export class BoardRenderer {
     ctx.lineWidth = b.big ? 10 : 8
     ctx.strokeStyle = theme.night
     ctx.strokeText(b.text, 0, 0)
-    ctx.fillStyle = b.big ? XP_COLOR : theme.yolk
+    ctx.fillStyle = b.color ?? (b.big ? XP_COLOR : theme.yolk)
     ctx.fillText(b.text, 0, 0)
     ctx.restore()
   }

@@ -6,6 +6,7 @@
  * when hurt, and on KO it crumbles into five blocks that settle in a pile.
  */
 import type { Pose } from '../../hero-avatar'
+import { type Mat, type Pt, along, apply, move, mul, turnAbout } from '../affine'
 import {
   OUTLINE,
   box,
@@ -27,10 +28,6 @@ import {
 import type { BodyMetrics, BodyType, CreatureLook, DrawKit, Frame, HandPose, HeadBox } from '../types'
 
 type Ctx = CanvasRenderingContext2D
-interface Pt {
-  x: number
-  y: number
-}
 
 const GOLD = '#ffc531'
 const VISOR = '#16182a'
@@ -54,25 +51,6 @@ const ARM_W = 7
 const BREATH = 1.6
 const BREATH_AMP = 1.1
 const HEAD_LAG = 0.9
-
-/** A 2D affine [a b c d e f]: (x, y) → (a·x + c·y + e, b·x + d·y + f). Pure, so the metrics match the drawing. */
-type Mat = readonly [number, number, number, number, number, number]
-const mul = (m: Mat, n: Mat): Mat => [
-  m[0] * n[0] + m[2] * n[1],
-  m[1] * n[0] + m[3] * n[1],
-  m[0] * n[2] + m[2] * n[3],
-  m[1] * n[2] + m[3] * n[3],
-  m[0] * n[4] + m[2] * n[5] + m[4],
-  m[1] * n[4] + m[3] * n[5] + m[5],
-]
-const move = (x: number, y: number): Mat => [1, 0, 0, 1, x, y]
-const turnAbout = (o: Pt, a: number): Mat =>
-  mul(move(o.x, o.y), mul([Math.cos(a), Math.sin(a), -Math.sin(a), Math.cos(a), 0, 0], move(-o.x, -o.y)))
-const apply = (m: Mat, p: Pt): Pt => ({
-  x: m[0] * p.x + m[2] * p.y + m[4],
-  y: m[1] * p.x + m[3] * p.y + m[5],
-})
-const along = (ctx: Ctx, m: Mat) => ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5])
 
 /** The stomp of a cheer (big) or a fist pump (smaller): when the foot lands and how hard. */
 function stompOf(f: Frame): { at: number; amp: number } | null {

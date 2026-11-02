@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { drawEmblem, heroEmblem, heroPortraitUrl, portraitFrame } from './hero-art'
 import { HeroAvatar } from './hero-avatar'
-import { HERO_IDS, type HeroEmblem } from './sim/heroes'
+import { HEROES, HERO_IDS, type HeroEmblem } from './sim/heroes'
 import { fakeCanvas, installPath2D, type FakeCanvas } from './test-canvas'
 
 const EMBLEMS: HeroEmblem[] = [
@@ -56,9 +56,13 @@ function fakeEl(id: string): FakeEl {
 describe('heroPortraitUrl', () => {
   beforeAll(installPath2D)
 
-  it('gives every hero a distinct image', () => {
-    const all = HERO_IDS.map((id) => heroPortraitUrl(id, 31, () => fakeEl(id)))
-    expect(new Set(all).size).toBe(HERO_IDS.length)
+  it('draws every hero differently', () => {
+    const drawn = HERO_IDS.map((id) => {
+      const el = fakeEl(id)
+      heroPortraitUrl(id, 30, () => el)
+      return JSON.stringify(el.ctx.log)
+    })
+    expect(new Set(drawn).size).toBe(HERO_IDS.length)
   })
 
   it('caches by hero and size', () => {
@@ -76,9 +80,19 @@ describe('heroPortraitUrl', () => {
     expect(heroPortraitUrl('knight', 96, () => el)).toBe('data:fake/knight@96x96')
     expect(el.width).toBe(96)
     expect(el.height).toBe(96)
-    // The card, the creature and the badge all draw.
-    expect(el.ctx.calls.length).toBeGreaterThan(50)
-    expect(el.ctx.calls).toContain('createLinearGradient')
+    // The card is filled, clipped and outlined; the creature draws inside the clip, then the badge.
+    const calls = el.ctx.calls
+    expect(calls.filter((c) => c === 'roundRect').length).toBeGreaterThanOrEqual(3)
+    const clip = calls.indexOf('clip')
+    expect(clip).toBeGreaterThan(calls.indexOf('createLinearGradient'))
+    const creature = fakeCanvas()
+    const avatar = new HeroAvatar('knight', () => 0.5)
+    const { at, floorY, scale } = portraitFrame(avatar.bodyMetrics, HEROES.knight.hat)
+    avatar.draw(creature, floorY, scale, at)
+    const run = JSON.stringify(creature.log).slice(1, -1)
+    const log = JSON.stringify(el.ctx.log.slice(clip + 1))
+    expect(log).toContain(run)
+    expect(log.indexOf(run)).toBeGreaterThan(0)
   })
 
   it('rounds a fractional pixel size', () => {
@@ -89,22 +103,35 @@ describe('heroPortraitUrl', () => {
 })
 
 describe('portraitFrame', () => {
-  it('keeps every head (and room for its hat) inside the card, centred', () => {
+  it('shows every face, its hat and the top of its body, centred', () => {
     for (const id of HERO_IDS) {
       const m = new HeroAvatar(id).bodyMetrics
-      const { at, floorY, scale } = portraitFrame(m)
+      const { at, floorY, scale } = portraitFrame(m, HEROES[id].hat)
       const h = m.head
       const left = at + (h.x - h.rx) * scale
       const right = at + (h.x + h.rx) * scale
       const top = floorY + Math.min(m.headTop, h.y - h.ry) * scale
       const bottom = floorY + (h.y + h.ry) * scale
+      const bodyTop = floorY + m.bodyBox.y * scale
       expect(left, id).toBeGreaterThanOrEqual(2)
       expect(right, id).toBeLessThanOrEqual(62)
       expect(top, id).toBeGreaterThanOrEqual(2)
       expect(bottom, id).toBeLessThanOrEqual(56)
+      // At least a few px of body show above the card's bottom edge.
+      expect(bodyTop, id).toBeLessThanOrEqual(56)
       expect(Math.abs((left + right) / 2 - 32), id).toBeLessThan(1)
       // Big enough to read at 48px.
       expect(right - left, id).toBeGreaterThan(24)
+    }
+  })
+
+  it('keeps the head off the top and bottom bands of the card for every hero', () => {
+    for (const id of HERO_IDS) {
+      const m = new HeroAvatar(id).bodyMetrics
+      const { floorY, scale } = portraitFrame(m, HEROES[id].hat)
+      const cy = floorY + m.head.y * scale
+      expect(cy, id).toBeGreaterThan(16)
+      expect(cy, id).toBeLessThan(46)
     }
   })
 })

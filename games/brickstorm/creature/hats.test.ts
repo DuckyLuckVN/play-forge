@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import type { HeroHat } from '../sim/heroes'
 import { fakeCanvas, installPath2D } from '../test-canvas'
-import { Fit, TRICORN, drawHat } from './hats'
+import { Fit, HAT_RISE, TRICORN, drawHat } from './hats'
 import type { HeadBox } from './types'
 
 beforeAll(installPath2D)
@@ -116,4 +116,28 @@ describe('drawHat', () => {
     expect(left[0]).toBeLessThan(front[0])
     expect(right[0]).toBeGreaterThan(front[0])
   })
+})
+
+describe('HAT_RISE', () => {
+  /** The hat's highest point above the brim, in crown half-widths (box with w = 1 and the brim at y = 0). */
+  const rise = (hat: HeroHat): number => {
+    const ctx = fakeCanvas()
+    drawHat(ctx, hat, { x: 0, y: 0, rx: 1 / 1.05, ry: 0 }, '#e8590c')
+    let top = 0
+    for (const r of ctx.log)
+      for (const a of r.args) {
+        const p = a as Partial<Stub> | undefined
+        for (const m of p?.d?.matchAll(/(-?[\d.]+) (-?[\d.]+)/g) ?? []) top = Math.min(top, Number(m[2]))
+        for (const o of p?.ops ?? []) {
+          const n = o.args as number[]
+          if (o.name === 'ellipse') top = Math.min(top, n[1] - n[3])
+        }
+      }
+    return -top
+  }
+  it.each(HATS)('%s rise matches its drawing', (hat) => {
+    expect(HAT_RISE[hat]).toBeGreaterThanOrEqual(rise(hat))
+    expect(HAT_RISE[hat]).toBeLessThan(rise(hat) + 0.1)
+  })
+  it('none rises nothing', () => expect(HAT_RISE.none).toBe(0))
 })

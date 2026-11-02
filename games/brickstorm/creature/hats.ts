@@ -245,6 +245,27 @@ const HAT_PAINTERS: Record<Exclude<HeroHat, 'none'>, HatPainter> = {
   },
 }
 
+/**
+ * How far each hat reaches above its brim line, in hat units (crown half-widths, outline not included).
+ * Lets a portrait leave room for the hat without drawing it (hats.test.ts keeps these in step with the painters).
+ */
+export const HAT_RISE: Record<HeroHat, number> = {
+  cap: 1.25,
+  helmet: 1.55,
+  horns: 1.5,
+  hood: 2,
+  wizard: 2.3,
+  crown: 1.3,
+  halo: 1.28,
+  tophat: 1.98,
+  bandana: 0.75,
+  mask: 1.25,
+  tricorn: 1.1,
+  spikes: 1.55,
+  goggles: 0.45,
+  none: 0,
+}
+
 /** Draws `hat` on a head `box` (creatures face +x). `none` draws nothing. */
 export function drawHat(ctx: Ctx, hat: HeroHat, box: HeadBox, color: string): void {
   if (hat === 'none') return

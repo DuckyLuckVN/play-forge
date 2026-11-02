@@ -3,7 +3,8 @@
 // once to a cached image). Trusted, static markup.
 import type { BodyMetrics } from './creature/types'
 import { HeroAvatar } from './hero-avatar'
-import { HEROES, type HeroEmblem, type HeroId } from './sim/heroes'
+import { HAT_RISE } from './creature/hats'
+import { HEROES, type HeroEmblem, type HeroHat, type HeroId } from './sim/heroes'
 
 const OUT = '#1b1d2b'
 const GOLD = '#ffd43b'
@@ -58,6 +59,9 @@ function primSvg(p: Prim): string {
   return `<path d="${p.d}" fill="${p.fill ?? 'none'}" stroke="${p.stroke}" stroke-width="${p.width}"${cap} stroke-linejoin="round"/>`
 }
 
+/** Emblem paths, parsed once (built lazily: Path2D only exists in the browser). */
+const PATHS = new Map<string, Path2D>()
+
 function primDraw(ctx: CanvasRenderingContext2D, p: Prim): void {
   ctx.lineJoin = 'round'
   if (p.kind === 'circle') {
@@ -71,7 +75,8 @@ function primDraw(ctx: CanvasRenderingContext2D, p: Prim): void {
     ctx.stroke()
     return
   }
-  const path = new Path2D(p.d)
+  let path = PATHS.get(p.d)
+  if (!path) PATHS.set(p.d, (path = new Path2D(p.d)))
   if (p.fill) {
     ctx.fillStyle = p.fill
     ctx.fill(path)
@@ -223,17 +228,20 @@ export function drawEmblem(
 const CARD = 64
 
 /**
- * Where to stand the creature in the card so its head and shoulders fill it: the head (with room for
- * the tallest hat) sits near the top, centred, and the shoulders run off the bottom edge.
+ * Where to stand the creature in the card so its head and shoulders fill it: the head with its hat sits
+ * in the upper part, centred, and the top of the body (bodyBox) shows before the card's bottom edge.
  */
-export function portraitFrame(m: BodyMetrics): { at: number; floorY: number; scale: number } {
+export function portraitFrame(m: BodyMetrics, hat: HeroHat): { at: number; floorY: number; scale: number } {
   const h = m.head
-  // Hats fit to the head box (creature/hats.ts Fit): brim on the forehead, up to two crown widths tall (wizard, top hat, hood).
+  // Hats fit to the head box (creature/hats.ts Fit): brim on the forehead, HAT_RISE crown half-widths tall.
   const hatW = Math.max(h.rx, h.ry * 1.15) * 1.05
-  const top = Math.min(m.headTop, h.y - h.ry * 0.35 - hatW * 2)
-  const bottom = h.y + h.ry * 1.8
-  const scale = Math.min((CARD - 5) / (bottom - top), (CARD * 0.6) / (h.rx * 2))
-  return { at: CARD / 2 - h.x * scale, floorY: 5 - top * scale, scale }
+  const top = Math.min(m.headTop, h.y - h.ry * 0.35 - hatW * HAT_RISE[hat]) - 2
+  const bottom = Math.max(h.y + h.ry * 1.8, m.bodyBox.y + 10)
+  const span = CARD - 5
+  const scale = Math.min(span / (bottom - top), (CARD * 0.6) / (h.rx * 2))
+  // A narrow-limited fit leaves spare height: share it above and below.
+  const spare = span - (bottom - top) * scale
+  return { at: CARD / 2 - h.x * scale, floorY: 5 + spare / 2 - top * scale, scale }
 }
 
 /** The canvas a portrait renders on (an HTMLCanvasElement; injectable for tests). */
@@ -284,7 +292,7 @@ export function heroPortraitUrl(
   card(2, 13)
   ctx.clip()
   const avatar = new HeroAvatar(id, () => 0.5)
-  const { at, floorY, scale } = portraitFrame(avatar.bodyMetrics)
+  const { at, floorY, scale } = portraitFrame(avatar.bodyMetrics, def.hat)
   avatar.draw(ctx, floorY, scale, at)
   ctx.restore()
 

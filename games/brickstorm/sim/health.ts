@@ -17,8 +17,16 @@ const BREACH_CURVE = 2
  * missiles): late crashes stay painful without one-shotting the hero.
  */
 export const BREACH_CAP = 40
-/** A brick worn down to nothing deals this share of a full brick's crash damage. */
-const BREACH_FLOOR = 0.5
+/** A brick worn down to nothing deals this share of a full brick's crash damage (chip it before the line). */
+const BREACH_FLOOR = 0.25
+/**
+ * Bricks crashing in the same turn: the hardest-hitting counts in full, the
+ * next ones by these shares (the last one repeats). A row crash hurts, but
+ * not 7 times over.
+ */
+export const BREACH_FALLOFF = [1, 0.7, 0.5, 0.35]
+/** Plain bricks take at most this share of max health in one turn (missiles and bosses ignore it). */
+export const BREACH_TURN_CAP = 0.6
 /** A boss crashing hurts like this many full bricks, then rises back to the top. */
 /** At tier 3; one less per tier below. */
 export const BOSS_BREACH = 6
@@ -57,7 +65,13 @@ export function breachDamage(s: RunState, bricks: readonly Brick[]): number {
   // Later bosses crash harder: 4 bricks' worth for the first, 5, then 6.
   const tier = s.boss?.tier ?? 1
   const bossHit = boss ? cappedUnit(s.turn) * (BOSS_BREACH - 3 + tier) * (heroOf(s).breach ?? 1) : 0
-  return Math.round(plain.reduce((sum, b) => sum + brickBreach(s, b), 0) + bossHit)
+  const missiles = plain.filter((b) => b.role === 'missile').reduce((sum, b) => sum + brickBreach(s, b), 0)
+  const crowd = plain
+    .filter((b) => b.role !== 'missile')
+    .map((b) => brickBreach(s, b))
+    .sort((a, b) => b - a)
+    .reduce((sum, d, i) => sum + d * BREACH_FALLOFF[Math.min(i, BREACH_FALLOFF.length - 1)], 0)
+  return Math.round(Math.min(crowd, s.maxHp * BREACH_TURN_CAP) + missiles + bossHit)
 }
 
 /**

@@ -341,7 +341,6 @@ function shell(ctx: Ctx, p: Paint, k: DrawKit): void {
   ctx.fill()
 }
 
-/** Eyes on the stalk tips (shell frame, over the hat): white eyes with pupils, looking about. */
 /** An eye's drawn centre (shell frame): on its stalk, swaying. */
 function eyeSway(p: Paint, i: number): Pt {
   const e = eyeAt(i, p.r.stalk)
@@ -367,40 +366,40 @@ function stalks(ctx: Ctx, p: Paint): void {
   }
 }
 
+/** Eyes on the stalk tips (shell frame, over the hat): white eyes with pupils, looking about. */
 function eyes(ctx: Ctx, p: Paint): void {
   const { f, r, t } = p
   const lx = f.lookX * 1.1 + (f.still ? 0 : wander(t, 7) * 0.6)
   const ly = f.lookY * 1
   for (const i of [0, 1]) {
     const { x: ex, y } = eyeSway(p, i)
-    const e = { x: ex, y }
-    group(ctx, [{ p: ell(ex, e.y, EYE_R, EYE_R), c: '#ffffff', k: 0.4 }])
+    group(ctx, [{ p: ell(ex, y, EYE_R, EYE_R), c: '#ffffff', k: 0.4 }])
     ctx.strokeStyle = OUTLINE
     ctx.fillStyle = OUTLINE
     ctx.lineCap = 'round'
-    if (happy(f)) happyEye(ctx, ex, e.y, 2.4)
+    if (happy(f)) happyEye(ctx, ex, y, 2.4)
     else if (f.eyes === 'xx') {
       ctx.lineWidth = 1.8
       ctx.beginPath()
-      ctx.moveTo(ex - 2, e.y - 2)
-      ctx.lineTo(ex + 2, e.y + 2)
-      ctx.moveTo(ex + 2, e.y - 2)
-      ctx.lineTo(ex - 2, e.y + 2)
+      ctx.moveTo(ex - 2, y - 2)
+      ctx.lineTo(ex + 2, y + 2)
+      ctx.moveTo(ex + 2, y - 2)
+      ctx.lineTo(ex - 2, y + 2)
       ctx.stroke()
     } else if (f.eyes === 'squeeze' || f.blink > 0 || f.pose.eyeOpen < 0.2) {
       ctx.lineWidth = 2
       ctx.beginPath()
-      ctx.moveTo(ex - 2.4, e.y)
-      ctx.lineTo(ex + 2.4, e.y)
+      ctx.moveTo(ex - 2.4, y)
+      ctx.lineTo(ex + 2.4, y)
       ctx.stroke()
     } else {
       const wide = f.eyes === 'wide' ? 0.7 : 1
       ctx.beginPath()
-      ctx.arc(ex + lx, e.y + ly, 2 * wide, 0, TAU)
+      ctx.arc(ex + lx, y + ly, 2 * wide, 0, TAU)
       ctx.fill()
       ctx.fillStyle = '#fff'
       ctx.beginPath()
-      ctx.arc(ex + lx - 0.7, e.y + ly - 0.8, 0.75, 0, TAU)
+      ctx.arc(ex + lx - 0.7, y + ly - 0.8, 0.75, 0, TAU)
       ctx.fill()
     }
   }

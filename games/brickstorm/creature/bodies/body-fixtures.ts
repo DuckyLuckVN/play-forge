@@ -24,8 +24,14 @@ export const POSE: Pose = {
   rear: 0,
 }
 
-/** A frame; the pose's `rear` follows the avatar's target for the mood and ball unless the patch sets one. */
-export const frame = (patch: Partial<Frame> = {}): Frame => ({
+/** A frame patch: any frame field, with the pose given as a partial over the neutral POSE. */
+export type FramePatch = Omit<Partial<Frame>, 'pose'> & { pose?: Partial<Pose> }
+
+/**
+ * A frame; the pose is the neutral POSE with the patch's fields over it. Its `rear` follows the avatar's target for the
+ * mood and ball unless the patch's pose sets one (an explicit 0 included).
+ */
+export const frame = (patch: FramePatch = {}): Frame => ({
   t: 1.3,
   still: false,
   mood: 'idle',
@@ -43,15 +49,16 @@ export const frame = (patch: Partial<Frame> = {}): Frame => ({
   fidget: 0,
   ...patch,
   pose: {
-    ...(patch.pose ?? POSE),
-    rear: patch.pose?.rear || rearFor(patch.mood ?? 'idle', !!patch.hold),
+    ...POSE,
+    ...patch.pose,
+    rear: patch.pose?.rear ?? rearFor(patch.mood ?? 'idle', !!patch.hold),
   },
 })
 
 /** The resting ball at size 1, in local units. */
 export const HOLD = { x: 12, y: -21, r: 7 }
 /** A frame holding the ball. */
-export const held = (patch: Partial<Frame> = {}) => frame({ hold: HOLD, holding: true, ...patch })
+export const held = (patch: FramePatch = {}) => frame({ hold: HOLD, holding: true, ...patch })
 
 export const MOODS: Mood[] = [
   'idle',
@@ -85,7 +92,7 @@ export const HOLD_POSES: Array<[Mood, Partial<Pose>]> = [
  * About 40 draws per variant: every mood once, the other eye styles on idle, still × fidget on the moods with
  * one-shots, and a cheer at three ages. Moods are drawn with their own pose fall (KO lies down).
  */
-export const DRAW_CASES: Array<Partial<Frame>> = [
+export const DRAW_CASES: FramePatch[] = [
   ...MOODS.map((mood) => ({ mood })),
   ...EYES.filter((e) => e !== 'normal').map((eyes) => ({ eyes })),
   ...(['idle', 'cheer', 'pump', 'hurt', 'ko'] as Mood[]).flatMap((mood) =>
@@ -93,8 +100,8 @@ export const DRAW_CASES: Array<Partial<Frame>> = [
   ),
   ...[0.05, 0.6, 1.5].map((moodAge) => ({ mood: 'cheer' as Mood, moodAge })),
 ]
-export const caseFrame = (c: Partial<Frame>) =>
-  frame({ moodAge: 0.4, ...c, pose: { ...POSE, fall: c.mood === 'ko' ? 1 : 0 } })
+export const caseFrame = (c: FramePatch) =>
+  frame({ moodAge: 0.4, ...c, pose: { fall: c.mood === 'ko' ? 1 : 0 } })
 
 /** A kit that records what the body asks it to draw (hands come from the solver, as in the avatar). */
 export function kitFor(body: BodyType, look: CreatureLook, f: Frame) {

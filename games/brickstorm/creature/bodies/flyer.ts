@@ -13,7 +13,17 @@
 import type { Pose } from '../../hero-avatar'
 import { type Mat, type Pt, along, apply, move, mul, scaleAbout, turnAbout } from '../affine'
 import { drawArm } from '../hands'
-import { TAU, type Ellipse, boundsOf, ellPoints, flourish, pulse, sigOf, type Flourish } from '../motion'
+import {
+  TAU,
+  type Ellipse,
+  landedOf,
+  boundsOf,
+  ellPoints,
+  flourish,
+  pulse,
+  sigOf,
+  type Flourish,
+} from '../motion'
 import {
   OUTLINE,
   clamp,
@@ -42,8 +52,6 @@ const PINK = '#ff8fa3'
 const BEAK = '#ffa94d'
 const COLLAR = '#2b1d3a'
 
-/** The avatar's `pose.rear` while holding the ball: a flyer is fully landed at or above it. */
-const REAR_HOLD = 0.55
 const LIMB = 8.5
 const HAND_R = 3.4
 /** Folded far wing (the hold moods): tucked down behind the hip. */
@@ -106,7 +114,7 @@ const SHAPES: Record<Variant, Shape> = {
 const variantOf = (look: CreatureLook): Variant => (look.variant === 'bat' ? 'bat' : 'owl')
 
 /** How airborne a flyer is: 1 hovering without the ball, 0 landed with it (follows the blended `pose.rear`). */
-const airOf = (f: Frame) => clamp(1 - f.pose.rear / REAR_HOLD) * (1 - smooth(clamp(f.pose.fall)))
+const airOf = (f: Frame) => (1 - landedOf(f.pose.rear)) * (1 - smooth(clamp(f.pose.fall)))
 
 /** Count Flap's cape wrap (idle, the near wing keeps the ball). */
 const wrapping = (v: Variant, f: Frame) =>

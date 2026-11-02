@@ -76,6 +76,10 @@ export interface HandPose {
 
 export interface DrawKit {
   metrics: BodyMetrics
+  /**
+   * The solved hands. Bodies may replace an entry (e.g. set `open`) before calling backHand/frontHand; the kit draws
+   * what is there at call time. The object is fresh each frame.
+   */
   hands: { front: HandPose; back: HandPose }
   /** Bodies call before the body. Call it in the kit's frame, not inside a body's own transform. */
   backHand(): void

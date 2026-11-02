@@ -2,13 +2,12 @@ import { describe, expect, it, vi } from 'vitest'
 import type { HeroId } from '../../sim/heroes'
 import { fakeCanvas, installPath2D } from '../../test-canvas'
 import { CREATURE_LOOKS } from '../looks'
-import type { Frame } from '../types'
 import {
   DRAW_CASES,
+  type FramePatch,
   HOLD,
   HOLD_POSES,
   MOODS,
-  POSE,
   caseFrame,
   drawLog,
   frame,
@@ -95,7 +94,7 @@ describe('flyer body (Hoot, Count Flap)', () => {
   it('folds the back wing at its side while holding (no wave), clear of the head', () => {
     for (const [, look] of LOOKS)
       for (const [mood, patch] of HOLD_POSES) {
-        const f = held({ mood, pose: { ...POSE, ...patch } })
+        const f = held({ mood, pose: { ...patch } })
         const m = flyer.metrics(look, f)
         const { back } = handsOf(flyer, look, f)
         expect(back.y).toBeGreaterThan(m.socketB.y)
@@ -107,7 +106,7 @@ describe('flyer body (Hoot, Count Flap)', () => {
     for (const [, look] of LOOKS)
       for (const mood of MOODS)
         for (const t of [0.2, 0.9, 1.7]) {
-          const f = frame({ mood, t, moodAge: 0.5, pose: { ...POSE, fall: mood === 'ko' ? 1 : 0 } })
+          const f = frame({ mood, t, moodAge: 0.5, pose: { fall: mood === 'ko' ? 1 : 0 } })
           const m = flyer.metrics(look, f)
           const { front } = handsOf(flyer, look, f)
           // The root sits on the shoulder; the rest of the wing must stay off the face.
@@ -161,7 +160,7 @@ describe('flyer body (Hoot, Count Flap)', () => {
       expect(drawLog(flyer, look, frame({ t: 1, still: true }))).toBe(
         drawLog(flyer, look, frame({ t: 5.5, still: true })),
       )
-      const still = (patch: Partial<Frame>) => flyer.metrics(look, frame({ still: true, ...patch }))
+      const still = (patch: FramePatch) => flyer.metrics(look, frame({ still: true, ...patch }))
       expect(still({ mood: 'cheer', moodAge: 0.4 }).head).toEqual(still({ mood: 'cheer', moodAge: 1.2 }).head)
       expect(still({ mood: 'hurt', moodAge: 0.1 }).bodyBox).toEqual(
         still({ mood: 'hurt', moodAge: 1 }).bodyBox,
@@ -170,13 +169,13 @@ describe('flyer body (Hoot, Count Flap)', () => {
   })
 
   it('falls on KO: the owl flops on its back, the bat drops upside-down; revive stands back up', () => {
-    const ko = frame({ mood: 'ko', moodAge: 2, pose: { ...POSE, fall: 1 } })
+    const ko = frame({ mood: 'ko', moodAge: 2, pose: { fall: 1 } })
     for (const [, look] of LOOKS) {
       const up = flyer.metrics(look, frame())
       const down = flyer.metrics(look, ko)
       expect(down.headTop).toBeGreaterThan(up.headTop + 15)
       expect(down.head.y).toBeGreaterThan(-22)
-      const back = flyer.metrics(look, frame({ mood: 'revive', pose: { ...POSE, fall: 0 } }))
+      const back = flyer.metrics(look, frame({ mood: 'revive', pose: { fall: 0 } }))
       expect(back.headTop).toBeLessThan(down.headTop - 15)
     }
     const owl = flyer.metrics(CREATURE_LOOKS.sage!, ko)

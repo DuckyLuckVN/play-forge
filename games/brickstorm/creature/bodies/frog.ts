@@ -119,7 +119,11 @@ function rigOf(f: Frame): Rig {
 }
 
 function metrics(_look: CreatureLook, f: Frame): BodyMetrics {
-  const r = rigOf(f)
+  return metricsOf(rigOf(f))
+}
+
+/** Metrics from an already built rig (pose() needs both). */
+function metricsOf(r: Rig): BodyMetrics {
   const head = apply(r.head, { x: 0, y: 0 })
   const top = Math.min(...DOMES.map(([x, y, rr]) => apply(r.head, { x, y: y - rr }).y))
   return {
@@ -144,7 +148,7 @@ const PLANT = new Set<Frame['mood']>(['idle', 'watch', 'aim', 'worried', 'pump',
  */
 function pose(_look: CreatureLook, f: Frame): Pose {
   const r = rigOf(f)
-  const m = metrics(_look, f)
+  const m = metricsOf(r)
   const p = { ...f.pose }
   const t = f.still ? 0 : f.t
   const wave = (ph: number) => (f.still ? 0 : 0.25 * Math.sin(t * 15 + ph))
@@ -452,8 +456,9 @@ function draw(ctx: Ctx, look: CreatureLook, f: Frame, k: DrawKit): void {
   throat(ctx, p)
   ctx.restore()
   if (tip) tongue(ctx, mouthPt, tip)
-  if (bug && !(tip && q >= 0.68)) fly(ctx, bug.x, bug.y, t)
-  else if (bug) fly(ctx, tip!.x, tip!.y, t)
+  // Once caught, the fly rides the tongue's tip back in.
+  const at = tip && q >= 0.68 ? tip : bug
+  if (at) fly(ctx, at.x, at.y, t)
   drawArm(ctx, m.socketF, k.hands.front, LEG_W, main)
   k.frontHand()
   if (p.fl.cheer && !f.still) {

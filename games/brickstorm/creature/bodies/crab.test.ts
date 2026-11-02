@@ -2,13 +2,13 @@ import { describe, expect, it, vi } from 'vitest'
 import { HeroAvatar } from '../../hero-avatar'
 import { fakeCanvas, installPath2D, type CallRecord } from '../../test-canvas'
 import { CREATURE_LOOKS } from '../looks'
-import type { Frame, HandPose } from '../types'
+import type { HandPose } from '../types'
 import {
   DRAW_CASES,
+  type FramePatch,
   HOLD,
   HOLD_POSES,
   MOODS,
-  POSE,
   actx,
   caseFrame,
   drawLog,
@@ -104,12 +104,12 @@ describe('crab body (Cap’n Pinch)', () => {
   })
 
   it('scuttles sideways at rest (offsetX), still under reduced motion, smooth on the pump', () => {
-    const at = (patch: Partial<Frame>) => crab.offsetX!(look, held(patch))
+    const at = (patch: FramePatch) => crab.offsetX!(look, held(patch))
     expect(Math.abs(at({ t: 1 }) - at({ t: 2.2 }))).toBeGreaterThan(1)
     expect(at({ t: 1, still: true })).toBe(0)
     expect(at({ t: 2.2, still: true })).toBe(0)
     // Crouched to aim it stops scuttling.
-    expect(Math.abs(at({ mood: 'aim', t: 1.2, pose: { ...POSE, crouch: 0.35 } }))).toBeLessThan(0.3)
+    expect(Math.abs(at({ mood: 'aim', t: 1.2, pose: { crouch: 0.35 } }))).toBeLessThan(0.3)
     for (let t = 0; t < 0.4; t += 1 / 60) {
       const a = crab.offsetX!(look, frame({ mood: 'pump', moodAge: t, t: 1 + t }))
       const b = crab.offsetX!(look, frame({ mood: 'pump', moodAge: t + 1 / 60, t: 1 + t + 1 / 60 }))
@@ -119,7 +119,7 @@ describe('crab body (Cap’n Pinch)', () => {
 
   it('rests the back claw out to the side while holding, clear of the head', () => {
     for (const [mood, patch] of HOLD_POSES) {
-      const f = held({ mood, pose: { ...POSE, ...patch } })
+      const f = held({ mood, pose: { ...patch } })
       const m = crab.metrics(look, f)
       const { back } = handsOf(crab, look, f)
       expect(back.x).toBeLessThan(m.bodyBox.x)
@@ -160,13 +160,13 @@ describe('crab body (Cap’n Pinch)', () => {
     expect(drawLog(crab, look, frame({ t: 1, still: true }))).toBe(
       drawLog(crab, look, frame({ t: 5.5, still: true })),
     )
-    const still = (patch: Partial<Frame>) => crab.metrics(look, frame({ still: true, ...patch }))
+    const still = (patch: FramePatch) => crab.metrics(look, frame({ still: true, ...patch }))
     expect(still({ mood: 'cheer', moodAge: 0.4 }).head).toEqual(still({ mood: 'cheer', moodAge: 1.2 }).head)
     expect(still({ mood: 'hurt', moodAge: 0.1 }).bodyBox).toEqual(still({ mood: 'hurt', moodAge: 1 }).bodyBox)
   })
 
   it('flips onto its back on KO, claws and legs in the air; revive rights it', () => {
-    const f = frame({ mood: 'ko', moodAge: 2, pose: { ...POSE, fall: 1 } })
+    const f = frame({ mood: 'ko', moodAge: 2, pose: { fall: 1 } })
     const up = crab.metrics(look, frame())
     const down = crab.metrics(look, f)
     // The eyes end up underneath.
@@ -174,7 +174,7 @@ describe('crab body (Cap’n Pinch)', () => {
     expect(down.headTop).toBeGreaterThan(up.headTop + 10)
     const h = handsOf(crab, look, f)
     for (const hand of [h.front, h.back]) expect(hand.y).toBeLessThan(down.bodyBox.y + down.bodyBox.h / 2)
-    const back = crab.metrics(look, frame({ mood: 'revive', pose: { ...POSE, fall: 0 } }))
+    const back = crab.metrics(look, frame({ mood: 'revive', pose: { fall: 0 } }))
     expect(back.headTop).toBeCloseTo(up.headTop, 0)
   })
 
@@ -189,6 +189,24 @@ describe('crab body (Cap’n Pinch)', () => {
     const worst = worstHold('pirate')
     expect(worst).not.toBeNull()
     expect(worst!).toBeLessThan(0.01)
+  })
+
+  it('clacks its claws on cheer in the real avatar (the kit draws the `open` the body sets on k.hands)', () => {
+    const spy = vi.spyOn(crab, 'drawHand')
+    try {
+      const a = new HeroAvatar('pirate')
+      run(a, 0.3, actx())
+      a.setMood('cheer')
+      let most = 0
+      for (let i = 0; i < 30; i++) {
+        a.update(1 / 60, actx())
+        a.draw(fakeCanvas(), 760)
+      }
+      for (const [, h] of spy.mock.calls) most = Math.max(most, h.open)
+      expect(most).toBeGreaterThan(0.3)
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it('draws its pincer grip over the held ball in the real avatar', () => {

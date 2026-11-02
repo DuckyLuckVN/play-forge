@@ -1,13 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fakeCanvas, installPath2D } from '../../test-canvas'
 import { CREATURE_LOOKS } from '../looks'
-import type { Frame } from '../types'
 import {
   DRAW_CASES,
+  type FramePatch,
   HOLD,
   HOLD_POSES,
   MOODS,
-  POSE,
   caseFrame,
   drawLog,
   frame,
@@ -65,7 +64,7 @@ describe('frog body (Master Ribbit)', () => {
   it('plants the free front leg on the ground while holding', () => {
     for (const [mood, patch] of HOLD_POSES)
       for (const t of [0, 0.8, 1.9]) {
-        const f = held({ mood, t, pose: { ...POSE, ...patch } })
+        const f = held({ mood, t, pose: { ...patch } })
         const m = frog.metrics(look, f)
         const { back } = handsOf(frog, look, f)
         expect(Math.abs(back.y + m.handR)).toBeLessThan(1)
@@ -94,7 +93,7 @@ describe('frog body (Master Ribbit)', () => {
     expect(drawLog(frog, look, frame({ t: 1, still: true }))).toBe(
       drawLog(frog, look, frame({ t: 5.5, still: true })),
     )
-    const still = (patch: Partial<Frame>) => frog.metrics(look, frame({ still: true, ...patch }))
+    const still = (patch: FramePatch) => frog.metrics(look, frame({ still: true, ...patch }))
     expect(still({ mood: 'cheer', moodAge: 0.4 }).head).toEqual(still({ mood: 'cheer', moodAge: 1.2 }).head)
     expect(still({ mood: 'hurt', moodAge: 0.1 }).bodyBox).toEqual(still({ mood: 'hurt', moodAge: 1 }).bodyBox)
   })
@@ -113,10 +112,10 @@ describe('frog body (Master Ribbit)', () => {
 
   it('splats flat on KO; revive sits back up', () => {
     const up = frog.metrics(look, frame())
-    const down = frog.metrics(look, frame({ mood: 'ko', moodAge: 2, pose: { ...POSE, fall: 1 } }))
+    const down = frog.metrics(look, frame({ mood: 'ko', moodAge: 2, pose: { fall: 1 } }))
     expect(down.headTop).toBeGreaterThan(up.headTop + 15)
     expect(down.bodyBox.w).toBeGreaterThan(down.bodyBox.h * 2)
-    const back = frog.metrics(look, frame({ mood: 'revive', pose: { ...POSE, fall: 0 } }))
+    const back = frog.metrics(look, frame({ mood: 'revive', pose: { fall: 0 } }))
     expect(back.headTop).toBeCloseTo(up.headTop, 0)
   })
 

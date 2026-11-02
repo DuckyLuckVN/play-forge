@@ -11,6 +11,7 @@ import { BODIES } from './creature/bodies'
 import { HandFollower, drawGrip, drawHand, solveHands } from './creature/hands'
 import { drawHat } from './creature/hats'
 import { CREATURE_LOOKS } from './creature/looks'
+import { REAR_HOLD } from './creature/motion'
 import { shadow as groundShadow } from './creature/paint'
 import type { BodyType, CreatureLook, DrawKit, Frame, HandPose } from './creature/types'
 import { heroEmblem } from './hero-art'
@@ -174,7 +175,8 @@ export interface Pose {
   blush: number
   /**
    * How far a four-legged body sits up, 0..1: 0 on all fours, about 0.55 sitting up to hold the ball, 1 rearing up
-   * on its hind legs. Blended like the rest, so the body never snaps between moods; bodies on two legs ignore it.
+   * on its hind legs. Blended like the rest, so the body never snaps between moods. Flyers use it as their takeoff and
+   * landing blend (airborne below REAR_HOLD, landed at or above it); other bodies on two legs ignore it.
    */
   rear: number
 }
@@ -241,8 +243,6 @@ const HOLDS = new Set<Mood>(['idle', 'aim', 'worried', 'watch'])
 /** Hands can hold once the KO fall is this low: the pose blend only approaches 0, it never quite gets there. */
 const HOLD_FALL = 0.02
 
-/** Sitting up to hold the ball (or aim, throw, pump). */
-const REAR_HOLD = 0.55
 /** Moods that rear right up on the hind legs. */
 const REAR_UP = new Set<Mood>(['cheer', 'cast', 'revive', 'wow'])
 /** Pose `rear` target: on all fours without a ball (or sad), sitting up with one, rearing up to celebrate. */

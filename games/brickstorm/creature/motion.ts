@@ -5,6 +5,14 @@ import type { Frame, Rect } from './types'
 
 export const TAU = Math.PI * 2
 
+/**
+ * `Pose.rear` while sitting up holding the ball. It lives here, not in hero-avatar.ts, so bodies can read it without a
+ * runtime import cycle (hero-avatar → bodies → hero-avatar).
+ */
+export const REAR_HOLD = 0.55
+/** How landed a flyer is from the blended `pose.rear`: 0 airborne (no ball) .. 1 landed (holding or above). */
+export const landedOf = (rear: number) => clamp(rear / REAR_HOLD)
+
 export interface Ellipse {
   x: number
   y: number

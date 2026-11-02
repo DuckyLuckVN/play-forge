@@ -132,3 +132,82 @@ describe('hero aura moods', () => {
     expect(() => a.draw(c, 760)).not.toThrow()
   })
 })
+
+describe('creature hands', () => {
+  const hold = { x: 100, y: 740, r: 5 }
+  const near = (p: { x: number; y: number } | null | undefined, q: { x: number; y: number }) => {
+    expect(p).toBeTruthy()
+    expect(Math.abs(p!.x - q.x)).toBeLessThan(0.01)
+    expect(Math.abs(p!.y - q.y)).toBeLessThan(0.01)
+  }
+
+  it('creature hand holds the ball', () => {
+    const a = new HeroAvatar('rookie')
+    run(a, 0.5, ctx({ hold }))
+    expect(a.mood).toBe('idle')
+    a.draw(fakeCanvas(), 760)
+    near(a.lastHands?.front, hold)
+  })
+
+  it('draws the held ball at the hold point, then the grip over it', () => {
+    const a = new HeroAvatar('rookie')
+    const balls: Array<[number, number, number]> = []
+    a.drawBall = (_c, x, y, r) => balls.push([x, y, r])
+    run(a, 0.5, ctx({ hold }))
+    a.draw(fakeCanvas(), 760)
+    expect(balls).toHaveLength(1)
+    expect(balls[0][0]).toBeCloseTo(100, 6)
+    expect(balls[0][1]).toBeCloseTo(740, 6)
+    expect(balls[0][2]).toBe(5)
+  })
+
+  it('mirrored creature still holds the ball', () => {
+    const a = new HeroAvatar('rookie')
+    const h = { x: 300, y: 740, r: 5 }
+    run(a, 0.5, ctx({ homeX: 300, hold: h }))
+    expect(a.facing).toBe(-1)
+    a.draw(fakeCanvas(), 760)
+    near(a.lastHands?.front, h)
+    expect(a.lastHands!.back.x).toBeGreaterThan(a.x) // the back hand is behind (facing left)
+  })
+
+  it('holds at a bigger size and while worried or aiming', () => {
+    for (const patch of [{ danger: true }, { aim: 1.2 }, { watch: { x: 200, y: 300 } }]) {
+      const a = new HeroAvatar('rookie')
+      a.size = 1.35
+      run(a, 0.6, ctx({ hold, ...patch }))
+      a.draw(fakeCanvas(), 760)
+      near(a.lastHands?.front, hold)
+    }
+  })
+
+  it('setHero snaps hands', () => {
+    const a = new HeroAvatar('rookie')
+    run(a, 0.5, ctx({ hold }))
+    a.draw(fakeCanvas(), 760)
+    a.setHero('knight')
+    run(a, 0.1, ctx({ hold }))
+    a.draw(fakeCanvas(), 760)
+    expect(a.lastHands).toBeNull() // legacy drawing
+    a.setHero('rookie')
+    run(a, 1.6, ctx({ hold })) // the switch cheer ends
+    a.draw(fakeCanvas(), 760)
+    const first = a.lastHands
+    a.draw(fakeCanvas(), 760)
+    expect(a.lastHands).toEqual(first)
+    near(a.lastHands?.front, hold)
+  })
+
+  it('a free hand lags its target, then settles on it', () => {
+    const a = new HeroAvatar('rookie')
+    run(a, 0.5, ctx({ hold }))
+    a.draw(fakeCanvas(), 760)
+    a.handle({ type: 'levelUp' }) // cheer: hands fly up
+    a.update(1 / 60, ctx({ hold }))
+    a.draw(fakeCanvas(), 760)
+    const lag = a.lastHands!.back
+    run(a, 0.4, ctx({ hold }))
+    a.draw(fakeCanvas(), 760)
+    expect(a.lastHands!.back.y).toBeLessThan(lag.y) // still travelling up after one frame
+  })
+})

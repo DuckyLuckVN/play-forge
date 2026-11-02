@@ -157,6 +157,25 @@ export function drawHand(ctx: Ctx, h: HandPose, color: string, r: number): void 
   ])
 }
 
+/** A rounded arm segment (capsule) from `a` to `b`, as a path in the current frame (no transforms needed). */
+function capsule(a: Pt, b: Pt, r: number): Path2D {
+  const ang = Math.atan2(b.y - a.y, b.x - a.x)
+  const p = new Path2D()
+  p.arc(b.x, b.y, r, ang - Math.PI / 2, ang + Math.PI / 2)
+  p.arc(a.x, a.y, r, ang + Math.PI / 2, ang + Math.PI * 1.5)
+  p.closePath()
+  return p
+}
+
+/** Upper and fore arm from the socket through the elbow to the hand, under one outline (armed bodies). */
+export function drawArm(ctx: Ctx, socket: Pt, h: HandPose, width: number, color: string): void {
+  const elbow = { x: h.ex, y: h.ey }
+  group(ctx, [
+    { p: capsule(socket, elbow, width / 2), c: color, k: 0.5 },
+    { p: capsule(elbow, h, width / 2), c: color, k: 0.5 },
+  ])
+}
+
 /** Thumb wrapped over the held ball's front edge, so the ball reads as gripped. */
 export function drawGrip(ctx: Ctx, h: HandPose, ball: Ball, color: string): void {
   const x = ball.x + ball.r * 0.55

@@ -4,6 +4,12 @@
 // for hops and knock-backs, so reactions read like a real person's: a wind-up
 // before a throw, a follow-through after, a flinch, a sigh of relief.
 import { prefersReducedMotion } from '@forge/fx/tween'
+import { BODIES } from './creature/bodies'
+import { HandFollower, drawGrip, drawHand, solveHands } from './creature/hands'
+import { drawHat } from './creature/hats'
+import { CREATURE_LOOKS } from './creature/looks'
+import { shadow as groundShadow } from './creature/paint'
+import type { BodyType, CreatureLook, DrawKit, Frame, HandPose } from './creature/types'
 import { heroEmblem } from './hero-art'
 import { HEROES, type HeroDef, type HeroHat, type HeroId } from './sim/heroes'
 import type { SimEvent } from './sim/types'
@@ -280,6 +286,14 @@ export class HeroAvatar {
     ctx.fill()
   }
   private emblem: HTMLImageElement | null = null
+  /** Creature hands follow their solved targets through springs (local units). */
+  private handF = new HandFollower()
+  private handB = new HandFollower()
+  /** Snap the hands onto their targets at the next draw (new hero, reset, first placement). */
+  private snapHands = true
+  /** `time` at the last creature draw, so the hand springs advance by real time between draws. */
+  private handsAt = 0
+  private hands: { front: { x: number; y: number }; back: { x: number; y: number } } | null = null
 
   constructor(hero: HeroId) {
     this.hero = HEROES[hero]
@@ -290,6 +304,7 @@ export class HeroAvatar {
     if (this.hero.id === id) return
     this.hero = HEROES[id]
     this.loadEmblem()
+    this.snapHands = true
     this.setMood('cheer')
   }
 
@@ -298,6 +313,7 @@ export class HeroAvatar {
     this.mood = 'idle'
     this.moodAge = 0
     this.placed = false
+    this.snapHands = true
     this.emote = null
     this.knock.x = this.knock.v = this.hop.x = this.hop.v = 0
   }
@@ -817,21 +833,176 @@ export class HeroAvatar {
     return p
   }
 
+  /** Last solved hands in board units, for tests and debug (null for the legacy figure). */
+  get lastHands(): { front: { x: number; y: number }; back: { x: number; y: number } } | null {
+    return this.hands
+  }
+
   /** Draws the hero standing on `floorY` at its x (or at `at`, for previews), `scale`× board size. */
   draw(ctx: CanvasRenderingContext2D, floorY: number, scale = this.size, at?: number): void {
-    const p = this.pose
-    const id = this.hero.id
+    const look = CREATURE_LOOKS[this.hero.id]
+    const body = look && BODIES[look.body]
+    if (look && body) this.drawCreature(ctx, look, body, floorY, scale, at)
+    else this.drawLegacy(ctx, floorY, scale, at)
+  }
+
+  /** The frame state every body type draws from (hold in local units is filled in by the draw). */
+  private buildFrame(): Frame {
     const still = prefersReducedMotion()
-    const color = this.hero.color
-    const skin = this.hero.skin
-    const hair = HAIR[id] ?? '#4a3426'
-    const bulk = BULK[id] ?? 1
-    const x = (at ?? this.x) + (still ? 0 : this.knock.x * this.facing)
+    return {
+      t: this.time,
+      still,
+      mood: this.mood,
+      moodAge: this.moodAge,
+      pose: this.pose,
+      eyes: this.eyes,
+      blink: this.blink,
+      lookX: this.lookX,
+      lookY: this.lookY,
+      hop: still ? 0 : this.hop.x,
+      squash: still ? 0 : this.squash.x,
+      knock: still ? 0 : this.knock.x,
+      smear: this.smear,
+      hold: null,
+      holding: false,
+      fidget: 0,
+    }
+  }
+
+  /**
+   * The creature path: a body type draws from the frame, with hands solved from the mood pose
+   * (the front hand locked on the held ball in the hold moods) and the ball gripped in the front hand.
+   */
+  private drawCreature(
+    ctx: CanvasRenderingContext2D,
+    look: CreatureLook,
+    body: BodyType,
+    floorY: number,
+    scale: number,
+    at?: number,
+  ): void {
+    const f = this.buildFrame()
+    const still = f.still
     const tremble =
       !still && (this.mood === 'worried' || this.mood === 'scared') ? Math.sin(this.time * 40) * 0.6 : 0
-    const hopY = still ? 0 : this.hop.x
+    const x0 = (at ?? this.x) + (still ? 0 : this.knock.x * this.facing)
+    const x = x0 + (tremble + (body.offsetX?.(look, f) ?? 0)) * scale
+    const hopY = f.hop
+    const y = floorY + hopY * scale
+    const toLocal = (p: { x: number; y: number }) => ({
+      x: ((p.x - x) * this.facing) / scale,
+      y: (p.y - y) / scale,
+    })
+    const toBoard = (p: { x: number; y: number }) => ({
+      x: x + p.x * this.facing * scale,
+      y: y + p.y * scale,
+    })
 
-    // Dust puffs on the floor.
+    if (this.hold) {
+      f.hold = { ...toLocal(this.hold), r: this.hold.r / scale }
+      f.holding = HOLDS.has(this.mood) && !this.moving && this.pose.fall <= 0
+    }
+    const m = body.metrics(look, f)
+    f.pose = body.pose?.(look, f) ?? f.pose
+    const target = solveHands(m, f.pose, f.hold, f.holding)
+
+    // Hands lag their targets through springs (snapped on the ball, under reduced motion and after a switch).
+    const dt = Math.max(0, this.time - this.handsAt)
+    this.handsAt = this.time
+    if (this.snapHands) {
+      this.handF.snap(target.front)
+      this.handB.snap(target.back)
+      this.snapHands = false
+    } else {
+      this.handF.update(dt, target.front, f.holding, still)
+      this.handB.update(dt, target.back, false, still)
+    }
+    /** The followed hand; the elbow shifts by half the lag so the arm stays joined. */
+    const follow = (h: HandPose, p: HandFollower): HandPose => ({
+      ...h,
+      x: p.x,
+      y: p.y,
+      ex: h.ex + (p.x - h.x) * 0.5,
+      ey: h.ey + (p.y - h.y) * 0.5,
+      open: this.mood === 'throw' && this.moodAge > 0.22 ? 1 : h.open,
+    })
+    const hands = { front: follow(target.front, this.handF), back: follow(target.back, this.handB) }
+    this.hands = { front: toBoard(hands.front), back: toBoard(hands.back) }
+
+    this.drawDust(ctx, floorY, scale)
+    this.drawAura(ctx, x, y, scale, m.headTop)
+    ctx.save()
+    ctx.translate(x, floorY)
+    ctx.scale(scale, scale)
+    groundShadow(ctx, 16, -hopY)
+    ctx.restore()
+
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.scale(this.facing * scale, scale)
+    // Rim light: the hero's skill glows in its colour; a combo makes the whole figure shine.
+    const auraK = this.auraK()
+    if (this.glow > 0 || auraK > 0.3) {
+      const fromCombo = auraK > 0.3 && auraK * 18 > this.glow * 22
+      ctx.shadowColor = fromCombo ? (this.combo >= 100 ? '#fff3bf' : '#ffc83d') : this.hero.color
+      ctx.shadowBlur = fromCombo ? 6 + 14 * auraK : 22 * this.glow
+    }
+    const hand = (h: HandPose) =>
+      body.drawHand ? body.drawHand(ctx, h, look, m.handR) : drawHand(ctx, h, look.hand, m.handR)
+    // The ball rides in the front hand unless it is being thrown, the hero is down or running.
+    const carried =
+      this.hold && this.mood !== 'throw' && this.mood !== 'ko' && !this.moving ? this.hold : null
+    const kit: DrawKit = {
+      metrics: m,
+      hands,
+      backHand: () => hand(hands.back),
+      frontHand: () => {
+        hand(hands.front)
+        if (!carried) return
+        const ball =
+          f.holding && f.hold ? f.hold : { x: hands.front.x, y: hands.front.y, r: carried.r / scale }
+        const b = toBoard(ball)
+        // The ball skin draws in board units: undo this frame's flip and scale around the origin.
+        ctx.save()
+        ctx.shadowBlur = 0
+        ctx.scale(this.facing / scale, 1 / scale)
+        ctx.translate(-x, -y)
+        this.drawBall(ctx, f.holding ? carried.x : b.x, f.holding ? carried.y : b.y, carried.r)
+        ctx.restore()
+        drawGrip(ctx, hands.front, ball, look.hand)
+      },
+      hat: (box) => drawHat(ctx, this.hero.hat, box, this.hero.color),
+      emblem: (ex, ey, size) => {
+        if (this.emblem?.complete && this.emblem.naturalWidth)
+          ctx.drawImage(this.emblem, ex - size / 2, ey - size / 2, size, size)
+      },
+    }
+    body.draw(ctx, look, f, kit)
+    ctx.shadowBlur = 0
+    // Throw: a motion streak along the arm's swing.
+    if (this.smear > 0 && !still) {
+      ctx.strokeStyle = `rgb(255 255 255 / ${0.55 * this.smear})`
+      ctx.lineWidth = 3
+      ctx.lineCap = 'round'
+      ctx.beginPath()
+      ctx.arc(
+        m.socketF.x,
+        m.socketF.y,
+        m.upper + m.fore,
+        -Math.PI * 0.95,
+        -Math.PI * 0.95 + 1.6 * (1 - this.smear * 0.4),
+      )
+      ctx.stroke()
+    }
+    ctx.restore()
+
+    if (this.pose.fall < 0.5) this.drawEmote(ctx, x, y + (m.headTop - 6) * scale, scale)
+    if (this.mood === 'ko' && this.pose.fall > 0.9)
+      this.drawDizzy(ctx, x + m.head.x * this.facing * scale, y + (m.head.y - 4) * scale, scale)
+  }
+
+  /** Dust puffs on the floor. */
+  private drawDust(ctx: CanvasRenderingContext2D, floorY: number, scale: number): void {
     for (const d of this.dust) {
       const k = d.age / 0.5
       ctx.fillStyle = `rgb(220 215 240 / ${0.35 * (1 - k)})`
@@ -847,7 +1018,24 @@ export class HeroAvatar {
         ctx.fill()
       }
     }
+  }
 
+  /** The old skeleton figure, for heroes without a creature look yet. */
+  private drawLegacy(ctx: CanvasRenderingContext2D, floorY: number, scale = this.size, at?: number): void {
+    this.hands = null
+    const p = this.pose
+    const id = this.hero.id
+    const still = prefersReducedMotion()
+    const color = this.hero.color
+    const skin = this.hero.skin
+    const hair = HAIR[id] ?? '#4a3426'
+    const bulk = BULK[id] ?? 1
+    const x = (at ?? this.x) + (still ? 0 : this.knock.x * this.facing)
+    const tremble =
+      !still && (this.mood === 'worried' || this.mood === 'scared') ? Math.sin(this.time * 40) * 0.6 : 0
+    const hopY = still ? 0 : this.hop.x
+
+    this.drawDust(ctx, floorY, scale)
     this.drawAura(ctx, x, floorY + hopY * scale, scale)
 
     // Soft shadow (shrinks as the hero leaves the ground).
@@ -1242,10 +1430,18 @@ export class HeroAvatar {
    * - a volley that broke nothing: a storm cloud with rain and a cold mist;
    * - healed: a green rising glow.
    */
-  private drawAura(ctx: CanvasRenderingContext2D, x: number, floor: number, scale: number): void {
+  private drawAura(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    floor: number,
+    scale: number,
+    headTop = -50,
+  ): void {
     const still = prefersReducedMotion()
     const t = still ? 0 : this.time
-    const cy = floor - 24 * scale
+    /** Heights scale with the figure (the old figure's head top is −50). */
+    const tall = -headTop / 50
+    const cy = floor - 24 * tall * scale
     const k = this.auraK()
     const hot = this.combo >= 100
     ctx.save()
@@ -1408,7 +1604,7 @@ export class HeroAvatar {
       ctx.beginPath()
       ctx.ellipse(x, floor, 30 * scale, 9 * scale, 0, 0, Math.PI * 2)
       ctx.fill()
-      const top = floor - 70 * scale + Math.sin(t * 2) * 1.2 * scale
+      const top = floor - 70 * tall * scale + Math.sin(t * 2) * 1.2 * scale
       const cloud = new Path2D()
       for (const [dx, dy, r] of [
         [-7, 1, 5],

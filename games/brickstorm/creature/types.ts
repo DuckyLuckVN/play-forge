@@ -79,4 +79,6 @@ export interface BodyType {
   drawHand?(ctx: CanvasRenderingContext2D, h: HandPose, look: CreatureLook, r: number): void
   /** Horizontal body shift for this frame. */
   offsetX?(look: CreatureLook, f: Frame): number
+  /** Body-specific arm reactions layered on the mood pose (e.g. both arms up on cheer), before the hands are solved. */
+  pose?(look: CreatureLook, f: Frame): Pose
 }

@@ -30,7 +30,19 @@ export interface Rect {
   h: number
 }
 
-export type BrickKind = 'normal' | 'bomb' | 'gold' | 'lightning' | 'mystery' | 'armored' | 'splitter' | 'boss'
+export type BrickKind =
+  | 'slime'
+  | 'water'
+  | 'fire'
+  | 'void'
+  | 'normal'
+  | 'bomb'
+  | 'gold'
+  | 'lightning'
+  | 'mystery'
+  | 'armored'
+  | 'splitter'
+  | 'boss'
 
 /** A boss skill (see sim/boss-skills.ts). The first five were the original "traits". */
 export type BossSkillId =
@@ -195,6 +207,8 @@ export interface Ball {
   pierceLeft: number
   /** Extra damage from wall bounces this volley (Rubber Walls boost). */
   bounceBonus: number
+  /** Set burning by a Fire brick: seconds left before it burns out. */
+  burn?: number
   /** Id of the brick the ball is overlapping, -1 if none; prevents double hits. */
   lastBrick: number
   /** Lasers the ball is passing over right now, so each fires once per pass. */
@@ -284,6 +298,12 @@ export type SimEvent =
     }
   /** A Drain boss drinks the hero's lost health: a life stream from (x, y) to the boss at (tx, ty). */
   | { type: 'drain'; x: number; y: number; tx: number; ty: number }
+  /** A hazard ate a ball (Slime, Void, or it burned out). */
+  | { type: 'eaten'; x: number; y: number; by: 'slime' | 'void' | 'burn' }
+  /** A Fire brick set a ball burning. */
+  | { type: 'ignite'; x: number; y: number }
+  /** Water doused a fire ball (or put out a burning one). */
+  | { type: 'douse'; x: number; y: number }
   /** A boss attack is coming next turn. */
   | { type: 'bossWarn'; id: 'slam' }
   /** The boss will step one column this way next turn. */

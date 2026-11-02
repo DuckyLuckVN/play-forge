@@ -1,3 +1,4 @@
+import { HAZARD_HP, MAX_PER_ROW, SPECIAL_WEIGHT } from './hazards'
 import { random, randomInt } from '@forge/core/rng'
 import { modsOf } from './boosts'
 import { BRICK_INSET, CELL, TOP } from './config'
@@ -102,6 +103,10 @@ export const UNLOCK: Record<Exclude<BrickKind, 'normal' | 'boss'>, number> = {
   lightning: 8,
   armored: 12,
   splitter: 15,
+  slime: 20,
+  water: 35,
+  fire: 50,
+  void: 70,
 }
 
 /** Chance that a brick is special on a turn: 8% from turn 3, +0.5% per turn, capped at 30%. */
@@ -110,6 +115,22 @@ export function specialChance(turn: number): number {
 }
 
 const MAX_SPECIALS_PER_ROW = 2
+
+/** A special kind for a new brick: weighted (hazards rarer), skipping kinds already at their per-row cap. */
+export function pickSpecial(
+  unlocked: readonly BrickKind[],
+  placed: Partial<Record<BrickKind, number>>,
+  roll: () => number,
+): BrickKind {
+  const open = unlocked.filter((k) => (placed[k] ?? 0) < (MAX_PER_ROW[k] ?? Infinity))
+  const total = open.reduce((sum, k) => sum + (SPECIAL_WEIGHT[k] ?? 1), 0)
+  let r = roll() * total
+  for (const k of open) {
+    r -= SPECIAL_WEIGHT[k] ?? 1
+    if (r < 0) return k
+  }
+  return open[open.length - 1] ?? 'normal'
+}
 const JACKPOT_GOLD = 4
 
 /** Turns brick hp holds flat for, by the turn a stretch starts: long early (time to farm), short late. */
@@ -214,7 +235,10 @@ export function spawnRow(state: RunState): void {
   const add = (kind: BrickKind, col?: number, boost = 1) => {
     // Some bricks are triangles or orbs: odd angles to bounce off, a little less health.
     const shape = random(rng) < shapeChance(turn) ? SHAPES[randomInt(rng, SHAPES.length)] : undefined
-    const hp = Math.max(1, Math.round(brickHp(state, boost) * (shape ? SHAPE_HP[shape] : 1)))
+    const hp = Math.max(
+      1,
+      Math.round(brickHp(state, boost) * (shape ? SHAPE_HP[shape] : 1) * (HAZARD_HP[kind] ?? 1)),
+    )
     const c = col === undefined ? take() : free.splice(free.indexOf(col), 1)[0]
     const brick: Brick = { id: state.nextId++, col: c, row: 0, hp, maxHp: hp, kind, split: false }
     if (shape) brick.shape = shape
@@ -232,6 +256,7 @@ export function spawnRow(state: RunState): void {
   const unlocked = (Object.keys(UNLOCK) as Array<keyof typeof UNLOCK>).filter((k) => turn >= UNLOCK[k])
   const chance = specialChance(turn)
   let specials = 0
+  const placed: Partial<Record<BrickKind, number>> = {}
   // Always leave a column free, for the row's pickups, and no more bricks than the balls can handle.
   const wanted = Math.min(
     7,
@@ -248,7 +273,8 @@ export function spawnRow(state: RunState): void {
   for (let i = 0; i < count; i++) {
     let kind: BrickKind = 'normal'
     if (unlocked.length && specials < MAX_SPECIALS_PER_ROW && random(rng) < chance) {
-      kind = unlocked[randomInt(rng, unlocked.length)]
+      kind = pickSpecial(unlocked, placed, () => random(rng))
+      placed[kind] = (placed[kind] ?? 0) + 1
       specials++
     }
     add(kind, order[i], boost)

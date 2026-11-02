@@ -194,6 +194,21 @@ export const HEALTH_SOUNDS = {
   ],
 } satisfies Record<string, Sound>
 
+/** Hazard bricks: a slimy gulp, the void's swallow, a burn-out puff, catching fire, a hiss of water. */
+export const HAZARD_SOUNDS = {
+  slime: [
+    { freq: 300, to: 90, dur: 0.18, wave: 'sine', vol: 0.4 },
+    { freq: 140, to: 60, dur: 0.12, wave: 'triangle', vol: 0.25, at: 0.08 },
+  ],
+  void: [
+    { freq: 900, to: 60, dur: 0.35, wave: 'sine', vol: 0.35 },
+    { freq: 2000, to: 100, dur: 0.3, wave: 'noise', vol: 0.15 },
+  ],
+  burn: { freq: 1800, to: 200, dur: 0.22, wave: 'noise', vol: 0.3 },
+  ignite: { freq: 400, to: 1600, dur: 0.15, wave: 'noise', vol: 0.25 },
+  douse: { freq: 4000, to: 800, dur: 0.3, wave: 'noise', vol: 0.25 },
+} satisfies Record<string, Sound>
+
 /**
  * Each hero's signature sound: played when it's picked, when a run starts and
  * when its trait goes off. Short and bright, so it reads as a cheer.

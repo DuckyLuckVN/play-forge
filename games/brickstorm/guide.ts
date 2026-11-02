@@ -38,6 +38,26 @@ export const GUIDE: GuideEntry[] = [
   },
   { id: 'brick:splitter', name: 'Splitter brick', text: 'Splits into two half-health bricks when broken.' },
   {
+    id: 'brick:slime',
+    name: 'Slime brick',
+    text: 'Sticky: a ball that hits it has a 30% chance to be swallowed for this volley.',
+  },
+  {
+    id: 'brick:water',
+    name: 'Water brick',
+    text: 'Douses fire balls into normal ones and puts out burning balls. Lightning can’t touch it.',
+  },
+  {
+    id: 'brick:fire',
+    name: 'Fire brick',
+    text: 'A normal ball that touches it catches fire and burns out after a few seconds. Water puts it out.',
+  },
+  {
+    id: 'brick:void',
+    name: 'Void brick',
+    text: 'Swallows every ball that touches it. Fragile: break it fast.',
+  },
+  {
     id: 'brick:boss',
     name: 'Boss',
     text: 'Every 30 turns. One big health bar, 2–4 special powers (more for each boss), and no new rows until it falls. Beat it for coins, a free skill and an extra skill slot.',

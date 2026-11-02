@@ -41,6 +41,7 @@ import type { Face } from './boss-skills'
 import { brickShape, cellCenter, hitShapes, hpStepStart, spawnRow } from './rows'
 import { HEART_HEAL, heal, heroFreezes, heroHitMult, heroTurnStart, resolveBreaches } from './health'
 import { DEFAULT_HERO, HEROES, heroOf, type HeroId } from './heroes'
+import { tickBurn, touchHazard } from './hazards'
 import { isSpiked } from './spikes'
 import { isStormTurn, stormWave } from './storm'
 import type { Ball, Brick, Pickup, RunState, SimEvent } from './types'
@@ -215,9 +216,10 @@ function moveBall(s: RunState, ball: Ball, mods: Mods): void {
       s.events.push({ type: 'wall' })
     }
 
+    if (tickBurn(s, ball, dt)) return
     let popped: boolean
     if (ball.kind === 'fire') {
-      burnThrough(s, ball, mods)
+      if (burnThrough(s, ball, mods)) return
       popped = bounceOffBricks(
         s,
         ball,
@@ -239,8 +241,12 @@ function moveBall(s: RunState, ball: Ball, mods: Mods): void {
   }
 }
 
-/** A fire ball never bounces off bricks: it burns each one it passes through, once per pass. A boss is too big to burn through. */
-function burnThrough(s: RunState, ball: Ball, mods: Mods): void {
+/**
+ * A fire ball never bounces off bricks: it burns each one it passes through,
+ * once per pass. A boss is too big to burn through. Hazards still act (water
+ * douses it, void eats it). Returns true if the ball was eaten.
+ */
+function burnThrough(s: RunState, ball: Ball, mods: Mods): boolean {
   const touching = s.bricks.filter(
     (b) => b.kind !== 'boss' && circleShape(ball.x, ball.y, ball.r, brickShape(b)),
   )
@@ -249,7 +255,10 @@ function burnThrough(s: RunState, ball: Ball, mods: Mods): void {
     if (ball.inside.includes(brick.id)) continue
     ball.inside.push(brick.id)
     hitBrick(s, ball, brick, mods, 2)
+    if (touchHazard(s, ball, brick)) return true
+    if (ball.kind !== 'fire') return false // doused: a normal ball from here on
   }
+  return false
 }
 
 /** Which side of a brick a contact normal (pointing at the ball) is on. */
@@ -302,7 +311,8 @@ function bounceOffBricks(s: RunState, ball: Ball, mods: Mods, bricks: Brick[]): 
     const ty = ball.vy - vn * contact.ny
     s.balls.push({ ...ball, vx: vn * contact.nx - tx, vy: vn * contact.ny - ty, inside: [] })
   }
-  return false
+  // Last, so a bomb still blows and a twin still splits off before the ball is eaten.
+  return touchHazard(s, ball, brick)
 }
 
 /** A ball hitting a brick: combo, fever, crit, damage, and chain lightning. */

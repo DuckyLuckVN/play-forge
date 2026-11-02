@@ -52,6 +52,7 @@ export function damageBrick(
     return damageBoss(s, amount, source, { ...hit, col: brick.col, at: cellCenter(brick.col, brick.row) })
   }
   if (brick.role === 'ice') return // a boss's ice wall melts on its own
+  if (brick.kind === 'water' && source === 'zap') return // water shrugs off lightning
   // Armour shrugs off plain ball hits; fire, explosions, lightning and lasers get through.
   const before = brick.hp
   brick.hp -= brick.kind === 'armored' && source === 'ball' ? Math.min(amount, 1) : amount
@@ -110,7 +111,7 @@ function onDeath(s: RunState, brick: Brick, depth: number): void {
       explode(s, brick.col, brick.row, 0.5 * brick.maxHp, depth)
       return
     case 'lightning': {
-      const row = oncePerBoss(s.bricks.filter((b) => b.row === brick.row))
+      const row = oncePerBoss(s.bricks.filter((b) => b.row === brick.row && b.kind !== 'water'))
       for (const b of row) {
         const t = cellCenter(b.col, b.row)
         s.events.push({ type: 'zap', x1: x, y1: y, x2: t.x, y2: t.y, depth })
@@ -185,7 +186,7 @@ export function zap(
 ): void {
   const c = cellCenter(from.col, from.row)
   const targets = s.bricks
-    .filter((b) => b.col !== from.col || b.row !== from.row)
+    .filter((b) => (b.col !== from.col || b.row !== from.row) && b.kind !== 'water')
     .map((b) => ({ b, d: Math.hypot(b.col - from.col, b.row - from.row) }))
     .filter(({ d }) => d * CELL <= 3 * CELL)
     .sort((a, b) => a.d - b.d || a.b.id - b.b.id)

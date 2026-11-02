@@ -10,7 +10,7 @@ import { IMPACT_STYLE } from './cosmetics'
 import { t } from './i18n'
 import { CELL, TOP } from './sim/config'
 import { HEROES, type HeroId } from './sim/heroes'
-import { BOSS_SOUNDS, BRICK_SOUNDS, HEALTH_SOUNDS, HERO_SOUNDS } from './sounds'
+import { BOSS_SOUNDS, BRICK_SOUNDS, HAZARD_SOUNDS, HEALTH_SOUNDS, HERO_SOUNDS } from './sounds'
 
 /** Banner per storm wave. */
 /** What each storm wave means, for the notice card under its banner. */
@@ -558,6 +558,26 @@ export class Juice {
         if (e.id === 'step') return playSound(BOSS_SOUNDS.movement)
         this.show(t('⚠ GROUND SLAM NEXT TURN!'), 0.2)
         return playSound(BRICK_SOUNDS.danger)
+      case 'eaten':
+        // Slime gulps, the void swallows (an inward swirl), a burning ball puffs out.
+        this.particles.burst(e.x, e.y, {
+          count: 10,
+          color:
+            e.by === 'slime'
+              ? ['#63d471', '#3fae52']
+              : e.by === 'void'
+                ? ['#9d4edd', '#1e1830']
+                : ['#ff922b', '#5c5470'],
+          speed: e.by === 'void' ? 90 : 160,
+          life: 0.4,
+        })
+        return this.play('eaten', HAZARD_SOUNDS[e.by], 0.6)
+      case 'ignite':
+        this.particles.burst(e.x, e.y, { count: 8, color: ['#ff922b', '#ffc83d'], speed: 140, life: 0.35 })
+        return this.play('ignite', HAZARD_SOUNDS.ignite, 0.6)
+      case 'douse':
+        this.particles.burst(e.x, e.y, { count: 10, color: ['#4dabf7', '#e7f5ff'], speed: 150, life: 0.4 })
+        return this.play('douse', HAZARD_SOUNDS.douse, 0.6)
       case 'rocket':
         this.beam('rocket', e.x, e.y, e.tx, e.ty, '#ff922b', ROCKET_FLY)
         return playSound(BRICK_SOUNDS.whoosh)

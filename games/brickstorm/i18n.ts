@@ -453,6 +453,18 @@ export const VI: Dictionary = {
     'Bóng thường chỉ trừ 1 mỗi cú. Lửa, bom và laser gây đủ sát thương.',
   'Splitter brick': 'Gạch tách',
   'Splits into two half-health bricks when broken.': 'Khi vỡ tách thành hai viên nửa máu.',
+  'Slime brick': 'Gạch nhớt',
+  'Sticky: a ball that hits it has a 30% chance to be swallowed for this volley.':
+    'Dính nhớp: bóng chạm vào có 30% bị nuốt mất trong loạt bắn này.',
+  'Water brick': 'Gạch nước',
+  'Douses fire balls into normal ones and puts out burning balls. Lightning can’t touch it.':
+    'Dập bóng lửa thành bóng thường và dập tắt bóng đang cháy. Sét không đánh được nó.',
+  'Fire brick': 'Gạch lửa',
+  'A normal ball that touches it catches fire and burns out after a few seconds. Water puts it out.':
+    'Bóng thường chạm vào sẽ bốc cháy và tàn sau vài giây. Nước dập tắt được.',
+  'Void brick': 'Gạch hư không',
+  'Swallows every ball that touches it. Fragile: break it fast.':
+    'Nuốt mọi quả bóng chạm vào. Mỏng manh: phá nó thật nhanh.',
   '+1 Ball': '+1 Bóng',
   'Touch it to add a ball for the rest of the run.': 'Chạm vào để có thêm một bóng đến hết lượt chơi.',
   Coin: 'Xu',

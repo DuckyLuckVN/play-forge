@@ -1259,7 +1259,8 @@ startRenderLoop((dt, time) => {
     if (s.phase === 'grow' && panel !== 'grow') showGrow()
     // A new kind of event explains itself once, when the player is next aiming.
     if (eventCards.length && s.phase === 'aim' && !panel && !paused && !juice.bossDying) showEventCard()
-    if (s.phase === 'over' && !overShown) {
+    // The knockout plays out first (see Juice.defeatDone).
+    if (s.phase === 'over' && !overShown && juice.defeatDone) {
       overShown = true
       finish(s)
     }

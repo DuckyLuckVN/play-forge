@@ -36,6 +36,9 @@ export const STORM_TEXT = {
   bombs: 'STORM: BOMB WAVE!',
 } as const
 
+/** Seconds the knockout plays before the results (and the revive offer) show. */
+export const DEFEAT_HOLD = 2.2
+
 /** Seconds a boss rocket takes to fly to the hero. */
 export const ROCKET_FLY = 0.45
 
@@ -220,7 +223,8 @@ export function xpTick(fill: number): Tone[] {
 export class Juice {
   /** 0..1 white flash over the board; decays in `update`. */
   flash = 0
-  banner: { text: string; age: number; big?: boolean } | null = null
+  /** `color` overrides the default (yolk, or XP green when big). */
+  banner: { text: string; age: number; big?: boolean; color?: string } | null = null
   /** Current turn, for colouring kill bursts like the bricks. */
   turn = 1
   /** Lightning arcs to draw; the renderer reads this list. */
@@ -241,6 +245,39 @@ export class Juice {
     life: number
     damage?: number
   }> = []
+  /** The run just ended: seconds into the knockout, once it started (it waits for rockets in flight). */
+  private defeat: { age: number; started: boolean } | null = null
+
+  /** True once the knockout has played out (or there is none): the results may show. */
+  get defeatDone(): boolean {
+    return !this.defeat || this.defeat.age >= DEFEAT_HOLD
+  }
+
+  /** Advances the knockout; it starts once no rocket is still on its way to the hero. */
+  private updateDefeat(dt: number): void {
+    const d = this.defeat
+    if (!d) return
+    if (!d.started) {
+      if (this.beams.some((b) => b.kind === 'rocket')) return
+      d.started = true
+      this.show(t('K.O.!'), 0.6)
+      this.banner!.big = true
+      this.banner!.color = theme.coral
+      this.shake.add(1)
+      this.hitstop = Math.max(this.hitstop, 0.15)
+      this.particles.burst(this.heroX, this.floorY - 20, {
+        count: 40,
+        color: [theme.coral, '#ffffff', '#5c5470'],
+        speed: 260,
+        life: 0.9,
+      })
+      playSound(BRICK_SOUNDS.over)
+    }
+    d.age += dt
+    // The red sting lingers while the hero is down.
+    this.hurtFlash = Math.max(this.hurtFlash, 0.6 * (1 - d.age / DEFEAT_HOLD))
+  }
+
   /** The hero's x (where boss attacks fly to); the renderer keeps it current. */
   heroX = 0
   /** Laser beams to draw across a row. */
@@ -399,8 +436,9 @@ export class Juice {
         this.leveled = true
         return
       case 'over':
-        this.shake.add(0.6)
-        return playSound(BRICK_SOUNDS.over)
+        // The knockout plays (after any rocket still flying lands), then the results.
+        this.defeat = { age: 0, started: false }
+        return
       case 'turn':
         this.turn = e.turn
         return
@@ -1016,6 +1054,8 @@ export class Juice {
 
   update(dt: number): void {
     this.clock += dt
+    // Before the beams age: a rocket landing this frame still counts as in flight.
+    this.updateDefeat(dt)
     this.bossHit = Math.max(0, this.bossHit - dt * 6)
     this.bossCast = Math.max(0, this.bossCast - dt * 2)
     if (this.tougherAge !== null)

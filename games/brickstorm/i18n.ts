@@ -638,6 +638,7 @@ export const VI: Dictionary = {
   'Got it': 'Đã hiểu',
   '⚠ GROUND SLAM NEXT TURN!': '⚠ LƯỢT TỚI DẬM ĐẤT!',
   'GROUND SLAM!': 'DẬM ĐẤT!',
+  'K.O.!': 'GỤC NGÃ!',
   'ROCKETS LOCKED ON!': 'TÊN LỬA ĐÃ KHÓA MỤC TIÊU!',
   'HEXED!': 'BỊ ẾM!',
   'THORNS!': 'GAI ĐỘC!',

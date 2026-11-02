@@ -4,6 +4,7 @@ import { theme } from '@forge/ui/theme'
 import {
   BOSS_DEATH_BOOM,
   BOSS_DEATH_LIFE,
+  DEFEAT_HOLD,
   barShake,
   comboPitch,
   GROW_FX_LIFE,
@@ -615,5 +616,28 @@ describe('boss attacks in flight', () => {
     const before = particles.burst.mock.calls.length
     j.update(0.5)
     expect(particles.burst.mock.calls.length - before).toBe(3)
+  })
+})
+
+describe('defeat', () => {
+  it('holds the results back while the knockout plays', () => {
+    const j = juice()
+    expect(j.defeatDone).toBe(true) // nothing to wait for
+    j.handle({ type: 'over' })
+    expect(j.defeatDone).toBe(false)
+    j.update(DEFEAT_HOLD / 2)
+    expect(j.defeatDone).toBe(false)
+    j.update(DEFEAT_HOLD)
+    expect(j.defeatDone).toBe(true)
+  })
+
+  it('waits for a rocket still in flight to land first', () => {
+    const j = juice()
+    j.handle({ type: 'rocket', x: 0, y: 0, tx: 0, ty: 700 })
+    j.handle({ type: 'over' })
+    j.update(DEFEAT_HOLD + 0.01)
+    expect(j.defeatDone).toBe(false)
+    j.update(ROCKET_FLY + DEFEAT_HOLD)
+    expect(j.defeatDone).toBe(true)
   })
 })

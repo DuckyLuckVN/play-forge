@@ -1336,7 +1336,7 @@ export class BoardRenderer {
     ctx.lineWidth = b.big ? 10 : 8
     ctx.strokeStyle = theme.night
     ctx.strokeText(b.text, 0, 0)
-    ctx.fillStyle = b.big ? XP_COLOR : theme.yolk
+    ctx.fillStyle = b.color ?? (b.big ? XP_COLOR : theme.yolk)
     ctx.fillText(b.text, 0, 0)
     ctx.restore()
   }

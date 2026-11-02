@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { GUIDE } from './guide'
+import { translator } from '@forge/core/i18n'
 import { VI } from './i18n'
 import { ACTIVE_HELPERS } from './panels'
 import { CATALOG } from './shop'
@@ -44,6 +45,14 @@ describe('Vietnamese', () => {
   it('keeps the same {placeholders} in each translation', () => {
     const marks = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort()
     for (const [en, vi] of Object.entries(VI)) expect(marks(vi), en).toEqual(marks(en))
+  })
+
+  it('gives every hero a Vietnamese title, and translates the three named creatures', () => {
+    const t = translator(VI, 'vi')
+    for (const id of HERO_IDS) expect(t(HEROES[id].title), id).not.toBe(HEROES[id].title)
+    expect(t(HEROES.pirate.name)).toBe('Thuyền trưởng Kẹp')
+    expect(t(HEROES.vampire.name)).toBe('Bá tước Vỗ Cánh')
+    expect(t(HEROES.monk.name)).toBe('Sư phụ Ộp')
   })
 
   it('has no stale entries', () => {

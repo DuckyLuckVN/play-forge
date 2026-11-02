@@ -156,15 +156,32 @@ const HP_PER_BALL = 1.4
 /** ...rising to this many once the late-game toughness is fully in. */
 const HP_PER_BALL_LATE = 1.7
 
-/** Most hp a new brick may have: what the run's balls can deal, so a run short on balls stays playable. */
 /** From LATE_FROM the cap also compounds by this much a turn: a strong build buys time, not forever. */
-export const CAP_GROWTH = 1.02
+export const CAP_GROWTH = 1.024
+/**
+ * Firepower (balls × skill damage) where the cap stops tracking your build one
+ * for one: about a typical turn-100 build. Below it nothing changes; above it
+ * the cap grows as firepower^CAP_EXP, so damage and ball skills still pay off.
+ */
+export const CAP_KNEE = 150
+const CAP_EXP = 0.7
 
+/** Firepower as the cap counts it: in full up to the knee, then growing slower. */
+function capPower(power: number): number {
+  return power <= CAP_KNEE ? power : CAP_KNEE * (power / CAP_KNEE) ** CAP_EXP
+}
+
+/**
+ * Most hp a new brick may have: what the run's balls can deal, so a run short
+ * on balls stays playable. A strong build's skills aren't cancelled out by it
+ * (see CAP_KNEE); late in a run it still compounds every turn.
+ */
 export function hpCap(state: RunState): number {
   const perBall =
     (HP_PER_BALL + (HP_PER_BALL_LATE - HP_PER_BALL) * lateHardness(state.turn)) *
     CAP_GROWTH ** Math.max(0, state.turn - LATE_FROM)
-  return Math.max(1, Math.round(perBall * state.ballCount * modsOf(state.boosts).damageMult))
+  const power = state.ballCount * modsOf(state.boosts).damageMult
+  return Math.max(1, Math.round(perBall * capPower(power)))
 }
 
 /** Most bricks a new row may have for a run with `balls` balls: 1 ball, 1 brick; 6 balls, 4. */

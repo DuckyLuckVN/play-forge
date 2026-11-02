@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import { fakeCanvas, installPath2D } from '../test-canvas'
-import { darkOf, group, idleOffset, lightOf, mix, paint, type Part } from './paint'
+import { darkOf, group, lazyPath, lightOf, mix, paint, type Part } from './paint'
 
 beforeAll(installPath2D)
 
@@ -16,10 +16,13 @@ describe('paint kit', () => {
     expect(lightOf('#4a8cf0')).not.toBe('#4a8cf0')
   })
 
-  it('idleOffset is 0 when still', () => {
-    expect(idleOffset(1.3, true, 0, 5)).toBe(0)
-    expect(idleOffset(2.7, true, 0, 5)).toBe(0)
-    expect(idleOffset(1.3, false, 0, 5)).not.toBe(0)
+  it('mix memoises: same inputs, same result', () => {
+    expect(mix('#102030', '#ffffff', 0.3)).toBe(mix('#102030', '#ffffff', 0.3))
+  })
+
+  it('lazyPath builds once, on first use', () => {
+    const get = lazyPath('M0 0 L1 1 Z')
+    expect(get()).toBe(get())
   })
 
   it('group strokes every silhouette before the first fill', () => {

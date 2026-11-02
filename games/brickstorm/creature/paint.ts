@@ -8,7 +8,19 @@ export const OUTLINE = '#141a2e'
 const GOLD = '#ffc531'
 
 const hex = (c: string) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16))
+const mixed = new Map<string, string>()
+/** Blend of two `#rrggbb` colours; memoised (the same few part colours are mixed every frame). */
 export function mix(a: string, b: string, t: number): string {
+  const key = `${a}|${b}|${t}`
+  let out = mixed.get(key)
+  if (out === undefined) {
+    if (mixed.size >= 2000) mixed.clear()
+    out = mixRaw(a, b, t)
+    mixed.set(key, out)
+  }
+  return out
+}
+function mixRaw(a: string, b: string, t: number): string {
   const x = hex(a)
   const y = hex(b)
   return (
@@ -43,9 +55,11 @@ export function look(t: number, seed: number): number {
   return at(i) + (at(i + 1) - at(i)) * (f * f * (3 - 2 * f))
 }
 
-/** Idle sway: 0 when still (reduced motion / static portraits). */
-export const idleOffset = (t: number, still: boolean, phase: number, amp: number): number =>
-  still ? 0 : Math.sin(t * 2 + phase) * amp
+/** A constant SVG path, built on first use (so importing never needs `Path2D`) and then reused. */
+export const lazyPath = (d: string): (() => Path2D) => {
+  let p: Path2D | undefined
+  return () => (p ??= new Path2D(d))
+}
 
 /** Ellipse path. */
 export const ell = (x: number, y: number, rx: number, ry: number, rot = 0): Path2D => {

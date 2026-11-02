@@ -847,16 +847,16 @@ export class HeroAvatar {
       this.handF.update(dt, target.front, f.holding, still)
       this.handB.update(dt, target.back, false, still)
     }
-    /** The followed hand; the elbow shifts by half the lag so the arm stays joined. */
-    const follow = (h: HandPose, p: HandFollower): HandPose => ({
+    /** The followed hand (only the throwing, front hand opens on the throw's follow-through); the elbow shifts by half the lag so the arm stays joined. */
+    const follow = (h: HandPose, p: HandFollower, throwing = false): HandPose => ({
       ...h,
       x: p.x,
       y: p.y,
       ex: h.ex + (p.x - h.x) * 0.5,
       ey: h.ey + (p.y - h.y) * 0.5,
-      open: this.mood === 'throw' && this.moodAge > 0.22 ? 1 : h.open,
+      open: throwing && this.mood === 'throw' && this.moodAge > 0.22 ? 1 : h.open,
     })
-    const hands = { front: follow(target.front, this.handF), back: follow(target.back, this.handB) }
+    const hands = { front: follow(target.front, this.handF, true), back: follow(target.back, this.handB) }
     this.hands = { front: toBoard(hands.front), back: toBoard(hands.back) }
 
     this.drawDust(ctx, floorY, scale)

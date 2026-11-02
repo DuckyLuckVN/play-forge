@@ -12,6 +12,24 @@ const HORN = '#f1e6c8'
 const DARK = '#232a40'
 const LENS = '#a5d8ff'
 
+/** A hat path template split once: the text between coordinate pairs, and the pairs themselves. */
+interface Template {
+  text: string[]
+  xy: number[]
+}
+const templates = new Map<string, Template>()
+function template(d: string): Template {
+  let t = templates.get(d)
+  if (!t) {
+    const xy: number[] = []
+    const text = d.split(/-?[\d.]+ -?[\d.]+/)
+    for (const m of d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)) xy.push(+m[1], +m[2])
+    t = { text, xy }
+    templates.set(d, t)
+  }
+  return t
+}
+
 /**
  * Maps hat units (1 = crown half-width, +x forward, -y up, 0 = brim line) onto a head box.
  * w = 1.05 * max(rx, 1.15 ry): wide short heads do not get extra-tall hats. Brim line sits at box.y - 0.35 ry (on the forehead).
@@ -27,25 +45,15 @@ export class Fit {
   }
   /** SVG path in hat units; every coordinate must be an `x y` pair (M L Q C Z only). */
   path(d: string): Path2D {
-    return new Path2D(
-      d.replace(
-        /(-?[\d.]+) (-?[\d.]+)/g,
-        (_, a: string, b: string) => `${this.x + +a * this.w} ${this.y + +b * this.w}`,
-      ),
-    )
+    const t = template(d)
+    let out = t.text[0]
+    for (let i = 0; i < t.xy.length; i += 2)
+      out += `${this.x + t.xy[i] * this.w} ${this.y + t.xy[i + 1] * this.w}${t.text[i / 2 + 1]}`
+    return new Path2D(out)
   }
   ell(cx: number, cy: number, rx: number, ry: number, rot = 0): Path2D {
     const p = new Path2D()
     p.ellipse(this.x + cx * this.w, this.y + cy * this.w, rx * this.w, ry * this.w, rot, 0, Math.PI * 2)
-    return p
-  }
-  /** Flat ring: outer ellipse clockwise, inner counter-clockwise (nonzero fill leaves the hole). */
-  ring(cx: number, cy: number, rx: number, ry: number, t: number): Path2D {
-    const p = new Path2D()
-    const [x, y] = [this.x + cx * this.w, this.y + cy * this.w]
-    p.ellipse(x, y, rx * this.w, ry * this.w, 0, 0, Math.PI * 2)
-    p.moveTo(x + (rx - t) * this.w, y)
-    p.ellipse(x, y, (rx - t) * this.w, (ry - t) * this.w, 0, 0, Math.PI * 2, true)
     return p
   }
   gloss(ctx: Ctx, cx: number, cy: number, rx: number, ry: number, rot = -0.5): void {

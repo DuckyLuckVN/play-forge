@@ -342,8 +342,38 @@ describe('signature fidget', () => {
     expect(Math.max(...sample(a, 5))).toBe(0)
   })
 
+  it('opens only the throwing (front) hand on the throw follow-through', () => {
+    const body = BODIES.slime
+    const opens: number[] = []
+    body.drawHand = (_c, h) => void opens.push(h.open)
+    try {
+      const a = new HeroAvatar('baron', () => 0)
+      run(a, 0.5)
+      a.handle({ type: 'fire' })
+      run(a, 0.4)
+      expect(a.mood).toBe('throw')
+      opens.length = 0
+      a.draw(fakeCanvas(), 760)
+      expect(opens.length).toBeGreaterThanOrEqual(2)
+      expect(opens.filter((o) => o === 1)).toHaveLength(1)
+    } finally {
+      delete body.drawHand
+    }
+  })
+
   it('keeps the front hand on the hold point during a fidget', () => {
-    for (const id of HERO_IDS) {
+    // One hero per body type (plus the juggling twins): the fidget path is shared by body, not by hero.
+    for (const id of [
+      'rookie',
+      'baron',
+      'juggler',
+      'knight',
+      'flash',
+      'ranger',
+      'sage',
+      'pirate',
+      'monk',
+    ] as const) {
       const a = new HeroAvatar(id, () => 0)
       const c = ctx({ hold })
       let during = 0

@@ -316,7 +316,7 @@ export type SimEvent =
   | { type: 'arena'; grow: boolean }
   /** The next turn is a storm turn. */
   | { type: 'stormSoon' }
-  /** The hero's signature trait went off (Frost Witch's freeze, Necromancer's ball…). */
+  /** The hero's signature trait went off (Flurry's freeze, Boo's ball…). */
   | { type: 'heroSkill'; hero: HeroId; x?: number; y?: number }
 
 export type HealSource = 'heart' | 'boss' | 'regen' | 'life' | 'revive' | 'potion'
@@ -394,7 +394,7 @@ export interface RunState {
   /** Hero health: bricks crashing into the line take it; at 0 the run is over. May be fractional. */
   hp: number
   maxHp: number
-  /** Bricks destroyed this run (Necromancer's souls). */
+  /** Bricks destroyed this run (Boo's souls). */
   kills: number
   nextId: number
   events: SimEvent[]

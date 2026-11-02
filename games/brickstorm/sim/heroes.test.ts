@@ -54,7 +54,7 @@ describe('heroes', () => {
     expect(boostSlots(createRun(1, 'tinker'))).toBe(boostSlots(createRun(1)) + 1)
   })
 
-  it('the Berserker hits harder as health runs low; the Paladin hits bosses harder', () => {
+  it('Grakka hits harder as health runs low; Aurelia hits bosses harder', () => {
     const s = createRun(1, 'berserker')
     const full = heroHitMult(s, false)
     s.hp = 1
@@ -73,7 +73,7 @@ describe('heroes', () => {
     expect(s.hp).toBe(52)
   })
 
-  it('the Vampire heals from kills; the Necromancer gets a ball every few kills', () => {
+  it('Count Flap heals from kills; Boo gets a ball every few kills', () => {
     const v = createRun(1, 'vampire')
     v.hp = 50
     killBrick(v, brick(v, 3, 3, 1), 0)
@@ -84,7 +84,7 @@ describe('heroes', () => {
     expect(drainEvents(n).some((e) => e.type === 'heroSkill')).toBe(true)
   })
 
-  it('the Frost Witch holds the bricks in place every few turns', () => {
+  it('Flurry holds the bricks in place every few turns', () => {
     const s = createRun(1, 'frost')
     s.bricks = []
     s.pickups = []

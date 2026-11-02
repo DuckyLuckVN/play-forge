@@ -142,7 +142,7 @@ export function heroTurnStart(s: RunState): void {
   if (regen) heal(s, regen, 'regen')
 }
 
-/** A brick was destroyed: lifesteal and the Necromancer's souls. */
+/** A brick was destroyed: lifesteal and the Boo's souls. */
 export function heroOnKill(s: RunState, brick: Brick): void {
   const hero = heroOf(s)
   s.kills = (s.kills ?? 0) + 1
@@ -154,14 +154,14 @@ export function heroOnKill(s: RunState, brick: Brick): void {
   }
 }
 
-/** Damage multiplier from the hero on a hit: Berserker rage, Paladin vs bosses. */
+/** Damage multiplier from the hero on a hit: Grakka's rage, Aurelia vs bosses. */
 export function heroHitMult(s: RunState, boss: boolean): number {
   const hero = heroOf(s)
   const rage = hero.rage ? 1 + hero.rage * missingHealth(s) : 1
   return rage * (boss ? (hero.bossDamage ?? 1) : 1)
 }
 
-/** The Frost Witch holds the bricks in place every few turns. */
+/** Flurry holds the bricks in place every few turns. */
 export function heroFreezes(s: RunState): boolean {
   const every = heroOf(s).frostEvery
   return !!every && s.turn % every === 0

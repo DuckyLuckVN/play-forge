@@ -34,8 +34,14 @@ import {
   paint,
   smooth,
   ticks,
+  lazyPath,
 } from '../paint'
 import type { BodyMetrics, BodyType, CreatureLook, DrawKit, Frame, HandPose, HeadBox } from '../types'
+
+/** Constant shapes, built once on first use. */
+const CAP_EDGE = lazyPath(
+  'M-24 -33 Q-17 -38 -11 -34 Q-5 -40 1 -36 Q8 -41 13 -35 Q19 -38 24 -31 L24 -50 L-24 -50 Z',
+)
 
 type Ctx = CanvasRenderingContext2D
 
@@ -606,7 +612,7 @@ function boulderDetail(ctx: Ctx, { look, stone }: GolemPaint): void {
     [-10, -15, -11, -19],
   ])
   paint(ctx, {
-    p: new Path2D('M-24 -33 Q-17 -38 -11 -34 Q-5 -40 1 -36 Q8 -41 13 -35 Q19 -38 24 -31 L24 -50 L-24 -50 Z'),
+    p: CAP_EDGE(),
     c: look.second,
     k: 0.6,
     lw: 1.4,

@@ -26,8 +26,12 @@ import {
   paint,
   smooth,
   ticks,
+  lazyPath,
 } from '../paint'
 import type { BodyMetrics, BodyType, CreatureLook, DrawKit, Frame, HandPose, HeadBox } from '../types'
+
+/** Constant shapes, built once on first use. */
+const SASH_SHAPE = lazyPath('M-16 -24 L-10 -28 L16 -6 L10 -2 Z')
 
 type Ctx = CanvasRenderingContext2D
 
@@ -234,7 +238,7 @@ function body(ctx: Ctx, p: Paint, k: DrawKit): void {
     paint(ctx, { p: ell(x, y, rr, rr * 0.85), c: darkOf(p.main), k: 0, lw: 0 })
   // The sash, from the near shoulder down across the belly.
   paint(ctx, {
-    p: new Path2D('M-16 -24 L-10 -28 L16 -6 L10 -2 Z'),
+    p: SASH_SHAPE(),
     c: SASH,
     k: 0.4,
     lw: 1.4,

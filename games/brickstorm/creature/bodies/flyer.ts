@@ -42,8 +42,15 @@ import {
   paint,
   smooth,
   ticks,
+  lazyPath,
 } from '../paint'
 import type { BodyMetrics, BodyType, CreatureLook, DrawKit, Frame, HandPose, HeadBox } from '../types'
+
+/** Constant shapes, built once on first use. */
+const TUFT_SMALL = lazyPath('M-4 3 L-1.5 -7 L1 -2 L4 3 Z')
+const TUFT_BIG = lazyPath('M-5.2 3 Q-6.5 -6 0 -13 Q6 -6 5.2 3 Z')
+const TUFT_INNER = lazyPath('M-2.8 2 Q-3.5 -4 0 -9 Q3.2 -4 2.8 2 Z')
+const DIAMOND_PIP = lazyPath('M0 -4 Q2.4 -1 0 4 Q-2.4 -1 0 -4 Z')
 
 type Ctx = CanvasRenderingContext2D
 type Variant = 'owl' | 'bat'
@@ -393,11 +400,11 @@ function ears(ctx: Ctx, p: Paint): void {
     ctx.rotate(lean - (p.r.flash > 0 ? 0.3 : 0) - 0.3 * r.ko)
     const c = back ? darkOf(p.main) : p.main
     if (v === 'owl') {
-      group(ctx, [{ p: new Path2D('M-4 3 L-1.5 -7 L1 -2 L4 3 Z'), c }])
+      group(ctx, [{ p: TUFT_SMALL(), c }])
     } else {
-      group(ctx, [{ p: new Path2D('M-5.2 3 Q-6.5 -6 0 -13 Q6 -6 5.2 3 Z'), c }])
+      group(ctx, [{ p: TUFT_BIG(), c }])
       paint(ctx, {
-        p: new Path2D('M-2.8 2 Q-3.5 -4 0 -9 Q3.2 -4 2.8 2 Z'),
+        p: TUFT_INNER(),
         c: back ? darkOf(PINK) : PINK,
         k: 0,
         lw: 0,
@@ -748,7 +755,7 @@ function feather(ctx: Ctx, x: number, y: number, rot: number, c: string, alpha: 
   ctx.globalAlpha = alpha
   ctx.translate(x, y)
   ctx.rotate(rot)
-  paint(ctx, { p: new Path2D('M0 -4 Q2.4 -1 0 4 Q-2.4 -1 0 -4 Z'), c, k: 0, lw: 1.1 })
+  paint(ctx, { p: DIAMOND_PIP(), c, k: 0, lw: 1.1 })
   ctx.restore()
 }
 

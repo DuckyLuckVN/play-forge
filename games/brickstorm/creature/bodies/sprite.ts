@@ -27,9 +27,14 @@ import {
   paint,
   smooth,
   ticks,
+  lazyPath,
 } from '../paint'
 import { TAU, boundsOf, flourish } from '../motion'
 import type { BodyMetrics, BodyType, CreatureLook, DrawKit, Frame, HeadBox } from '../types'
+
+/** Constant shapes, built once on first use. */
+const SPARK_BOLT = lazyPath('M-12 -44 L18 -44 L9 -29 L18 -29 L-3 0 L1 -16 L-16 -16 Z')
+const MINI_BOLT = lazyPath('M1.3 -5.2 L-3.9 5.2 L0 5.2 L-2.6 13 L6.5 1.3 L2.6 1.3 L5.2 -5.2 Z')
 
 type Ctx = CanvasRenderingContext2D
 interface Pt {
@@ -401,7 +406,7 @@ function face(ctx: Ctx, p: Paint, gap: number, size = 1): void {
 function spark(ctx: Ctx, p: Paint): void {
   const { f, t, look, fl } = p
   const s = SHAPES.spark
-  const bolt = new Path2D('M-12 -44 L18 -44 L9 -29 L18 -29 L-3 0 L1 -16 L-16 -16 Z')
+  const bolt = SPARK_BOLT()
   const hot = fl.k
   const main = hot ? mix(p.main, '#ffffff', 0.45 * hot) : p.main
   ctx.save()
@@ -560,7 +565,7 @@ function cloud(ctx: Ctx, p: Paint): void {
       ctx.shadowBlur = 8 + flashK * 14
     }
     // A lighter outline than the body's, so the small bolt is not swamped by it.
-    const bolt = new Path2D('M1.3 -5.2 L-3.9 5.2 L0 5.2 L-2.6 13 L6.5 1.3 L2.6 1.3 L5.2 -5.2 Z')
+    const bolt = MINI_BOLT()
     ctx.strokeStyle = OUTLINE
     ctx.lineWidth = 3.5
     ctx.lineJoin = 'round'

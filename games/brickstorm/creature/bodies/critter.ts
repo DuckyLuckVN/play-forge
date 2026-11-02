@@ -34,9 +34,22 @@ import {
   paint,
   smooth,
   ticks,
+  lazyPath,
 } from '../paint'
 import { TAU, boundsOf, ellPoints, flourish, limbTo, pulse, sigOf } from '../motion'
 import type { BodyMetrics, BodyType, CreatureLook, DrawKit, Frame, HandPose, HeadBox } from '../types'
+
+/** Constant shapes, built once on first use. */
+const LEAF_TAIL = lazyPath('M0 0 C-5 0 -9 -3 -10 -8')
+const TUFT_TAIL = lazyPath('M0 0 C-7 1 -12 -2 -13 -9')
+const GEM_TAIL = lazyPath('M0 0 C-7 0 -11 -3 -12 -8')
+const SPADE_TAIL = lazyPath('M0 0 C-7 1 -12 -1 -14 -7')
+const SPADE_PIP = lazyPath('M0 -5 Q4 -1 2.5 2 Q0 1 0 3 Q0 1 -2.5 2 Q-4 -1 0 -5 Z')
+const DRAGON_WING = lazyPath('M0 0 L-3 -15 Q-7 -12 -10 -12 Q-11 -8 -14 -6 Q-13 -3 -14 0 Q-7 -1 0 0 Z')
+const DIE_TOP_FACE = lazyPath('M-12 -9 L-8 -14.5 L15 -14.5 L12 -9 Z')
+const EAR_POINT_OUTER = lazyPath('M-4.5 2 L0 -9 L4.5 2 Z')
+const EAR_POINT_INNER = lazyPath('M-2.3 1 L0 -5.5 L2.3 1 Z')
+const EAR_FIN = lazyPath('M-3 2 Q-4 -5 2 -8 Q1 -3 3.5 2 Z')
 
 type Ctx = CanvasRenderingContext2D
 type Variant = 'sprout' | 'cat' | 'lion' | 'crystal' | 'dragon' | 'dice'
@@ -378,7 +391,7 @@ function tail(ctx: Ctx, p: Paint): void {
       break
     }
     case 'leaf': {
-      const d = new Path2D('M0 0 C-5 0 -9 -3 -10 -8')
+      const d = LEAF_TAIL()
       rope(ctx, d, 3.2, c)
       ctx.save()
       ctx.translate(-10, -8)
@@ -394,26 +407,24 @@ function tail(ctx: Ctx, p: Paint): void {
       break
     }
     case 'tuft': {
-      const d = new Path2D('M0 0 C-7 1 -12 -2 -13 -9')
+      const d = TUFT_TAIL()
       rope(ctx, d, 3, c)
       group(ctx, [{ p: ell(-13.5, -11, 3.6, 4.2, -0.4), c: look.second, k: 0.8 }])
       break
     }
     case 'gem': {
-      const d = new Path2D('M0 0 C-7 0 -11 -3 -12 -8')
+      const d = GEM_TAIL()
       rope(ctx, d, 3.6, c)
       paintGem(ctx, -12.5, -10.5, 3, 5.5, -0.5, look.second, p)
       break
     }
     case 'spade': {
-      const d = new Path2D('M0 0 C-7 1 -12 -1 -14 -7')
+      const d = SPADE_TAIL()
       rope(ctx, d, 3.8, c)
       ctx.save()
       ctx.translate(-14.5, -8.5)
       ctx.rotate(-0.4)
-      group(ctx, [
-        { p: new Path2D('M0 -5 Q4 -1 2.5 2 Q0 1 0 3 Q0 1 -2.5 2 Q-4 -1 0 -5 Z'), c: look.second, k: 0.6 },
-      ])
+      group(ctx, [{ p: SPADE_PIP(), c: look.second, k: 0.6 }])
       ctx.restore()
       break
     }
@@ -474,7 +485,7 @@ function wings(ctx: Ctx, p: Paint): void {
     const c = k < 1 ? darkOf(p.main) : p.main
     group(ctx, [
       {
-        p: new Path2D('M0 0 L-3 -15 Q-7 -12 -10 -12 Q-11 -8 -14 -6 Q-13 -3 -14 0 Q-7 -1 0 0 Z'),
+        p: DRAGON_WING(),
         c: mix(look.second, c, 0.35),
         k: 0.5,
       },
@@ -578,7 +589,7 @@ function torso(ctx: Ctx, p: Paint): void {
     ctx.rotate(-roll)
     // The top face in light, the side face with big dark pips.
     group(ctx, [
-      { p: new Path2D('M-12 -9 L-8 -14.5 L15 -14.5 L12 -9 Z'), c: lightOf(p.main), k: 0.3 },
+      { p: DIE_TOP_FACE(), c: lightOf(p.main), k: 0.3 },
       { p: box(-12, -11, 24, 21, 3), c: p.main, k: 0.9 },
     ])
     pips(ctx, -7, -4.5, 6, pipCount(p, 0), pipColor(look))
@@ -661,8 +672,8 @@ function ear(ctx: Ctx, p: Paint, x: number, y: number, lean: number, back: boole
   ctx.rotate(lean + (back ? r.ear * 0.4 : r.ear))
   switch (s.ear) {
     case 'point':
-      group(ctx, [{ p: new Path2D('M-4.5 2 L0 -9 L4.5 2 Z'), c }])
-      paint(ctx, { p: new Path2D('M-2.3 1 L0 -5.5 L2.3 1 Z'), c: inner, k: 0, lw: 0 })
+      group(ctx, [{ p: EAR_POINT_OUTER(), c }])
+      paint(ctx, { p: EAR_POINT_INNER(), c: inner, k: 0, lw: 0 })
       break
     case 'leaf': {
       ctx.rotate(-Math.PI / 2)
@@ -683,7 +694,7 @@ function ear(ctx: Ctx, p: Paint, x: number, y: number, lean: number, back: boole
       paintGem(ctx, 0, -3.5, 3.2, 6, 0, back ? darkOf(look.second) : look.second, p)
       break
     case 'fin':
-      group(ctx, [{ p: new Path2D('M-3 2 Q-4 -5 2 -8 Q1 -3 3.5 2 Z'), c: mix(look.second, c, 0.3), k: 0.6 }])
+      group(ctx, [{ p: EAR_FIN(), c: mix(look.second, c, 0.3), k: 0.6 }])
       break
     case 'square':
       group(ctx, [{ p: box(-3.2, -6, 6.4, 7.5, 2), c: back ? darkOf(look.second) : look.second, k: 0.6 }])

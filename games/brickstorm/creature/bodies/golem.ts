@@ -99,11 +99,13 @@ interface Block {
   spin: number
   lift: number
 }
-const LEG_B: Block = { from: { x: -7, y: -5 }, to: { x: -21, y: -5 }, spin: -Math.PI / 2, lift: 6 }
-const LEG_F: Block = { from: { x: 7, y: -5 }, to: { x: 21, y: -5 }, spin: Math.PI / 2, lift: 6 }
-const TORSO_B: Block = { from: { x: -6.5, y: -20 }, to: { x: -5, y: -6.5 }, spin: -Math.PI / 2, lift: 9 }
-const TORSO_F: Block = { from: { x: 6.5, y: -20 }, to: { x: 10, y: -12.5 }, spin: 0.35, lift: 8 }
-const HEAD_B: Block = { from: { x: 0, y: -39 }, to: { x: -5, y: -22 }, spin: -0.2, lift: 14 }
+// The pile: back leg and back torso half on the ground behind, the front leg tumbled onto it, the front half leaning
+// on it, and the head rolled off in front onto its back, its scarf draped over the pile, so every block shows.
+const LEG_B: Block = { from: { x: -7, y: -5 }, to: { x: -22, y: -5 }, spin: -Math.PI / 2, lift: 6 }
+const LEG_F: Block = { from: { x: 7, y: -5 }, to: { x: -9, y: -18 }, spin: 0.5, lift: 10 }
+const TORSO_B: Block = { from: { x: -6.5, y: -20 }, to: { x: -10, y: -6.5 }, spin: -Math.PI / 2, lift: 9 }
+const TORSO_F: Block = { from: { x: 6.5, y: -20 }, to: { x: 4, y: -12.5 }, spin: 0.35, lift: 8 }
+const HEAD_B: Block = { from: { x: 0, y: -39 }, to: { x: 13, y: -12 }, spin: Math.PI / 2, lift: 14 }
 
 /** Every part's transform for this frame (local units → the kit's frame). */
 interface Rig {
@@ -125,10 +127,12 @@ const tiltOf = (f: Frame) =>
   f.pose.tilt * 0.6 + (f.still ? 0 : happy(f) ? Math.sin(f.t * 12) * 0.08 : Math.sin(f.t * 0.9) * 0.04)
 
 function rigOf(f: Frame): Rig {
-  const hurt = f.mood === 'hurt' && f.moodAge < 0.35 ? 0.08 * Math.sin((f.moodAge / 0.35) * Math.PI) : 0
+  const hurt =
+    !f.still && f.mood === 'hurt' && f.moodAge < 0.35 ? 0.08 * Math.sin((f.moodAge / 0.35) * Math.PI) : 0
   const sq = (f.still ? 0 : -f.squash * 0.03) + hurt
   const after = afterOf(f)
-  const dip = after > 0 && after < 0.2 ? Math.sin((after / 0.2) * Math.PI) * 2 * (stompOf(f)?.amp ?? 0) : 0
+  const dip =
+    !f.still && after > 0 && after < 0.2 ? Math.sin((after / 0.2) * Math.PI) * 2 * (stompOf(f)?.amp ?? 0) : 0
   const squash: Mat = [1 + sq, 0, 0, 1 - sq, 0, 0]
   // The upper body: breathing rise, then lean about the hip, crouch, squash.
   const upper = mul(
@@ -202,6 +206,12 @@ function metrics(_look: CreatureLook, f: Frame): BodyMetrics {
 
 const lerp = (a: number, b: number, k: number) => a + (b - a) * k
 
+/** Moods whose back arm hangs at the side (the front hand holds the ball or wrings). */
+const HANG = new Set<Frame['mood']>(['idle', 'watch', 'aim', 'worried'])
+/** Back arm hang: out behind the hip, the forearm nearly straight down. */
+const HANG_SB = -0.5
+const HANG_EB = 0.25
+
 /**
  * Arm reactions on the mood pose: fists up then a flex after the stomp on cheer and pump, raised on cast, a slow heavy
  * sway at rest; on KO the arms slump out over the rubble. Angles follow the lean (the arms draw in the kit's frame).
@@ -220,10 +230,13 @@ function pose(_look: CreatureLook, f: Frame): Pose {
     p.sF = 2.3
     p.sB = -2.3
     p.eF = p.eB = 0.25
-  } else if (!f.still && (f.mood === 'idle' || f.mood === 'watch')) {
-    const s = 0.08 * Math.sin(f.t * BREATH + 0.6)
-    p.sF += s
-    p.sB -= s
+  } else if (HANG.has(f.mood) && !(f.mood === 'idle' && p.sB < -1.2)) {
+    // A heavy back arm hangs relaxed just behind the hip, the fist clear of the torso (an idle wave or stretch, which
+    // raise it up and back, still play). It sways with the breath.
+    const s = f.still ? 0 : 0.08 * Math.sin(f.t * BREATH + 0.6)
+    p.sB = HANG_SB - s
+    p.eB = HANG_EB
+    if (f.mood === 'idle' || f.mood === 'watch') p.sF += s
   }
   p.sF += p.lean
   p.sB += p.lean
@@ -240,8 +253,9 @@ function pose(_look: CreatureLook, f: Frame): Pose {
 /** Stomp sideways shake, in local forward units (the avatar applies facing). */
 function offsetX(_look: CreatureLook, f: Frame): number {
   const after = afterOf(f)
-  if (f.still || after <= 0 || after >= 0.35) return 0
-  return Math.sin(after * 90) * 2.4 * (stompOf(f)?.amp ?? 0) * (1 - after / 0.35)
+  // Only the cheer stomp shakes: pumps come often in play and kick up dust alone.
+  if (f.still || f.mood !== 'cheer' || after <= 0 || after >= 0.35) return 0
+  return Math.sin(after * 90) * 2.4 * (1 - after / 0.35)
 }
 
 /** A straight stone block from `a` to `b`, `w` wide, running a little past both ends. */
@@ -367,7 +381,8 @@ function chips(ctx: Ctx, look: CreatureLook, f: Frame, at: Pt): void {
 /** The scarf tail: flaps in waves behind the neck, harder after a stomp, whipping on the signature gust. */
 function scarfTail(ctx: Ctx, look: CreatureLook, f: Frame, t: number): void {
   const after = afterOf(f)
-  const gust = (after > 0 && after < 0.6 ? 1 - after / 0.6 : 0) + 1.6 * Math.sin(Math.PI * clamp(f.fidget))
+  const gust =
+    (!f.still && after > 0 && after < 0.6 ? 1 - after / 0.6 : 0) + 1.6 * Math.sin(Math.PI * clamp(f.fidget))
   const f1 = Math.sin(t * 6) * (2 + gust * 3)
   const f2 = Math.sin(t * 6 - 1.2) * (2.5 + gust * 4)
   // Whipping: the tail streams out longer and higher.

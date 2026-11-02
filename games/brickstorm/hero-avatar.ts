@@ -239,6 +239,11 @@ const lerp = (a: number, b: number, k: number) => a + (b - a) * k
 /** How far behind the ball the hero stands (board units at size 1): its hand reaches it. */
 const HOLD_REACH = 12
 /** Moods in which the front hand stays on the held ball. */
+/** Signature fidget: runs 1.2 s, starts every 6-10 s of quiet idle/watch. */
+const SIGNATURE_LEN = 1.2
+const SIGNATURE_GAP_MIN = 6
+const SIGNATURE_GAP_MAX = 10
+
 const HOLDS = new Set<Mood>(['idle', 'aim', 'worried', 'watch'])
 /** Hands can hold once the KO fall is this low: the pose blend only approaches 0, it never quite gets there. */
 const HOLD_FALL = 0.02
@@ -280,6 +285,12 @@ export class HeroAvatar {
   /** Seconds since anything happened, for idle fidgets. */
   private quiet = 0
   private fidget: 'stretch' | 'look' | 'tap' | 'wave' | 'yawn' | null = null
+  /**
+   * Creature heroes play their body's signature fidget instead of the old random one:
+   * seconds until the next one, and its age while playing (-1 = not playing).
+   */
+  private sigIn = 0
+  private sigAge = -1
   private glow = 0
   private aim: number | null = null
   /** Bricks broken this volley, and whether a volley is on (for the "failed" sigh). */
@@ -318,9 +329,50 @@ export class HeroAvatar {
   private handsAt = 0
   private hands: { front: { x: number; y: number }; back: { x: number; y: number } } | null = null
 
-  constructor(hero: HeroId) {
+  /** `rng` (0..1) times the signature fidget gaps; injectable so tests are deterministic. */
+  constructor(
+    hero: HeroId,
+    private readonly rng: () => number = Math.random,
+  ) {
     this.hero = HEROES[hero]
     this.loadEmblem()
+    this.sigIn = this.nextSigGap()
+  }
+
+  /** Signature fidget progress 0..1 (0 when not playing). */
+  get signature(): number {
+    return this.sigAge < 0 ? 0 : Math.min(1, this.sigAge / SIGNATURE_LEN)
+  }
+
+  private nextSigGap(): number {
+    return SIGNATURE_GAP_MIN + this.rng() * (SIGNATURE_GAP_MAX - SIGNATURE_GAP_MIN)
+  }
+
+  private get isCreature(): boolean {
+    const look = CREATURE_LOOKS[this.hero.id]
+    return !!look && !!BODIES[look.body]
+  }
+
+  /** Ticks the signature fidget: waits while idle/watch, plays 0..1, cancels on any other mood. */
+  private updateSignature(dt: number): void {
+    if (this.mood !== 'idle' && this.mood !== 'watch') {
+      this.sigAge = -1
+      this.sigIn = this.nextSigGap()
+      return
+    }
+    if (prefersReducedMotion()) {
+      this.sigAge = -1
+      return
+    }
+    if (this.sigAge >= 0) {
+      this.sigAge += dt
+      if (this.sigAge >= SIGNATURE_LEN) {
+        this.sigAge = -1
+        this.sigIn = this.nextSigGap()
+      }
+    } else if ((this.sigIn -= dt) <= 0) {
+      this.sigAge = 0
+    }
   }
 
   setHero(id: HeroId): void {
@@ -360,6 +412,8 @@ export class HeroAvatar {
     this.mood = mood
     this.quiet = 0
     this.fidget = null
+    this.sigAge = -1
+    this.sigIn = this.nextSigGap()
     if (emote) this.emote = { kind: emote, age: 0 }
     const still = prefersReducedMotion()
     if (still) return
@@ -564,12 +618,14 @@ export class HeroAvatar {
     }
     this.blink = Math.max(0, this.blink - dt)
 
-    // Idle long enough: a small fidget.
-    if (this.mood === 'idle' && this.quiet > 5 && !this.fidget) {
+    // Idle long enough: a small fidget (creature heroes do their signature instead).
+    if (this.isCreature) {
+      this.updateSignature(dt)
+    } else if (this.mood === 'idle' && this.quiet > 5 && !this.fidget) {
       this.fidget = (['stretch', 'look', 'tap', 'wave', 'yawn'] as const)[Math.floor(Math.random() * 5)]
       this.quiet = 0
     }
-    if (this.fidget && this.quiet > 2.2) {
+    if (!this.isCreature && this.fidget && this.quiet > 2.2) {
       this.fidget = null
       this.quiet = 0
     }
@@ -891,7 +947,7 @@ export class HeroAvatar {
       smear: this.smear,
       hold: null,
       holding: false,
-      fidget: 0,
+      fidget: this.signature,
     }
   }
 

@@ -304,3 +304,70 @@ describe('creature hands', () => {
     expect(a.lastHands!.back.y).toBeLessThan(lag.y) // still travelling up after one frame
   })
 })
+
+describe('signature fidget', () => {
+  const hold = { x: 100, y: 740, r: 5 }
+  const sample = (a: HeroAvatar, seconds: number, c = ctx()) => {
+    const seen: number[] = []
+    for (let t = 0; t < seconds; t += 1 / 60) {
+      a.update(1 / 60, c)
+      seen.push(a.signature)
+    }
+    return seen
+  }
+
+  it('plays at least once within 11 s of idle, running 0..1 over 1.2 s', () => {
+    const a = new HeroAvatar('rookie')
+    const seen = sample(a, 11)
+    const start = seen.findIndex((v) => v > 0)
+    expect(start).toBeGreaterThan(6 * 60 - 2)
+    const len = seen.slice(start).findIndex((v) => v === 0)
+    expect(len / 60).toBeCloseTo(1.2, 1)
+    expect(Math.max(...seen)).toBeGreaterThan(0.9)
+  })
+
+  it('starts after 6 s earliest and 10 s latest (rng extremes)', () => {
+    const lo = sample(new HeroAvatar('rookie', () => 0), 11)
+    const hi = sample(new HeroAvatar('rookie', () => 0.999), 11)
+    expect(lo.findIndex((v) => v > 0) / 60).toBeGreaterThanOrEqual(5.9)
+    expect(lo.findIndex((v) => v > 0) / 60).toBeLessThan(6.1)
+    expect(hi.findIndex((v) => v > 0) / 60).toBeGreaterThan(9.9)
+  })
+
+  it('never starts under reduced motion', () => {
+    motion.reduced = true
+    try {
+      expect(Math.max(...sample(new HeroAvatar('rookie'), 30))).toBe(0)
+    } finally {
+      motion.reduced = false
+    }
+  })
+
+  it('cancels at once on a mood change away from idle/watch and restarts the wait', () => {
+    const a = new HeroAvatar('rookie', () => 0)
+    sample(a, 6.5)
+    expect(a.signature).toBeGreaterThan(0)
+    a.setMood('cheer')
+    expect(a.signature).toBe(0)
+    a.setMood('idle')
+    expect(Math.max(...sample(a, 5))).toBe(0)
+  })
+
+  it('keeps the front hand on the hold point during a fidget', () => {
+    for (const id of HERO_IDS) {
+      const a = new HeroAvatar(id, () => 0)
+      const c = ctx({ hold })
+      let during = 0
+      for (let t = 0; t < 9; t += 1 / 60) {
+        a.update(1 / 60, c)
+        a.draw(fakeCanvas(), 760)
+        if (a.signature > 0 && a.mood === 'idle') {
+          during++
+          expect(Math.abs(a.lastHands!.front.x - hold.x)).toBeLessThan(0.01)
+          expect(Math.abs(a.lastHands!.front.y - hold.y)).toBeLessThan(0.01)
+        }
+      }
+      expect(during).toBeGreaterThan(0)
+    }
+  })
+})

@@ -628,7 +628,7 @@ export class BoardRenderer {
         ctx.fillRect(r.x + 6, r.y + 4, r.w - 12, 4)
       }
       // A triangle's glyph and number sit in its fat half, around its centroid.
-      const label = b.shape && !b.role ? shapeLabelRect(b) : r
+      const label = b.shape && (!b.role || b.role === 'ward') ? shapeLabelRect(b) : r
       drawKindGlyph(ctx, b.kind, label, time)
       const hp = compactNumber(Math.ceil(b.hp))
       ctx.fillStyle = b.kind === 'void' ? theme.chalk : theme.night

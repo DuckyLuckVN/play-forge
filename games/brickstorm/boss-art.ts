@@ -4,6 +4,7 @@
 import { compactNumber, fillFitText } from '@forge/ui/text'
 import { FONT, theme } from '@forge/ui/theme'
 import { bossName, skillInfo } from './boss-skill-ui'
+import { SLOPE_FACES } from './sim/boss-kit'
 import { shapeOf } from './sim/boss-shapes'
 import { phased } from './sim/boss-skills'
 import { BRICK_INSET, CELL, TOP } from './sim/config'
@@ -837,6 +838,83 @@ function orbit(
 }
 
 /** A glowing bar along every outer edge on one side of the body. */
+/** Plate thickness and gap off the body, px. */
+const PLATE = 4
+const PLATE_GAP = 3
+
+/**
+ * A shield plate on a sloped or round part: along each of its outer edges that
+ * faces `side` (a slope faces two sides), or the matching arc of an orb.
+ */
+function shapedGlow(ctx: CanvasRenderingContext2D, g: Geo, b: Brick, side: Face): void {
+  const L = g.has(b.col - 1, b.row)
+  const R = g.has(b.col + 1, b.row)
+  const U = g.has(b.col, b.row - 1)
+  const D = g.has(b.col, b.row + 1)
+  const x1 = b.col * CELL + BRICK_INSET
+  const x2 = (b.col + 1) * CELL - BRICK_INSET
+  const y1 = TOP + b.row * CELL + BRICK_INSET
+  const y2 = TOP + (b.row + 1) * CELL - BRICK_INSET
+  ctx.save()
+  ctx.strokeStyle = ctx.fillStyle
+  ctx.lineWidth = PLATE
+  ctx.lineCap = 'round'
+  if (b.shape === 'orb') {
+    const cx = (x1 + x2) / 2
+    const cy = (y1 + y2) / 2
+    const r = Math.min(x2 - x1, y2 - y1) / 2 + PLATE_GAP
+    const mid = { right: 0, bottom: Math.PI / 2, left: Math.PI, top: -Math.PI / 2 }[side]
+    ctx.beginPath()
+    ctx.arc(cx, cy, r, mid - Math.PI / 3, mid + Math.PI / 3)
+    ctx.stroke()
+    ctx.restore()
+    return
+  }
+  const tl: [number, number] = [x1, y1]
+  const tr: [number, number] = [x2, y1]
+  const bl: [number, number] = [x1, y2]
+  const br: [number, number] = [x2, y2]
+  const shape = b.shape as keyof typeof SLOPE_FACES
+  // Each edge: its ends and the sides it faces; inner edges (joined to the body) get no plate.
+  const straight: Array<{ a: [number, number]; z: [number, number]; faces: Face[]; open: boolean }> = []
+  if (shape === 'tri-tl' || shape === 'tri-tr') straight.push({ a: tl, z: tr, faces: ['top'], open: !U })
+  if (shape === 'tri-bl' || shape === 'tri-br') straight.push({ a: bl, z: br, faces: ['bottom'], open: !D })
+  if (shape === 'tri-tl' || shape === 'tri-bl') straight.push({ a: tl, z: bl, faces: ['left'], open: !L })
+  if (shape === 'tri-tr' || shape === 'tri-br') straight.push({ a: tr, z: br, faces: ['right'], open: !R })
+  const slope = {
+    'tri-tl': { a: tr, z: bl },
+    'tri-tr': { a: tl, z: br },
+    'tri-bl': { a: tl, z: br },
+    'tri-br': { a: tr, z: bl },
+  }[shape]
+  const edges = [...straight, { ...slope, faces: SLOPE_FACES[shape], open: true }]
+  for (const e of edges) {
+    if (!e.open || !e.faces.includes(side)) continue
+    // Pushed out along the edge's own outward direction (diagonal on a slope).
+    const out = e.faces.reduce(
+      (v, f) => {
+        const [dx, dy] = { top: [0, -1], bottom: [0, 1], left: [-1, 0], right: [1, 0] }[f]
+        return [v[0] + dx, v[1] + dy]
+      },
+      [0, 0],
+    )
+    const len = Math.hypot(out[0], out[1]) || 1
+    const ox = (out[0] / len) * PLATE_GAP
+    const oy = (out[1] / len) * PLATE_GAP
+    // Trim the ends a little so plates on neighbouring edges don't merge.
+    const k = 0.12
+    const ax = e.a[0] + (e.z[0] - e.a[0]) * k + ox
+    const ay = e.a[1] + (e.z[1] - e.a[1]) * k + oy
+    const zx = e.z[0] - (e.z[0] - e.a[0]) * k + ox
+    const zy = e.z[1] - (e.z[1] - e.a[1]) * k + oy
+    ctx.beginPath()
+    ctx.moveTo(ax, ay)
+    ctx.lineTo(zx, zy)
+    ctx.stroke()
+  }
+  ctx.restore()
+}
+
 function edgeGlow(
   ctx: CanvasRenderingContext2D,
   g: Geo,
@@ -850,6 +928,7 @@ function edgeGlow(
   ctx.globalAlpha = 0.75 + 0.2 * Math.sin(time * 5)
   g.parts.forEach((b, i) => {
     const r = g.rects[i]
+    if (b.shape) return shapedGlow(ctx, g, b, side)
     if (side === 'top' && !g.has(b.col, b.row - 1)) ctx.fillRect(r.x + 4, r.y - 5, r.w - 8, 4)
     if (side === 'bottom' && !g.has(b.col, b.row + 1)) ctx.fillRect(r.x + 4, r.y + r.h + 1, r.w - 8, 4)
     if (side === 'left' && !g.has(b.col - 1, b.row)) ctx.fillRect(r.x - 5, r.y + 4, 4, r.h - 8)
@@ -1460,10 +1539,29 @@ export function drawRoleBrick(
       return false
     }
     case 'ward':
-      // Rough stone with cracks: it only guards.
+      // Rough stone with cracks: it only guards. Beside a sloped part it is cut to the same angle.
       ctx.beginPath()
-      ctx.roundRect(r.x, r.y, r.w, r.h, 6)
-      ctx.fill()
+      if (b.shape && b.shape !== 'orb') {
+        const tl = [r.x, r.y] as const
+        const tr = [r.x + r.w, r.y] as const
+        const bl = [r.x, r.y + r.h] as const
+        const br = [r.x + r.w, r.y + r.h] as const
+        const pts = {
+          'tri-tl': [tl, tr, bl],
+          'tri-tr': [tl, tr, br],
+          'tri-bl': [tl, bl, br],
+          'tri-br': [tr, br, bl],
+        }[b.shape]
+        ctx.moveTo(...pts[0])
+        ctx.lineTo(...pts[1])
+        ctx.lineTo(...pts[2])
+        ctx.closePath()
+        ctx.fill()
+        ctx.clip()
+      } else {
+        ctx.roundRect(r.x, r.y, r.w, r.h, 6)
+        ctx.fill()
+      }
       ctx.strokeStyle = 'rgb(0 0 0 / 0.3)'
       ctx.lineWidth = 2
       ctx.beginPath()

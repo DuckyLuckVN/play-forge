@@ -253,11 +253,16 @@ export function bossDrop(s: RunState): void {
 }
 
 /** What a ball does on touching the boss: the first skill that says other than 'hit' wins. */
-export function bossContact(s: RunState, ball: Ball, face: Face): 'hit' | 'block' | 'pass' {
+export function bossContact(
+  s: RunState,
+  ball: Ball,
+  face: Face,
+  facing: readonly Face[] = [face],
+): 'hit' | 'block' | 'pass' {
   const boss = s.boss
   if (!boss) return 'hit'
   for (const skill of skillsOf(boss)) {
-    const r = skill.contact?.(s, boss, ball, face)
+    const r = skill.contact?.(s, boss, ball, face, facing)
     if (r && r !== 'hit') return r
   }
   return 'hit'

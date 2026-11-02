@@ -4,7 +4,7 @@ import { randomInt } from '@forge/core/rng'
 import { dims } from './dims'
 import { hpCap, hpScale } from './rows'
 import { cellCenter } from './rows'
-import type { Boss, BossRole, BossSkillId, Brick, BrickKind, RunState } from './types'
+import type { Boss, BossRole, BossSkillId, Brick, BrickKind, BrickShape, Face, RunState } from './types'
 
 export function bossParts(s: RunState): Brick[] {
   return s.bricks.filter((b) => b.kind === 'boss')
@@ -64,6 +64,30 @@ export function summon(
     s.bricks.push(b)
     return b
   })
+}
+
+/** The sides each triangle's slope faces (named by its right-angle corner, so the slope faces away from it). */
+export const SLOPE_FACES: Record<'tri-tl' | 'tri-tr' | 'tri-bl' | 'tri-br', Face[]> = {
+  'tri-tl': ['bottom', 'right'],
+  'tri-tr': ['bottom', 'left'],
+  'tri-bl': ['top', 'right'],
+  'tri-br': ['top', 'left'],
+}
+const STEP: Record<Face, [number, number]> = { top: [0, -1], bottom: [0, 1], left: [-1, 0], right: [1, 0] }
+
+/**
+ * A ward at (col, row) beside a sloped boss part, on the side its slope
+ * faces, takes the same angle: the armour carries the slope on. Else square.
+ */
+export function wardShape(s: RunState, col: number, row: number): BrickShape | undefined {
+  for (const p of bossParts(s)) {
+    if (!p.shape || p.shape === 'orb') continue
+    for (const f of SLOPE_FACES[p.shape]) {
+      const [dc, dr] = STEP[f]
+      if (p.col + dc === col && p.row + dr === row) return p.shape
+    }
+  }
+  return undefined
 }
 
 /** Coins a brick the boss smashes pays (gold pays triple). No XP: the boss did the work. */

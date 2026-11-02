@@ -12,6 +12,7 @@ import {
   mem,
   minionHp,
   moveBoss,
+  wardShape,
   pickCells,
   roleBricks,
   setMem,
@@ -29,8 +30,10 @@ export type { Face } from './types'
 
 export interface BossHit {
   source: DamageSource
-  /** Set for ball hits. */
+  /** Set for ball hits: the main side struck. */
   face?: Face
+  /** Every side the struck surface faces (two on a slope); defaults to [face]. */
+  facing?: Face[]
   /** Column of the part that was hit, if known. */
   col?: number
   crit?: boolean
@@ -60,7 +63,7 @@ export interface BossSkill {
   /** Extra rows it moves after the board drops (negative: it stays or rises). */
   drop?(s: RunState, boss: Boss): number
   /** A ball touches it on `face`: hit it, bounce off harmlessly ('block'), or pass through. */
-  contact?(s: RunState, boss: Boss, ball: Ball, face: Face): 'hit' | 'block' | 'pass'
+  contact?(s: RunState, boss: Boss, ball: Ball, face: Face, facing: readonly Face[]): 'hit' | 'block' | 'pass'
   /** Bends a flying ball's velocity. */
   force?(s: RunState, boss: Boss, ball: Ball, dt: number): void
   /** How fast a ball may move right now (1 = full speed). */
@@ -146,8 +149,11 @@ const fortify = (s: RunState, bricks: Brick[]) => {
       [b.col - 1, b.row],
       [b.col + 1, b.row],
     ])
-      if (c >= 0 && c < s.cols && r >= 0 && r < line - 1 && !taken(c, r))
-        summon(s, [[c, r]], minionHp(s, WARD_HP), { role: 'ward' })
+      if (c >= 0 && c < s.cols && r >= 0 && r < line - 1 && !taken(c, r)) {
+        const [ward] = summon(s, [[c, r]], minionHp(s, WARD_HP), { role: 'ward' })
+        const shape = wardShape(s, c, r)
+        if (shape) ward.shape = shape
+      }
 }
 /**
  * A weak point was hit: only a real hit (a ball or a fireball) counts, never
@@ -369,15 +375,18 @@ export const BOSS_SKILLS: Record<BossSkillId, BossSkill> = {
   },
   bulwark: {
     tier: 2,
-    contact: (_s, _b, _ball, face) => (face === 'left' || face === 'right' ? 'block' : 'hit'),
+    // Covers every surface facing a side, slopes included.
+    contact: (_s, _b, _ball, _face, facing) =>
+      facing.includes('left') || facing.includes('right') ? 'block' : 'hit',
   },
   shell: {
     tier: 1,
-    contact: (_s, _b, _ball, face) => (face === 'top' ? 'block' : 'hit'),
+    // Covers every upward surface, the slopes of its shoulders included.
+    contact: (_s, _b, _ball, _face, facing) => (facing.includes('top') ? 'block' : 'hit'),
   },
   underplate: {
     tier: 2,
-    damage: (_s, _b, amount, hit) => (hit.face === 'bottom' ? amount / 2 : amount),
+    damage: (_s, _b, amount, hit) => ((hit.facing ?? [hit.face]).includes('bottom') ? amount / 2 : amount),
   },
   phase: {
     tier: 2,

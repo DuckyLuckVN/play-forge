@@ -41,6 +41,7 @@ import type { Face } from './boss-skills'
 import { brickShape, cellCenter, hitShapes, hpStepStart, spawnRow } from './rows'
 import { HEART_HEAL, heal, heroFreezes, heroHitMult, heroTurnStart, resolveBreaches } from './health'
 import { DEFAULT_HERO, HEROES, heroOf, type HeroId } from './heroes'
+import { faceOf, facesOf } from './faces'
 import { tickBurn, touchHazard } from './hazards'
 import { isSpiked } from './spikes'
 import { isStormTurn, stormWave } from './storm'
@@ -261,12 +262,6 @@ function burnThrough(s: RunState, ball: Ball, mods: Mods): boolean {
   return false
 }
 
-/** Which side of a brick a contact normal (pointing at the ball) is on. */
-function faceOf(nx: number, ny: number): Face {
-  if (Math.abs(ny) >= Math.abs(nx)) return ny < 0 ? 'top' : 'bottom'
-  return nx < 0 ? 'left' : 'right'
-}
-
 /**
  * Bounces off the deepest of `bricks`; the boss is one solid body that can't
  * be pierced. Returns true if the ball hit spikes and is gone for this volley.
@@ -282,9 +277,10 @@ function bounceOffBricks(s: RunState, ball: Ball, mods: Mods, bricks: Brick[]): 
   const brick = solid[contact.index]
   const { col, row } = brick
   const face = faceOf(contact.nx, contact.ny)
-  const touch = brick.kind === 'boss' ? bossContact(s, ball, face) : 'hit'
+  const facing = facesOf(contact.nx, contact.ny)
+  const touch = brick.kind === 'boss' ? bossContact(s, ball, face, facing) : 'hit'
   if (touch === 'pass') return false
-  if (touch === 'hit') hitBrick(s, ball, brick, mods, ball.kind === 'fire' ? 2 : 1, face)
+  if (touch === 'hit') hitBrick(s, ball, brick, mods, ball.kind === 'fire' ? 2 : 1, face, facing)
   else s.events.push({ type: 'bossBlock', x: ball.x, y: ball.y })
   if (brick.role === 'spike' && isSpiked(brick, face)) {
     ball.status = 'landed'
@@ -316,7 +312,15 @@ function bounceOffBricks(s: RunState, ball: Ball, mods: Mods, bricks: Brick[]): 
 }
 
 /** A ball hitting a brick: combo, fever, crit, damage, and chain lightning. */
-function hitBrick(s: RunState, ball: Ball, brick: Brick, mods: Mods, power: number, face?: Face): void {
+function hitBrick(
+  s: RunState,
+  ball: Ball,
+  brick: Brick,
+  mods: Mods,
+  power: number,
+  face?: Face,
+  facing?: Face[],
+): void {
   s.combo++
   s.sinceHit = 0
   s.bestCombo = Math.max(s.bestCombo, s.combo)
@@ -334,7 +338,7 @@ function hitBrick(s: RunState, ball: Ball, brick: Brick, mods: Mods, power: numb
   const { x, y } = cellCenter(brick.col, brick.row)
   s.events.push({ type: 'hit', x, y, combo: s.combo, power: comboPower(s), crit })
   const from = { col: brick.col, row: brick.row }
-  damageBrick(s, brick, damage, ball.kind === 'fire' ? 'fire' : 'ball', 0, { face, crit })
+  damageBrick(s, brick, damage, ball.kind === 'fire' ? 'fire' : 'ball', 0, { face, facing, crit })
   if (mods.zapChance > 0 && random(s.rng) < mods.zapChance) zap(s, from, mods.zapArcs, 1 * mods.damageMult, 0)
 }
 

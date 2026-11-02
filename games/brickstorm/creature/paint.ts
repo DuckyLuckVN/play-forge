@@ -25,6 +25,7 @@ export function mix(a: string, b: string, t: number): string {
 export const darkOf = (c: string) => mix(c, '#1e2a5a', 0.38)
 export const lightOf = (c: string) => mix(c, '#ffffff', 0.3)
 
+export const lerp = (a: number, b: number, k: number) => a + (b - a) * k
 export const clamp = (v: number, a = 0, b = 1) => Math.max(a, Math.min(b, v))
 /** Smoothstep on 0..1. */
 export const smooth = (k: number) => k * k * (3 - 2 * k)

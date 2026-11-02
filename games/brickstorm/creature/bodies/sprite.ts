@@ -19,6 +19,7 @@ import {
   group,
   happy,
   happyEye,
+  lerp,
   lightOf,
   look as wander,
   mix,
@@ -80,7 +81,7 @@ const SHAPES: Record<Variant, Shape> = {
     mid: { x: 0, y: -20 },
     face: { x: 0, y: -18 },
     head: { x: 0, y: -20, rx: 10, ry: 9 },
-    hat: { x: 1, y: -29, rx: 8.5, ry: 6 },
+    hat: { x: 0, y: -25, rx: 6, ry: 4.5 },
     socket: { x: 15, y: -17 },
     emblem: { x: -8, y: -8 },
     bob: 2.4,
@@ -94,7 +95,7 @@ const SHAPES: Record<Variant, Shape> = {
     head: { x: 6, y: -21, rx: 11, ry: 9 },
     hat: { x: 5, y: -33, rx: 12, ry: 8 },
     socket: { x: 20, y: -15 },
-    emblem: { x: -14, y: -10 },
+    emblem: { x: -22, y: -12 },
     bob: 2.2,
   },
   star: {
@@ -110,13 +111,14 @@ const SHAPES: Record<Variant, Shape> = {
     bob: 2,
   },
   ghost: {
-    l: -19,
-    r: 19,
-    t: -44,
+    l: -20,
+    r: 20,
+    t: -45,
     mid: { x: 0, y: -22 },
-    face: { x: 1, y: -29 },
-    head: { x: 1, y: -30, rx: 10, ry: 8 },
-    hat: { x: 1, y: -32, rx: 8.5, ry: 7 },
+    face: { x: 1.5, y: -22 },
+    head: { x: 1.5, y: -26, rx: 11, ry: 10 },
+    /** A small hood pulled back on the crown of the dome; the face sits below it on the round head. */
+    hat: { x: 1, y: -39, rx: 5.6, ry: 4.6 },
     socket: { x: 16, y: -20 },
     emblem: { x: -8, y: -12 },
     bob: 1.8,
@@ -124,7 +126,7 @@ const SHAPES: Record<Variant, Shape> = {
 }
 
 const variantOf = (look: CreatureLook): Variant =>
-  look.variant in SHAPES ? (look.variant as Variant) : 'spark'
+  Object.hasOwn(SHAPES, look.variant) ? (look.variant as Variant) : 'spark'
 
 /** 0..1..0 over the first `dur` seconds of a mood. */
 const pulse = (age: number, dur: number) => (age < dur ? Math.sin((age / dur) * Math.PI) : 0)
@@ -248,8 +250,6 @@ function metrics(look: CreatureLook, f: Frame): BodyMetrics {
     handR: 4.2,
   }
 }
-
-const lerp = (a: number, b: number, k: number) => a + (b - a) * k
 
 /** Moods whose back hand rests low behind the body (the front one holds the ball or wrings). */
 const REST = new Set<Frame['mood']>(['idle', 'watch', 'aim', 'worried'])
@@ -475,7 +475,7 @@ function flamePath(t: number, tall: number, shrink: number): Path2D {
 function flame(ctx: Ctx, p: Paint): void {
   const { f, t, look, fl, r } = p
   const s = SHAPES.flame
-  const sig = Math.sin(clamp(f.fidget) * Math.PI)
+  const sig = f.still ? 0 : Math.sin(clamp(f.fidget) * Math.PI)
   const tall = 8 * Math.max(fl.k, sig)
   ctx.save()
   if (!f.still && r.ko < 0.5) {
@@ -522,32 +522,24 @@ const PUFFS: Array<[number, number, number]> = [
   [-6, -9, 9.5],
 ]
 
+/** Volta's bolt: hung this far up inside the cloud (local units); its tip, outline included, reaches this far below the hang point at scale 1. */
+const BOLT_X = -5
+const BOLT_Y = 9
+const BOLT_TIP = 15
+
 /** Volta: the approved sample's storm cloud, with a crackling bolt below; spins with a flash and rain on cheer. */
 function cloud(ctx: Ctx, p: Paint): void {
   const { f, t, look, fl, r } = p
   const s = SHAPES.cloud
   const flashK = fl.cheer && fl.age < 0.35 ? 1 - fl.age / 0.35 : 0
-  const sig = Math.sin(clamp(f.fidget) * Math.PI)
-  // Bolt: flickers idle, crackles on the signature, flares on the zap; gone once fizzled.
-  if (r.ko < 0.8) {
-    const crackle = !f.still && (Math.sin(t * 23) > 0.7 || sig > 0.3) ? 1 : 0
-    const bs = 1 + flashK * 0.6 + sig * 0.35
-    ctx.save()
-    ctx.translate(-1, -1)
-    ctx.scale(0.9 * bs, 0.9 * bs)
-    if (!f.still && (flashK || crackle)) {
-      ctx.shadowColor = GLOW
-      ctx.shadowBlur = 8 + flashK * 14
-    }
-    group(ctx, [
-      {
-        p: new Path2D('M1 -4 L-3 4 L0 4 L-2 10 L5 1 L2 1 L4 -4 Z'),
-        c: crackle || flashK ? '#ffe36b' : look.second,
-        k: 0.6,
-      },
+  const sig = f.still ? 0 : Math.sin(clamp(f.fidget) * Math.PI)
+  // Signature: the bolt crackles, sparks jumping off the cloud's underside.
+  if (sig > 0.2)
+    for (const [x, ang, i] of [
+      [-12, 2.2, 0],
+      [14, 0.9, 1],
     ])
-    ctx.restore()
-  }
+      glowLine(ctx, '#ffe36b', 1.4, () => zig(ctx, { x, y: -4 }, ang, 5 + 5 * sig, t * 12 + i))
   const breathe = (ph: number) => (f.still ? 0 : Math.sin(t * 2.6 + ph * 1.3) * 0.9)
   const puffs = new Path2D()
   PUFFS.forEach(([x, y, rad], i) => puffs.ellipse(x, y, rad + breathe(i), rad + breathe(i), 0, 0, TAU))
@@ -568,6 +560,28 @@ function cloud(ctx: Ctx, p: Paint): void {
   ctx.stroke()
   ctx.restore()
   gloss(ctx, -7, -31, 3.4, 2, -0.5)
+  // Bolt: flickers idle, crackles on the signature, flares on the zap. It hangs out of the cloud's belly (in
+  // front, so it reads), and its tip never passes the floor line: it shrinks as the cloud bobs low or drifts down on KO.
+  const floor = -r.y / r.sy
+  const bs = Math.min(1 + flashK * 0.6 + sig * 0.35, (floor + BOLT_Y) / BOLT_TIP)
+  if (bs > 0.35) {
+    const crackle = !f.still && (Math.sin(t * 23) > 0.7 || sig > 0.3) ? 1 : 0
+    ctx.save()
+    ctx.translate(BOLT_X, -BOLT_Y)
+    ctx.scale(bs, bs)
+    if (!f.still && (flashK || crackle)) {
+      ctx.shadowColor = GLOW
+      ctx.shadowBlur = 8 + flashK * 14
+    }
+    // A lighter outline than the body's, so the small bolt is not swamped by it.
+    const bolt = new Path2D('M1.3 -5.2 L-3.9 5.2 L0 5.2 L-2.6 13 L6.5 1.3 L2.6 1.3 L5.2 -5.2 Z')
+    ctx.strokeStyle = OUTLINE
+    ctx.lineWidth = 3.5
+    ctx.lineJoin = 'round'
+    ctx.stroke(bolt)
+    paint(ctx, { p: bolt, c: crackle || flashK ? '#ffe36b' : look.second, k: 0.5, lw: 0 })
+    ctx.restore()
+  }
   ctx.save()
   ctx.translate(s.face.x, s.face.y)
   face(ctx, p, 5)
@@ -679,50 +693,93 @@ function sparkles(ctx: Ctx, p: Paint): void {
   }
 }
 
-/** Boo's sheet: a dome with a wavy hem whose scallops travel. */
-function ghostPath(t: number, still: boolean, swell: number): Path2D {
-  const w = (ph: number) => (still ? 0 : Math.sin(t * 3 + ph) * 1.5 * (1 + swell))
-  // Five round lobes hang from the flared hem, the wave travelling along them.
+/** Boo's sheet (SVG d): a round dome head flowing into a body that flares a little, ending in four soft hem points that sway. */
+function ghostD(t: number, still: boolean, swell: number): string {
+  const w = (ph: number) => (still ? 0 : Math.sin(t * 3 + ph) * 1.4 * (1 + swell))
+  const n = (v: number) => v.toFixed(3)
+  // Tips (x, y) and the valleys between them, right to left; the tips trail and ripple.
+  const tips = [
+    [13.5, 0],
+    [4.5, 2],
+    [-4.5, 2],
+    [-13.5, 0],
+  ]
   let hem = ''
-  for (let i = 0; i < 5; i++) {
-    const x0 = -19 + i * 7.6
-    hem += `Q${(x0 + 3.8).toFixed(1)} ${(4 + w(i * 1.3 + 0.6)).toFixed(3)} ${(x0 + 7.6).toFixed(1)} ${(-2 + w(i * 1.3 + 1.3) * 0.5).toFixed(3)} `
-  }
-  return new Path2D(
-    `M17 -26 C17 -38 9 -44 0 -44 C-9 -44 -17 -38 -17 -26 C-17 -15 -19 -8 -19 ${(-2 + w(0) * 0.5).toFixed(3)} ` +
-      hem +
-      'C19 -8 17 -15 17 -26 Z',
-  )
+  let px = 19
+  tips.forEach(([x, y], i) => {
+    const tx = x + w(i * 1.4) * 0.6
+    const ty = y + w(i * 1.4 + 0.7)
+    const vx = i < 3 ? (x + tips[i + 1][0]) / 2 : -19
+    const vy = i < 3 ? -4.5 + w(i * 1.4 + 1.2) * 0.4 : -4
+    hem += `Q${n((px + tx) / 2 + 1.5)} ${n(ty)} ${n(tx)} ${n(ty)} Q${n((tx + vx) / 2 - 0.5)} ${n(ty)} ${n(vx)} ${n(vy)} `
+    px = vx
+  })
+  return `M-17 -28 C-17 -40 -9 -45 0 -45 C9 -45 17 -40 17 -28 C17 -18 20 -10 19 -4 ${hem}C-20 -10 -17 -18 -17 -28 Z`
 }
 
-/** Boo: a little ghost, semi-transparent, softly swaying; fades out and back on the signature, its hem rippling harder. */
+/** A big counter-clockwise rect: added to a clockwise path, the nonzero clip keeps only what lies outside the path. */
+const OUTSIDE = 'M-200 -200 L-200 200 L200 200 L200 -200 Z '
+
+/** Boo: a little ghost, softly see-through, swaying; fades out and back on the signature, its hem rippling harder. */
 function ghost(ctx: Ctx, p: Paint): void {
   const { f, t, look } = p
   const s = SHAPES.ghost
+  const d = ghostD(t, f.still, f.still ? 0 : Math.sin(clamp(f.fidget) * Math.PI))
+  const body = new Path2D(d)
+  const a = ctx.globalAlpha
+  // The silhouette outline only outside the sheet, so the see-through fill shows no line under it.
   ctx.save()
-  group(ctx, [{ p: ghostPath(t, f.still, Math.sin(clamp(f.fidget) * Math.PI)), c: p.main, k: 1 }])
+  ctx.clip(new Path2D(OUTSIDE + d))
+  ctx.strokeStyle = OUTLINE
+  ctx.lineWidth = 6
+  ctx.lineJoin = 'round'
+  ctx.stroke(body)
   ctx.restore()
-  // Cheek shade under the hood and a soft wisp line on the sheet.
-  ctx.strokeStyle = mix(p.main, look.second, 0.35)
+  // One layer, solid in the head and see-through toward the tail, then the cel bands each painted once (shade lower
+  // right, light upper left) at a soft alpha.
+  ctx.save()
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(p.main.slice(i, i + 2), 16))
+  const fade = ctx.createLinearGradient(0, -24, 0, 3)
+  fade.addColorStop(0, `rgb(${r} ${g} ${b} / 0.97)`)
+  fade.addColorStop(1, `rgb(${r} ${g} ${b} / 0.45)`)
+  ctx.fillStyle = fade
+  ctx.fill(body)
+  ctx.globalAlpha = a * 0.6
+  ctx.clip(body)
+  for (const [dx, dy, c] of [
+    [-4, -3.2, mix(p.main, look.second, 0.3)],
+    [3, 3.4, '#ffffff'],
+  ] as const) {
+    ctx.save()
+    ctx.translate(dx, dy)
+    ctx.clip(new Path2D(OUTSIDE + d))
+    ctx.translate(-dx, -dy)
+    ctx.fillStyle = c
+    ctx.fill(body)
+    ctx.restore()
+  }
+  ctx.restore()
+  // Soft wisps on the sheet.
+  ctx.strokeStyle = mix(p.main, look.second, 0.4)
   ctx.lineWidth = 1.4
   ctx.lineCap = 'round'
   ctx.beginPath()
-  ctx.moveTo(-11, -15)
-  ctx.quadraticCurveTo(-8, -9, -10, -4)
-  ctx.moveTo(10, -13)
-  ctx.quadraticCurveTo(13, -8, 11, -4)
+  ctx.moveTo(-13, -14)
+  ctx.quadraticCurveTo(-10, -9, -12, -5)
+  ctx.moveTo(12, -13)
+  ctx.quadraticCurveTo(15, -8, 13, -5)
   ctx.stroke()
-  gloss(ctx, -9, -36, 3, 1.8, -0.6)
+  gloss(ctx, -11, -34, 3, 1.8, -0.8)
   ctx.save()
   ctx.translate(s.face.x, s.face.y)
-  face(ctx, p, 4.2, 0.9)
+  face(ctx, p, 4.8)
   ctx.restore()
 }
 
-/** Ghost opacity: semi-transparent, fading out and back on the signature, dimmer on KO. */
+/** Group opacity: Boo fades out and back on the signature; every sprite dims as it fizzles on KO. */
 function alphaOf(v: Variant, f: Frame, r: Rig): number {
   let a = 1 - 0.3 * r.ko
-  if (v === 'ghost') a *= 0.86 - (f.still ? 0 : 0.6 * Math.sin(clamp(f.fidget) * Math.PI))
+  if (v === 'ghost') a *= 1 - (f.still ? 0 : 0.7 * Math.sin(clamp(f.fidget) * Math.PI)) - 0.15 * r.ko
   return a
 }
 
@@ -761,16 +818,19 @@ function draw(ctx: Ctx, look: CreatureLook, f: Frame, k: DrawKit): void {
   ctx.translate(r.x, r.y)
   ctx.rotate(r.rot)
   ctx.scale(r.sx, r.sy)
+  // Everything sits inside the fade, hat included, so a fading Boo (or any fizzled sprite) takes its hat along.
+  ctx.save()
+  ctx.globalAlpha = alphaOf(v, f, r)
   ctx.save()
   ctx.translate(s.mid.x, s.mid.y)
   ctx.rotate(r.spin)
   ctx.translate(-s.mid.x, -s.mid.y)
-  ctx.save()
-  ctx.globalAlpha = alphaOf(v, f, r)
   PAINTERS[v](ctx, p)
   k.emblem(s.emblem.x, s.emblem.y, 5)
+  if (v !== 'star') k.hat(s.hat)
   ctx.restore()
-  k.hat(s.hat)
+  // Lumi's halo floats level while the star spins under it.
+  if (v === 'star') k.hat(s.hat)
   ctx.restore()
   AFTER[v]?.(ctx, p)
   ctx.restore()

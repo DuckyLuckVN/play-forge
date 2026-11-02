@@ -16,6 +16,7 @@ import {
   group,
   happy,
   happyEye,
+  lerp,
   lightOf,
   look as wander,
   mix,
@@ -203,8 +204,6 @@ function metrics(_look: CreatureLook, f: Frame): BodyMetrics {
     handR: 4.6,
   }
 }
-
-const lerp = (a: number, b: number, k: number) => a + (b - a) * k
 
 /** Moods whose back arm hangs at the side (the front hand holds the ball or wrings). */
 const HANG = new Set<Frame['mood']>(['idle', 'watch', 'aim', 'worried'])

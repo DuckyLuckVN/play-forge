@@ -246,6 +246,32 @@ describe('sprite body (Zip, Ember, Volta, Lumi, Boo)', () => {
     expect(Math.hypot(loop.head.x - rest.head.x, loop.head.y - rest.head.y)).toBeGreaterThan(8)
   })
 
+  it("Volta's bolt never reaches past the floor line (cheer flash, signature, bob low, KO drift)", () => {
+    const look = CREATURE_LOOKS.tempest!
+    const cases: Array<Partial<Frame>> = [
+      { mood: 'cheer', moodAge: 0.02, eyes: 'happy' },
+      { fidget: 0.5 },
+      ...[0, 0.7, 1.4, 2.1, 2.8].map((t) => ({ t, mood: 'cheer' as Mood, moodAge: 0.05 })),
+      { mood: 'ko', pose: { ...POSE, fall: 0.3 } },
+      { mood: 'ko', pose: { ...POSE, fall: 0.6 } },
+    ]
+    for (const patch of cases) {
+      const f = frame(patch)
+      const c = fakeCanvas()
+      sprite.draw(c, look, f, kitFor(look, f).kit)
+      const box = sprite.metrics(look, f).bodyBox
+      const base = bottom(box)
+      /** The rig's height scale (no lean here, so the box height scales with it). */
+      const sy = (g: Frame) =>
+        box.h / sprite.metrics(look, { ...g, mood: 'idle', pose: { ...POSE } }).bodyBox.h
+      const i = c.log.findIndex((r) => r.name === 'translate' && r.args[0] === -5 && r.args[1] === -9)
+      if (i < 0) continue // shrunk away
+      const bs = c.log[i + 1].args[0] as number
+      // Tip (13 units at scale 1, plus half the 3.5-unit outline) in the rig frame, then onto the board.
+      expect(base + (-9 + 15 * bs) * sy(f)).toBeLessThanOrEqual(0.01)
+    }
+  })
+
   it('KO fizzles and drifts down to the floor, and revives as pose.fall returns to 0', () => {
     for (const [, look] of LOOKS) {
       const up = sprite.metrics(look, frame())

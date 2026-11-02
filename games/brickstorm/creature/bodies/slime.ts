@@ -16,6 +16,7 @@ import {
   group,
   happy,
   happyEye,
+  lerp,
   lightOf,
   look as wander,
   mix,
@@ -158,8 +159,6 @@ function metrics(_look: CreatureLook, f: Frame): BodyMetrics {
     handR: 4.2,
   }
 }
-
-const lerp = (a: number, b: number, k: number) => a + (b - a) * k
 
 /**
  * Floating-hand reactions on the mood pose: hands hover a little out from the sides and bob; up and waving on

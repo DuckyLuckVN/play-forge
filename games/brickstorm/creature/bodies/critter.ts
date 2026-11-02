@@ -35,12 +35,12 @@ import {
   smooth,
   ticks,
 } from '../paint'
-import type { BodyMetrics, BodyType, CreatureLook, DrawKit, Frame, HandPose, HeadBox, Rect } from '../types'
+import { TAU, boundsOf, ellPoints, flourish, limbTo, pulse, sigOf } from '../motion'
+import type { BodyMetrics, BodyType, CreatureLook, DrawKit, Frame, HandPose, HeadBox } from '../types'
 
 type Ctx = CanvasRenderingContext2D
 type Variant = 'sprout' | 'cat' | 'lion' | 'crystal' | 'dragon' | 'dice'
 
-const TAU = Math.PI * 2
 const GOLD = '#ffc531'
 const PINK = '#ff8fa3'
 const SMOKE = '#9aa0ad'
@@ -130,18 +130,6 @@ const SHAPES: Record<Variant, Shape> = {
 
 const variantOf = (look: CreatureLook): Variant =>
   Object.hasOwn(SHAPES, look.variant) ? (look.variant as Variant) : 'sprout'
-
-/** 0..1..0 over the first `dur` seconds. */
-const pulse = (age: number, dur: number) => (age < dur ? Math.sin((age / dur) * Math.PI) : 0)
-/** 0..1..0 while the signature plays; 0 when still. */
-const sigOf = (f: Frame) => (f.still ? 0 : Math.sin(Math.PI * clamp(f.fidget)))
-
-/** Cheer flourish strength 0..1 (a pump plays a lighter, shorter one); 0 under reduced motion. */
-function flourish(f: Frame): { k: number; age: number; cheer: boolean } {
-  if (f.still || (f.mood !== 'cheer' && f.mood !== 'pump')) return { k: 0, age: 0, cheer: false }
-  const cheer = f.mood === 'cheer'
-  return { k: pulse(f.moodAge, cheer ? 1 : 0.4) * (cheer ? 1 : 0.4), age: f.moodAge, cheer }
-}
 
 /** Kage's paw lick plays on its signature while idle (the near paw keeps the ball). */
 const licking = (v: Variant, f: Frame) =>
@@ -234,21 +222,6 @@ function rigOf(v: Variant, f: Frame): Rig {
   }
 }
 
-/** Kit-frame bounds of an ellipse in some frame. */
-function ellBounds(m: Mat, e: { x: number; y: number; rx: number; ry: number }): Pt[] {
-  return Array.from({ length: 12 }, (_, i) => {
-    const a = (i / 12) * TAU
-    return apply(m, { x: e.x + Math.cos(a) * e.rx, y: e.y + Math.sin(a) * e.ry })
-  })
-}
-function boundsOf(pts: Pt[]): Rect {
-  const xs = pts.map((p) => p.x)
-  const ys = pts.map((p) => p.y)
-  const x = Math.min(...xs)
-  const y = Math.min(...ys)
-  return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y }
-}
-
 function metrics(look: CreatureLook, f: Frame): BodyMetrics {
   const v = variantOf(look)
   return metricsOf(v, rigOf(v, f), f)
@@ -268,7 +241,7 @@ function metricsOf(v: Variant, r: Rig, f: Frame): BodyMetrics {
     socketF: apply(r.body, SOCKET_F),
     socketB: apply(r.body, SOCKET_B),
     // The torso is what covers the far paw (the haunch sits behind the chest).
-    bodyBox: boundsOf(ellBounds(r.body, TORSO)),
+    bodyBox: boundsOf(ellPoints(r.body, TORSO)),
     upper: LIMB,
     fore: LIMB,
     armed: true,
@@ -277,17 +250,7 @@ function metricsOf(v: Variant, r: Rig, f: Frame): BodyMetrics {
 }
 
 /** Shoulder and elbow angles that put the paw on `target` (elbow back, like a front leg); straight when too far. */
-function legTo(socket: Pt, target: Pt): { s: number; e: number } {
-  const dx = target.x - socket.x
-  const dy = target.y - socket.y
-  const d = Math.max(1e-6, Math.hypot(dx, dy))
-  const to = Math.atan2(dx, dy)
-  const cos = (d * d) / (2 * LIMB * d)
-  const s = to - Math.acos(Math.min(1, cos))
-  const ex = socket.x + Math.sin(s) * LIMB
-  const ey = socket.y + Math.cos(s) * LIMB
-  return { s, e: Math.atan2(target.x - ex, target.y - ey) - s }
-}
+const legTo = (socket: Pt, target: Pt) => limbTo(socket, target, LIMB, LIMB)
 
 /** Moods in which the free front paw stays planted (the near one holds the ball, swats, or pumps). */
 const PLANT = new Set<Frame['mood']>(['idle', 'watch', 'aim', 'worried', 'throw', 'pump'])

@@ -28,6 +28,7 @@ import {
   smooth,
   ticks,
 } from '../paint'
+import { TAU, boundsOf, flourish } from '../motion'
 import type { BodyMetrics, BodyType, CreatureLook, DrawKit, Frame, HeadBox } from '../types'
 
 type Ctx = CanvasRenderingContext2D
@@ -40,7 +41,6 @@ type Variant = 'spark' | 'flame' | 'cloud' | 'star' | 'ghost'
 /** Base hover height and bob (local units). */
 const HOVER = 6
 const BOB = 2.4
-const TAU = Math.PI * 2
 const GLOW = '#fff3a0'
 const SMOKE = '#8a8f9e'
 
@@ -128,15 +128,8 @@ const SHAPES: Record<Variant, Shape> = {
 const variantOf = (look: CreatureLook): Variant =>
   Object.hasOwn(SHAPES, look.variant) ? (look.variant as Variant) : 'spark'
 
-/** 0..1..0 over the first `dur` seconds of a mood. */
-const pulse = (age: number, dur: number) => (age < dur ? Math.sin((age / dur) * Math.PI) : 0)
-
-/** Cheer flourish strength 0..1 (a pump plays a lighter, shorter one); 0 under reduced motion. */
-function flourish(f: Frame): { k: number; age: number; cheer: boolean } {
-  if (f.still || (f.mood !== 'cheer' && f.mood !== 'pump')) return { k: 0, age: 0, cheer: false }
-  const cheer = f.mood === 'cheer'
-  return { k: pulse(f.moodAge, cheer ? 0.9 : 0.35) * (cheer ? 1 : 0.4), age: f.moodAge, cheer }
-}
+/** Sprites cheer and pump a little quicker than the shared flourish. */
+const flourishOf = (f: Frame) => flourish(f, 0.9, 0.35)
 
 /** The body's placement for this frame: everything the rig does to the resting shape. */
 interface Rig {
@@ -182,7 +175,7 @@ function rigOf(v: Variant, f: Frame): Rig {
     }
     if (v === 'star') rot += Math.sin(t * 0.8) * 0.04
     if (v === 'flame') rot += Math.sin(t * 1.7) * 0.03
-    const fl = flourish(f)
+    const fl = flourishOf(f)
     if (fl.k > 0 || fl.cheer) {
       const a = fl.age
       if (v === 'spark' && a < 0.5) x += Math.sin(a * 80) * (fl.cheer ? 1.2 : 0.5) * (1 - a / 0.5)
@@ -230,20 +223,13 @@ function metrics(look: CreatureLook, f: Frame): BodyMetrics {
     { x: s.l, y: 0 },
     { x: s.r, y: 0 },
   ].map((p) => at(r, p))
-  const xs = corners.map((p) => p.x)
-  const ys = corners.map((p) => p.y)
   const head = at(r, s.head)
   return {
     headTop: at(r, { x: 0, y: s.t }).y,
     head: { x: head.x, y: head.y, rx: s.head.rx, ry: s.head.ry * r.sy },
     socketF: at(r, s.socket),
     socketB: at(r, { x: -s.socket.x, y: s.socket.y }),
-    bodyBox: {
-      x: Math.min(...xs),
-      y: Math.min(...ys),
-      w: Math.max(...xs) - Math.min(...xs),
-      h: Math.max(...ys) - Math.min(...ys),
-    },
+    bodyBox: boundsOf(corners),
     upper: 8,
     fore: 8,
     armed: false,
@@ -811,7 +797,7 @@ function draw(ctx: Ctx, look: CreatureLook, f: Frame, k: DrawKit): void {
   const t = f.still ? 0 : f.t
   let main = r.flash ? mix(look.main, v === 'cloud' ? '#4a5878' : '#5a2a2a', r.flash) : look.main
   if (r.ko) main = mix(main, SMOKE, 0.45 * r.ko)
-  const p: Paint = { look, f, r, t, main, fl: flourish(f) }
+  const p: Paint = { look, f, r, t, main, fl: flourishOf(f) }
 
   k.backHand()
   ctx.save()

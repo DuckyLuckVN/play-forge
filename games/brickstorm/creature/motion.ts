@@ -34,11 +34,14 @@ export interface Flourish {
   cheer: boolean
 }
 
-/** Cheer flourish strength (a pump plays a lighter, shorter one); 0 under reduced motion. */
-export function flourish(f: Frame): Flourish {
+/**
+ * Cheer flourish strength (a pump plays a lighter, shorter one); 0 under reduced motion. A body may time its own cheer
+ * and pump (seconds).
+ */
+export function flourish(f: Frame, cheerLen = 1, pumpLen = 0.4): Flourish {
   if (f.still || (f.mood !== 'cheer' && f.mood !== 'pump')) return { k: 0, age: 0, cheer: false }
   const cheer = f.mood === 'cheer'
-  return { k: pulse(f.moodAge, cheer ? 1 : 0.4) * (cheer ? 1 : 0.4), age: f.moodAge, cheer }
+  return { k: pulse(f.moodAge, cheer ? cheerLen : pumpLen) * (cheer ? 1 : 0.4), age: f.moodAge, cheer }
 }
 
 /**

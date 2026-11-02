@@ -10,7 +10,7 @@
  */
 import type { Pose } from '../../hero-avatar'
 import { drawArm } from '../hands'
-import { TAU, flourish, sigOf } from '../motion'
+import { TAU, boundsOf, flourish, sigOf } from '../motion'
 import {
   OUTLINE,
   box,
@@ -365,19 +365,12 @@ function metrics(look: CreatureLook, f: Frame): BodyMetrics {
     { x: -TORSO_W / 2, y: 0 },
     { x: TORSO_W / 2, y: 0 },
   ].map((p) => toOuter(x, p))
-  const xs = corners.map((p) => p.x)
-  const ys = corners.map((p) => p.y)
   return {
     headTop: toOuter(x, { x: HEAD.x, y: HEAD.y - parts.top }).y,
     head: { x: head.x, y: head.y, rx: parts.clearRx, ry: HEAD.ry },
     socketF: toOuter(x, SOCKET),
     socketB: toOuter(x, { x: -SOCKET.x, y: SOCKET.y }),
-    bodyBox: {
-      x: Math.min(...xs),
-      y: Math.min(...ys),
-      w: Math.max(...xs) - Math.min(...xs),
-      h: Math.max(...ys) - Math.min(...ys),
-    },
+    bodyBox: boundsOf(corners),
     upper: 6.5,
     fore: 6.5,
     armed: true,

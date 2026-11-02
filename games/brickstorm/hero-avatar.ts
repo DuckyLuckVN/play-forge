@@ -164,14 +164,14 @@ const lerp = (a: number, b: number, k: number) => a + (b - a) * k
 /** How far behind the ball the hero stands (board units at size 1): its hand reaches it. */
 const HOLD_REACH = 12
 /** Moods in which the front hand stays on the held ball. */
+const HOLDS = new Set<Mood>(['idle', 'aim', 'worried', 'watch'])
+/** Hands can hold once the KO fall is this low: the pose blend only approaches 0, it never quite gets there. */
+const HOLD_FALL = 0.02
+
 /** Signature fidget: runs 1.2 s, starts every 6-10 s of quiet idle/watch. */
 const SIGNATURE_LEN = 1.2
 const SIGNATURE_GAP_MIN = 6
 const SIGNATURE_GAP_MAX = 10
-
-const HOLDS = new Set<Mood>(['idle', 'aim', 'worried', 'watch'])
-/** Hands can hold once the KO fall is this low: the pose blend only approaches 0, it never quite gets there. */
-const HOLD_FALL = 0.02
 
 /** Moods that rear right up on the hind legs. */
 const REAR_UP = new Set<Mood>(['cheer', 'cast', 'revive', 'wow'])

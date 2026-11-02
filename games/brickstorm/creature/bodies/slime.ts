@@ -9,7 +9,7 @@
  *   back twin's hand waving now and then; they juggle a pebble between them; both flop on KO.
  */
 import type { Pose } from '../../hero-avatar'
-import { TAU, flourish, pulse, sigOf } from '../motion'
+import { TAU, boundsOf, flourish, pulse, sigOf } from '../motion'
 import {
   OUTLINE,
   box,
@@ -206,8 +206,6 @@ function metrics(look: CreatureLook, f: Frame): BodyMetrics {
       { x: BOUNDS.r, y: 0 },
     ].map((p) => warp(j, p)),
   )
-  const xs = pts.map((p) => p.x)
-  const ys = pts.map((p) => p.y)
   const front = js[js.length - 1]
   const back = js[0]
   const melt = 1 - 0.6 * front.melt
@@ -229,12 +227,7 @@ function metrics(look: CreatureLook, f: Frame): BodyMetrics {
     head,
     socketF: warp(front, SOCKET),
     socketB: warp(back, { x: -SOCKET.x, y: SOCKET.y }),
-    bodyBox: {
-      x: Math.min(...xs),
-      y: Math.min(...ys),
-      w: Math.max(...xs) - Math.min(...xs),
-      h: Math.max(...ys) - Math.min(...ys),
-    },
+    bodyBox: boundsOf(pts),
     upper: 8,
     fore: 8,
     armed: false,

@@ -12,4 +12,13 @@ export const CREATURE_LOOKS: Partial<Record<HeroId, CreatureLook>> = {
     eye: '#5fe0ff',
     signature: 'glance',
   },
+  baron: {
+    body: 'slime',
+    variant: 'gold',
+    main: '#fcc419',
+    second: '#c77d0a',
+    hand: '#ffe08a',
+    eye: '#141a2e',
+    signature: 'coinflip',
+  },
 }

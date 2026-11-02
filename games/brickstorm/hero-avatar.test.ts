@@ -186,6 +186,22 @@ describe('creature hands', () => {
     }
   })
 
+  it('baron (the slime) holds the ball in its floating front hand, mirrored and bigger too', () => {
+    for (const [homeX, size] of [
+      [100, 1],
+      [300, 1],
+      [100, 1.35],
+    ]) {
+      const a = new HeroAvatar('baron')
+      a.size = size
+      const h = { x: homeX, y: 740, r: 5 }
+      run(a, 0.5, ctx({ homeX, hold: h }))
+      expect(a.mood).toBe('idle')
+      a.draw(fakeCanvas(), 760)
+      near(a.lastHands?.front, h)
+    }
+  })
+
   /** The rookie's solved back-hand target in board units (size 1, no knock or tremble). */
   const backTarget = (a: HeroAvatar, floorY = 760) => {
     const f = (a as unknown as { buildFrame(): Frame }).buildFrame()

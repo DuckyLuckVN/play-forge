@@ -20,11 +20,12 @@ import {
   TICK,
 } from './config'
 import { random } from '@forge/core/rng'
-import { levelPower, rollChoices, runMods, type Mods } from './boosts'
+import { levelPower, runMods, type Mods } from './boosts'
 import { comboPower, damageBrick, explode, oncePerBoss, zap } from './damage'
 import { baseRows, dims } from './dims'
 export { comboMultiplier } from './damage'
-import { antiStall, bounceWalls, circleShape, deepestContact, reflect } from './physics'
+import { antiStall, bounceWalls, circleShape, reflect } from './physics'
+import { bricksTouching, deepestBrickContact } from './collide'
 import {
   BOSS_EVERY,
   bossContact,
@@ -36,9 +37,10 @@ import {
   liftBoss,
   shrinkArena,
   spawnBoss,
+  turnsUntilBoss,
 } from './boss'
 import type { Face } from './boss-skills'
-import { brickShape, cellCenter, hitShapes, hpStepStart, spawnRow } from './rows'
+import { brickShape, cellCenter, hpStepStart, spawnRow } from './rows'
 import { HEART_HEAL, heal, heroFreezes, heroHitMult, heroTurnStart, resolveBreaches } from './health'
 import { DEFAULT_HERO, HEROES, heroOf, type HeroId } from './heroes'
 import { faceOf, facesOf } from './faces'
@@ -221,13 +223,8 @@ function moveBall(s: RunState, ball: Ball, mods: Mods): void {
     let popped: boolean
     if (ball.kind === 'fire') {
       if (burnThrough(s, ball, mods)) return
-      popped = bounceOffBricks(
-        s,
-        ball,
-        mods,
-        s.bricks.filter((b) => b.kind === 'boss'),
-      )
-    } else popped = bounceOffBricks(s, ball, mods, s.bricks)
+      popped = bounceOffBricks(s, ball, mods, true)
+    } else popped = bounceOffBricks(s, ball, mods, false)
     if (popped) return
 
     collectPickups(s, ball, mods)
@@ -248,9 +245,7 @@ function moveBall(s: RunState, ball: Ball, mods: Mods): void {
  * douses it, void eats it). Returns true if the ball was eaten.
  */
 function burnThrough(s: RunState, ball: Ball, mods: Mods): boolean {
-  const touching = s.bricks.filter(
-    (b) => b.kind !== 'boss' && circleShape(ball.x, ball.y, ball.r, brickShape(b)),
-  )
+  const touching = bricksTouching(s.bricks, ball.x, ball.y, ball.r, (b) => b.kind !== 'boss')
   ball.inside = ball.inside.filter((id) => touching.some((b) => b.id === id))
   for (const brick of touching) {
     if (ball.inside.includes(brick.id)) continue
@@ -266,15 +261,20 @@ function burnThrough(s: RunState, ball: Ball, mods: Mods): boolean {
  * Bounces off the deepest of `bricks`; the boss is one solid body that can't
  * be pierced. Returns true if the ball hit spikes and is gone for this volley.
  */
-function bounceOffBricks(s: RunState, ball: Ball, mods: Mods, bricks: Brick[]): boolean {
+/** A ball against the bricks (only the boss's parts for a fire ball, which burns through the rest). */
+function bounceOffBricks(s: RunState, ball: Ball, mods: Mods, bossOnly: boolean): boolean {
   // A pierced brick is ignored until the ball has fully left it, so a
   // bounce off the next brick can't push the ball back into it for a re-hit.
-  const pierced = s.bricks.find((b) => b.id === ball.lastBrick)
-  if (!pierced || !circleShape(ball.x, ball.y, ball.r, brickShape(pierced))) ball.lastBrick = -1
-  const solid = bricks.filter((b) => b.id !== ball.lastBrick)
-  const contact = deepestContact(ball.x, ball.y, hitShapes(solid), ball.r)
+  if (ball.lastBrick !== -1) {
+    const pierced = s.bricks.find((b) => b.id === ball.lastBrick)
+    if (!pierced || !circleShape(ball.x, ball.y, ball.r, brickShape(pierced))) ball.lastBrick = -1
+  }
+  const skip = ball.lastBrick
+  const contact = deepestBrickContact(s.bricks, ball.x, ball.y, ball.r, (b) =>
+    bossOnly ? b.kind === 'boss' : b.id !== skip,
+  )
   if (!contact) return false
-  const brick = solid[contact.index]
+  const brick = contact.brick
   const { col, row } = brick
   const face = faceOf(contact.nx, contact.ny)
   const facing = facesOf(contact.nx, contact.ny)
@@ -337,6 +337,9 @@ function hitBrick(
     heroHitMult(s, brick.kind === 'boss')
   const { x, y } = cellCenter(brick.col, brick.row)
   s.events.push({ type: 'hit', x, y, combo: s.combo, power: comboPower(s), crit })
+  // Special bricks show and sound what a hit does to them (armour clangs, slime squelches).
+  if (brick.kind !== 'normal' && brick.kind !== 'boss' && !brick.role)
+    s.events.push({ type: 'special', kind: brick.kind, x: ball.x, y: ball.y, trigger: false })
   const from = { col: brick.col, row: brick.row }
   damageBrick(s, brick, damage, ball.kind === 'fire' ? 'fire' : 'ball', 0, { face, facing, crit })
   if (mods.zapChance > 0 && random(s.rng) < mods.zapChance) zap(s, from, mods.zapArcs, 1 * mods.damageMult, 0)
@@ -382,13 +385,25 @@ export function laserRow(s: RunState, row: number, damage = s.turn): void {
   for (const b of oncePerBoss(s.bricks.filter((b) => b.row === row))) damageBrick(s, b, damage, 'laser')
 }
 
+/** Rows the bricks fall when this turn ends: none when frozen, two on a Glass Cannon tenth turn. */
+export function rowDrops(s: RunState, mods = runMods(s)): number {
+  if (s.freezeNext || heroFreezes(s)) return 0
+  // A boss fight has no extra rows, so the board drops every other turn (pausing first).
+  if (s.boss && (s.turn - s.boss.turn) % 2 === 0) return 0
+  return mods.glass && s.turn % 10 === 0 ? 2 : 1
+}
+
 function endTurn(s: RunState): void {
   bossVolleyEnd(s)
   s.launchX = s.nextLaunchX ?? s.launchX
   s.ballCount += s.pendingBalls
   s.pendingBalls = 0
   s.balls = []
-  s.pickups = s.pickups.filter((p) => !p.used)
+  // Lasers last one turn: fired or not, they go at the end of the volley.
+  for (const p of s.pickups)
+    if (p.kind === 'laser' && !p.used)
+      s.events.push({ type: 'pickupFade', kind: p.kind, ...cellCenter(p.col, p.row) })
+  s.pickups = s.pickups.filter((p) => !p.used && p.kind !== 'laser')
   s.overcharged = false
   if (s.doubleVolleys > 0) s.doubleVolleys--
 
@@ -402,7 +417,7 @@ function endTurn(s: RunState): void {
   const heroFrost = !s.freezeNext && heroFreezes(s)
   if (heroFrost) s.events.push({ type: 'heroSkill', hero: s.hero })
   const frozen = s.freezeNext || heroFrost
-  const drops = frozen ? 0 : mods.glass && s.turn % 10 === 0 ? 2 : 1
+  const drops = rowDrops(s, mods)
   s.freezeNext = false
   for (const b of s.bricks) b.row += drops
   for (const p of s.pickups) p.row += drops
@@ -450,16 +465,16 @@ export function startNextTurn(s: RunState, spawn = true): void {
   s.events.push({ type: 'turn', turn: s.turn })
   if (hpStepStart(s.turn) === s.turn) s.events.push({ type: 'tougher' })
   if (isStormTurn(s.turn + 1) && !s.boss) s.events.push({ type: 'stormSoon' })
+  const bossSoon = turnsUntilBoss(s)
+  if (bossSoon) s.events.push({ type: 'bossSoon', turns: bossSoon })
   if (s.bricks.some((b) => b.row === dims(s).dangerRow - 1)) s.events.push({ type: 'danger' })
   openPickOrAim(s)
 }
 
-/** Back to aiming, or to the boost pick first if one is waiting. */
+/** Back to aiming, or to a board growth first if one is due. Skill points are banked, not opened. */
 export function openPickOrAim(s: RunState): void {
-  if (s.pendingPicks > 0) {
-    s.phase = 'pick'
-    s.choices = rollChoices(s)
-  } else if (s.growPending && (s.cols < MAX_COLS || baseRows(s) < MAX_ROWS)) {
+  // Skill points wait: the player opens the pick screen when they choose (openPicks).
+  if (s.growPending && (s.cols < MAX_COLS || baseRows(s) < MAX_ROWS)) {
     s.phase = 'grow'
   } else {
     s.growPending = false

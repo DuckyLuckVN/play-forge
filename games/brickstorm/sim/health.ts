@@ -1,6 +1,6 @@
 // Hero health: bricks that crash into the danger line hurt the hero instead of
 // ending the run at once, and the run ends when health runs out. Hearts,
-// beaten bosses and some heroes heal.
+// potions and some heroes heal.
 import { bossHeroHurt, liftBoss } from './boss'
 import { dims } from './dims'
 import { heroOf } from './heroes'
@@ -34,8 +34,8 @@ export const BOSS_BREACH = 6
 export const MISSILE_BREACH = 2
 /** Share of max health a heart pickup heals. */
 export const HEART_HEAL = 0.2
-/** Share of max health regained when a boss falls (unless the hero says otherwise). */
-export const BOSS_HEAL = 0.25
+/** Share of max health regained when a boss falls: none (a hero with `bossHeal`, the Paladin, still heals). */
+export const BOSS_HEAL = 0
 /** A revive brings health back up to at least this share. */
 export const REVIVE_HEALTH = 0.5
 /** Share of max health the Potion helper heals. */
@@ -58,20 +58,45 @@ export function brickBreach(s: RunState, b: Brick): number {
   return crashUnit(s.turn) * (BREACH_FLOOR + (1 - BREACH_FLOOR) * left) * missile * (heroOf(s).breach ?? 1)
 }
 
-/** Health the given bricks would take if they crashed now (a boss counts once). */
-export function breachDamage(s: RunState, bricks: readonly Brick[]): number {
+/** How a crash's damage splits: each plain brick's part (after falloff and the turn cap), missiles, the boss. */
+export interface CrashShares {
+  /** Plain bricks and missiles by id: what each adds (they sum to the plain total). */
+  bricks: Map<number, number>
+  /** A boss's hit (it counts once, however many parts crash). */
+  boss: number
+  total: number
+}
+
+/** Health the given bricks would take if they crashed now, split per brick. */
+export function crashShares(s: RunState, bricks: readonly Brick[]): CrashShares {
   const plain = bricks.filter((b) => b.kind !== 'boss')
-  const boss = bricks.some((b) => b.kind === 'boss')
+  const hasBoss = bricks.some((b) => b.kind === 'boss')
   // Later bosses crash harder: 4 bricks' worth for the first, 5, then 6.
   const tier = s.boss?.tier ?? 1
-  const bossHit = boss ? crashUnit(s.turn) * (BOSS_BREACH - 3 + tier) * (heroOf(s).breach ?? 1) : 0
-  const missiles = plain.filter((b) => b.role === 'missile').reduce((sum, b) => sum + brickBreach(s, b), 0)
+  const boss = hasBoss ? crashUnit(s.turn) * (BOSS_BREACH - 3 + tier) * (heroOf(s).breach ?? 1) : 0
+  const shares = new Map<number, number>()
+  let missiles = 0
+  for (const b of plain)
+    if (b.role === 'missile') {
+      const d = brickBreach(s, b)
+      shares.set(b.id, d)
+      missiles += d
+    }
   const crowd = plain
     .filter((b) => b.role !== 'missile')
-    .map((b) => brickBreach(s, b))
-    .sort((a, b) => b - a)
-    .reduce((sum, d, i) => sum + d * BREACH_FALLOFF[Math.min(i, BREACH_FALLOFF.length - 1)], 0)
-  return Math.round(Math.min(crowd, s.maxHp * BREACH_TURN_CAP) + missiles + bossHit)
+    .map((b) => ({ id: b.id, d: brickBreach(s, b) }))
+    .sort((a, b) => b.d - a.d)
+    .map((c, i) => ({ id: c.id, d: c.d * BREACH_FALLOFF[Math.min(i, BREACH_FALLOFF.length - 1)] }))
+  const crowdSum = crowd.reduce((sum, c) => sum + c.d, 0)
+  const capped = Math.min(crowdSum, s.maxHp * BREACH_TURN_CAP)
+  const scale = crowdSum > 0 ? capped / crowdSum : 0
+  for (const c of crowd) shares.set(c.id, c.d * scale)
+  return { bricks: shares, boss, total: Math.round(capped + missiles + boss) }
+}
+
+/** Health the given bricks would take if they crashed now (a boss counts once). */
+export function breachDamage(s: RunState, bricks: readonly Brick[]): number {
+  return crashShares(s, bricks).total
 }
 
 /**

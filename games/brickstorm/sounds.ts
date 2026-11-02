@@ -3,6 +3,18 @@ import type { HeroVoice } from './sim/heroes'
 
 /** Boss fights: a heavy thunk for hits, a tink for blocked ones, and a sound per kind of skill. */
 export const BOSS_SOUNDS = {
+  /** A boss is coming: a two-tone siren over a low drone. */
+  siren: [
+    { freq: 440, to: 880, dur: 0.45, wave: 'square', vol: 0.14 },
+    { freq: 880, to: 440, dur: 0.45, wave: 'square', vol: 0.14, at: 0.45 },
+    { freq: 440, to: 880, dur: 0.45, wave: 'square', vol: 0.14, at: 0.9 },
+    { freq: 55, to: 45, dur: 1.4, wave: 'sawtooth', vol: 0.3 },
+  ],
+  /** The boss falling in: a long, dropping whistle. */
+  fall: [
+    { freq: 1600, to: 180, dur: 0.85, wave: 'sine', vol: 0.22 },
+    { freq: 2400, to: 300, dur: 0.85, wave: 'noise', vol: 0.12 },
+  ],
   hit: [
     { freq: 180, to: 70, dur: 0.12, wave: 'square', vol: 0.22 },
     { freq: 900, to: 200, dur: 0.05, wave: 'noise', vol: 0.15 },
@@ -207,6 +219,33 @@ export const HAZARD_SOUNDS = {
   burn: { freq: 1800, to: 200, dur: 0.22, wave: 'noise', vol: 0.3 },
   ignite: { freq: 400, to: 1600, dur: 0.15, wave: 'noise', vol: 0.25 },
   douse: { freq: 4000, to: 800, dur: 0.3, wave: 'noise', vol: 0.25 },
+} satisfies Record<string, Sound>
+
+/** Special bricks reacting to a ball: armour rings, gold sparkles, slime squelches, water splashes, a split cracks. */
+export const SPECIAL_SOUNDS = {
+  armor: [
+    { freq: 1250, to: 1180, dur: 0.12, wave: 'triangle', vol: 0.2 },
+    { freq: 2600, to: 900, dur: 0.05, wave: 'noise', vol: 0.18 },
+  ],
+  gold: [
+    { freq: 1568, dur: 0.05, wave: 'triangle', vol: 0.16 },
+    { freq: 2349, dur: 0.09, wave: 'triangle', vol: 0.14, at: 0.04 },
+  ],
+  squelch: [
+    { freq: 220, to: 120, dur: 0.1, wave: 'sine', vol: 0.3 },
+    { freq: 600, to: 200, dur: 0.06, wave: 'noise', vol: 0.12 },
+  ],
+  splash: { freq: 3000, to: 1200, dur: 0.12, wave: 'noise', vol: 0.15 },
+  hum: { freq: 110, to: 70, dur: 0.18, wave: 'sine', vol: 0.25 },
+  crackle: [
+    { freq: 2400, to: 600, dur: 0.06, wave: 'noise', vol: 0.18 },
+    { freq: 330, to: 440, dur: 0.06, wave: 'square', vol: 0.08 },
+  ],
+  split: [
+    { freq: 500, to: 900, dur: 0.08, wave: 'square', vol: 0.18 },
+    { freq: 1800, to: 400, dur: 0.12, wave: 'noise', vol: 0.2, at: 0.03 },
+  ],
+  fizzle: { freq: 1600, to: 300, dur: 0.25, wave: 'sine', vol: 0.12 },
 } satisfies Record<string, Sound>
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { holdBoost, holdCost, pickBoost, pickCost, reroll, rollChoices, skipPick } from './boosts'
+import { holdBoost, holdCost, openPicks, pickBoost, pickCost, reroll, rollChoices, skipPick } from './boosts'
 import { spawnBoss } from './boss'
 import { damageBrick } from './damage'
 import { openPickOrAim } from './run'
@@ -58,7 +58,7 @@ describe('pick prices', () => {
     spawnBoss(s, [], 'block')
     damageBrick(s, s.bricks[0], 1e9, 'blast')
     openPickOrAim(s)
-    expect(s.phase).toBe('pick')
+    expect(openPicks(s)).toBe(true)
     expect(pickCost(s, s.choices[0])).toBe(0)
     pickBoost(s, s.choices[0])
     expect(s.freePicks).toBe(0)

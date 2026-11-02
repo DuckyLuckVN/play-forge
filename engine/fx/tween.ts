@@ -26,6 +26,13 @@ export const progress = (now: number, start: number, dur: number) => clamp01((no
 export const damp = (current: number, target: number, rate: number, dt: number) =>
   lerp(current, target, 1 - Math.exp(-rate * dt))
 
-/** True when the player asked the OS for less motion. */
-export const prefersReducedMotion = () =>
-  typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
+/**
+ * True when the player asked the OS for less motion. Games ask this many times
+ * a frame, so the media query is made once and kept current by its change event.
+ */
+let reducedMotion: MediaQueryList | null | undefined
+export const prefersReducedMotion = (): boolean => {
+  if (reducedMotion === undefined)
+    reducedMotion = typeof matchMedia !== 'undefined' ? matchMedia('(prefers-reduced-motion: reduce)') : null
+  return reducedMotion?.matches ?? false
+}

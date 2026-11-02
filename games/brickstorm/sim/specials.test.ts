@@ -157,7 +157,7 @@ describe('new pickups', () => {
     expect(drainEvents(s).filter((e) => e.type === 'laser')).toHaveLength(6)
   })
 
-  it('a used laser is gone after the volley; an untouched one stays', () => {
+  it('a laser lasts one turn: used or not, it is gone after the volley', () => {
     const s = empty()
     const used = { id: s.nextId++, col: 3, row: 6, kind: 'laser' as const }
     const untouched = { id: s.nextId++, col: 0, row: 2, kind: 'laser' as const }
@@ -166,7 +166,18 @@ describe('new pickups', () => {
     runVolley(s)
     const ids = s.pickups.map((p) => p.id)
     expect(ids).not.toContain(used.id)
-    expect(ids).toContain(untouched.id)
+    expect(ids).not.toContain(untouched.id)
+    const fade = drainEvents(s).filter((e) => e.type === 'pickupFade')
+    expect(fade).toHaveLength(1) // only the untouched one fizzles out; the used one already fired
+  })
+
+  it('other pickups are not affected by the laser timer', () => {
+    const s = empty()
+    const coin = { id: s.nextId++, col: 0, row: 2, kind: 'coin' as const }
+    s.pickups.push(coin)
+    fire(s, Math.PI / 2)
+    runVolley(s)
+    expect(s.pickups.map((p) => p.id)).toContain(coin.id)
   })
 
   it('a fire pickup arms 3 fireballs for the next volley', () => {

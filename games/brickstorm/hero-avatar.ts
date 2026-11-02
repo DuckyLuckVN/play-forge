@@ -367,6 +367,7 @@ export class HeroAvatar {
         return this.setMood('scared', 'alert')
       case 'storm':
       case 'stormSoon':
+      case 'bossSoon':
       case 'bossWarn':
         return this.setMood('wow', 'alert')
       case 'fever':

@@ -1,7 +1,6 @@
 // Run-level actions outside the normal turn loop: revives and run-start helpers.
-import { rollChoices } from './boosts'
 import { MAX_COLS, MAX_ROWS } from './config'
-import { baseRows, dims } from './dims'
+import { baseCols, baseRows, dims, shiftCols } from './dims'
 import { liftBoss } from './boss'
 import { randomInt } from '@forge/core/rng'
 import { damageBrick, killBrick, oncePerBoss } from './damage'
@@ -42,10 +41,9 @@ export function applyHelpers(s: RunState, use: Partial<Record<StartHelper, boole
   if (use.goldStart) s.boosts.coins = (s.boosts.coins ?? 0) + 2
   if (use.eagleStart) s.boosts.eagle = Math.max(1, s.boosts.eagle ?? 0)
   if (use.luckyStart) {
+    // A free skill point, spent when the player opens the pick screen.
     s.pendingPicks++
     s.freePicks = (s.freePicks ?? 0) + 1
-    s.phase = 'pick'
-    s.choices = rollChoices(s)
   }
 }
 
@@ -133,10 +131,13 @@ export function useHelper(s: RunState, id: ActiveHelper): boolean {
 /** Every GROW_EVERY turns: the player adds a column or a row (each axis is capped). */
 export function growBoard(s: RunState, axis: 'col' | 'row'): void {
   if (s.phase !== 'grow') return
-  if (axis === 'col' && s.cols >= MAX_COLS) return
+  if (axis === 'col' && baseCols(s) >= MAX_COLS) return
   if (axis === 'row' && baseRows(s) >= MAX_ROWS) return
-  if (axis === 'col') s.cols++
-  else s.rows++
+  if (axis === 'col') {
+    // The new column joins the real board, inside a boss fight's right-hand side column.
+    shiftCols(s, s.cols - (s.bossRight ?? 0), 1)
+    s.cols++
+  } else s.rows++
   s.growPending = false
   s.events.push({ type: 'grow', axis })
   openPickOrAim(s)

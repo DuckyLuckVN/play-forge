@@ -154,6 +154,8 @@ export interface HeroDef {
   rage?: number
   /** Chance of epic skill cards (×). */
   epicLuck?: number
+  /** Skills this hero is built for: offered more often (see AFFINITY_CHANCE). */
+  affinity?: BoostId[]
 }
 
 const HEROES_LIST: HeroDef[] = [
@@ -239,6 +241,7 @@ const HEROES_LIST: HeroDef[] = [
     hp: 80,
     damage: 1.1,
     rage: 0.6,
+    affinity: ['damage'],
   },
   {
     id: 'sage',
@@ -280,6 +283,7 @@ const HEROES_LIST: HeroDef[] = [
     hp: 95,
     innate: { fireball: 1 },
     damage: 0.9,
+    affinity: ['fireball'],
   },
   {
     id: 'juggler',
@@ -492,6 +496,7 @@ const HEROES_LIST: HeroDef[] = [
     hp: 60,
     damage: 1.6,
     breach: 1.4,
+    affinity: ['damage'],
   },
   {
     id: 'dragon',
@@ -508,6 +513,7 @@ const HEROES_LIST: HeroDef[] = [
     breach: 1.4,
     damage: 0.9,
     bossDamage: 1.2,
+    affinity: ['fireball'],
   },
 ]
 
@@ -570,6 +576,8 @@ export function heroPerks(def: HeroDef): HeroPerk[] {
     })
   mult(def.bossDamage, '+{p} damage to bosses', '−{p} damage to bosses')
   if (def.epicLuck) out.push({ text: 'Epic skills ×{m} as likely', vars: { m: def.epicLuck }, good: true })
+  for (const id of def.affinity ?? [])
+    out.push({ text: 'Finds skill {skill} more often', vars: { skill: id }, good: true })
   mult(def.damage, '+{p} damage', '−{p} damage')
   mult(def.coins, '+{p} coins', '−{p} coins')
   mult(def.xp, '+{p} XP', '−{p} XP')

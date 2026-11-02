@@ -186,7 +186,7 @@ export interface Pickup {
   col: number
   row: number
   kind: PickupKind
-  /** A laser that has fired this volley: it stays until the volley ends, then goes. */
+  /** A laser that has fired this volley. Every laser goes when the volley ends, fired or not. */
   used?: boolean
 }
 
@@ -274,6 +274,8 @@ export type SimEvent =
   | { type: 'helper'; id: ActiveHelper }
   | { type: 'milestone'; turn: number; coins: number }
   | { type: 'laser'; y: number }
+  /** A pickup ran out of time unused (lasers last one turn). */
+  | { type: 'pickupFade'; kind: PickupKind; x: number; y: number }
   | { type: 'mystery'; x: number; y: number; reward: 'balls' | 'pick' | 'coins' | 'fire' }
   | { type: 'explode'; x: number; y: number; depth: number }
   | { type: 'zap'; x1: number; y1: number; x2: number; y2: number; depth: number }
@@ -313,9 +315,20 @@ export type SimEvent =
   /** The boss smashed bricks in its way (arriving or moving): where they were, coins they paid. */
   | { type: 'bossCrush'; at: Array<{ x: number; y: number }>; coins: number }
   /** The board grew for a boss fight (or shrank back after it). */
-  | { type: 'arena'; grow: boolean }
+  | {
+      type: 'arena'
+      grow: boolean
+      /** Columns added or removed per side (0 or missing: none). */
+      cols?: number
+      /** Rows added or removed at the bottom (missing: none). */
+      rows?: number
+    }
   /** The next turn is a storm turn. */
   | { type: 'stormSoon' }
+  /** A special brick was hit (`trigger` false) or went off (bomb, lightning, splitter: true). */
+  | { type: 'special'; kind: BrickKind; x: number; y: number; trigger: boolean }
+  /** A boss arrives in `turns` turns (3, 2, 1). */
+  | { type: 'bossSoon'; turns: number }
   /** The hero's signature trait went off (Flurry's freeze, Boo's ball…). */
   | { type: 'heroSkill'; hero: HeroId; x?: number; y?: number }
 
@@ -387,6 +400,9 @@ export interface RunState {
   boss?: Boss | null
   /** Rows the board gained for the boss fight; they shrink away after it. Missing = 0. */
   bossRoom?: number
+  /** Columns the board gained on its left / right for the boss fight; they go once empty. Missing = 0. */
+  bossLeft?: number
+  bossRight?: number
   /** Bosses beaten this run; each adds a boost slot. Missing in older saves. */
   bossesBeaten?: number
   /** The hero this run is played with. */

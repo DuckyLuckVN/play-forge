@@ -90,8 +90,14 @@ const SHORT_FROM = 100_000
 /** The one way coins are written everywhere (HUD, badge, wallet, prices). */
 export function formatCoins(n: number): string {
   const whole = Math.floor(n)
-  return whole < SHORT_FROM ? whole.toLocaleString() : shortCoins(whole)
+  // The HUD asks every frame, mostly for the same number; toLocaleString is slow.
+  if (whole === lastCoins.n) return lastCoins.text
+  const text = whole < SHORT_FROM ? whole.toLocaleString() : shortCoins(whole)
+  lastCoins.n = whole
+  lastCoins.text = text
+  return text
 }
+const lastCoins = { n: NaN, text: '' }
 
 /** 1234 → "1.2k", for small badges. */
 export function shortCoins(n: number): string {

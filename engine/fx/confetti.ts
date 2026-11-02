@@ -12,7 +12,8 @@ export function celebrate(colors: string[] = PLAYER_COLORS): void {
   canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:30'
   document.body.append(canvas)
   const ctx = canvas.getContext('2d')!
-  const dpr = window.devicePixelRatio || 1
+  // Confetti is soft: past 2× density it only costs fill time on big phone screens.
+  const dpr = Math.min(2, window.devicePixelRatio || 1)
   const w = innerWidth
   const h = innerHeight
   canvas.width = w * dpr

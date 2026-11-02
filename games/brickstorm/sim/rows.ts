@@ -233,7 +233,10 @@ export const BALL_PICKUP_CHANCE = 0.7
 /** Adds a new row of bricks and pickups at row 0 for `state.turn`. */
 export function spawnRow(state: RunState): void {
   const { rng, turn } = state
-  const free = Array.from({ length: state.cols }, (_, i) => i)
+  // While a boss fight's side columns are still there, new rows stay between them (so they can go).
+  const left = state.bossLeft ?? 0
+  const width = state.cols - left - (state.bossRight ?? 0)
+  const free = Array.from({ length: width }, (_, i) => i + left)
   const take = () => free.splice(randomInt(rng, free.length), 1)[0]
   /** Takes `col` if given (a pattern's pick), else a random free column. */
   const add = (kind: BrickKind, col?: number, boost = 1) => {
@@ -264,16 +267,16 @@ export function spawnRow(state: RunState): void {
   // Always leave a column free, for the row's pickups, and no more bricks than the balls can handle.
   const wanted = Math.min(
     7,
-    state.cols - 1,
+    width - 1,
     maxBricksFor(state.ballCount),
     Math.max(2, 1 + randomInt(rng, 3) + Math.floor(turn / 15) + (turn >= 20 ? 1 : 0)),
   )
   // Which columns get bricks follows the turn's pattern, so rows build shapes.
   // A pattern with fewer bricks makes each one tougher, so the row is as hard.
   const pattern = patternAt(state.seed, turn)
-  const count = Math.min(wanted, patternLimit(pattern, state.cols))
+  const count = Math.min(wanted, patternLimit(pattern, width))
   const boost = Math.min(TRIM_BOOST_MAX, wanted / count)
-  const order = columnOrder(pattern, state.cols, turn, () => random(rng))
+  const order = columnOrder(pattern, width, turn, () => random(rng)).map((c) => c + left)
   for (let i = 0; i < count; i++) {
     let kind: BrickKind = 'normal'
     if (unlocked.length && specials < MAX_SPECIALS_PER_ROW && random(rng) < chance) {

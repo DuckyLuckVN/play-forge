@@ -13,8 +13,8 @@ const fill = (s: RunState, rows: number) => {
 }
 
 describe('boss arrival', () => {
-  it('the arena opens 4 rows', () => {
-    expect(BOSS_ROOM).toBe(4)
+  it('the arena opens sideways only (no extra rows)', () => {
+    expect(BOSS_ROOM).toBe(0)
   })
 
   it('blasts the bricks under it and in a 1-cell ring, pays coins, tells the effects where', () => {

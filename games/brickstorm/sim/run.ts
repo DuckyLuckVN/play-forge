@@ -41,6 +41,9 @@ import type { Face } from './boss-skills'
 import { brickShape, cellCenter, hitShapes, hpStepStart, spawnRow } from './rows'
 import { HEART_HEAL, heal, heroFreezes, heroHitMult, heroTurnStart, resolveBreaches } from './health'
 import { DEFAULT_HERO, HEROES, heroOf, type HeroId } from './heroes'
+import { faceOf, facesOf } from './faces'
+import { tickBurn, touchHazard } from './hazards'
+import { isSpiked } from './spikes'
 import { isStormTurn, stormWave } from './storm'
 import type { Ball, Brick, Pickup, RunState, SimEvent } from './types'
 
@@ -214,9 +217,10 @@ function moveBall(s: RunState, ball: Ball, mods: Mods): void {
       s.events.push({ type: 'wall' })
     }
 
+    if (tickBurn(s, ball, dt)) return
     let popped: boolean
     if (ball.kind === 'fire') {
-      burnThrough(s, ball, mods)
+      if (burnThrough(s, ball, mods)) return
       popped = bounceOffBricks(
         s,
         ball,
@@ -238,8 +242,12 @@ function moveBall(s: RunState, ball: Ball, mods: Mods): void {
   }
 }
 
-/** A fire ball never bounces off bricks: it burns each one it passes through, once per pass. A boss is too big to burn through. */
-function burnThrough(s: RunState, ball: Ball, mods: Mods): void {
+/**
+ * A fire ball never bounces off bricks: it burns each one it passes through,
+ * once per pass. A boss is too big to burn through. Hazards still act (water
+ * douses it, void eats it). Returns true if the ball was eaten.
+ */
+function burnThrough(s: RunState, ball: Ball, mods: Mods): boolean {
   const touching = s.bricks.filter(
     (b) => b.kind !== 'boss' && circleShape(ball.x, ball.y, ball.r, brickShape(b)),
   )
@@ -248,13 +256,10 @@ function burnThrough(s: RunState, ball: Ball, mods: Mods): void {
     if (ball.inside.includes(brick.id)) continue
     ball.inside.push(brick.id)
     hitBrick(s, ball, brick, mods, 2)
+    if (touchHazard(s, ball, brick)) return true
+    if (ball.kind !== 'fire') return false // doused: a normal ball from here on
   }
-}
-
-/** Which side of a brick a contact normal (pointing at the ball) is on. */
-function faceOf(nx: number, ny: number): Face {
-  if (Math.abs(ny) >= Math.abs(nx)) return ny < 0 ? 'top' : 'bottom'
-  return nx < 0 ? 'left' : 'right'
+  return false
 }
 
 /**
@@ -272,11 +277,12 @@ function bounceOffBricks(s: RunState, ball: Ball, mods: Mods, bricks: Brick[]): 
   const brick = solid[contact.index]
   const { col, row } = brick
   const face = faceOf(contact.nx, contact.ny)
-  const touch = brick.kind === 'boss' ? bossContact(s, ball, face) : 'hit'
+  const facing = facesOf(contact.nx, contact.ny)
+  const touch = brick.kind === 'boss' ? bossContact(s, ball, face, facing) : 'hit'
   if (touch === 'pass') return false
-  if (touch === 'hit') hitBrick(s, ball, brick, mods, ball.kind === 'fire' ? 2 : 1, face)
+  if (touch === 'hit') hitBrick(s, ball, brick, mods, ball.kind === 'fire' ? 2 : 1, face, facing)
   else s.events.push({ type: 'bossBlock', x: ball.x, y: ball.y })
-  if (brick.role === 'spike') {
+  if (brick.role === 'spike' && isSpiked(brick, face)) {
     ball.status = 'landed'
     s.events.push({ type: 'pop', x: ball.x, y: ball.y })
     return true
@@ -301,11 +307,20 @@ function bounceOffBricks(s: RunState, ball: Ball, mods: Mods, bricks: Brick[]): 
     const ty = ball.vy - vn * contact.ny
     s.balls.push({ ...ball, vx: vn * contact.nx - tx, vy: vn * contact.ny - ty, inside: [] })
   }
-  return false
+  // Last, so a bomb still blows and a twin still splits off before the ball is eaten.
+  return touchHazard(s, ball, brick)
 }
 
 /** A ball hitting a brick: combo, fever, crit, damage, and chain lightning. */
-function hitBrick(s: RunState, ball: Ball, brick: Brick, mods: Mods, power: number, face?: Face): void {
+function hitBrick(
+  s: RunState,
+  ball: Ball,
+  brick: Brick,
+  mods: Mods,
+  power: number,
+  face?: Face,
+  facing?: Face[],
+): void {
   s.combo++
   s.sinceHit = 0
   s.bestCombo = Math.max(s.bestCombo, s.combo)
@@ -323,7 +338,7 @@ function hitBrick(s: RunState, ball: Ball, brick: Brick, mods: Mods, power: numb
   const { x, y } = cellCenter(brick.col, brick.row)
   s.events.push({ type: 'hit', x, y, combo: s.combo, power: comboPower(s), crit })
   const from = { col: brick.col, row: brick.row }
-  damageBrick(s, brick, damage, ball.kind === 'fire' ? 'fire' : 'ball', 0, { face, crit })
+  damageBrick(s, brick, damage, ball.kind === 'fire' ? 'fire' : 'ball', 0, { face, facing, crit })
   if (mods.zapChance > 0 && random(s.rng) < mods.zapChance) zap(s, from, mods.zapArcs, 1 * mods.damageMult, 0)
 }
 
@@ -409,6 +424,11 @@ function endTurn(s: RunState): void {
   }
   // A frozen turn adds no row: nothing moved, so row 0 is still occupied.
   startNextTurn(s, !frozen)
+  // The boss's turn can hurt too (rockets, a slam): that can end the run.
+  if (s.hp <= 0) {
+    s.phase = 'over'
+    s.events.push({ type: 'over' })
+  }
 }
 
 /** Advances to the next turn: a new row at the top, then aim (or a pending boost pick). */

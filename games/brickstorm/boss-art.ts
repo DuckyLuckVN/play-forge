@@ -4,12 +4,14 @@
 import { compactNumber, fillFitText } from '@forge/ui/text'
 import { FONT, theme } from '@forge/ui/theme'
 import { bossName, skillInfo } from './boss-skill-ui'
+import { SLOPE_FACES } from './sim/boss-kit'
 import { shapeOf } from './sim/boss-shapes'
 import { phased } from './sim/boss-skills'
 import { BRICK_INSET, CELL, TOP } from './sim/config'
 import { dims } from './sim/dims'
 import { brickRect, cellCenter, hitRects } from './sim/rows'
-import type { Boss, BossRole, Brick, Rect, RunState } from './sim/types'
+import { isSpiked } from './sim/spikes'
+import type { Boss, BossRole, Brick, Face, Rect, RunState } from './sim/types'
 
 /** What drawBoss needs from the run; the boss card's preview fakes this. */
 export type BossView = Pick<RunState, 'boss' | 'bricks'> & Partial<Pick<RunState, 'cols' | 'rows' | 'turn'>>
@@ -228,6 +230,37 @@ export function drawBoss(ctx: CanvasRenderingContext2D, s: BossView, time: numbe
   if (look.hit > 0) {
     ctx.fillStyle = `rgb(255 255 255 / ${0.55 * look.hit})`
     ctx.fill(body)
+  }
+  const step = boss.mem?.step
+  if (step === 1 || step === -1) drawStepArrow(ctx, g.box, step, time)
+  ctx.restore()
+}
+
+/** The boss's next step, telegraphed: three chevrons beside its body, marching that way. */
+function drawStepArrow(
+  ctx: CanvasRenderingContext2D,
+  box: { x: number; y: number; w: number; h: number },
+  dir: 1 | -1,
+  time: number,
+): void {
+  const x0 = dir > 0 ? box.x + box.w + 6 : box.x - 6
+  const y = box.y + box.h / 2
+  ctx.save()
+  ctx.strokeStyle = '#ffd43b'
+  ctx.lineWidth = 3
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.shadowColor = '#ffd43b'
+  ctx.shadowBlur = 6
+  for (let i = 0; i < 3; i++) {
+    // Each chevron lights up in turn, so the row reads as motion.
+    ctx.globalAlpha = 0.35 + 0.65 * Math.max(0, Math.sin(time * 6 - i * 1.1))
+    const x = x0 + dir * i * 8
+    ctx.beginPath()
+    ctx.moveTo(x, y - 7)
+    ctx.lineTo(x + dir * 6, y)
+    ctx.lineTo(x, y + 7)
+    ctx.stroke()
   }
   ctx.restore()
 }
@@ -805,6 +838,83 @@ function orbit(
 }
 
 /** A glowing bar along every outer edge on one side of the body. */
+/** Plate thickness and gap off the body, px. */
+const PLATE = 4
+const PLATE_GAP = 3
+
+/**
+ * A shield plate on a sloped or round part: along each of its outer edges that
+ * faces `side` (a slope faces two sides), or the matching arc of an orb.
+ */
+function shapedGlow(ctx: CanvasRenderingContext2D, g: Geo, b: Brick, side: Face): void {
+  const L = g.has(b.col - 1, b.row)
+  const R = g.has(b.col + 1, b.row)
+  const U = g.has(b.col, b.row - 1)
+  const D = g.has(b.col, b.row + 1)
+  const x1 = b.col * CELL + BRICK_INSET
+  const x2 = (b.col + 1) * CELL - BRICK_INSET
+  const y1 = TOP + b.row * CELL + BRICK_INSET
+  const y2 = TOP + (b.row + 1) * CELL - BRICK_INSET
+  ctx.save()
+  ctx.strokeStyle = ctx.fillStyle
+  ctx.lineWidth = PLATE
+  ctx.lineCap = 'round'
+  if (b.shape === 'orb') {
+    const cx = (x1 + x2) / 2
+    const cy = (y1 + y2) / 2
+    const r = Math.min(x2 - x1, y2 - y1) / 2 + PLATE_GAP
+    const mid = { right: 0, bottom: Math.PI / 2, left: Math.PI, top: -Math.PI / 2 }[side]
+    ctx.beginPath()
+    ctx.arc(cx, cy, r, mid - Math.PI / 3, mid + Math.PI / 3)
+    ctx.stroke()
+    ctx.restore()
+    return
+  }
+  const tl: [number, number] = [x1, y1]
+  const tr: [number, number] = [x2, y1]
+  const bl: [number, number] = [x1, y2]
+  const br: [number, number] = [x2, y2]
+  const shape = b.shape as keyof typeof SLOPE_FACES
+  // Each edge: its ends and the sides it faces; inner edges (joined to the body) get no plate.
+  const straight: Array<{ a: [number, number]; z: [number, number]; faces: Face[]; open: boolean }> = []
+  if (shape === 'tri-tl' || shape === 'tri-tr') straight.push({ a: tl, z: tr, faces: ['top'], open: !U })
+  if (shape === 'tri-bl' || shape === 'tri-br') straight.push({ a: bl, z: br, faces: ['bottom'], open: !D })
+  if (shape === 'tri-tl' || shape === 'tri-bl') straight.push({ a: tl, z: bl, faces: ['left'], open: !L })
+  if (shape === 'tri-tr' || shape === 'tri-br') straight.push({ a: tr, z: br, faces: ['right'], open: !R })
+  const slope = {
+    'tri-tl': { a: tr, z: bl },
+    'tri-tr': { a: tl, z: br },
+    'tri-bl': { a: tl, z: br },
+    'tri-br': { a: tr, z: bl },
+  }[shape]
+  const edges = [...straight, { ...slope, faces: SLOPE_FACES[shape], open: true }]
+  for (const e of edges) {
+    if (!e.open || !e.faces.includes(side)) continue
+    // Pushed out along the edge's own outward direction (diagonal on a slope).
+    const out = e.faces.reduce(
+      (v, f) => {
+        const [dx, dy] = { top: [0, -1], bottom: [0, 1], left: [-1, 0], right: [1, 0] }[f]
+        return [v[0] + dx, v[1] + dy]
+      },
+      [0, 0],
+    )
+    const len = Math.hypot(out[0], out[1]) || 1
+    const ox = (out[0] / len) * PLATE_GAP
+    const oy = (out[1] / len) * PLATE_GAP
+    // Trim the ends a little so plates on neighbouring edges don't merge.
+    const k = 0.12
+    const ax = e.a[0] + (e.z[0] - e.a[0]) * k + ox
+    const ay = e.a[1] + (e.z[1] - e.a[1]) * k + oy
+    const zx = e.z[0] - (e.z[0] - e.a[0]) * k + ox
+    const zy = e.z[1] - (e.z[1] - e.a[1]) * k + oy
+    ctx.beginPath()
+    ctx.moveTo(ax, ay)
+    ctx.lineTo(zx, zy)
+    ctx.stroke()
+  }
+  ctx.restore()
+}
+
 function edgeGlow(
   ctx: CanvasRenderingContext2D,
   g: Geo,
@@ -818,6 +928,7 @@ function edgeGlow(
   ctx.globalAlpha = 0.75 + 0.2 * Math.sin(time * 5)
   g.parts.forEach((b, i) => {
     const r = g.rects[i]
+    if (b.shape) return shapedGlow(ctx, g, b, side)
     if (side === 'top' && !g.has(b.col, b.row - 1)) ctx.fillRect(r.x + 4, r.y - 5, r.w - 8, 4)
     if (side === 'bottom' && !g.has(b.col, b.row + 1)) ctx.fillRect(r.x + 4, r.y + r.h + 1, r.w - 8, 4)
     if (side === 'left' && !g.has(b.col - 1, b.row)) ctx.fillRect(r.x - 5, r.y + 4, 4, r.h - 8)
@@ -1280,8 +1391,42 @@ const ROLE_COLOR: Record<BossRole, string> = {
   ward: '#6c7a89',
 }
 
+/** Spike teeth along each spiked face of `b` (only those faces bite), `inset` px in from the edge. */
+function drawSpikes(
+  ctx: CanvasRenderingContext2D,
+  b: Brick,
+  r: { x: number; y: number; w: number; h: number },
+  inset: number,
+  len: number,
+): void {
+  const n = 4
+  const edges: Record<Face, (t: number) => [number, number, number, number]> = {
+    top: (t) => [r.x + r.w * t, r.y + inset, 0, -1],
+    bottom: (t) => [r.x + r.w * t, r.y + r.h - inset, 0, 1],
+    left: (t) => [r.x + inset, r.y + r.h * t, -1, 0],
+    right: (t) => [r.x + r.w - inset, r.y + r.h * t, 1, 0],
+  }
+  for (const face of Object.keys(edges) as Face[]) {
+    if (!isSpiked(b, face)) continue
+    for (let i = 0; i < n; i++) {
+      const [x0, y0, dx, dy] = edges[face]((i + 0.5) / n)
+      ctx.beginPath()
+      ctx.moveTo(x0 - dy * 3.5, y0 - dx * 3.5)
+      ctx.lineTo(x0 + dx * len, y0 + dy * len)
+      ctx.lineTo(x0 + dy * 3.5, y0 + dx * 3.5)
+      ctx.fill()
+    }
+  }
+}
+
 /** A brick a boss summoned, in its role's colours with a glyph; returns false to also draw its hp. */
-export function drawRoleBrick(ctx: CanvasRenderingContext2D, b: Brick, time: number): boolean {
+export function drawRoleBrick(
+  ctx: CanvasRenderingContext2D,
+  b: Brick,
+  time: number,
+  /** Where the hero stands: rockets aim there. */
+  hero?: { x: number; y: number },
+): boolean {
   const role = b.role
   if (!role) return false
   const r = brickRect(b)
@@ -1351,53 +1496,72 @@ export function drawRoleBrick(ctx: CanvasRenderingContext2D, b: Brick, time: num
       ctx.fill()
       ctx.shadowBlur = 0
       ctx.fillStyle = '#c77dff'
-      const n = 4
-      for (let i = 0; i < n; i++) {
-        const t2 = (i + 0.5) / n
-        for (const [x0, y0, dx, dy] of [
-          [r.x + r.w * t2, r.y + 3, 0, -1],
-          [r.x + r.w * t2, r.y + r.h - 3, 0, 1],
-          [r.x + 3, r.y + r.h * t2, -1, 0],
-          [r.x + r.w - 3, r.y + r.h * t2, 1, 0],
-        ]) {
-          ctx.beginPath()
-          ctx.moveTo(x0 - dy * 3.5, y0 - dx * 3.5)
-          ctx.lineTo(x0 + dx * 7, y0 + dy * 7)
-          ctx.lineTo(x0 + dy * 3.5, y0 + dx * 3.5)
-          ctx.fill()
-        }
-      }
+      drawSpikes(ctx, b, r, 3, 7)
       ctx.restore()
       return false
     }
     case 'missile': {
-      // A falling warhead with a flickering exhaust above it.
+      // A rocket on its rail, nose on the hero, a dashed aim line pulsing: shoot it down this volley.
+      const to = hero ?? { x: cx, y: cy + 100 }
+      const angle = Math.atan2(to.y - cy, to.x - cx)
+      ctx.save()
+      ctx.strokeStyle = `rgb(255 107 107 / ${0.25 + 0.2 * Math.sin(time * 8)})`
+      ctx.lineWidth = 2
+      ctx.setLineDash([6, 6])
+      ctx.lineDashOffset = -time * 40
+      ctx.beginPath()
+      ctx.moveTo(cx, cy)
+      ctx.lineTo(to.x, to.y)
+      ctx.stroke()
+      ctx.restore()
       const flick = 0.7 + 0.3 * Math.sin(time * 30 + b.id)
+      const len = Math.min(r.w, r.h) * 0.42
+      ctx.translate(cx, cy)
+      ctx.rotate(angle)
       ctx.fillStyle = `rgb(255 200 61 / ${flick})`
       ctx.beginPath()
-      ctx.moveTo(cx - 7, r.y + 8)
-      ctx.lineTo(cx, r.y - 8 * flick)
-      ctx.lineTo(cx + 7, r.y + 8)
+      ctx.moveTo(-len * 0.7, -5)
+      ctx.lineTo(-len * 0.7 - 10 * flick, 0)
+      ctx.lineTo(-len * 0.7, 5)
       ctx.fill()
       ctx.fillStyle = ROLE_COLOR.missile
       ctx.beginPath()
-      ctx.moveTo(r.x + 8, r.y + 6)
-      ctx.lineTo(r.x + r.w - 8, r.y + 6)
-      ctx.lineTo(r.x + r.w - 8, r.y + r.h - 18)
-      ctx.lineTo(cx, r.y + r.h - 2)
-      ctx.lineTo(r.x + 8, r.y + r.h - 18)
+      ctx.moveTo(-len * 0.7, -len * 0.4)
+      ctx.lineTo(len * 0.45, -len * 0.4)
+      ctx.lineTo(len, 0)
+      ctx.lineTo(len * 0.45, len * 0.4)
+      ctx.lineTo(-len * 0.7, len * 0.4)
       ctx.closePath()
       ctx.fill()
       ctx.fillStyle = '#212529'
-      ctx.fillRect(r.x + 8, r.y + 14, r.w - 16, 4)
+      ctx.fillRect(-len * 0.35, -len * 0.4, 4, len * 0.8)
       ctx.restore()
       return false
     }
     case 'ward':
-      // Rough stone with cracks: it only guards.
+      // Rough stone with cracks: it only guards. Beside a sloped part it is cut to the same angle.
       ctx.beginPath()
-      ctx.roundRect(r.x, r.y, r.w, r.h, 6)
-      ctx.fill()
+      if (b.shape && b.shape !== 'orb') {
+        const tl = [r.x, r.y] as const
+        const tr = [r.x + r.w, r.y] as const
+        const bl = [r.x, r.y + r.h] as const
+        const br = [r.x + r.w, r.y + r.h] as const
+        const pts = {
+          'tri-tl': [tl, tr, bl],
+          'tri-tr': [tl, tr, br],
+          'tri-bl': [tl, bl, br],
+          'tri-br': [tr, br, bl],
+        }[b.shape]
+        ctx.moveTo(...pts[0])
+        ctx.lineTo(...pts[1])
+        ctx.lineTo(...pts[2])
+        ctx.closePath()
+        ctx.fill()
+        ctx.clip()
+      } else {
+        ctx.roundRect(r.x, r.y, r.w, r.h, 6)
+        ctx.fill()
+      }
       ctx.strokeStyle = 'rgb(0 0 0 / 0.3)'
       ctx.lineWidth = 2
       ctx.beginPath()
@@ -1448,19 +1612,7 @@ export function drawRoleBrick(ctx: CanvasRenderingContext2D, b: Brick, time: num
       }
       break
     case 'spike':
-      for (let i = 0; i < 4; i++) {
-        const x = r.x + 8 + (i * (r.w - 16)) / 3
-        for (const [y0, y1] of [
-          [r.y, r.y - 7],
-          [r.y + r.h, r.y + r.h + 7],
-        ]) {
-          ctx.beginPath()
-          ctx.moveTo(x - 4, y0)
-          ctx.lineTo(x, y1)
-          ctx.lineTo(x + 4, y0)
-          ctx.fill()
-        }
-      }
+      drawSpikes(ctx, b, r, 0, 7)
       break
     case 'totem':
       ctx.globalAlpha = 0.6 + 0.4 * Math.sin(time * 4)

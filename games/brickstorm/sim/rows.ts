@@ -1,3 +1,4 @@
+import { HAZARD_HP, MAX_PER_ROW, SPECIAL_WEIGHT } from './hazards'
 import { random, randomInt } from '@forge/core/rng'
 import { modsOf } from './boosts'
 import { BRICK_INSET, CELL, TOP } from './config'
@@ -102,6 +103,10 @@ export const UNLOCK: Record<Exclude<BrickKind, 'normal' | 'boss'>, number> = {
   lightning: 8,
   armored: 12,
   splitter: 15,
+  slime: 20,
+  water: 35,
+  fire: 50,
+  void: 70,
 }
 
 /** Chance that a brick is special on a turn: 8% from turn 3, +0.5% per turn, capped at 30%. */
@@ -110,6 +115,22 @@ export function specialChance(turn: number): number {
 }
 
 const MAX_SPECIALS_PER_ROW = 2
+
+/** A special kind for a new brick: weighted (hazards rarer), skipping kinds already at their per-row cap. */
+export function pickSpecial(
+  unlocked: readonly BrickKind[],
+  placed: Partial<Record<BrickKind, number>>,
+  roll: () => number,
+): BrickKind {
+  const open = unlocked.filter((k) => (placed[k] ?? 0) < (MAX_PER_ROW[k] ?? Infinity))
+  const total = open.reduce((sum, k) => sum + (SPECIAL_WEIGHT[k] ?? 1), 0)
+  let r = roll() * total
+  for (const k of open) {
+    r -= SPECIAL_WEIGHT[k] ?? 1
+    if (r < 0) return k
+  }
+  return open[open.length - 1] ?? 'normal'
+}
 const JACKPOT_GOLD = 4
 
 /** Turns brick hp holds flat for, by the turn a stretch starts: long early (time to farm), short late. */
@@ -156,15 +177,36 @@ const HP_PER_BALL = 1.4
 /** ...rising to this many once the late-game toughness is fully in. */
 const HP_PER_BALL_LATE = 1.7
 
-/** Most hp a new brick may have: what the run's balls can deal, so a run short on balls stays playable. */
 /** From LATE_FROM the cap also compounds by this much a turn: a strong build buys time, not forever. */
-export const CAP_GROWTH = 1.02
+export const CAP_GROWTH = 1.024
+/** From this turn (only strong builds get here) the cap compounds by LATE_KICK a turn on top. */
+export const KICK_FROM = 135
+const LATE_KICK = 1.025
+/**
+ * Firepower (balls × skill damage) where the cap stops tracking your build one
+ * for one: about a typical turn-100 build. Below it nothing changes; above it
+ * the cap grows as firepower^CAP_EXP, so damage and ball skills still pay off.
+ */
+export const CAP_KNEE = 150
+const CAP_EXP = 0.7
 
+/** Firepower as the cap counts it: in full up to the knee, then growing slower. */
+function capPower(power: number): number {
+  return power <= CAP_KNEE ? power : CAP_KNEE * (power / CAP_KNEE) ** CAP_EXP
+}
+
+/**
+ * Most hp a new brick may have: what the run's balls can deal, so a run short
+ * on balls stays playable. A strong build's skills aren't cancelled out by it
+ * (see CAP_KNEE); late in a run it still compounds every turn.
+ */
 export function hpCap(state: RunState): number {
   const perBall =
     (HP_PER_BALL + (HP_PER_BALL_LATE - HP_PER_BALL) * lateHardness(state.turn)) *
-    CAP_GROWTH ** Math.max(0, state.turn - LATE_FROM)
-  return Math.max(1, Math.round(perBall * state.ballCount * modsOf(state.boosts).damageMult))
+    CAP_GROWTH ** Math.max(0, state.turn - LATE_FROM) *
+    LATE_KICK ** Math.max(0, state.turn - KICK_FROM)
+  const power = state.ballCount * modsOf(state.boosts).damageMult
+  return Math.max(1, Math.round(perBall * capPower(power)))
 }
 
 /** Most bricks a new row may have for a run with `balls` balls: 1 ball, 1 brick; 6 balls, 4. */
@@ -197,7 +239,10 @@ export function spawnRow(state: RunState): void {
   const add = (kind: BrickKind, col?: number, boost = 1) => {
     // Some bricks are triangles or orbs: odd angles to bounce off, a little less health.
     const shape = random(rng) < shapeChance(turn) ? SHAPES[randomInt(rng, SHAPES.length)] : undefined
-    const hp = Math.max(1, Math.round(brickHp(state, boost) * (shape ? SHAPE_HP[shape] : 1)))
+    const hp = Math.max(
+      1,
+      Math.round(brickHp(state, boost) * (shape ? SHAPE_HP[shape] : 1) * (HAZARD_HP[kind] ?? 1)),
+    )
     const c = col === undefined ? take() : free.splice(free.indexOf(col), 1)[0]
     const brick: Brick = { id: state.nextId++, col: c, row: 0, hp, maxHp: hp, kind, split: false }
     if (shape) brick.shape = shape
@@ -215,6 +260,7 @@ export function spawnRow(state: RunState): void {
   const unlocked = (Object.keys(UNLOCK) as Array<keyof typeof UNLOCK>).filter((k) => turn >= UNLOCK[k])
   const chance = specialChance(turn)
   let specials = 0
+  const placed: Partial<Record<BrickKind, number>> = {}
   // Always leave a column free, for the row's pickups, and no more bricks than the balls can handle.
   const wanted = Math.min(
     7,
@@ -231,7 +277,8 @@ export function spawnRow(state: RunState): void {
   for (let i = 0; i < count; i++) {
     let kind: BrickKind = 'normal'
     if (unlocked.length && specials < MAX_SPECIALS_PER_ROW && random(rng) < chance) {
-      kind = unlocked[randomInt(rng, unlocked.length)]
+      kind = pickSpecial(unlocked, placed, () => random(rng))
+      placed[kind] = (placed[kind] ?? 0) + 1
       specials++
     }
     add(kind, order[i], boost)

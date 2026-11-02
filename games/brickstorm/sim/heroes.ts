@@ -159,8 +159,8 @@ export interface HeroDef {
 const HEROES_LIST: HeroDef[] = [
   {
     id: 'rookie',
-    name: 'Rookie',
-    title: 'Brick Cadet',
+    name: 'Cubo',
+    title: 'Rookie Bot',
     price: 0,
     color: '#5ab8ff',
     skin: '#ffd7b0',
@@ -171,8 +171,8 @@ const HEROES_LIST: HeroDef[] = [
   },
   {
     id: 'knight',
-    name: 'Sir Bastion',
-    title: 'Shield Knight',
+    name: 'Bastion',
+    title: 'Brick Golem',
     price: 600,
     color: '#9fb4c8',
     skin: '#f1c7a1',
@@ -186,7 +186,7 @@ const HEROES_LIST: HeroDef[] = [
   {
     id: 'flash',
     name: 'Zip',
-    title: 'Speedster',
+    title: 'Spark Sprite',
     price: 650,
     color: '#ffd43b',
     skin: '#ffd7b0',
@@ -199,8 +199,8 @@ const HEROES_LIST: HeroDef[] = [
   },
   {
     id: 'ranger',
-    name: 'Wren',
-    title: 'Ranger',
+    name: 'Sprig',
+    title: 'Leaf Scout',
     price: 700,
     color: '#51cf66',
     skin: '#e8b98f',
@@ -214,7 +214,7 @@ const HEROES_LIST: HeroDef[] = [
   {
     id: 'baron',
     name: 'Goldie',
-    title: 'Gold Baron',
+    title: 'Gold Slime',
     price: 800,
     color: '#fcc419',
     skin: '#ffd7b0',
@@ -229,7 +229,7 @@ const HEROES_LIST: HeroDef[] = [
   {
     id: 'berserker',
     name: 'Grakka',
-    title: 'Berserker',
+    title: 'Lava Imp',
     price: 900,
     color: '#ff6b6b',
     skin: '#c99273',
@@ -242,8 +242,8 @@ const HEROES_LIST: HeroDef[] = [
   },
   {
     id: 'sage',
-    name: 'Old Quill',
-    title: 'Sage',
+    name: 'Hoot',
+    title: 'Wise Owl',
     price: 900,
     color: '#b197fc',
     skin: '#f1c7a1',
@@ -256,7 +256,7 @@ const HEROES_LIST: HeroDef[] = [
   {
     id: 'giant',
     name: 'Bram',
-    title: 'Gentle Giant',
+    title: 'Boulder Buddy',
     price: 950,
     color: '#a9773c',
     skin: '#e0a77f',
@@ -270,7 +270,7 @@ const HEROES_LIST: HeroDef[] = [
   {
     id: 'pyro',
     name: 'Ember',
-    title: 'Pyromancer',
+    title: 'Flame Wisp',
     price: 1000,
     color: '#ff922b',
     skin: '#ffd7b0',
@@ -283,8 +283,8 @@ const HEROES_LIST: HeroDef[] = [
   },
   {
     id: 'juggler',
-    name: 'Pip',
-    title: 'Juggler',
+    name: 'Pip & Pop',
+    title: 'Jelly Twins',
     price: 1000,
     color: '#f783ac',
     skin: '#ffd7b0',
@@ -298,7 +298,7 @@ const HEROES_LIST: HeroDef[] = [
   {
     id: 'bomber',
     name: 'Boomer',
-    title: 'Bombardier',
+    title: 'Bomb Bot',
     price: 1100,
     color: '#495057',
     skin: '#e8b98f',
@@ -310,8 +310,8 @@ const HEROES_LIST: HeroDef[] = [
   },
   {
     id: 'pirate',
-    name: 'Captain Rook',
-    title: 'Sky Pirate',
+    name: "Cap'n Pinch",
+    title: 'Sky Crab',
     price: 1100,
     color: '#c92a2a',
     skin: '#e0a77f',
@@ -326,7 +326,7 @@ const HEROES_LIST: HeroDef[] = [
   {
     id: 'tempest',
     name: 'Volta',
-    title: 'Storm Caller',
+    title: 'Storm Cloud',
     price: 1200,
     color: '#4dabf7',
     skin: '#f1c7a1',
@@ -339,8 +339,8 @@ const HEROES_LIST: HeroDef[] = [
   },
   {
     id: 'monk',
-    name: 'Master Sun',
-    title: 'Combo Monk',
+    name: 'Master Ribbit',
+    title: 'Combo Frog',
     price: 1200,
     color: '#ff8787',
     skin: '#e8b98f',
@@ -353,8 +353,8 @@ const HEROES_LIST: HeroDef[] = [
   },
   {
     id: 'cleric',
-    name: 'Sister Lumen',
-    title: 'Cleric',
+    name: 'Lumi',
+    title: 'Star Sprite',
     price: 1300,
     color: '#fff3bf',
     skin: '#ffd7b0',
@@ -369,7 +369,7 @@ const HEROES_LIST: HeroDef[] = [
   {
     id: 'ninja',
     name: 'Kage',
-    title: 'Shadow Ninja',
+    title: 'Shadow Cat',
     price: 1300,
     color: '#343a40',
     skin: '#e8b98f',
@@ -382,8 +382,8 @@ const HEROES_LIST: HeroDef[] = [
   },
   {
     id: 'gambler',
-    name: 'Lucky Lou',
-    title: 'Gambler',
+    name: 'Lucky',
+    title: 'Dice Critter',
     price: 1400,
     color: '#20c997',
     skin: '#ffd7b0',
@@ -396,8 +396,8 @@ const HEROES_LIST: HeroDef[] = [
   },
   {
     id: 'vampire',
-    name: 'Count Vex',
-    title: 'Vampire',
+    name: 'Count Flap',
+    title: 'Vampire Bat',
     price: 1500,
     color: '#862e9c',
     skin: '#e9e4f0',
@@ -411,7 +411,7 @@ const HEROES_LIST: HeroDef[] = [
   {
     id: 'paladin',
     name: 'Aurelia',
-    title: 'Paladin',
+    title: 'Sun Lion',
     price: 1500,
     color: '#ffe066',
     skin: '#f1c7a1',
@@ -425,8 +425,8 @@ const HEROES_LIST: HeroDef[] = [
   },
   {
     id: 'necro',
-    name: 'Morda',
-    title: 'Necromancer',
+    name: 'Boo',
+    title: 'Little Ghost',
     price: 1600,
     color: '#5c940d',
     skin: '#d8e2c8',
@@ -440,7 +440,7 @@ const HEROES_LIST: HeroDef[] = [
   {
     id: 'titan',
     name: 'Granite',
-    title: 'Stone Titan',
+    title: 'Mountain Golem',
     price: 1600,
     color: '#868e96',
     skin: '#adb5bd',
@@ -455,7 +455,7 @@ const HEROES_LIST: HeroDef[] = [
   {
     id: 'tinker',
     name: 'Gizmo',
-    title: 'Tinker',
+    title: 'Gear Bot',
     price: 1700,
     color: '#e8590c',
     skin: '#ffd7b0',
@@ -467,8 +467,8 @@ const HEROES_LIST: HeroDef[] = [
   },
   {
     id: 'frost',
-    name: 'Isolde',
-    title: 'Frost Witch',
+    name: 'Flurry',
+    title: 'Snow Slime',
     price: 1800,
     color: '#99e9f2',
     skin: '#e7f5ff',
@@ -482,7 +482,7 @@ const HEROES_LIST: HeroDef[] = [
   {
     id: 'sorcerer',
     name: 'Nyx',
-    title: 'Glass Sorcerer',
+    title: 'Crystal Critter',
     price: 2000,
     color: '#cc5de8',
     skin: '#f3d9fa',
@@ -496,7 +496,7 @@ const HEROES_LIST: HeroDef[] = [
   {
     id: 'dragon',
     name: 'Drakon',
-    title: 'Dragon Rider',
+    title: 'Baby Dragon',
     price: 3500,
     color: '#e03131',
     skin: '#e0a77f',

@@ -4,7 +4,7 @@
 import { playSound } from '@forge/audio/sound'
 import { h } from '@forge/ui/dom'
 import { coinAmount } from './coin'
-import { heroPortrait } from './hero-art'
+import { heroPortraitUrl } from './hero-art'
 import { avatarStage } from './hero-avatar'
 import { t } from './i18n'
 import type { Save } from './save'
@@ -29,10 +29,12 @@ export function perkText(p: HeroPerk): string {
   return t(p.text, vars)
 }
 
+/** The hero's portrait image, `size` CSS px, rendered at the screen's pixel density. No alt: tiles carry the name. */
 function portrait(id: HeroId, size: number): HTMLElement {
-  const el = h('span', { class: 'bs-hero-portrait' })
-  el.innerHTML = heroPortrait(HEROES[id], size)
-  return el
+  const img = h('img', { alt: '', draggable: false })
+  img.src = heroPortraitUrl(id, size * (globalThis.devicePixelRatio || 1))
+  img.width = img.height = size
+  return h('span', { class: 'bs-hero-portrait' }, img)
 }
 
 export interface HeroBrowserOptions {

@@ -30,7 +30,19 @@ export interface Rect {
   h: number
 }
 
-export type BrickKind = 'normal' | 'bomb' | 'gold' | 'lightning' | 'mystery' | 'armored' | 'splitter' | 'boss'
+export type BrickKind =
+  | 'slime'
+  | 'water'
+  | 'fire'
+  | 'void'
+  | 'normal'
+  | 'bomb'
+  | 'gold'
+  | 'lightning'
+  | 'mystery'
+  | 'armored'
+  | 'splitter'
+  | 'boss'
 
 /** A boss skill (see sim/boss-skills.ts). The first five were the original "traits". */
 export type BossSkillId =
@@ -138,10 +150,13 @@ export type BossRole =
   | 'ice'
   /** Hurts the hero when a ball hits it. */
   | 'thorn'
-  /** Falls fast; hurts double if it crashes. */
+  /** A rocket aimed at the hero: launches next boss turn unless shot down. */
   | 'missile'
   /** A stone block guarding a weak point. */
   | 'ward'
+
+/** A side of a brick (or the boss) a ball struck. */
+export type Face = 'top' | 'bottom' | 'left' | 'right'
 
 export interface Brick {
   id: number
@@ -156,6 +171,8 @@ export interface Brick {
   role?: BossRole
   /** Turns left before a timed brick acts (hatches, melts…). */
   timer?: number
+  /** Thorn / spike bricks: the faces that carry spikes. Missing = every face (older saves). */
+  spikes?: Face[]
   /** Not a square: a triangle (named by its right-angle corner) or a round orb. Missing = square. */
   shape?: BrickShape
 }
@@ -190,6 +207,8 @@ export interface Ball {
   pierceLeft: number
   /** Extra damage from wall bounces this volley (Rubber Walls boost). */
   bounceBonus: number
+  /** Set burning by a Fire brick: seconds left before it burns out. */
+  burn?: number
   /** Id of the brick the ball is overlapping, -1 if none; prevents double hits. */
   lastBrick: number
   /** Lasers the ball is passing over right now, so each fires once per pass. */
@@ -265,16 +284,39 @@ export type SimEvent =
   /** A storm turn: a special wave arrives. */
   | { type: 'storm'; kind: StormKind }
   /** A boss attack hurt the hero directly (thorns, a slam…), at (x, y). */
-  | { type: 'heroHit'; damage: number; x: number; y: number; source: 'thorn' | 'slam' }
+  | { type: 'heroHit'; damage: number; x: number; y: number; source: 'thorn' | 'slam' | 'rocket' }
+  /** A boss rocket launched from (x, y) at the hero at (tx, ty). */
+  | { type: 'rocket'; x: number; y: number; tx: number; ty: number }
   /** A boss attack lands now (the ground slams, missiles launch, a hex curses), at (x, y). */
-  | { type: 'bossAttack'; id: 'slam' | 'barrage' | 'hex' | 'thorns'; x: number; y: number }
+  | {
+      type: 'bossAttack'
+      id: 'slam' | 'barrage' | 'hex' | 'thorns'
+      x: number
+      y: number
+      /** Hex: the bricks it cursed (a bolt flies to each). */
+      targets?: Array<{ x: number; y: number }>
+    }
+  /** A Drain boss drinks the hero's lost health: a life stream from (x, y) to the boss at (tx, ty). */
+  | { type: 'drain'; x: number; y: number; tx: number; ty: number }
+  /** A hazard ate a ball (Slime, Void, or it burned out). */
+  | { type: 'eaten'; x: number; y: number; by: 'slime' | 'void' | 'burn' }
+  /** A Fire brick set a ball burning. */
+  | { type: 'ignite'; x: number; y: number }
+  /** Water doused a fire ball (or put out a burning one). */
+  | { type: 'douse'; x: number; y: number }
   /** A boss attack is coming next turn. */
   | { type: 'bossWarn'; id: 'slam' }
+  /** The boss will step one column this way next turn. */
+  | { type: 'bossWarn'; id: 'step'; dir: 1 | -1 }
+  /** The boss moved one column (its telegraphed step). */
+  | { type: 'bossStep'; dir: 1 | -1 }
+  /** The boss smashed bricks in its way (arriving or moving): where they were, coins they paid. */
+  | { type: 'bossCrush'; at: Array<{ x: number; y: number }>; coins: number }
   /** The board grew for a boss fight (or shrank back after it). */
   | { type: 'arena'; grow: boolean }
   /** The next turn is a storm turn. */
   | { type: 'stormSoon' }
-  /** The hero's signature trait went off (Frost Witch's freeze, Necromancer's ball…). */
+  /** The hero's signature trait went off (Flurry's freeze, Boo's ball…). */
   | { type: 'heroSkill'; hero: HeroId; x?: number; y?: number }
 
 export type HealSource = 'heart' | 'boss' | 'regen' | 'life' | 'revive' | 'potion'
@@ -352,7 +394,7 @@ export interface RunState {
   /** Hero health: bricks crashing into the line take it; at 0 the run is over. May be fractional. */
   hp: number
   maxHp: number
-  /** Bricks destroyed this run (Necromancer's souls). */
+  /** Bricks destroyed this run (Boo's souls). */
   kills: number
   nextId: number
   events: SimEvent[]

@@ -1,23 +1,9 @@
-import { describe, expect, it } from 'vitest'
-import { heroEmblem, heroPortrait } from './hero-art'
-import { HEROES, HERO_IDS, type HeroEmblem, type HeroHat } from './sim/heroes'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { drawEmblem, heroEmblem, heroPortraitUrl, portraitFrame } from './hero-art'
+import { HeroAvatar } from './hero-avatar'
+import { HEROES, HERO_IDS, type HeroEmblem } from './sim/heroes'
+import { fakeCanvas, installPath2D, type FakeCanvas } from './test-canvas'
 
-const HATS: HeroHat[] = [
-  'cap',
-  'helmet',
-  'horns',
-  'hood',
-  'wizard',
-  'crown',
-  'halo',
-  'tophat',
-  'bandana',
-  'mask',
-  'tricorn',
-  'spikes',
-  'goggles',
-  'none',
-]
 const EMBLEMS: HeroEmblem[] = [
   'ball',
   'shield',
@@ -46,36 +32,107 @@ const EMBLEMS: HeroEmblem[] = [
   'dragon',
 ]
 
-/** Drops the per-call gradient ids so markup compares by look only. */
-const norm = (svg: string) => svg.replace(/bs-hero-[\w-]+/g, 'ID')
+interface FakeEl {
+  width: number
+  height: number
+  getContext: () => FakeCanvas
+  toDataURL: () => string
+  ctx: FakeCanvas
+}
 
-describe('heroPortrait', () => {
-  it('draws an SVG in the hero colour for every hero', () => {
+/** A canvas stand-in whose data URL names the hero and size it was drawn for. */
+function fakeEl(id: string): FakeEl {
+  const ctx = fakeCanvas()
+  const el: FakeEl = {
+    width: 0,
+    height: 0,
+    ctx,
+    getContext: () => ctx,
+    toDataURL: () => `data:fake/${id}@${el.width}x${el.height}`,
+  }
+  return el
+}
+
+describe('heroPortraitUrl', () => {
+  beforeAll(installPath2D)
+
+  it('draws every hero differently', () => {
+    const drawn = HERO_IDS.map((id) => {
+      const el = fakeEl(id)
+      heroPortraitUrl(id, 30, () => el)
+      return JSON.stringify(el.ctx.log)
+    })
+    expect(new Set(drawn).size).toBe(HERO_IDS.length)
+  })
+
+  it('caches by hero and size', () => {
+    const make = vi.fn(() => fakeEl('rookie'))
+    const a = heroPortraitUrl('rookie', 33, make)
+    const b = heroPortraitUrl('rookie', 33, make)
+    expect(b).toBe(a)
+    expect(make).toHaveBeenCalledTimes(1)
+    heroPortraitUrl('rookie', 34, make)
+    expect(make).toHaveBeenCalledTimes(2)
+  })
+
+  it('draws at the given size, on the card in the hero colour, with the creature', () => {
+    const el = fakeEl('knight')
+    expect(heroPortraitUrl('knight', 96, () => el)).toBe('data:fake/knight@96x96')
+    expect(el.width).toBe(96)
+    expect(el.height).toBe(96)
+    // The card is filled, clipped and outlined; the creature draws inside the clip, then the badge.
+    const calls = el.ctx.calls
+    expect(calls.filter((c) => c === 'roundRect').length).toBeGreaterThanOrEqual(3)
+    const clip = calls.indexOf('clip')
+    expect(clip).toBeGreaterThan(calls.indexOf('createLinearGradient'))
+    const creature = fakeCanvas()
+    const avatar = new HeroAvatar('knight', () => 0.5)
+    const { at, floorY, scale } = portraitFrame(avatar.bodyMetrics, HEROES.knight.hat)
+    avatar.draw(creature, floorY, scale, at)
+    const run = JSON.stringify(creature.log).slice(1, -1)
+    const log = JSON.stringify(el.ctx.log.slice(clip + 1))
+    expect(log).toContain(run)
+    expect(log.indexOf(run)).toBeGreaterThan(0)
+  })
+
+  it('rounds a fractional pixel size', () => {
+    const el = fakeEl('rookie')
+    heroPortraitUrl('rookie', 48 * 2.625, () => el)
+    expect(el.width).toBe(126)
+  })
+})
+
+describe('portraitFrame', () => {
+  it('shows every face, its hat and the top of its body, centred', () => {
     for (const id of HERO_IDS) {
-      const svg = heroPortrait(HEROES[id])
-      expect(svg, id).toMatch(/^<svg[^>]*viewBox="0 0 64 64"/)
-      expect(svg, id).toContain(HEROES[id].color)
+      const m = new HeroAvatar(id).bodyMetrics
+      const { at, floorY, scale } = portraitFrame(m, HEROES[id].hat)
+      const h = m.head
+      const left = at + (h.x - h.rx) * scale
+      const right = at + (h.x + h.rx) * scale
+      const top = floorY + Math.min(m.headTop, h.y - h.ry) * scale
+      const bottom = floorY + (h.y + h.ry) * scale
+      const bodyTop = floorY + m.bodyBox.y * scale
+      expect(left, id).toBeGreaterThanOrEqual(2)
+      expect(right, id).toBeLessThanOrEqual(62)
+      expect(top, id).toBeGreaterThanOrEqual(2)
+      expect(bottom, id).toBeLessThanOrEqual(56)
+      // At least a few px of body show above the card's bottom edge.
+      expect(bodyTop, id).toBeLessThanOrEqual(56)
+      expect(Math.abs((left + right) / 2 - 32), id).toBeLessThan(1)
+      // Big enough to read at 48px.
+      expect(right - left, id).toBeGreaterThan(24)
     }
   })
 
-  it('gives every hero a distinct portrait', () => {
-    const all = HERO_IDS.map((id) => norm(heroPortrait(HEROES[id])))
-    expect(new Set(all).size).toBe(all.length)
-  })
-
-  it('uses unique gradient ids per call', () => {
-    const def = HEROES[HERO_IDS[0]]
-    expect(heroPortrait(def)).not.toBe(heroPortrait(def))
-  })
-
-  it('respects size', () => {
-    expect(heroPortrait(HEROES[HERO_IDS[0]], 40)).toMatch(/width="40" height="40"/)
-  })
-
-  it('draws every hat distinctly', () => {
-    const base = HEROES[HERO_IDS[0]]
-    const all = HATS.map((hat) => norm(heroPortrait({ ...base, hat })))
-    expect(new Set(all).size).toBe(HATS.length)
+  it('keeps the head off the top and bottom bands of the card for every hero', () => {
+    for (const id of HERO_IDS) {
+      const m = new HeroAvatar(id).bodyMetrics
+      const { floorY, scale } = portraitFrame(m, HEROES[id].hat)
+      const cy = floorY + m.head.y * scale
+      expect(cy, id).toBeGreaterThan(16)
+      expect(cy, id).toBeLessThan(46)
+    }
   })
 })
 
@@ -93,5 +150,22 @@ describe('heroEmblem', () => {
     const svg = heroEmblem('heart', '#123456', 18)
     expect(svg).toContain('#123456')
     expect(svg).toMatch(/width="18" height="18"/)
+  })
+})
+
+describe('drawEmblem', () => {
+  beforeAll(installPath2D)
+
+  it('draws every emblem on a canvas', () => {
+    for (const e of EMBLEMS) {
+      const ctx = fakeCanvas()
+      const paints: unknown[] = []
+      for (const k of ['fillStyle', 'strokeStyle'])
+        Object.defineProperty(ctx, k, { set: (v) => paints.push(v), get: () => '' })
+      drawEmblem(ctx, e, '#123456', 12, 12, 24)
+      expect(ctx.calls, e).toContain('save')
+      expect(ctx.calls.filter((c) => c === 'fill' || c === 'stroke').length, e).toBeGreaterThan(0)
+      expect(paints, e).toContain('#123456')
+    }
   })
 })

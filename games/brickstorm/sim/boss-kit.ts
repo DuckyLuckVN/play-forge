@@ -4,7 +4,7 @@ import { randomInt } from '@forge/core/rng'
 import { dims } from './dims'
 import { hpCap, hpScale } from './rows'
 import { cellCenter } from './rows'
-import type { Boss, BossRole, BossSkillId, Brick, BrickKind, RunState } from './types'
+import type { Boss, BossRole, BossSkillId, Brick, BrickKind, BrickShape, Face, RunState } from './types'
 
 export function bossParts(s: RunState): Brick[] {
   return s.bricks.filter((b) => b.kind === 'boss')
@@ -66,10 +66,49 @@ export function summon(
   })
 }
 
-/** Removes non-boss bricks sitting in the boss's cells (it moved onto them). */
-export function crushUnderBoss(s: RunState): void {
-  const cells = new Set(bossParts(s).map((p) => key(p.col, p.row)))
-  s.bricks = s.bricks.filter((b) => b.kind === 'boss' || !cells.has(key(b.col, b.row)))
+/** The sides each triangle's slope faces (named by its right-angle corner, so the slope faces away from it). */
+export const SLOPE_FACES: Record<'tri-tl' | 'tri-tr' | 'tri-bl' | 'tri-br', Face[]> = {
+  'tri-tl': ['bottom', 'right'],
+  'tri-tr': ['bottom', 'left'],
+  'tri-bl': ['top', 'right'],
+  'tri-br': ['top', 'left'],
+}
+const STEP: Record<Face, [number, number]> = { top: [0, -1], bottom: [0, 1], left: [-1, 0], right: [1, 0] }
+
+/**
+ * A ward at (col, row) beside a sloped boss part, on the side its slope
+ * faces, takes the same angle: the armour carries the slope on. Else square.
+ */
+export function wardShape(s: RunState, col: number, row: number): BrickShape | undefined {
+  for (const p of bossParts(s)) {
+    if (!p.shape || p.shape === 'orb') continue
+    for (const f of SLOPE_FACES[p.shape]) {
+      const [dc, dr] = STEP[f]
+      if (p.col + dc === col && p.row + dr === row) return p.shape
+    }
+  }
+  return undefined
+}
+
+/** Coins a brick the boss smashes pays (gold pays triple). No XP: the boss did the work. */
+const CRUSH_COINS = 1
+
+/**
+ * Smashes non-boss bricks in the boss's cells, or within `ring` cells of them
+ * (an arrival clears room around itself). They pay a coin each and the
+ * effects get one `bossCrush` with where they were.
+ */
+export function crushUnderBoss(s: RunState, ring = 0): void {
+  const cells = new Set<string>()
+  for (const p of bossParts(s))
+    for (let dc = -ring; dc <= ring; dc++)
+      for (let dr = -ring; dr <= ring; dr++) cells.add(key(p.col + dc, p.row + dr))
+  const crushed = s.bricks.filter((b) => b.kind !== 'boss' && cells.has(key(b.col, b.row)))
+  if (!crushed.length) return
+  s.bricks = s.bricks.filter((b) => !crushed.includes(b))
+  const coins = crushed.reduce((sum, b) => sum + CRUSH_COINS * (b.kind === 'gold' ? 3 : 1), 0)
+  s.coins += coins
+  s.events.push({ type: 'bossCrush', at: crushed.map((b) => cellCenter(b.col, b.row)), coins })
 }
 
 /** Moves the whole boss, crushing what is in the way. */

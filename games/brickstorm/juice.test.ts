@@ -4,6 +4,7 @@ import { theme } from '@forge/ui/theme'
 import {
   BOSS_DEATH_BOOM,
   BOSS_DEATH_LIFE,
+  DEFEAT_HOLD,
   barShake,
   comboPitch,
   GROW_FX_LIFE,
@@ -15,6 +16,7 @@ import {
   orbAlpha,
   orbPoint,
   pitched,
+  ROCKET_FLY,
 } from './juice'
 import { CELL } from './sim/config'
 import { BOSS_SOUNDS, BRICK_SOUNDS } from './sounds'
@@ -583,5 +585,59 @@ describe('xp bar after a combo', () => {
     for (let i = 0; i < 40; i++) j.update(0.05)
     expect(j.barMult).toBe(1)
     expect(j.xpGlow).toBeLessThan(1)
+  })
+})
+
+describe('boss attacks in flight', () => {
+  it('a rocket hit shows on impact, not when it launches', () => {
+    const j = juice()
+    j.handle({ type: 'rocket', x: 100, y: 100, tx: 200, ty: 700 })
+    particles.text.mockClear()
+    j.handle({ type: 'heroHit', damage: 9, x: 200, y: 700, source: 'rocket' })
+    expect(particles.text).not.toHaveBeenCalled()
+    expect(j.beams[0]).toMatchObject({ kind: 'rocket', damage: 9 })
+    j.update(ROCKET_FLY + 0.01)
+    expect(particles.text).toHaveBeenCalledWith(200, expect.any(Number), '−9', expect.anything())
+    expect(j.beams).toHaveLength(0)
+  })
+
+  it('a boss smashing bricks bursts each one, one after another', () => {
+    const j = juice()
+    particles.burst.mockClear()
+    j.handle({
+      type: 'bossCrush',
+      at: [
+        { x: 0, y: 0 },
+        { x: 40, y: 0 },
+        { x: 80, y: 0 },
+      ],
+      coins: 3,
+    })
+    const before = particles.burst.mock.calls.length
+    j.update(0.5)
+    expect(particles.burst.mock.calls.length - before).toBe(3)
+  })
+})
+
+describe('defeat', () => {
+  it('holds the results back while the knockout plays', () => {
+    const j = juice()
+    expect(j.defeatDone).toBe(true) // nothing to wait for
+    j.handle({ type: 'over' })
+    expect(j.defeatDone).toBe(false)
+    j.update(DEFEAT_HOLD / 2)
+    expect(j.defeatDone).toBe(false)
+    j.update(DEFEAT_HOLD)
+    expect(j.defeatDone).toBe(true)
+  })
+
+  it('waits for a rocket still in flight to land first', () => {
+    const j = juice()
+    j.handle({ type: 'rocket', x: 0, y: 0, tx: 0, ty: 700 })
+    j.handle({ type: 'over' })
+    j.update(DEFEAT_HOLD + 0.01)
+    expect(j.defeatDone).toBe(false)
+    j.update(ROCKET_FLY + DEFEAT_HOLD)
+    expect(j.defeatDone).toBe(true)
   })
 })

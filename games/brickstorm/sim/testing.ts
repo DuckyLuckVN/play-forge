@@ -1,6 +1,6 @@
 // Helpers shared by the simulation tests.
 import { createRun, step } from './run'
-import type { Brick, RunState } from './types'
+import type { Ball, Brick, RunState } from './types'
 
 /** A fresh run with no bricks or pickups on the board. */
 export function empty(seed = 1): RunState {
@@ -24,3 +24,19 @@ export function runVolley(s: RunState, each?: (s: RunState) => void, max = 120 *
     each?.(s)
   }
 }
+
+/** A flying normal ball at (x, y), heading up by default. */
+export const ballAt = (x: number, y: number, vx = 0, vy = -600): Ball => ({
+  x,
+  y,
+  vx,
+  vy,
+  status: 'flying',
+  kind: 'normal',
+  r: 7,
+  split: false,
+  inside: [],
+  pierceLeft: 0,
+  bounceBonus: 0,
+  lastBrick: -1,
+})

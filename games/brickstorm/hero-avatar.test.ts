@@ -1,8 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
+import { BODIES } from './creature/bodies'
+import { solveHands } from './creature/hands'
+import { CREATURE_LOOKS } from './creature/looks'
+import type { Frame } from './creature/types'
 import { HeroAvatar, type AvatarContext, type Mood } from './hero-avatar'
 import { HERO_IDS } from './sim/heroes'
+import { fakeCanvas, installPath2D } from './test-canvas'
 
-vi.mock('@forge/fx/tween', () => ({ prefersReducedMotion: () => false }))
+const motion = vi.hoisted(() => ({ reduced: false }))
+vi.mock('@forge/fx/tween', () => ({ prefersReducedMotion: () => motion.reduced }))
 
 const ctx = (patch: Partial<AvatarContext> = {}): AvatarContext => ({
   homeX: 100,
@@ -17,26 +23,7 @@ const ctx = (patch: Partial<AvatarContext> = {}): AvatarContext => ({
   ...patch,
 })
 
-/** A canvas context that accepts every call, so drawing can be smoke-tested without a browser. */
-function fakeCanvas(): CanvasRenderingContext2D {
-  const target: Record<string, unknown> = {}
-  const gradient = { addColorStop: () => undefined }
-  return new Proxy(target, {
-    get: (t, k) => (k in t ? t[k as string] : () => gradient),
-    set: (t, k, v) => {
-      t[k as string] = v
-      return true
-    },
-  }) as unknown as CanvasRenderingContext2D
-}
-
-// Node has no Path2D: a stand-in that records nothing.
-;(globalThis as { Path2D?: unknown }).Path2D ??= class {
-  moveTo() {}
-  lineTo() {}
-  quadraticCurveTo() {}
-  closePath() {}
-}
+installPath2D()
 
 const run = (a: HeroAvatar, seconds: number, c = ctx()) => {
   for (let t = 0; t < seconds; t += 1 / 60) a.update(1 / 60, c)
@@ -148,5 +135,258 @@ describe('hero aura moods', () => {
     }
     a.handle({ type: 'breach', damage: 5, at: [], boss: false })
     expect(() => a.draw(c, 760)).not.toThrow()
+  })
+})
+
+describe('creature hands', () => {
+  const hold = { x: 100, y: 740, r: 5 }
+  const near = (p: { x: number; y: number } | null | undefined, q: { x: number; y: number }) => {
+    expect(p).toBeTruthy()
+    expect(Math.abs(p!.x - q.x)).toBeLessThan(0.01)
+    expect(Math.abs(p!.y - q.y)).toBeLessThan(0.01)
+  }
+
+  it('creature hand holds the ball', () => {
+    const a = new HeroAvatar('rookie')
+    run(a, 0.5, ctx({ hold }))
+    expect(a.mood).toBe('idle')
+    a.draw(fakeCanvas(), 760)
+    near(a.lastHands?.front, hold)
+  })
+
+  it('holds the ball again right after a KO and revive (fall decays, it never quite reaches 0)', () => {
+    const a = new HeroAvatar('rookie')
+    run(a, 0.5, ctx({ hold }))
+    a.setMood('ko')
+    run(a, 1, ctx({ hold }))
+    a.setMood('revive')
+    run(a, 1.5, ctx({ hold }))
+    expect(a.mood).toBe('idle')
+    a.draw(fakeCanvas(), 760)
+    near(a.lastHands?.front, hold)
+  })
+
+  it('holds the ball from the first frames after reset(), even straight out of a KO', () => {
+    const a = new HeroAvatar('rookie')
+    a.setMood('ko')
+    run(a, 1, ctx({ hold }))
+    a.reset()
+    run(a, 1 / 60, ctx({ hold }))
+    a.draw(fakeCanvas(), 760)
+    near(a.lastHands?.front, hold)
+  })
+
+  it('draws the held ball at the hold point, then the grip over it', () => {
+    const a = new HeroAvatar('rookie')
+    const balls: Array<[number, number, number]> = []
+    a.drawBall = (_c, x, y, r) => balls.push([x, y, r])
+    run(a, 0.5, ctx({ hold }))
+    a.draw(fakeCanvas(), 760)
+    expect(balls).toHaveLength(1)
+    expect(balls[0][0]).toBeCloseTo(100, 6)
+    expect(balls[0][1]).toBeCloseTo(740, 6)
+    expect(balls[0][2]).toBe(5)
+  })
+
+  it('mirrored creature still holds the ball', () => {
+    const a = new HeroAvatar('rookie')
+    const h = { x: 300, y: 740, r: 5 }
+    run(a, 0.5, ctx({ homeX: 300, hold: h }))
+    expect(a.facing).toBe(-1)
+    a.draw(fakeCanvas(), 760)
+    near(a.lastHands?.front, h)
+    expect(a.lastHands!.back.x).toBeGreaterThan(a.x) // the back hand is behind (facing left)
+  })
+
+  it('holds at a bigger size and while worried or aiming', () => {
+    for (const patch of [{ danger: true }, { aim: 1.2 }, { watch: { x: 200, y: 300 } }]) {
+      const a = new HeroAvatar('rookie')
+      a.size = 1.35
+      run(a, 0.6, ctx({ hold, ...patch }))
+      a.draw(fakeCanvas(), 760)
+      near(a.lastHands?.front, hold)
+    }
+  })
+
+  it('baron (the slime) holds the ball in its floating front hand, mirrored and bigger too', () => {
+    for (const [homeX, size] of [
+      [100, 1],
+      [300, 1],
+      [100, 1.35],
+    ]) {
+      const a = new HeroAvatar('baron')
+      a.size = size
+      const h = { x: homeX, y: 740, r: 5 }
+      run(a, 0.5, ctx({ homeX, hold: h }))
+      expect(a.mood).toBe('idle')
+      a.draw(fakeCanvas(), 760)
+      near(a.lastHands?.front, h)
+    }
+  })
+
+  /** The rookie's solved back-hand target in board units (size 1, no knock or tremble). */
+  const backTarget = (a: HeroAvatar, floorY = 760) => {
+    const f = (a as unknown as { buildFrame(): Frame }).buildFrame()
+    const look = CREATURE_LOOKS.rookie
+    const body = BODIES.robot
+    const m = body.metrics(look, f)
+    const { back } = solveHands(m, body.pose!(look, f), null, false)
+    return { x: a.x + back.x * a.facing, y: floorY + f.hop + back.y }
+  }
+
+  it('setHero snaps hands', () => {
+    const a = new HeroAvatar('flash')
+    run(a, 0.5, ctx({ hold }))
+    a.draw(fakeCanvas(), 760)
+    a.setHero('rookie') // cheer: not a hold mood, the hands are free
+    a.update(1 / 60, ctx({ hold }))
+    a.draw(fakeCanvas(), 760)
+    // Without the snap the back hand would still be near its old idle spot.
+    near(a.lastHands?.back, backTarget(a))
+    const first = a.lastHands
+    a.draw(fakeCanvas(), 760)
+    expect(a.lastHands).toEqual(first)
+  })
+
+  it('a free hand sits on its target at once under reduced motion', () => {
+    const a = new HeroAvatar('rookie')
+    run(a, 0.5, ctx({ hold }))
+    a.draw(fakeCanvas(), 760)
+    motion.reduced = true
+    try {
+      a.handle({ type: 'levelUp' })
+      a.update(1 / 60, ctx({ hold }))
+      a.draw(fakeCanvas(), 760)
+      near(a.lastHands?.back, backTarget(a))
+    } finally {
+      motion.reduced = false
+    }
+  })
+
+  it('a body shift moves forward with the facing', () => {
+    const robot = BODIES.robot
+    robot.offsetX = () => 3
+    try {
+      for (const homeX of [100, 300]) {
+        const a = new HeroAvatar('rookie')
+        const h = { x: homeX, y: 740, r: 5 }
+        run(a, 0.5, ctx({ homeX, hold: h }))
+        a.draw(fakeCanvas(), 760)
+        const plain = backTarget(a)
+        expect(a.lastHands!.back.x - plain.x).toBeCloseTo(3 * a.facing, 1)
+      }
+    } finally {
+      delete robot.offsetX
+    }
+  })
+
+  it('a free hand lags its target, then settles on it', () => {
+    const a = new HeroAvatar('rookie')
+    run(a, 0.5, ctx({ hold }))
+    a.draw(fakeCanvas(), 760)
+    a.handle({ type: 'levelUp' }) // cheer: hands fly up
+    a.update(1 / 60, ctx({ hold }))
+    a.draw(fakeCanvas(), 760)
+    const lag = a.lastHands!.back
+    run(a, 0.4, ctx({ hold }))
+    a.draw(fakeCanvas(), 760)
+    expect(a.lastHands!.back.y).toBeLessThan(lag.y) // still travelling up after one frame
+  })
+})
+
+describe('signature fidget', () => {
+  const hold = { x: 100, y: 740, r: 5 }
+  const sample = (a: HeroAvatar, seconds: number, c = ctx()) => {
+    const seen: number[] = []
+    for (let t = 0; t < seconds; t += 1 / 60) {
+      a.update(1 / 60, c)
+      seen.push(a.signature)
+    }
+    return seen
+  }
+
+  it('plays at least once within 11 s of idle, running 0..1 over 1.2 s', () => {
+    const a = new HeroAvatar('rookie', () => 0.5)
+    const seen = sample(a, 11)
+    const start = seen.findIndex((v) => v > 0)
+    expect(start).toBeGreaterThan(6 * 60 - 2)
+    const len = seen.slice(start).findIndex((v) => v === 0)
+    expect(len / 60).toBeCloseTo(1.2, 1)
+    expect(Math.max(...seen)).toBeGreaterThan(0.9)
+  })
+
+  it('starts after 6 s earliest and 10 s latest (rng extremes)', () => {
+    const lo = sample(new HeroAvatar('rookie', () => 0), 11)
+    const hi = sample(new HeroAvatar('rookie', () => 0.999), 11)
+    expect(lo.findIndex((v) => v > 0) / 60).toBeGreaterThanOrEqual(5.9)
+    expect(lo.findIndex((v) => v > 0) / 60).toBeLessThan(6.1)
+    expect(hi.findIndex((v) => v > 0) / 60).toBeGreaterThan(9.9)
+  })
+
+  it('never starts under reduced motion', () => {
+    motion.reduced = true
+    try {
+      expect(Math.max(...sample(new HeroAvatar('rookie'), 30))).toBe(0)
+    } finally {
+      motion.reduced = false
+    }
+  })
+
+  it('cancels at once on a mood change away from idle/watch and restarts the wait', () => {
+    const a = new HeroAvatar('rookie', () => 0)
+    sample(a, 6.5)
+    expect(a.signature).toBeGreaterThan(0)
+    a.setMood('cheer')
+    expect(a.signature).toBe(0)
+    a.setMood('idle')
+    expect(Math.max(...sample(a, 5))).toBe(0)
+  })
+
+  it('opens only the throwing (front) hand on the throw follow-through', () => {
+    const body = BODIES.slime
+    const opens: number[] = []
+    body.drawHand = (_c, h) => void opens.push(h.open)
+    try {
+      const a = new HeroAvatar('baron', () => 0)
+      run(a, 0.5)
+      a.handle({ type: 'fire' })
+      run(a, 0.4)
+      expect(a.mood).toBe('throw')
+      opens.length = 0
+      a.draw(fakeCanvas(), 760)
+      expect(opens.length).toBeGreaterThanOrEqual(2)
+      expect(opens.filter((o) => o === 1)).toHaveLength(1)
+    } finally {
+      delete body.drawHand
+    }
+  })
+
+  it('keeps the front hand on the hold point during a fidget', () => {
+    // One hero per body type (plus the juggling twins): the fidget path is shared by body, not by hero.
+    for (const id of [
+      'rookie',
+      'baron',
+      'juggler',
+      'knight',
+      'flash',
+      'ranger',
+      'sage',
+      'pirate',
+      'monk',
+    ] as const) {
+      const a = new HeroAvatar(id, () => 0)
+      const c = ctx({ hold })
+      let during = 0
+      for (let t = 0; t < 9; t += 1 / 60) {
+        a.update(1 / 60, c)
+        a.draw(fakeCanvas(), 760)
+        if (a.signature > 0 && a.mood === 'idle') {
+          during++
+          expect(Math.abs(a.lastHands!.front.x - hold.x)).toBeLessThan(0.01)
+          expect(Math.abs(a.lastHands!.front.y - hold.y)).toBeLessThan(0.01)
+        }
+      }
+      expect(during).toBeGreaterThan(0)
+    }
   })
 })

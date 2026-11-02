@@ -1,11 +1,22 @@
-// The hero as a living character beside the ball: drawn in code from a small
-// skeleton (hips, torso, two-part arms and legs, head) so every part can move.
-// Poses blend smoothly toward a target set by the current mood, with springs
-// for hops and knock-backs, so reactions read like a real person's: a wind-up
-// before a throw, a follow-through after, a flinch, a sigh of relief.
+// The hero as a living character beside the ball. This file is the brain:
+// moods, priorities, springs (hop, knock, squash), position and facing, and the
+// hold point. Poses blend toward a target set by the current mood, so reactions
+// read clearly: a wind-up before a throw, a follow-through after, a flinch, a sigh.
+// Every hero is a creature: its look (creature/looks.ts) picks a body type
+// (creature/bodies) that draws from a shared Frame. The hands are solved from the
+// pose (creature/hands.ts), with the front hand locked on the held ball in the hold
+// moods. This file adds what every body shares: aura, emotes, dust, the KO stars
+// and the signature fidget timer.
 import { prefersReducedMotion } from '@forge/fx/tween'
-import { heroEmblem } from './hero-art'
-import { HEROES, type HeroDef, type HeroHat, type HeroId } from './sim/heroes'
+import { BODIES } from './creature/bodies'
+import { HandFollower, drawGrip, drawHand, solveHands } from './creature/hands'
+import { drawHat } from './creature/hats'
+import { CREATURE_LOOKS } from './creature/looks'
+import { REAR_HOLD } from './creature/motion'
+import { shadow as groundShadow } from './creature/paint'
+import type { BodyMetrics, BodyType, CreatureLook, DrawKit, Frame, HandPose } from './creature/types'
+import { drawEmblem } from './hero-art'
+import { HEROES, type HeroDef, type HeroId } from './sim/heroes'
 import type { SimEvent } from './sim/types'
 
 export type Mood =
@@ -50,81 +61,7 @@ export interface AvatarContext {
   hold?: { x: number; y: number; r: number } | null
 }
 
-/** Hair colour by hero (default dark brown). */
-const HAIR: Partial<Record<HeroId, string>> = {
-  rookie: '#6b4226',
-  flash: '#ffb703',
-  ranger: '#8a5a2b',
-  baron: '#d9a441',
-  sage: '#e9ecef',
-  pyro: '#ff6b2b',
-  juggler: '#f783ac',
-  tempest: '#a5d8ff',
-  monk: '#2b2b2b',
-  cleric: '#f6d365',
-  vampire: '#1b1b2f',
-  paladin: '#f4c95d',
-  necro: '#3d4a2a',
-  frost: '#e7f5ff',
-  sorcerer: '#5f3dc4',
-  dragon: '#2b1a12',
-  pirate: '#1f1f1f',
-}
-
-/** Body width (1 = average). */
-const BULK: Partial<Record<HeroId, number>> = {
-  knight: 1.15,
-  berserker: 1.2,
-  giant: 1.35,
-  titan: 1.45,
-  flash: 0.85,
-  ninja: 0.9,
-  sorcerer: 0.9,
-  paladin: 1.1,
-}
-
-/** Extras that make a hero recognisable. */
-const CAPE = new Set<HeroId>([
-  'knight',
-  'paladin',
-  'vampire',
-  'dragon',
-  'sorcerer',
-  'tempest',
-  'frost',
-  'necro',
-])
-const SCARF = new Set<HeroId>(['flash', 'ninja', 'ranger'])
-const BEARD = new Set<HeroId>(['sage', 'titan', 'pirate', 'giant'])
-const PATCH = new Set<HeroId>(['pirate'])
-/** Eye colour by hero (default warm brown). */
-const EYES: Partial<Record<HeroId, string>> = {
-  frost: '#4dabf7',
-  sorcerer: '#cc5de8',
-  vampire: '#e03131',
-  tempest: '#339af0',
-  necro: '#82c91e',
-  ranger: '#40c057',
-  dragon: '#f08c00',
-  cleric: '#748ffc',
-  paladin: '#fab005',
-  flash: '#1c7ed6',
-}
-const LONG_HAIR = new Set<HeroId>(['frost', 'cleric', 'paladin', 'juggler', 'ranger', 'sorcerer', 'vampire'])
-
 const OUT = '#1b1d2b'
-
-/** Mixes a hex colour toward black (amt < 0) or white (amt > 0). */
-function shade(hex: string, amt: number): string {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex)
-  if (!m) return hex
-  const n = parseInt(m[1], 16)
-  const f = (c: number) => Math.round(amt < 0 ? c * (1 + amt) : c + (255 - c) * amt)
-  const r = f((n >> 16) & 255)
-  const g = f((n >> 8) & 255)
-  const b = f(n & 255)
-  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`
-}
 
 /** A damped spring toward 0, for hops, knock-backs and squash. */
 class Spring {
@@ -144,7 +81,7 @@ class Spring {
 }
 
 /** Everything that blends between poses (angles in radians, 0 = arm hanging down, + = forward). */
-interface Pose {
+export interface Pose {
   crouch: number
   lean: number
   sF: number
@@ -162,7 +99,12 @@ interface Pose {
   mouthOpen: number
   /** −1 frown … +1 big smile. */
   smile: number
-  blush: number
+  /**
+   * How far a four-legged body sits up, 0..1: 0 on all fours, about 0.55 sitting up to hold the ball, 1 rearing up
+   * on its hind legs. Blended like the rest, so the body never snaps between moods. Flyers use it as their takeoff and
+   * landing blend (airborne below REAR_HOLD, landed at or above it); other bodies on two legs ignore it.
+   */
+  rear: number
 }
 
 const BASE: Pose = {
@@ -179,10 +121,10 @@ const BASE: Pose = {
   browUp: 0,
   mouthOpen: 0,
   smile: 0.35,
-  blush: 0.15,
+  rear: 0,
 }
 
-type EyeStyle = 'normal' | 'happy' | 'squeeze' | 'wide' | 'xx'
+export type EyeStyle = 'normal' | 'happy' | 'squeeze' | 'wide' | 'xx'
 
 /** How long each passing mood lasts (seconds) before going back to the base mood. */
 const MOOD_LIFE: Partial<Record<Mood, number>> = {
@@ -223,6 +165,23 @@ const lerp = (a: number, b: number, k: number) => a + (b - a) * k
 const HOLD_REACH = 12
 /** Moods in which the front hand stays on the held ball. */
 const HOLDS = new Set<Mood>(['idle', 'aim', 'worried', 'watch'])
+/** Hands can hold once the KO fall is this low: the pose blend only approaches 0, it never quite gets there. */
+const HOLD_FALL = 0.02
+
+/** Signature fidget: runs 1.2 s, starts every 6-10 s of quiet idle/watch. */
+const SIGNATURE_LEN = 1.2
+const SIGNATURE_GAP_MIN = 6
+const SIGNATURE_GAP_MAX = 10
+
+/** Moods that rear right up on the hind legs. */
+const REAR_UP = new Set<Mood>(['cheer', 'cast', 'revive', 'wow'])
+/** Pose `rear` target: on all fours without a ball (or sad), sitting up with one, rearing up to celebrate. */
+export function rearFor(mood: Mood, hasBall: boolean): number {
+  if (REAR_UP.has(mood)) return 1
+  if (mood === 'pump') return 0.75
+  if (mood === 'sad' || mood === 'ko' || (!hasBall && (mood === 'idle' || mood === 'watch'))) return 0
+  return REAR_HOLD
+}
 
 export class HeroAvatar {
   hero: HeroDef
@@ -243,14 +202,13 @@ export class HeroAvatar {
   private hop = new Spring(260, 14)
   private knock = new Spring(140, 11)
   private squash = new Spring(300, 16)
-  private cape = new Spring(40, 4)
   /** Run cycle phase, advanced while moving. */
   private stride = 0
   private moving = 0
   private emote: { kind: Emote; age: number } | null = null
-  /** Seconds since anything happened, for idle fidgets. */
-  private quiet = 0
-  private fidget: 'stretch' | 'look' | 'tap' | 'wave' | 'yawn' | null = null
+  /** The body's signature fidget: seconds until the next one, and its age while playing (-1 = not playing). */
+  private sigIn = 0
+  private sigAge = -1
   private glow = 0
   private aim: number | null = null
   /** Bricks broken this volley, and whether a volley is on (for the "failed" sigh). */
@@ -263,8 +221,6 @@ export class HeroAvatar {
   /** Drawing size, × board units (set by the game). */
   size = 1
   private hold: { x: number; y: number; r: number } | null = null
-  private hair = new Spring(90, 6)
-  private head = new Spring(220, 13)
   private glanceIn = 2
   private glance: { x: number; y: number; age: number } | null = null
   private dust: Array<{ x: number; age: number; size: number }> = []
@@ -279,17 +235,59 @@ export class HeroAvatar {
     ctx.arc(x, y, r, 0, Math.PI * 2)
     ctx.fill()
   }
-  private emblem: HTMLImageElement | null = null
+  /** Creature hands follow their solved targets through springs (local units). */
+  private handF = new HandFollower()
+  private handB = new HandFollower()
+  /** Snap the hands onto their targets at the next draw (new hero, reset, first placement). */
+  private snapHands = true
+  /** `time` at the last creature draw, so the hand springs advance by real time between draws. */
+  private handsAt = 0
+  private hands: { front: { x: number; y: number }; back: { x: number; y: number } } | null = null
 
-  constructor(hero: HeroId) {
+  /** `rng` (0..1) times the signature fidget gaps; injectable so tests are deterministic. */
+  constructor(
+    hero: HeroId,
+    private readonly rng: () => number = Math.random,
+  ) {
     this.hero = HEROES[hero]
-    this.loadEmblem()
+    this.sigIn = this.nextSigGap()
+  }
+
+  /** Signature fidget progress 0..1 (0 when not playing). */
+  get signature(): number {
+    return this.sigAge < 0 ? 0 : Math.min(1, this.sigAge / SIGNATURE_LEN)
+  }
+
+  private nextSigGap(): number {
+    return SIGNATURE_GAP_MIN + this.rng() * (SIGNATURE_GAP_MAX - SIGNATURE_GAP_MIN)
+  }
+
+  /** Ticks the signature fidget: waits while idle/watch, plays 0..1, cancels on any other mood. */
+  private updateSignature(dt: number): void {
+    if (this.mood !== 'idle' && this.mood !== 'watch') {
+      this.sigAge = -1
+      this.sigIn = this.nextSigGap()
+      return
+    }
+    if (prefersReducedMotion()) {
+      this.sigAge = -1
+      return
+    }
+    if (this.sigAge >= 0) {
+      this.sigAge += dt
+      if (this.sigAge >= SIGNATURE_LEN) {
+        this.sigAge = -1
+        this.sigIn = this.nextSigGap()
+      }
+    } else if ((this.sigIn -= dt) <= 0) {
+      this.sigAge = 0
+    }
   }
 
   setHero(id: HeroId): void {
     if (this.hero.id === id) return
     this.hero = HEROES[id]
-    this.loadEmblem()
+    this.snapHands = true
     this.setMood('cheer')
   }
 
@@ -298,15 +296,11 @@ export class HeroAvatar {
     this.mood = 'idle'
     this.moodAge = 0
     this.placed = false
+    this.snapHands = true
     this.emote = null
     this.knock.x = this.knock.v = this.hop.x = this.hop.v = 0
-  }
-
-  private loadEmblem(): void {
-    if (typeof Image === 'undefined') return
-    const img = new Image()
-    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(heroEmblem(this.hero.emblem, this.hero.color, 24))}`
-    this.emblem = img
+    // Stand straight up: no KO fall (or any other pose) left to blend out.
+    this.pose = { ...BASE }
   }
 
   /** Switches mood if it matters more than the one playing (or that one is over). */
@@ -317,8 +311,8 @@ export class HeroAvatar {
     if (!over && PRIORITY[mood] < PRIORITY[this.mood] && MOOD_LIFE[this.mood] !== undefined) return
     if (mood !== this.mood || MOOD_LIFE[mood] !== undefined) this.moodAge = 0
     this.mood = mood
-    this.quiet = 0
-    this.fidget = null
+    this.sigAge = -1
+    this.sigIn = this.nextSigGap()
     if (emote) this.emote = { kind: emote, age: 0 }
     const still = prefersReducedMotion()
     if (still) return
@@ -412,7 +406,6 @@ export class HeroAvatar {
   update(dt: number, c: AvatarContext): void {
     this.time += dt
     this.moodAge += dt
-    this.quiet += dt
     this.aim = c.aim
     this.glow = Math.max(0, this.glow - dt * 1.2)
     // The aura swells quickly with the combo and fades out gently after it, never snapping off.
@@ -425,7 +418,6 @@ export class HeroAvatar {
     this.hop.update(dt)
     this.knock.update(dt)
     this.squash.update(dt)
-    this.cape.update(dt)
 
     // Passing moods end; the base mood follows what's going on.
     const life = MOOD_LIFE[this.mood]
@@ -476,8 +468,6 @@ export class HeroAvatar {
     this.moving = Math.abs(gap) > 2 && this.mood !== 'ko' ? Math.min(1, speed / 160) : 0
     if (this.moving) {
       this.stride += dt * (8 + 10 * this.moving)
-      this.cape.kick(-gap * dt * 2)
-      this.hair.kick(-gap * dt * 1.5)
       // A puff of dust at each footfall.
       if (
         Math.floor(this.stride / Math.PI) !==
@@ -494,9 +484,6 @@ export class HeroAvatar {
       this.glance = { x: Math.random() * 2 - 1, y: Math.random() * 1.2 - 0.8, age: 0 }
     }
     if (this.glance && (this.glance.age += dt) > 0.5) this.glance = null
-    this.hair.update(dt)
-    this.head.update(dt)
-    this.head.kick(-this.hop.v * dt * 0.6)
     for (const d of this.dust) d.age += dt
     this.dust = this.dust.filter((d) => d.age < 0.5)
     if (this.smear > 0) this.smear = Math.max(0, this.smear - dt * 5)
@@ -523,15 +510,8 @@ export class HeroAvatar {
     }
     this.blink = Math.max(0, this.blink - dt)
 
-    // Idle long enough: a small fidget.
-    if (this.mood === 'idle' && this.quiet > 5 && !this.fidget) {
-      this.fidget = (['stretch', 'look', 'tap', 'wave', 'yawn'] as const)[Math.floor(Math.random() * 5)]
-      this.quiet = 0
-    }
-    if (this.fidget && this.quiet > 2.2) {
-      this.fidget = null
-      this.quiet = 0
-    }
+    // Idle long enough: the body's signature fidget.
+    this.updateSignature(dt)
 
     this.lookAt(c)
     const target2 = this.targetPose(c)
@@ -563,9 +543,6 @@ export class HeroAvatar {
     } else if (this.mood === 'worried' || this.mood === 'scared') {
       lx = 0.4
       ly = -0.9
-    } else if (this.fidget === 'look') {
-      lx = Math.sin(this.time * 1.7)
-      ly = -0.2
     }
     if (this.glance && c.aim === null && !c.watch) {
       lx = this.glance.x
@@ -592,35 +569,6 @@ export class HeroAvatar {
       return Math.atan2(dx, dy)
     }
     switch (this.mood) {
-      case 'idle':
-        if (this.fidget === 'stretch') {
-          p.sF = p.sB = 2.9
-          p.sB = -2.9
-          p.eF = p.eB = 0.2
-          p.eyeOpen = 0.3
-          p.mouthOpen = 0.6
-          p.smile = 0
-        } else if (this.fidget === 'wave') {
-          // A friendly wave at the player.
-          p.sB = -2.6
-          p.eB = 0.6 + 0.5 * Math.sin(t * 12)
-          p.smile = 0.9
-          p.mouthOpen = 0.3
-          p.blush = 0.5
-          p.tilt = 0.08
-        } else if (this.fidget === 'yawn') {
-          p.sB = -2.8
-          p.eB = 2.2
-          p.eyeOpen = 0.1
-          p.mouthOpen = 0.9
-          p.smile = -0.1
-          p.tilt = -0.1
-          p.lean = -0.08
-        } else if (this.fidget === 'tap') {
-          p.crouch = 0.08 * Math.max(0, Math.sin(t * 9))
-          p.tilt = 0.08 * Math.sin(t * 4.5)
-        }
-        break
       case 'aim':
         // Ball cocked back behind the head, the other hand pointing the way.
         p.crouch = 0.35
@@ -668,7 +616,6 @@ export class HeroAvatar {
         p.eF = p.eB = 0.35
         p.smile = 1
         p.mouthOpen = 0.8
-        p.blush = 0.7
         p.browUp = 1
         this.eyes = 'happy'
         break
@@ -681,7 +628,6 @@ export class HeroAvatar {
         p.smile = 0.9
         p.mouthOpen = 0.5
         p.browUp = 0.6
-        p.blush = 0.4
         break
       }
       case 'wow':
@@ -706,7 +652,6 @@ export class HeroAvatar {
         p.browUp = 0.6
         p.mouthOpen = 0.45
         p.smile = -0.6
-        p.blush = 0
         this.eyes = 'wide'
         break
       case 'worried':
@@ -720,7 +665,6 @@ export class HeroAvatar {
         p.browUp = 0.3
         p.smile = -0.4
         p.mouthOpen = 0.15
-        p.blush = 0
         break
       case 'hurt':
         if (a < 0.35) {
@@ -746,7 +690,6 @@ export class HeroAvatar {
           p.smile = -0.5
           p.mouthOpen = 0.15
         }
-        p.blush = 0
         break
       case 'heal':
         p.sF = 0.7
@@ -755,7 +698,6 @@ export class HeroAvatar {
         p.eB = 2.4
         p.tilt = -0.1
         p.smile = 0.8
-        p.blush = 0.6
         this.eyes = 'happy'
         break
       case 'cast':
@@ -791,7 +733,6 @@ export class HeroAvatar {
         p.eyeOpen = 0.45
         p.smile = -0.6
         p.mouthOpen = a < 0.5 ? 0.35 : 0
-        p.blush = 0
         break
       case 'revive':
         p.sF = 2.7
@@ -802,6 +743,7 @@ export class HeroAvatar {
         this.eyes = 'happy'
         break
     }
+    p.rear = rearFor(this.mood, this.hold !== null)
     // Running overrides arms and adds a forward lean.
     if (this.moving && this.mood !== 'ko') {
       const s = Math.sin(this.stride)
@@ -817,21 +759,181 @@ export class HeroAvatar {
     return p
   }
 
+  /** Last solved hands in board units, for tests and debug (null before the first draw). */
+  get lastHands(): { front: { x: number; y: number }; back: { x: number; y: number } } | null {
+    return this.hands
+  }
+
+  /** The body's metrics for the current frame, in local units (feet at 0, facing +x), with no ball held. */
+  get bodyMetrics(): BodyMetrics {
+    const look = CREATURE_LOOKS[this.hero.id]
+    return BODIES[look.body].metrics(look, this.buildFrame())
+  }
+
   /** Draws the hero standing on `floorY` at its x (or at `at`, for previews), `scale`× board size. */
   draw(ctx: CanvasRenderingContext2D, floorY: number, scale = this.size, at?: number): void {
-    const p = this.pose
-    const id = this.hero.id
+    const look = CREATURE_LOOKS[this.hero.id]
+    this.drawCreature(ctx, look, BODIES[look.body], floorY, scale, at)
+  }
+
+  /** The frame state every body type draws from (hold in local units is filled in by the draw). */
+  private buildFrame(): Frame {
     const still = prefersReducedMotion()
-    const color = this.hero.color
-    const skin = this.hero.skin
-    const hair = HAIR[id] ?? '#4a3426'
-    const bulk = BULK[id] ?? 1
-    const x = (at ?? this.x) + (still ? 0 : this.knock.x * this.facing)
+    return {
+      t: this.time,
+      still,
+      mood: this.mood,
+      moodAge: this.moodAge,
+      pose: this.pose,
+      eyes: this.eyes,
+      blink: this.blink,
+      lookX: this.lookX,
+      lookY: this.lookY,
+      hop: still ? 0 : this.hop.x,
+      squash: still ? 0 : this.squash.x,
+      knock: still ? 0 : this.knock.x,
+      smear: this.smear,
+      hold: null,
+      holding: false,
+      fidget: this.signature,
+    }
+  }
+
+  /**
+   * The creature path: a body type draws from the frame, with hands solved from the mood pose
+   * (the front hand locked on the held ball in the hold moods) and the ball gripped in the front hand.
+   */
+  private drawCreature(
+    ctx: CanvasRenderingContext2D,
+    look: CreatureLook,
+    body: BodyType,
+    floorY: number,
+    scale: number,
+    at?: number,
+  ): void {
+    const f = this.buildFrame()
+    const still = f.still
     const tremble =
       !still && (this.mood === 'worried' || this.mood === 'scared') ? Math.sin(this.time * 40) * 0.6 : 0
-    const hopY = still ? 0 : this.hop.x
+    const x0 = (at ?? this.x) + (still ? 0 : this.knock.x * this.facing)
+    const x = x0 + (tremble + (body.offsetX?.(look, f) ?? 0) * this.facing) * scale
+    const hopY = f.hop
+    const y = floorY + hopY * scale
+    const toLocal = (p: { x: number; y: number }) => ({
+      x: ((p.x - x) * this.facing) / scale,
+      y: (p.y - y) / scale,
+    })
+    const toBoard = (p: { x: number; y: number }) => ({
+      x: x + p.x * this.facing * scale,
+      y: y + p.y * scale,
+    })
 
-    // Dust puffs on the floor.
+    if (this.hold) {
+      f.hold = { ...toLocal(this.hold), r: this.hold.r / scale }
+      f.holding = HOLDS.has(this.mood) && !this.moving && this.pose.fall < HOLD_FALL
+    }
+    const m = body.metrics(look, f)
+    f.pose = body.pose?.(look, f) ?? f.pose
+    const target = solveHands(m, f.pose, f.hold, f.holding)
+
+    // Hands lag their targets through springs (snapped on the ball, under reduced motion and after a switch).
+    const dt = Math.max(0, this.time - this.handsAt)
+    this.handsAt = this.time
+    if (this.snapHands) {
+      this.handF.snap(target.front)
+      this.handB.snap(target.back)
+      this.snapHands = false
+    } else {
+      this.handF.update(dt, target.front, f.holding, still)
+      this.handB.update(dt, target.back, false, still)
+    }
+    /** The followed hand (only the throwing, front hand opens on the throw's follow-through); the elbow shifts by half the lag so the arm stays joined. */
+    const follow = (h: HandPose, p: HandFollower, throwing = false): HandPose => ({
+      ...h,
+      x: p.x,
+      y: p.y,
+      ex: h.ex + (p.x - h.x) * 0.5,
+      ey: h.ey + (p.y - h.y) * 0.5,
+      open: throwing && this.mood === 'throw' && this.moodAge > 0.22 ? 1 : h.open,
+    })
+    const hands = { front: follow(target.front, this.handF, true), back: follow(target.back, this.handB) }
+    this.hands = { front: toBoard(hands.front), back: toBoard(hands.back) }
+
+    this.drawDust(ctx, floorY, scale)
+    this.drawAura(ctx, x, y, scale, m.headTop)
+    ctx.save()
+    ctx.translate(x, floorY)
+    ctx.scale(scale, scale)
+    groundShadow(ctx, 16, -hopY)
+    ctx.restore()
+
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.scale(this.facing * scale, scale)
+    // Rim light: the hero's skill glows in its colour; a combo makes the whole figure shine.
+    const auraK = this.auraK()
+    if (this.glow > 0 || auraK > 0.3) {
+      const fromCombo = auraK > 0.3 && auraK * 18 > this.glow * 22
+      ctx.shadowColor = fromCombo ? (this.combo >= 100 ? '#fff3bf' : '#ffc83d') : this.hero.color
+      ctx.shadowBlur = fromCombo ? 6 + 14 * auraK : 22 * this.glow
+    }
+    const hand = (h: HandPose) =>
+      body.drawHand ? body.drawHand(ctx, h, look, m.handR) : drawHand(ctx, h, look.hand, m.handR)
+    // The ball rides in the front hand unless it is being thrown, the hero is down or running.
+    const carried =
+      this.hold && this.mood !== 'throw' && this.mood !== 'ko' && !this.moving ? this.hold : null
+    const kit: DrawKit = {
+      metrics: m,
+      hands,
+      backHand: () => hand(hands.back),
+      frontHand: () => {
+        const ball = !carried
+          ? null
+          : f.holding && f.hold
+            ? f.hold
+            : { x: hands.front.x, y: hands.front.y, r: carried.r / scale }
+        hand(ball ? { ...hands.front, grip: ball.r } : hands.front)
+        if (!carried || !ball) return
+        const b = toBoard(ball)
+        // The ball skin draws in board units: undo this frame's flip and scale around the origin.
+        ctx.save()
+        ctx.shadowBlur = 0
+        ctx.scale(this.facing / scale, 1 / scale)
+        ctx.translate(-x, -y)
+        this.drawBall(ctx, f.holding ? carried.x : b.x, f.holding ? carried.y : b.y, carried.r)
+        ctx.restore()
+        if (body.drawGrip) body.drawGrip(ctx, hands.front, ball, look)
+        else drawGrip(ctx, hands.front, ball, look.hand)
+      },
+      hat: (box) => drawHat(ctx, this.hero.hat, box, this.hero.color),
+      emblem: (ex, ey, size) => drawEmblem(ctx, this.hero.emblem, this.hero.color, ex, ey, size),
+    }
+    body.draw(ctx, look, f, kit)
+    ctx.shadowBlur = 0
+    // Throw: a motion streak along the arm's swing.
+    if (this.smear > 0 && !still) {
+      ctx.strokeStyle = `rgb(255 255 255 / ${0.55 * this.smear})`
+      ctx.lineWidth = 3
+      ctx.lineCap = 'round'
+      ctx.beginPath()
+      ctx.arc(
+        m.socketF.x,
+        m.socketF.y,
+        m.upper + m.fore,
+        -Math.PI * 0.95,
+        -Math.PI * 0.95 + 1.6 * (1 - this.smear * 0.4),
+      )
+      ctx.stroke()
+    }
+    ctx.restore()
+
+    if (this.pose.fall < 0.5) this.drawEmote(ctx, x, y + (m.headTop - 6) * scale, scale)
+    if (this.mood === 'ko' && this.pose.fall > 0.9)
+      this.drawDizzy(ctx, x + m.head.x * this.facing * scale, y + (m.head.y - 4) * scale, scale)
+  }
+
+  /** Dust puffs on the floor. */
+  private drawDust(ctx: CanvasRenderingContext2D, floorY: number, scale: number): void {
     for (const d of this.dust) {
       const k = d.age / 0.5
       ctx.fillStyle = `rgb(220 215 240 / ${0.35 * (1 - k)})`
@@ -847,386 +949,6 @@ export class HeroAvatar {
         ctx.fill()
       }
     }
-
-    this.drawAura(ctx, x, floorY + hopY * scale, scale)
-
-    // Soft shadow (shrinks as the hero leaves the ground).
-    const air = Math.max(0, -hopY)
-    const shadow = ctx.createRadialGradient(x, floorY, 1, x, floorY, 13 * bulk * scale)
-    shadow.addColorStop(0, `rgb(0 0 0 / ${0.4 - Math.min(0.2, air / 120)})`)
-    shadow.addColorStop(1, 'rgb(0 0 0 / 0)')
-    ctx.fillStyle = shadow
-    ctx.beginPath()
-    ctx.ellipse(x, floorY + 1, (13 - Math.min(5, air / 6)) * bulk * scale, 3.5 * scale, 0, 0, Math.PI * 2)
-    ctx.fill()
-
-    ctx.save()
-    ctx.translate(x + tremble * scale, floorY + hopY * scale)
-    ctx.scale(this.facing * scale, scale)
-    if (p.fall > 0) {
-      ctx.translate(-8, 0)
-      ctx.rotate(-p.fall * 1.45)
-      ctx.translate(8, 0)
-    }
-    const sq = still ? 0 : this.squash.x * 0.03
-    ctx.scale(1 - sq, 1 + sq)
-    // Rim light: the hero's skill glows in its colour; a combo makes the whole figure shine.
-    const auraK = this.auraK()
-    if (this.glow > 0 || auraK > 0.3) {
-      const fromCombo = auraK > 0.3 && auraK * 18 > this.glow * 22
-      ctx.shadowColor = fromCombo ? (this.combo >= 100 ? '#fff3bf' : '#ffc83d') : color
-      ctx.shadowBlur = fromCombo ? 6 + 14 * auraK : 22 * this.glow
-    }
-
-    // ----- Skeleton (local units: feet at 0, up is −y) -----
-    const legLen = 12
-    const hipY = -legLen + p.crouch * 5
-    const torsoH = 14
-    const top = hipY - torsoH
-    const shW = 7.5 * bulk
-    const stride = this.moving ? Math.sin(this.stride) : 0
-    const tap = this.mood === 'idle' && this.fidget === 'tap' ? Math.max(0, Math.sin(this.time * 9)) : 0
-    const breath = still ? 0 : Math.sin(this.time * 2.2) * 0.35
-    const pants = shade(color, -0.55)
-    const glove = id === 'knight' || id === 'titan' || id === 'paladin' ? '#ced4da' : shade(color, -0.25)
-    const boot = id === 'pirate' || id === 'ranger' ? '#6b4226' : '#3b2f2f'
-
-    /** A limb: a dark outline stroke under a coloured one, so it reads like an inked drawing. */
-    const limb = (pts: Array<[number, number]>, width: number, fill: string) => {
-      ctx.lineCap = 'round'
-      ctx.lineJoin = 'round'
-      ctx.beginPath()
-      ctx.moveTo(...pts[0])
-      for (const q of pts.slice(1)) ctx.lineTo(...q)
-      ctx.strokeStyle = OUT
-      ctx.lineWidth = width + 2.2
-      ctx.stroke()
-      ctx.strokeStyle = fill
-      ctx.lineWidth = width
-      ctx.stroke()
-    }
-
-    const leg = (side: number, swing: number, lift: number, back: boolean) => {
-      const hx = side * 3 * bulk
-      const fx = hx + swing * 7
-      const fy = -lift
-      const kx = (hx + fx) / 2 + 1.5 + p.crouch * 3.5
-      const ky = (hipY + fy) / 2 - 0.5
-      limb(
-        [
-          [hx, hipY],
-          [kx, ky],
-          [fx, fy - 3],
-        ],
-        4.8 * Math.min(1.25, bulk),
-        back ? shade(pants, -0.2) : pants,
-      )
-      // Boot: a shaped toe, a sole and a shine.
-      ctx.fillStyle = back ? shade(boot, -0.2) : boot
-      ctx.strokeStyle = OUT
-      ctx.lineWidth = 1.1
-      ctx.beginPath()
-      ctx.moveTo(fx - 3, fy - 4.5)
-      ctx.lineTo(fx + 1.5, fy - 4.5)
-      ctx.quadraticCurveTo(fx + 6, fy - 3.5, fx + 6, fy - 0.8)
-      ctx.lineTo(fx - 3, fy - 0.8)
-      ctx.closePath()
-      ctx.fill()
-      ctx.stroke()
-      ctx.fillStyle = '#1b1d2b'
-      ctx.fillRect(fx - 3, fy - 1.4, 9, 1.4)
-      ctx.fillStyle = 'rgb(255 255 255 / 0.3)'
-      ctx.fillRect(fx + 0.5, fy - 3.8, 2.5, 0.9)
-    }
-
-    ctx.save()
-    ctx.translate(0, hipY)
-    ctx.rotate(p.lean)
-    ctx.translate(0, -hipY)
-
-    const shoulder = (side: number) => ({ x: side * shW * 0.72, y: top + 2.6 })
-    const UPPER = 6.8
-    const FORE = 6.8
-    /** Front-arm angles that put the hand on the held ball (two-bone IK), in this lean-rotated frame. */
-    const reachBall = (): { s: number; e: number } | null => {
-      if (!this.hold || !HOLDS.has(this.mood) || this.moving || p.fall > 0) return null
-      // Board point → local units → undo the lean around the hips.
-      let lx = ((this.hold.x - x) * this.facing) / scale
-      let ly = (this.hold.y - (floorY + hopY * scale)) / scale
-      const c = Math.cos(-p.lean)
-      const sn = Math.sin(-p.lean)
-      const ry = ly - hipY
-      ;[lx, ly] = [lx * c - ry * sn, lx * sn + ry * c + hipY]
-      const o = shoulder(1)
-      const dx = lx - o.x
-      const dy = ly - o.y
-      const d = Math.min(UPPER + FORE - 0.2, Math.max(1, Math.hypot(dx, dy)))
-      const to = Math.atan2(dx, dy)
-      const bend = Math.acos(Math.min(1, d / (UPPER + FORE)))
-      return { s: to + bend, e: -2 * bend }
-    }
-
-    const arm = (side: number, s: number, e: number, back: boolean) => {
-      const o = shoulder(side)
-      const ex = o.x + Math.sin(s) * UPPER
-      const ey = o.y + Math.cos(s) * UPPER
-      const hx = ex + Math.sin(s + e) * FORE
-      const hy = ey + Math.cos(s + e) * FORE
-      const sleeve = back ? shade(color, -0.3) : color
-      limb(
-        [
-          [o.x, o.y],
-          [ex, ey],
-          [hx, hy],
-        ],
-        4.4 * Math.min(1.3, bulk),
-        sleeve,
-      )
-      // Cuff, then a gloved hand.
-      ctx.strokeStyle = shade(sleeve, 0.35)
-      ctx.lineWidth = 1.6
-      ctx.beginPath()
-      const cx = ex + Math.sin(s + e) * (FORE - 2.2)
-      const cy = ey + Math.cos(s + e) * (FORE - 2.2)
-      ctx.arc(cx, cy, 1.6, 0, Math.PI * 2)
-      ctx.stroke()
-      ctx.fillStyle = back ? shade(glove, -0.2) : glove
-      ctx.strokeStyle = OUT
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      ctx.arc(hx, hy, 2.7, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.stroke()
-      return { x: hx, y: hy }
-    }
-
-    // Back limbs, cape, body, front limbs, head: painter's order.
-    leg(-1, -stride, Math.max(0, -stride) * 3, true)
-    arm(-1, p.sB, p.eB, true)
-    if (CAPE.has(id)) {
-      const sway = this.cape.x + (this.moving ? 0.3 : 0) + 0.05 * Math.sin(this.time * 2)
-      const g = ctx.createLinearGradient(0, top, 0, 0)
-      g.addColorStop(0, shade(color, -0.35))
-      g.addColorStop(1, shade(color, -0.6))
-      ctx.fillStyle = g
-      ctx.strokeStyle = OUT
-      ctx.lineWidth = 1.1
-      ctx.beginPath()
-      ctx.moveTo(-shW * 0.7, top + 1)
-      ctx.quadraticCurveTo(-shW - 5 - sway * 10, hipY - 2, -shW - 3 - sway * 15, -1)
-      // A scalloped hem.
-      ctx.quadraticCurveTo(-shW - sway * 12, 1, -shW * 0.4 - sway * 10, -1)
-      ctx.quadraticCurveTo(-shW * 0.1 - sway * 9, 1, shW * 0.25 - sway * 8, -1)
-      ctx.quadraticCurveTo(0, hipY, shW * 0.6, top + 1)
-      ctx.closePath()
-      ctx.fill()
-      ctx.stroke()
-    }
-    leg(1, stride, Math.max(0, stride) * 3 + tap * 2, false)
-
-    // Torso: shaded, with a lit front and a shadowed back, a collar, a belt and the emblem.
-    const body = new Path2D()
-    body.moveTo(-shW, top + 3.5)
-    body.quadraticCurveTo(-shW, top - breath, -shW + 3.5, top - breath)
-    body.lineTo(shW - 3.5, top - breath)
-    body.quadraticCurveTo(shW, top - breath, shW, top + 3.5)
-    body.quadraticCurveTo(shW * 0.95, hipY - 2, shW * 0.82, hipY + 0.5)
-    body.lineTo(-shW * 0.82, hipY + 0.5)
-    body.quadraticCurveTo(-shW * 0.95, hipY - 2, -shW, top + 3.5)
-    body.closePath()
-    const tg = ctx.createLinearGradient(-shW, top, shW, hipY)
-    tg.addColorStop(0, shade(color, 0.18))
-    tg.addColorStop(0.55, color)
-    tg.addColorStop(1, shade(color, -0.25))
-    ctx.fillStyle = tg
-    ctx.fill(body)
-    ctx.save()
-    ctx.clip(body)
-    // Back half in shadow (the light comes from the front).
-    ctx.fillStyle = 'rgb(20 10 40 / 0.18)'
-    ctx.fillRect(-shW - 1, top - 2, shW * 0.75, torsoH + 4)
-    // Collar: a V of lighter cloth.
-    ctx.fillStyle = shade(color, 0.55)
-    ctx.beginPath()
-    ctx.moveTo(-3.5, top - 1)
-    ctx.lineTo(0.5, top + 4)
-    ctx.lineTo(4.5, top - 1)
-    ctx.closePath()
-    ctx.fill()
-    // Belt with a buckle.
-    ctx.fillStyle = shade(color, -0.55)
-    ctx.fillRect(-shW, hipY - 3.4, shW * 2, 2.8)
-    ctx.restore()
-    ctx.strokeStyle = OUT
-    ctx.lineWidth = 1.2
-    ctx.stroke(body)
-    ctx.fillStyle = '#ffd43b'
-    ctx.strokeStyle = OUT
-    ctx.lineWidth = 0.6
-    ctx.beginPath()
-    ctx.rect(0.5, hipY - 3.7, 3, 3.4)
-    ctx.fill()
-    ctx.stroke()
-    if (this.emblem?.complete && this.emblem.naturalWidth) ctx.drawImage(this.emblem, -0.5, top + 3.5, 7, 7)
-    if (SCARF.has(id)) {
-      const flow = (this.moving ? 7 : 2.5) + this.hair.x * 4 + Math.sin(this.time * 6) * 1.5
-      ctx.fillStyle = id === 'ninja' ? '#c92a2a' : shade(color, 0.35)
-      ctx.strokeStyle = OUT
-      ctx.lineWidth = 0.9
-      ctx.beginPath()
-      ctx.roundRect(-shW + 0.5, top - 2, shW * 2 - 1, 3.4, 1.5)
-      ctx.fill()
-      ctx.stroke()
-      ctx.beginPath()
-      ctx.moveTo(-shW + 2, top)
-      ctx.quadraticCurveTo(-shW - flow * 0.5, top + 2 + Math.sin(this.time * 8), -shW - flow, top + 4)
-      ctx.lineTo(-shW - flow + 1.5, top + 7)
-      ctx.quadraticCurveTo(-shW - flow * 0.3, top + 5, -shW + 3, top + 2.5)
-      ctx.closePath()
-      ctx.fill()
-      ctx.stroke()
-    }
-
-    // Front arm: on the ball while holding it, else posed by the mood.
-    const ik = reachBall()
-    const front = arm(1, ik ? ik.s : p.sF, ik ? ik.e : p.eF, false)
-    // Throw: a motion streak along the arm's swing.
-    if (this.smear > 0 && !still) {
-      const o = shoulder(1)
-      ctx.strokeStyle = `rgb(255 255 255 / ${0.55 * this.smear})`
-      ctx.lineWidth = 3
-      ctx.lineCap = 'round'
-      ctx.beginPath()
-      ctx.arc(o.x, o.y, UPPER + FORE, -Math.PI * 0.95, -Math.PI * 0.95 + 1.6 * (1 - this.smear * 0.4))
-      ctx.stroke()
-    }
-
-    // ----- Head (lags the body a touch) -----
-    const neckY = top - 0.5 - breath
-    const headR = 11.5
-    const hy = neckY - headR + 1.8 + (still ? 0 : this.head.x * 0.5)
-    ctx.save()
-    ctx.translate(0, neckY)
-    ctx.rotate(p.tilt + (still ? 0 : this.head.x * 0.01))
-    ctx.translate(0, -neckY)
-    ctx.fillStyle = shade(skin, -0.15)
-    ctx.fillRect(-2, neckY - 3, 4, 4)
-    const hat = this.hero.hat
-    const covered = hat === 'helmet' || hat === 'hood'
-    if (!covered) {
-      // Back hair (long for some), swinging with the hair spring.
-      ctx.fillStyle = hair
-      ctx.strokeStyle = OUT
-      ctx.lineWidth = 1.1
-      ctx.beginPath()
-      ctx.arc(-1, hy - 0.5, headR + 1.3, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.stroke()
-      if (LONG_HAIR.has(id)) {
-        const sw = still ? 0 : this.hair.x * 6
-        ctx.beginPath()
-        ctx.moveTo(-headR + 1, hy)
-        ctx.quadraticCurveTo(-headR - 3 - sw, hy + 9, -headR + 2 - sw * 1.4, hy + 15)
-        ctx.quadraticCurveTo(-4, hy + 12, -2, hy + 4)
-        ctx.closePath()
-        ctx.fill()
-        ctx.stroke()
-      }
-    }
-    if (hat === 'hood') this.drawHoodBack(ctx, hy, headR, color)
-    // Face, shaded for volume.
-    const fg = ctx.createRadialGradient(3, hy - 4, 2, 0, hy, headR + 1)
-    fg.addColorStop(0, shade(skin, 0.18))
-    fg.addColorStop(0.7, skin)
-    fg.addColorStop(1, shade(skin, -0.14))
-    ctx.fillStyle = fg
-    ctx.strokeStyle = OUT
-    ctx.lineWidth = 1.3
-    ctx.beginPath()
-    ctx.arc(0, hy, headR, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.stroke()
-    // Ear, with an inner shade.
-    ctx.fillStyle = skin
-    ctx.beginPath()
-    ctx.ellipse(-headR + 1.5, hy + 1.5, 2.2, 3.2, 0, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.stroke()
-    ctx.fillStyle = shade(skin, -0.2)
-    ctx.beginPath()
-    ctx.ellipse(-headR + 1.8, hy + 1.6, 0.9, 1.7, 0, 0, Math.PI * 2)
-    ctx.fill()
-    // Fringe with a shine band.
-    if (!covered && hat !== 'mask' && hat !== 'spikes') {
-      ctx.fillStyle = hair
-      ctx.strokeStyle = OUT
-      ctx.lineWidth = 1.1
-      ctx.beginPath()
-      ctx.moveTo(-headR, hy - 0.5)
-      ctx.quadraticCurveTo(-headR + 1, hy - headR - 1.5, 2, hy - headR - 1)
-      ctx.quadraticCurveTo(headR + 1.5, hy - headR + 1, headR + 0.3, hy - 1.5)
-      ctx.quadraticCurveTo(7, hy - 5, 4.5, hy - 4)
-      ctx.lineTo(3, hy - 6.5)
-      ctx.quadraticCurveTo(0.5, hy - 4.5, -1.5, hy - 5)
-      ctx.lineTo(-3, hy - 7)
-      ctx.quadraticCurveTo(-6, hy - 4, -headR, hy - 0.5)
-      ctx.fill()
-      ctx.stroke()
-      ctx.strokeStyle = shade(hair, 0.45)
-      ctx.lineWidth = 1.2
-      ctx.beginPath()
-      ctx.arc(1, hy - 2, headR - 1.5, Math.PI * 1.25, Math.PI * 1.5)
-      ctx.stroke()
-    }
-    this.drawFace(ctx, hy, p, hair)
-    if (BEARD.has(id)) {
-      ctx.fillStyle = id === 'sage' ? '#f1f3f5' : shade(hair, 0.1)
-      ctx.strokeStyle = OUT
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      ctx.moveTo(-5.5, hy + 4)
-      ctx.quadraticCurveTo(2, hy + (id === 'sage' ? 19 : 14), 9, hy + 4)
-      ctx.quadraticCurveTo(5, hy + 9.5, 3, hy + 8)
-      ctx.quadraticCurveTo(0, hy + 9.5, -5.5, hy + 4)
-      ctx.fill()
-      ctx.stroke()
-    }
-    if (PATCH.has(id)) {
-      ctx.fillStyle = OUT
-      ctx.beginPath()
-      ctx.ellipse(6.5, hy - 0.5, 3.2, 2.8, 0, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.strokeStyle = OUT
-      ctx.lineWidth = 0.9
-      ctx.beginPath()
-      ctx.moveTo(-headR + 1, hy - 5)
-      ctx.lineTo(headR - 1, hy + 1)
-      ctx.stroke()
-    }
-    this.drawHat(ctx, hat, hy, headR, color, hair)
-    ctx.restore() // head tilt
-    ctx.restore() // lean
-    ctx.shadowBlur = 0
-
-    // The ball in hand: locked to the launch point while holding, else carried by the hand.
-    let ball: { x: number; y: number } | null = null
-    if (this.hold && this.mood !== 'throw' && this.mood !== 'ko' && !this.moving) {
-      ball = ik ? null : { x: front.x, y: front.y - 2 }
-    }
-    ctx.restore()
-    if (this.hold && ik) this.drawBall(ctx, this.hold.x, this.hold.y, this.hold.r)
-    else if (ball && this.hold) {
-      // Carried in a posed hand: local → board.
-      this.drawBall(
-        ctx,
-        x + ball.x * this.facing * scale,
-        floorY + hopY * scale + ball.y * scale,
-        this.hold.r,
-      )
-    }
-    if (p.fall < 0.5) this.drawEmote(ctx, x, floorY + hopY * scale - 56 * scale, scale)
-    if (this.mood === 'ko' && p.fall > 0.9)
-      this.drawDizzy(ctx, x - 16 * this.facing * scale, floorY - 8 * scale, scale)
   }
 
   /** 0..1 how strong the combo aura is (from combo 10 to 100). */
@@ -1242,10 +964,18 @@ export class HeroAvatar {
    * - a volley that broke nothing: a storm cloud with rain and a cold mist;
    * - healed: a green rising glow.
    */
-  private drawAura(ctx: CanvasRenderingContext2D, x: number, floor: number, scale: number): void {
+  private drawAura(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    floor: number,
+    scale: number,
+    headTop: number,
+  ): void {
     const still = prefersReducedMotion()
     const t = still ? 0 : this.time
-    const cy = floor - 24 * scale
+    /** Heights scale with the figure (1× at a head top of −50). */
+    const tall = -headTop / 50
+    const cy = floor - 24 * tall * scale
     const k = this.auraK()
     const hot = this.combo >= 100
     ctx.save()
@@ -1408,7 +1138,7 @@ export class HeroAvatar {
       ctx.beginPath()
       ctx.ellipse(x, floor, 30 * scale, 9 * scale, 0, 0, Math.PI * 2)
       ctx.fill()
-      const top = floor - 70 * scale + Math.sin(t * 2) * 1.2 * scale
+      const top = floor - 70 * tall * scale + Math.sin(t * 2) * 1.2 * scale
       const cloud = new Path2D()
       for (const [dx, dy, r] of [
         [-7, 1, 5],
@@ -1464,401 +1194,6 @@ export class HeroAvatar {
       ctx.globalCompositeOperation = 'source-over'
     }
     ctx.restore()
-  }
-
-  private drawFace(ctx: CanvasRenderingContext2D, hy: number, p: Pose, hair: string): void {
-    // Three-quarter view: features sit a little toward the way the hero faces.
-    const fx = 2.5
-    const lx = this.lookX * 1.2
-    const ly = this.lookY * 1.1
-    for (const ex of [fx - 4, fx + 4.2]) {
-      const ey = hy - 0.5
-      const near = ex > fx
-      const w = near ? 2.9 : 2.5
-      const h = 3.7
-      if (this.eyes === 'happy') {
-        ctx.strokeStyle = OUT
-        ctx.lineWidth = 1.3
-        ctx.beginPath()
-        ctx.arc(ex, ey + 1, 2.2, Math.PI * 1.1, Math.PI * 1.9)
-        ctx.stroke()
-      } else if (this.eyes === 'squeeze') {
-        ctx.strokeStyle = OUT
-        ctx.lineWidth = 1.3
-        ctx.beginPath()
-        const d = near ? -1 : 1
-        ctx.moveTo(ex - 2 * d, ey - 1.8)
-        ctx.lineTo(ex + 1.5 * d, ey)
-        ctx.lineTo(ex - 2 * d, ey + 1.8)
-        ctx.stroke()
-      } else if (this.eyes === 'xx') {
-        ctx.strokeStyle = OUT
-        ctx.lineWidth = 1.2
-        ctx.beginPath()
-        ctx.moveTo(ex - 1.8, ey - 1.8)
-        ctx.lineTo(ex + 1.8, ey + 1.8)
-        ctx.moveTo(ex + 1.8, ey - 1.8)
-        ctx.lineTo(ex - 1.8, ey + 1.8)
-        ctx.stroke()
-      } else {
-        const wide = this.eyes === 'wide' ? 1.25 : 1
-        ctx.fillStyle = '#ffffff'
-        ctx.strokeStyle = OUT
-        ctx.lineWidth = 0.8
-        ctx.beginPath()
-        ctx.ellipse(ex, ey, w * wide, h * wide, 0, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.save()
-        ctx.clip()
-        // Iris and pupil follow the look; wide eyes get small pupils.
-        const ir = this.eyes === 'wide' ? 1.5 : 2.2
-        const iris = EYES[this.hero.id] ?? '#6b4a2e'
-        const ig = ctx.createLinearGradient(0, ey + ly - ir, 0, ey + ly + ir)
-        ig.addColorStop(0, shade(iris, -0.35))
-        ig.addColorStop(1, shade(iris, 0.25))
-        ctx.fillStyle = ig
-        ctx.beginPath()
-        ctx.ellipse(ex + lx, ey + ly, ir, ir * 1.15, 0, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.fillStyle = OUT
-        ctx.beginPath()
-        ctx.arc(ex + lx, ey + ly, ir * 0.5, 0, Math.PI * 2)
-        ctx.fill()
-        // Two shines: a big one up-left, a small one down-right.
-        ctx.fillStyle = '#ffffff'
-        ctx.beginPath()
-        ctx.arc(ex + lx - 0.8, ey + ly - 1, 0.85, 0, Math.PI * 2)
-        ctx.arc(ex + lx + 0.8, ey + ly + 0.9, 0.4, 0, Math.PI * 2)
-        ctx.fill()
-        // Upper eyelid: closes for blinks, half for winces and focus.
-        const lid = 1 - p.eyeOpen
-        if (lid > 0.02) {
-          ctx.fillStyle = this.hero.skin
-          ctx.fillRect(ex - w * wide - 1, ey - h * wide - 1, w * wide * 2 + 2, (h * wide * 2 + 2) * lid)
-          ctx.strokeStyle = OUT
-          ctx.lineWidth = 0.9
-          ctx.beginPath()
-          ctx.moveTo(ex - w * wide, ey - h * wide - 1 + (h * wide * 2 + 2) * lid)
-          ctx.lineTo(ex + w * wide, ey - h * wide - 1 + (h * wide * 2 + 2) * lid)
-          ctx.stroke()
-        }
-        ctx.restore()
-        ctx.stroke()
-        // A heavier upper lash line, with a flick at the outer corner.
-        if (p.eyeOpen > 0.3) {
-          const out = near ? 1 : -1
-          ctx.strokeStyle = OUT
-          ctx.lineWidth = 1.5
-          ctx.beginPath()
-          ctx.ellipse(ex, ey, w * wide, h * wide, 0, Math.PI * 1.08, Math.PI * 1.92)
-          ctx.stroke()
-          ctx.beginPath()
-          ctx.moveTo(ex + out * w * wide * 0.9, ey - h * wide * 0.5)
-          ctx.lineTo(ex + out * (w * wide + 1.2), ey - h * wide * 0.8)
-          ctx.stroke()
-        }
-      }
-      // Brows: angled by mood, raised by surprise.
-      const inner = near ? -1 : 1
-      const bx = ex
-      const by = ey - 4.6 - p.browUp * 1.3
-      ctx.strokeStyle = shade(hair, -0.2)
-      ctx.lineWidth = 1.3
-      ctx.lineCap = 'round'
-      ctx.beginPath()
-      ctx.moveTo(bx + inner * 2, by + p.brow * 1.1)
-      ctx.lineTo(bx - inner * 2, by - p.brow * 0.6)
-      ctx.stroke()
-    }
-    // Blush.
-    if (p.blush > 0.05) {
-      ctx.fillStyle = `rgb(255 120 140 / ${0.45 * p.blush})`
-      for (const bx of [fx - 6, fx + 6.5]) {
-        ctx.beginPath()
-        ctx.ellipse(bx, hy + 3.2, 2, 1.2, 0, 0, Math.PI * 2)
-        ctx.fill()
-      }
-    }
-    // Nose.
-    ctx.strokeStyle = shade(this.hero.skin, -0.3)
-    ctx.lineWidth = 0.9
-    ctx.beginPath()
-    ctx.moveTo(fx + 1.2, hy + 1)
-    ctx.lineTo(fx + 2, hy + 2.6)
-    ctx.lineTo(fx + 1, hy + 2.9)
-    ctx.stroke()
-    // Mouth: a curve that smiles or frowns, opening into a shape.
-    if (this.hero.hat === 'mask') return
-    const mx = fx + 0.5
-    const my = hy + 5.2
-    const mw = 2.6 + p.mouthOpen * 0.8 + Math.max(0, p.smile) * 0.6
-    ctx.strokeStyle = OUT
-    ctx.lineWidth = 1.1
-    if (p.mouthOpen > 0.2) {
-      const h = 1 + p.mouthOpen * 3.2
-      ctx.fillStyle = '#7a1f2b'
-      ctx.beginPath()
-      if (p.smile >= 0) {
-        ctx.moveTo(mx - mw, my - 0.5)
-        ctx.quadraticCurveTo(mx, my - 0.5 - p.smile, mx + mw, my - 0.5)
-        ctx.quadraticCurveTo(mx, my + h + p.smile, mx - mw, my - 0.5)
-      } else {
-        ctx.ellipse(mx, my + h / 3, mw * 0.8, h / 2, 0, 0, Math.PI * 2)
-      }
-      ctx.fill()
-      ctx.stroke()
-      // Teeth when gritting or grinning wide.
-      if (p.smile > 0.6 || p.smile < -0.8) {
-        ctx.fillStyle = '#ffffff'
-        ctx.fillRect(mx - mw * 0.7, my - 0.4, mw * 1.4, 1.2)
-      }
-      // Tongue on a big open smile.
-      if (p.smile > 0.6 && p.mouthOpen > 0.6) {
-        ctx.fillStyle = '#ff8fa3'
-        ctx.beginPath()
-        ctx.ellipse(mx, my + h * 0.7, mw * 0.5, 1, 0, 0, Math.PI * 2)
-        ctx.fill()
-      }
-    } else {
-      ctx.beginPath()
-      ctx.moveTo(mx - mw, my)
-      ctx.quadraticCurveTo(mx, my + p.smile * 2.6, mx + mw, my)
-      ctx.stroke()
-    }
-    // Tears when hurt badly or knocked out.
-    if (this.mood === 'ko' || (this.mood === 'hurt' && this.moodAge < 0.6)) {
-      ctx.fillStyle = '#74c0fc'
-      const drop = (this.time * 20) % 6
-      ctx.beginPath()
-      ctx.ellipse(fx + 6.5, hy + 2 + drop, 1, 1.6, 0, 0, Math.PI * 2)
-      ctx.fill()
-    }
-  }
-
-  private drawHoodBack(ctx: CanvasRenderingContext2D, hy: number, r: number, color: string): void {
-    ctx.fillStyle = shade(color, -0.2)
-    ctx.strokeStyle = OUT
-    ctx.lineWidth = 1.1
-    ctx.beginPath()
-    ctx.moveTo(-r - 3, hy + r)
-    ctx.quadraticCurveTo(-r - 4, hy - r - 4, 1, hy - r - 4)
-    ctx.quadraticCurveTo(r + 4, hy - r - 2, r + 3, hy + r - 2)
-    ctx.closePath()
-    ctx.fill()
-    ctx.stroke()
-  }
-
-  private drawHat(
-    ctx: CanvasRenderingContext2D,
-    hat: HeroHat,
-    hy: number,
-    r: number,
-    color: string,
-    hair: string,
-  ): void {
-    const fill = (c: string, stroke = true) => {
-      ctx.fillStyle = c
-      ctx.fill()
-      if (stroke) {
-        ctx.strokeStyle = OUT
-        ctx.lineWidth = 1.1
-        ctx.stroke()
-      }
-    }
-    const top = hy - r
-    ctx.lineJoin = 'round'
-    switch (hat) {
-      case 'cap':
-        ctx.beginPath()
-        ctx.arc(0, hy - 2, r + 0.5, Math.PI, 0)
-        ctx.closePath()
-        fill(color)
-        ctx.beginPath()
-        ctx.ellipse(r - 1, hy - 2, 7, 2, 0, 0, Math.PI * 2)
-        fill(shade(color, -0.25))
-        ctx.beginPath()
-        ctx.arc(0, top - 0.5, 1.6, 0, Math.PI * 2)
-        fill('#ffffff', false)
-        break
-      case 'helmet':
-        ctx.beginPath()
-        ctx.arc(0, hy - 1, r + 1.5, Math.PI * 0.95, Math.PI * 2.05)
-        ctx.lineTo(r + 1.5, hy + 4)
-        ctx.lineTo(-r - 1.5, hy + 4)
-        ctx.closePath()
-        fill('#ced4da')
-        // Visor slit lifted to show the eyes.
-        ctx.beginPath()
-        ctx.rect(-r + 1, hy - 5.5, r * 2 - 2, 2.2)
-        fill('#495057', false)
-        ctx.beginPath()
-        ctx.moveTo(0, top - 1.5)
-        ctx.quadraticCurveTo(-4, top - 7, -9, top - 4)
-        ctx.lineWidth = 2.5
-        ctx.strokeStyle = '#e03131'
-        ctx.stroke()
-        break
-      case 'horns':
-        for (const s of [-1, 1]) {
-          ctx.beginPath()
-          ctx.moveTo(s * (r - 3), top + 3)
-          ctx.quadraticCurveTo(s * (r + 6), top - 2, s * (r + 4), top - 9)
-          ctx.quadraticCurveTo(s * (r + 1), top - 3, s * (r - 6), top + 1)
-          ctx.closePath()
-          fill('#f1f3f5')
-        }
-        ctx.beginPath()
-        ctx.arc(0, hy - 2, r + 0.8, Math.PI * 1.05, Math.PI * 1.95)
-        ctx.closePath()
-        fill(shade(color, -0.3))
-        break
-      case 'hood':
-        ctx.beginPath()
-        ctx.moveTo(-r - 2, hy + 2)
-        ctx.quadraticCurveTo(-r - 2, top - 4, 1, top - 4)
-        ctx.quadraticCurveTo(r + 3, top - 3, r + 1, hy - 4)
-        ctx.quadraticCurveTo(r - 4, top + 1, -r + 1, hy + 1)
-        ctx.closePath()
-        fill(color)
-        break
-      case 'wizard': {
-        const sway = Math.sin(this.time * 2) * 1.5
-        ctx.beginPath()
-        ctx.moveTo(-r - 3, top + 4)
-        ctx.quadraticCurveTo(-2, top - 6, 2 + sway, top - 17)
-        ctx.quadraticCurveTo(5, top - 6, r + 3, top + 4)
-        ctx.closePath()
-        fill(color)
-        ctx.beginPath()
-        ctx.ellipse(0, top + 4, r + 5, 2.6, 0, 0, Math.PI * 2)
-        fill(shade(color, -0.3))
-        ctx.beginPath()
-        ctx.arc(-1, top - 3, 1.4, 0, Math.PI * 2)
-        ctx.arc(3, top - 8, 1, 0, Math.PI * 2)
-        fill('#ffd43b', false)
-        break
-      }
-      case 'crown':
-        ctx.beginPath()
-        ctx.moveTo(-7, top + 2)
-        ctx.lineTo(-8, top - 6)
-        ctx.lineTo(-4, top - 2)
-        ctx.lineTo(0, top - 8)
-        ctx.lineTo(4, top - 2)
-        ctx.lineTo(8, top - 6)
-        ctx.lineTo(7, top + 2)
-        ctx.closePath()
-        fill('#ffd43b')
-        ctx.beginPath()
-        ctx.arc(0, top - 1.5, 1.3, 0, Math.PI * 2)
-        fill('#e03131', false)
-        break
-      case 'halo':
-        ctx.save()
-        ctx.shadowColor = '#fff3bf'
-        ctx.shadowBlur = 8
-        ctx.strokeStyle = '#ffd43b'
-        ctx.lineWidth = 2
-        ctx.beginPath()
-        ctx.ellipse(0, top - 5 + Math.sin(this.time * 3) * 0.8, 8, 2.4, 0, 0, Math.PI * 2)
-        ctx.stroke()
-        ctx.restore()
-        break
-      case 'tophat':
-        ctx.beginPath()
-        ctx.rect(-7, top - 11, 14, 12)
-        fill('#212529')
-        ctx.beginPath()
-        ctx.rect(-7, top - 3, 14, 2.5)
-        fill(color, false)
-        ctx.beginPath()
-        ctx.ellipse(0, top + 1, r + 3, 2.4, 0, 0, Math.PI * 2)
-        fill('#212529')
-        break
-      case 'bandana':
-        ctx.beginPath()
-        ctx.arc(0, hy - 2, r + 0.6, Math.PI * 1.02, Math.PI * 1.98)
-        ctx.closePath()
-        fill(color)
-        ctx.beginPath()
-        ctx.moveTo(-r, hy - 3)
-        ctx.lineTo(-r - 6, hy - 1 + Math.sin(this.time * 7))
-        ctx.lineTo(-r - 4, hy + 2)
-        ctx.closePath()
-        fill(color)
-        for (const d of [-4, 0, 4]) {
-          ctx.beginPath()
-          ctx.arc(d, hy - r + 3, 0.9, 0, Math.PI * 2)
-          fill('#ffffff', false)
-        }
-        break
-      case 'mask':
-        // Hair tied up, a cloth over the lower face, a headband.
-        ctx.beginPath()
-        ctx.arc(0, hy - 2, r + 0.8, Math.PI, 0)
-        ctx.closePath()
-        fill(hair)
-        ctx.beginPath()
-        ctx.rect(-r, hy - 5, r * 2, 2.4)
-        fill('#c92a2a', false)
-        ctx.beginPath()
-        ctx.moveTo(-r + 0.5, hy + 2)
-        ctx.quadraticCurveTo(2, hy + 0.5, r - 0.5, hy + 2)
-        ctx.quadraticCurveTo(r - 2, hy + r, 0, hy + r)
-        ctx.quadraticCurveTo(-r + 2, hy + r, -r + 0.5, hy + 2)
-        fill('#343a40')
-        break
-      case 'tricorn':
-        ctx.beginPath()
-        ctx.moveTo(-r - 5, top + 3)
-        ctx.quadraticCurveTo(-4, top - 9, 0, top - 6)
-        ctx.quadraticCurveTo(4, top - 9, r + 5, top + 3)
-        ctx.quadraticCurveTo(0, top + 0, -r - 5, top + 3)
-        fill('#212529')
-        ctx.beginPath()
-        ctx.moveTo(-r - 4, top + 2.5)
-        ctx.quadraticCurveTo(0, top - 0.5, r + 4, top + 2.5)
-        ctx.strokeStyle = '#fcc419'
-        ctx.lineWidth = 1.2
-        ctx.stroke()
-        // A skull badge.
-        ctx.beginPath()
-        ctx.arc(0, top - 3, 1.8, 0, Math.PI * 2)
-        fill('#ffffff', false)
-        break
-      case 'spikes':
-        ctx.beginPath()
-        ctx.moveTo(-r - 1, hy - 1)
-        for (let i = 0; i <= 6; i++) {
-          const a = Math.PI + (i / 6) * Math.PI
-          const sp = i % 2 ? r + 1 : r + 7
-          ctx.lineTo(Math.cos(a) * sp - (i % 2 ? 0 : 1), hy - 2 + Math.sin(a) * sp)
-        }
-        ctx.closePath()
-        fill(hair)
-        break
-      case 'goggles':
-        ctx.beginPath()
-        ctx.rect(-r, hy - 7, r * 2, 2.4)
-        fill('#495057', false)
-        for (const gx of [-2, 5]) {
-          ctx.beginPath()
-          ctx.arc(gx, hy - 6, 3, 0, Math.PI * 2)
-          fill('#495057')
-          ctx.beginPath()
-          ctx.arc(gx, hy - 6, 2, 0, Math.PI * 2)
-          fill('#a5d8ff', false)
-        }
-        break
-      case 'none':
-        // A tuft of hair.
-        ctx.beginPath()
-        ctx.moveTo(-2, top + 1)
-        ctx.quadraticCurveTo(0, top - 6, 4, top - 4)
-        ctx.quadraticCurveTo(2, top - 1, 3, top + 1)
-        fill(hair, false)
-        break
-    }
   }
 
   private drawEmote(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number): void {

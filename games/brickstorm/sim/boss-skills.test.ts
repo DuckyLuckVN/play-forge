@@ -15,17 +15,17 @@ import {
   shrinkArena,
   spawnBoss,
 } from './boss'
-import { bossBounds, roleBricks } from './boss-kit'
+import { bossBounds, roleBricks, summon } from './boss-kit'
 import { dims } from './dims'
-import { brickBreach, hurtHero } from './health'
-import { BOSS_SKILLS, SKILL_IDS } from './boss-skills'
+import { BREACH_CAP, breachUnit, hurtHero } from './health'
+import { BOSS_SKILLS, ROCKET_HIT, SKILL_IDS } from './boss-skills'
 import { CELL } from './config'
 import { damageBrick } from './damage'
 import { cellCenter } from './rows'
 import { canRecall, drainEvents, fire, recall, startNextTurn, step } from './run'
 import { useHelper } from './meta'
-import { brick, empty } from './testing'
-import type { Ball, BossSkillId, RunState } from './types'
+import { ballAt, brick, empty, runVolley } from './testing'
+import type { BossSkillId, RunState } from './types'
 
 /** A turn-30 run with a boss that has exactly `skills`, at the top, waiting to aim. */
 function fight(skills: BossSkillId[], shape = 'block', seed = 1): RunState {
@@ -46,20 +46,6 @@ const hit = (s: RunState, amount: number, source: 'ball' | 'fire' | 'blast' | 'b
   damageBrick(s, bossParts(s)[0], amount, source, 0, more)
 const left = (s: RunState) => Math.min(...bossParts(s).map((b) => b.col))
 const top = (s: RunState) => Math.min(...bossParts(s).map((b) => b.row))
-const ballAt = (x: number, y: number, vx = 0, vy = -600): Ball => ({
-  x,
-  y,
-  vx,
-  vy,
-  status: 'flying',
-  kind: 'normal',
-  r: 7,
-  split: false,
-  inside: [],
-  pierceLeft: 0,
-  bounceBonus: 0,
-  lastBrick: -1,
-})
 const skillEvents = (s: RunState, id: BossSkillId) =>
   drainEvents(s).filter((e) => e.type === 'bossSkill' && e.id === id).length
 
@@ -123,6 +109,7 @@ describe('boss skills: summon', () => {
     turns(s, 3)
     expect(roleBricks(s, 'spike')).toHaveLength(2)
     const spike = roleBricks(s, 'spike')[0]
+    spike.spikes = ['bottom'] // the ball comes from below
     const c = cellCenter(spike.col, spike.row)
     s.phase = 'volley'
     s.balls = [ballAt(c.x, c.y + CELL)]
@@ -570,7 +557,7 @@ describe('boss attacks: they hurt the hero', () => {
     const thorns = roleBricks(s, 'thorn')
     expect(thorns.length).toBeGreaterThan(0)
     const hp = s.hp
-    damageBrick(s, thorns[0], 1, 'ball')
+    damageBrick(s, thorns[0], 1, 'ball', 0, { face: thorns[0].spikes![0] })
     expect(s.hp).toBeLessThan(hp)
     expect(drainEvents(s).some((e) => e.type === 'heroHit')).toBe(true)
     const after = s.hp
@@ -583,23 +570,43 @@ describe('boss attacks: they hurt the hero', () => {
     const s = fight(['thorns'])
     const t = roleBricks(s, 'thorn')[0]
     t.hp = t.maxHp = 1e9
-    for (let i = 0; i < 500; i++) damageBrick(s, t, 1, 'ball')
+    for (let i = 0; i < 500; i++) damageBrick(s, t, 1, 'ball', 0, { face: t.spikes![0] })
     expect(s.maxHp - s.hp).toBeLessThanOrEqual(s.maxHp * 0.15 + 1e-6)
   })
 
-  it('barrage fires missiles that fall two rows a turn and hurt double when they crash', () => {
+  it('barrage: rockets appear under the boss, then launch at the hero next boss turn unless shot down', () => {
     const s = fight(['barrage'])
     s.boss!.tier = 2
     s.boss!.turn = s.turn - 2 // due this turn
     bossTurn(s)
-    const missiles = roleBricks(s, 'missile')
-    expect(missiles).toHaveLength(2)
-    const row = missiles[0].row
+    const rockets = roleBricks(s, 'missile')
+    expect(rockets).toHaveLength(2)
+    const row = rockets[0].row
+    // Shoot one down during the volley.
+    s.bricks = s.bricks.filter((b) => b !== rockets[0])
+    drainEvents(s)
+    const hp = s.hp
+    s.boss!.turn = s.turn - 3 // not due: only the launch happens
     bossTurn(s)
-    expect(missiles[0].row).toBe(row + 1) // plus the board's own drop each turn: 2 a turn
-    const plain = brick(s, 0, dims(s).dangerRow, 10)
-    const missile = { ...plain, id: 9999, col: 1, role: 'missile' as const }
-    expect(brickBreach(s, missile)).toBeCloseTo(2 * brickBreach(s, plain))
+    const events = drainEvents(s)
+    const fired = events.filter((e) => e.type === 'rocket')
+    expect(fired).toHaveLength(1)
+    expect(roleBricks(s, 'missile')).toHaveLength(0) // launched rockets leave the board
+    expect(s.hp).toBeCloseTo(hp - ROCKET_HIT * Math.min(BREACH_CAP, breachUnit(s.turn)))
+    expect(events.some((e) => e.type === 'heroHit' && e.source === 'rocket')).toBe(true)
+    expect(rockets[1].row).toBe(row) // rockets never creep down
+  })
+
+  it('a rocket (or slam) that takes the last health on the boss turn ends the run', () => {
+    const s = fight(['barrage'])
+    s.bricks = s.bricks.filter((b) => b.kind === 'boss')
+    summon(s, [[0, 6]], 1, { role: 'missile' })
+    s.hp = 1
+    s.balls = []
+    fire(s, Math.PI / 2)
+    runVolley(s)
+    expect(s.hp).toBe(0)
+    expect(s.phase).toBe('over')
   })
 
   it('slam warns the turn before, drops every brick a row, and hurts if bricks are close', () => {
@@ -622,6 +629,7 @@ describe('boss attacks: they hurt the hero', () => {
     s.boss!.turn = s.turn - 4
     bossTurn(s)
     expect(low.role).toBe('thorn')
+    expect(low.spikes).toEqual(['bottom'])
   })
 
   it('drain heals the boss from health the hero loses', () => {
@@ -652,15 +660,14 @@ describe('boss attacks: they hurt the hero', () => {
 })
 
 describe('boss arena', () => {
-  it('grows 2 rows when a boss arrives and shrinks back once the rows are empty', () => {
+  it('grows BOSS_ROOM rows when a boss arrives and shrinks back once the rows are empty', () => {
     const s = empty()
     const rows = s.rows
     spawnBoss(s, ['minions'], 'block')
     expect(s.rows).toBe(rows + BOSS_ROOM)
     s.boss = null
     s.bricks = []
-    shrinkArena(s)
-    shrinkArena(s)
+    for (let i = 0; i < BOSS_ROOM; i++) shrinkArena(s)
     expect(s.rows).toBe(rows)
     expect(s.bossRoom).toBe(0)
   })

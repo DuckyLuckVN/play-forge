@@ -9,9 +9,16 @@ import { heal, POTION_HEAL, REVIVE_HEALTH } from './health'
 import { applyPickup, laserRow, openPickOrAim } from './run'
 import type { ActiveHelper, RunState, StartHelper } from './types'
 
-/** Coins for the next revive this run: 100, 200, 300… */
+/** Revive price before rounding: this many coins, plus REVIVE_PER_TURN per turn survived. */
+const REVIVE_BASE = 60
+const REVIVE_PER_TURN = 3
+/** Each revive already used this run multiplies the next price by this. */
+const REVIVE_GROWTH = 1.6
+
+/** Coins for the next revive this run: grows with the turn and with each revive used (150 at turn 30, 570 at turn 170). */
 export function reviveCost(s: RunState): number {
-  return 100 * (s.revivesUsed + 1)
+  const raw = (REVIVE_BASE + REVIVE_PER_TURN * Math.max(0, s.turn)) * REVIVE_GROWTH ** s.revivesUsed
+  return Math.round(raw / 10) * 10
 }
 
 /** After game over: clears the 3 rows nearest the danger line, brings health back to half and plays on. The caller has paid. */

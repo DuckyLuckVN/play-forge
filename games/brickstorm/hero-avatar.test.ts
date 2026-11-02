@@ -216,9 +216,9 @@ describe('creature hands', () => {
     const a = new HeroAvatar('rookie')
     run(a, 0.5, ctx({ hold }))
     a.draw(fakeCanvas(), 760)
-    a.setHero('knight')
+    a.setHero('flash')
     a.draw(fakeCanvas(), 760)
-    expect(a.lastHands).toBeNull() // legacy drawing
+    expect(a.lastHands).toBeNull() // legacy drawing (flash has no creature look yet)
     a.setHero('rookie') // cheer: not a hold mood, the hands are free
     a.update(1 / 60, ctx({ hold }))
     a.draw(fakeCanvas(), 760)

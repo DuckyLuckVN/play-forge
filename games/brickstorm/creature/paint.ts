@@ -28,7 +28,7 @@ export const lightOf = (c: string) => mix(c, '#ffffff', 0.3)
 export const clamp = (v: number, a = 0, b = 1) => Math.max(a, Math.min(b, v))
 /** Smoothstep on 0..1. */
 export const smooth = (k: number) => k * k * (3 - 2 * k)
-const easeOut = (k: number) => 1 - (1 - clamp(k)) ** 3
+export const easeOut = (k: number) => 1 - (1 - clamp(k)) ** 3
 /** 0..1..0 bump over [a, b]. */
 const bump = (x: number, a: number, b: number) =>
   x <= a || x >= b ? 0 : Math.sin(((x - a) / (b - a)) * Math.PI)

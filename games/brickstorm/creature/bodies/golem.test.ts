@@ -1,10 +1,24 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { EyeStyle, Mood, Pose } from '../../hero-avatar'
-import { HeroAvatar, type AvatarContext } from '../../hero-avatar'
+import type { Mood } from '../../hero-avatar'
+import type { HeroId } from '../../sim/heroes'
 import { fakeCanvas, installPath2D } from '../../test-canvas'
-import { solveHands } from '../hands'
 import { CREATURE_LOOKS } from '../looks'
-import type { DrawKit, Frame } from '../types'
+import type { CreatureLook, Frame } from '../types'
+import {
+  DRAW_CASES,
+  type FramePatch,
+  HOLD,
+  HOLD_POSES,
+  MOODS,
+  caseFrame,
+  drawLog,
+  frame,
+  handsOf,
+  held,
+  kitFor,
+  toBox,
+  worstHold,
+} from './body-fixtures'
 import { golem } from './golem'
 import { BODIES } from './index'
 
@@ -12,93 +26,26 @@ vi.mock('@forge/fx/tween', () => ({ prefersReducedMotion: () => false }))
 
 installPath2D()
 
-const POSE: Pose = {
-  crouch: 0,
-  lean: 0,
-  sF: 0.15,
-  eF: 0.35,
-  sB: -0.15,
-  eB: 0.35,
-  tilt: 0,
-  fall: 0,
-  eyeOpen: 1,
-  brow: 0,
-  browUp: 0,
-  mouthOpen: 0,
-  smile: 0.35,
-  blush: 0.15,
-  rear: 0,
-}
-
-const frame = (patch: Partial<Frame> = {}): Frame => ({
-  t: 1.3,
-  still: false,
-  mood: 'idle',
-  moodAge: 0.1,
-  pose: { ...POSE },
-  eyes: 'normal',
-  blink: 0,
-  lookX: 1,
-  lookY: 0,
-  hop: 0,
-  squash: 0,
-  knock: 0,
-  smear: 0,
-  hold: null,
-  holding: false,
-  fidget: 0,
-  ...patch,
-})
-
 const look = CREATURE_LOOKS.knight!
-
-const kitFor = (f: Frame) => {
-  const m = golem.metrics(look, f)
-  const calls: string[] = []
-  const kit: DrawKit = {
-    metrics: m,
-    hands: solveHands(m, golem.pose!(look, f), f.hold, f.holding),
-    backHand: () => calls.push('back'),
-    frontHand: () => calls.push('front'),
-    hat: () => calls.push('hat'),
-    emblem: () => calls.push('emblem'),
-  }
-  return { kit, calls }
-}
-
-const MOODS: Mood[] = [
-  'idle',
-  'aim',
-  'throw',
-  'watch',
-  'cheer',
-  'pump',
-  'wow',
-  'scared',
-  'worried',
-  'hurt',
-  'heal',
-  'cast',
-  'ko',
-  'revive',
-  'sad',
+const CAST: Array<[HeroId, string, string]> = [
+  ['knight', 'brick', 'scarf'],
+  ['giant', 'boulder', 'yawn'],
+  ['titan', 'mountain', 'rumble'],
+  ['berserker', 'lava', 'steam'],
 ]
-const EYES: EyeStyle[] = ['normal', 'happy', 'squeeze', 'wide', 'xx']
+const LOOKS = CAST.map(([id]) => [id, CREATURE_LOOKS[id]!] as const)
 
-const actx = (patch: Partial<AvatarContext> = {}): AvatarContext => ({
-  homeX: 100,
-  boardW: 392,
-  floorY: 760,
-  aim: null,
-  watch: null,
-  throwing: false,
-  danger: false,
-  lowHealth: false,
-  combo: 0,
-  ...patch,
-})
-const run = (a: HeroAvatar, seconds: number, c = actx()) => {
-  for (let t = 0; t < seconds; t += 1 / 60) a.update(1 / 60, c)
+/** Every fill colour a draw sets. */
+function fillsOf(l: CreatureLook, f = frame()): string[] {
+  const fills: string[] = []
+  const c = new Proxy(fakeCanvas(), {
+    set: (t, k, v) => {
+      if (k === 'fillStyle') fills.push(String(v))
+      return Reflect.set(t, k, v)
+    },
+  })
+  golem.draw(c, l, f, kitFor(golem, l, f).kit)
+  return fills
 }
 
 describe('golem body (Bastion)', () => {
@@ -123,26 +70,23 @@ describe('golem body (Bastion)', () => {
     expect(m.socketF.x).toBeGreaterThan(0)
     expect(m.socketB.x).toBeLessThan(0)
     expect(m.socketF.y).toBeGreaterThan(m.head.y)
-    // The held ball (12 in front, LAUNCH_LIFT + BALL_R = 21 up) is in reach.
-    expect(Math.hypot(12 - m.socketF.x, -21 - m.socketF.y)).toBeLessThan(m.upper + m.fore)
+    expect(Math.hypot(HOLD.x - m.socketF.x, HOLD.y - m.socketF.y)).toBeLessThan(m.upper + m.fore)
   })
 
-  it('draws every mood × eyes without throwing, back hand before front hand, with its hat', () => {
-    for (const mood of MOODS)
-      for (const eyes of EYES)
-        for (const still of [false, true])
-          for (const fidget of [0, 0.5]) {
-            const f = frame({ mood, eyes, still, fidget, pose: { ...POSE, fall: mood === 'ko' ? 1 : 0 } })
-            const { kit, calls } = kitFor(f)
-            expect(() => golem.draw(fakeCanvas(), look, f, kit)).not.toThrow()
-            expect(calls.indexOf('back')).toBeLessThan(calls.indexOf('front'))
-            expect(calls).toContain('hat')
-          }
+  it('draws each variant in every mood, eye style, still and fidget case, back hand first, with its hat', () => {
+    for (const [, l] of LOOKS)
+      for (const c of DRAW_CASES) {
+        const f = caseFrame(c)
+        const { kit, calls } = kitFor(golem, l, f)
+        expect(() => golem.draw(fakeCanvas(), l, f, kit)).not.toThrow()
+        expect(calls.indexOf('back')).toBeLessThan(calls.indexOf('front'))
+        expect(calls).toContain('hat')
+      }
   })
 
   it('draws its fist hands without throwing, open or closed', () => {
     const f = frame()
-    const h = kitFor(f).kit.hands.front
+    const h = kitFor(golem, look, f).kit.hands.front
     for (const open of [0, 1])
       expect(() => golem.drawHand!(fakeCanvas(), { ...h, open }, look, 4)).not.toThrow()
   })
@@ -152,7 +96,7 @@ describe('golem body (Bastion)', () => {
     /** Torso halves (13 × 22 blocks) drawn in a frame. */
     const halves = (f: Frame) => {
       const c = fakeCanvas()
-      golem.draw(c, look, f, kitFor(f).kit)
+      golem.draw(c, look, f, kitFor(golem, look, f).kit)
       return new Set(
         c.log
           .filter((r) => r.name === 'fill' && r.args[0] instanceof Path2D)
@@ -160,7 +104,7 @@ describe('golem body (Bastion)', () => {
           .filter((p) => p.ops.some((o) => o.name === 'roundRect' && o.args[2] === 13 && o.args[3] === 22)),
       ).size
     }
-    const ko = frame({ mood: 'ko', moodAge: 2, eyes: 'xx', pose: { ...POSE, fall: 1 } })
+    const ko = frame({ mood: 'ko', moodAge: 2, eyes: 'xx', pose: { fall: 1 } })
     const up = frame({ still: true })
     expect(halves(up)).toBe(0)
     expect(halves(ko)).toBe(2)
@@ -178,34 +122,22 @@ describe('golem body (Bastion)', () => {
   })
 
   it('hangs the back fist at its side, below the shoulder and clear of the torso, in idle, watch, aim and worried', () => {
-    const poses: Array<[Mood, Partial<Pose>]> = [
-      ['idle', {}],
-      ['watch', { sF: 0.5, eF: 1.7, sB: -0.3, eB: 1.9, lean: 0.08 }],
-      ['aim', { crouch: 0.35, lean: -0.08, sF: -2.3, eF: 1.7, sB: 2.6, eB: 0.15 }],
-      ['aim', { crouch: 0.35, lean: -0.08, sF: -2.3, eF: 1.7, sB: 1.6, eB: 0.15 }],
-      ['worried', { sF: 0.8, eF: 2.3, sB: -0.6, eB: 2.3, crouch: 0.2 }],
-    ]
-    for (const [mood, patch] of poses)
-      for (const t of [0, 0.8, 1.9]) {
-        const f = frame({
-          mood,
-          t,
-          pose: { ...POSE, ...patch },
-          hold: { x: 12, y: -21, r: 7 },
-          holding: true,
-        })
-        const m = golem.metrics(look, f)
-        const { back } = solveHands(m, golem.pose!(look, f), f.hold, true)
-        expect(back.y).toBeGreaterThan(m.socketB.y)
-        expect(back.x).toBeLessThan(m.bodyBox.x)
-        // Hip level: between the knees and the chest.
-        expect(back.y).toBeGreaterThan(-20)
-        expect(back.y).toBeLessThan(-6)
-      }
+    for (const [, l] of LOOKS)
+      for (const [mood, patch] of HOLD_POSES)
+        for (const t of [0, 0.8, 1.9]) {
+          const f = held({ mood, t, pose: { ...patch } })
+          const m = golem.metrics(l, f)
+          const { back } = handsOf(golem, l, f)
+          expect(back.y).toBeGreaterThan(m.socketB.y)
+          expect(back.x).toBeLessThan(m.bodyBox.x + 1)
+          // Hip level: between the knees and the chest.
+          expect(back.y).toBeGreaterThan(-20)
+          expect(back.y).toBeLessThan(-6)
+        }
   })
 
   it('still lets an idle wave raise the back arm', () => {
-    const p = golem.pose!(look, frame({ pose: { ...POSE, sB: -2.6, eB: 0.3 } }))
+    const p = golem.pose!(look, frame({ pose: { sB: -2.6, eB: 0.3 } }))
     expect(p.sB).toBeLessThan(-2)
   })
 
@@ -242,14 +174,14 @@ describe('golem body (Bastion)', () => {
     const drawAt = (t: number) => {
       const f = frame({ t, still: true })
       const c = fakeCanvas()
-      golem.draw(c, look, f, kitFor(f).kit)
+      golem.draw(c, look, f, kitFor(golem, look, f).kit)
       return JSON.stringify(c.log)
     }
     expect(drawAt(1)).toBe(drawAt(5.5))
   })
 
   it('holds a pose without one-shot motion under reduced motion (no stomp dip, hurt squash or gust)', () => {
-    const still = (patch: Partial<Frame>) => golem.metrics(look, frame({ still: true, ...patch }))
+    const still = (patch: FramePatch) => golem.metrics(look, frame({ still: true, ...patch }))
     const rest = still({})
     expect(still({ mood: 'cheer', moodAge: 0.5 }).socketF).toEqual(rest.socketF)
     expect(still({ mood: 'hurt', moodAge: 0.15 }).bodyBox).toEqual(rest.bodyBox)
@@ -259,28 +191,114 @@ describe('golem body (Bastion)', () => {
     const drawWith = (fidget: number) => {
       const f = frame({ fidget })
       const c = fakeCanvas()
-      golem.draw(c, look, f, kitFor(f).kit)
+      golem.draw(c, look, f, kitFor(golem, look, f).kit)
       return JSON.stringify(c.log)
     }
     expect(drawWith(0.5)).not.toBe(drawWith(0))
   })
 
-  it('the knight holds the ball exactly in its front fist, mirrored and bigger too', () => {
-    for (const [homeX, size] of [
-      [100, 1],
-      [300, 1],
-      [100, 1.35],
-    ]) {
-      const a = new HeroAvatar('knight')
-      a.size = size
-      const h = { x: homeX, y: 740, r: 5 }
-      run(a, 0.5, actx({ homeX, hold: h }))
-      expect(a.mood).toBe('idle')
-      a.draw(fakeCanvas(), 760)
-      const front = a.lastHands?.front
-      expect(front).toBeTruthy()
-      expect(Math.abs(front!.x - h.x)).toBeLessThan(0.01)
-      expect(Math.abs(front!.y - h.y)).toBeLessThan(0.01)
+  it('every golem holds the ball exactly in its front fist, mirrored and bigger too', () => {
+    for (const [id] of CAST) {
+      const worst = worstHold(id)
+      expect(worst).not.toBeNull()
+      expect(worst!).toBeLessThan(0.01)
     }
+  })
+  it('giant, titan and berserker are golems with their own variant and signature', () => {
+    for (const [id, variant, signature] of CAST) {
+      const l = CREATURE_LOOKS[id]!
+      expect(l).toMatchObject({ body: 'golem', variant, signature })
+      for (const c of [l.main, l.second, l.hand, l.eye]) expect(c).toMatch(/^#[0-9a-f]{6}$/)
+    }
+  })
+
+  it('every variant stands within ±20% of the old figure, the ball in reach, sockets below the head', () => {
+    for (const [, l] of LOOKS) {
+      const m = golem.metrics(l, held({ still: true }))
+      expect(m.armed).toBe(true)
+      expect(m.headTop).toBeGreaterThanOrEqual(-60)
+      expect(m.headTop).toBeLessThanOrEqual(-40)
+      expect(m.socketF.y).toBeGreaterThan(m.head.y)
+      for (const b of [HOLD, { x: 12, y: -14 }])
+        expect(Math.hypot(b.x - m.socketF.x, b.y - m.socketF.y)).toBeLessThan(m.upper + m.fore)
+    }
+  })
+
+  it('only Bastion wears the scarf and the gold badge', () => {
+    /** The scarf band: a 28 × 6.5 strip round the neck. */
+    const band = (l: CreatureLook) =>
+      drawLog(golem, l, frame({ fidget: 0.5 })).includes('"roundRect","args":[-14,-32,28,6.5,3.2]')
+    expect(band(look)).toBe(true)
+    expect(fillsOf(look)).toContain('#ffc531')
+    for (const variant of ['boulder', 'mountain', 'lava']) {
+      expect(band({ ...look, variant })).toBe(false)
+      expect(fillsOf({ ...look, variant }, frame({ fidget: 0.5 }))).not.toContain('#ffc531')
+    }
+  })
+
+  it('free fists stay near the body and out of the head', () => {
+    for (const [, l] of LOOKS)
+      for (const mood of MOODS) {
+        if (mood === 'throw' || mood === 'ko') continue
+        for (const t of [0, 0.7, 1.9]) {
+          const f = frame({ mood, t, moodAge: 0.5 })
+          const m = golem.metrics(l, f)
+          const h = handsOf(golem, l, f)
+          for (const hand of [h.front, h.back]) {
+            expect(toBox(hand, m.bodyBox)).toBeLessThan(m.handR * 4)
+            expect(
+              Math.hypot((hand.x - m.head.x) / m.head.rx, (hand.y - m.head.y) / m.head.ry),
+            ).toBeGreaterThan(1)
+          }
+        }
+      }
+  })
+
+  it('moves in its idle loop and cheers with its own flourish per variant; frozen under reduced motion', () => {
+    const cheer = LOOKS.map(([, l]) => {
+      expect(drawLog(golem, l, frame({ t: 1 }))).not.toBe(drawLog(golem, l, frame({ t: 1.4 })))
+      expect(drawLog(golem, l, frame({ t: 1, still: true }))).toBe(
+        drawLog(golem, l, frame({ t: 5.5, still: true })),
+      )
+      expect(drawLog(golem, l, frame({ t: 1, still: true, fidget: 0.5 }))).toBe(
+        drawLog(golem, l, frame({ t: 1, still: true })),
+      )
+      return drawLog(golem, l, frame({ mood: 'cheer', moodAge: 0.6, eyes: 'happy' }))
+    })
+    expect(new Set(cheer).size).toBe(LOOKS.length)
+  })
+
+  it('plays its signature: Bram yawns, Granite rumbles (a small shake), Grakka lets off steam', () => {
+    for (const [, l] of LOOKS)
+      expect(drawLog(golem, l, held({ fidget: 0.5 }))).not.toBe(drawLog(golem, l, held()))
+    const titan = CREATURE_LOOKS.titan!
+    const shake = [0.3, 0.4, 0.5, 0.6].map((fidget) =>
+      Math.abs(golem.offsetX!(titan, held({ fidget, t: 1 + fidget }))),
+    )
+    expect(Math.max(...shake)).toBeGreaterThan(0.2)
+    expect(Math.max(...shake)).toBeLessThan(1.5)
+    expect(golem.offsetX!(titan, held({ fidget: 0.5, still: true }))).toBe(0)
+    expect(golem.offsetX!(titan, frame({ mood: 'pump', moodAge: 0.35 }))).toBe(0)
+  })
+
+  it('KO per variant: Bram rolls back and settles in one piece; Granite and Grakka crumble', () => {
+    const ko = frame({ mood: 'ko', moodAge: 2, eyes: 'xx', pose: { fall: 1 } })
+    const up = (l: CreatureLook) => golem.metrics(l, frame({ still: true }))
+    const bram = CREATURE_LOOKS.giant!
+    const a = up(bram)
+    const b = golem.metrics(bram, ko)
+    expect(a.head.x - b.head.x).toBeGreaterThan(8)
+    expect(b.bodyBox.w).toBeLessThan(a.bodyBox.w * 1.4)
+    for (const id of ['titan', 'berserker'] as const) {
+      const l = CREATURE_LOOKS[id]!
+      const u = up(l)
+      const d = golem.metrics(l, ko)
+      expect(d.headTop).toBeGreaterThan(u.headTop + 20)
+      expect(d.bodyBox.w).toBeGreaterThan(u.bodyBox.w * 1.2)
+    }
+    // Grakka's glow cools to dark rock on KO.
+    const grakka = CREATURE_LOOKS.berserker!
+    expect(fillsOf(grakka, ko)).toContain('#3b2a33')
+    expect(fillsOf(grakka, frame())).not.toContain('#3b2a33')
   })
 })

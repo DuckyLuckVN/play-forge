@@ -424,6 +424,11 @@ function endTurn(s: RunState): void {
   }
   // A frozen turn adds no row: nothing moved, so row 0 is still occupied.
   startNextTurn(s, !frozen)
+  // The boss's turn can hurt too (rockets, a slam): that can end the run.
+  if (s.hp <= 0) {
+    s.phase = 'over'
+    s.events.push({ type: 'over' })
+  }
 }
 
 /** Advances to the next turn: a new row at the top, then aim (or a pending boost pick). */

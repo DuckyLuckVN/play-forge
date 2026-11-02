@@ -5,7 +5,7 @@ import { drawBall } from './cosmetics'
 import { GUIDE, runStats } from './guide'
 import { t } from './i18n'
 import { BOOST_ICONS } from './icons'
-import { drawKindGlyph, drawPickupGlyph, shapedBrickPath } from './render'
+import { drawKindGlyph, drawPickupGlyph, HAZARD_FILL, shapedBrickPath } from './render'
 import { CELL, TOP } from './sim/config'
 import type { Helpers } from './save'
 import { BOOSTS, boostSlots, slottedBoosts } from './sim/boosts'
@@ -190,7 +190,7 @@ export function sample(id: string): HTMLCanvasElement {
   const [group, kind] = id.split(':')
   if (group === 'brick') {
     const r = { x: 2, y: 2, w: size - 4, h: size - 4 }
-    ctx.fillStyle = kind === 'gold' ? theme.yolk : '#b48cff'
+    ctx.fillStyle = kind === 'gold' ? theme.yolk : (HAZARD_FILL[kind as BrickKind] ?? '#b48cff')
     ctx.beginPath()
     ctx.roundRect(r.x, r.y, r.w, r.h, 8)
     ctx.fill()

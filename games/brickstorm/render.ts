@@ -92,7 +92,7 @@ function drawBurning(
 }
 
 /** Hazard bricks wear their element's colour instead of the hp colour. */
-const HAZARD_FILL: Partial<Record<BrickKind, string>> = {
+export const HAZARD_FILL: Partial<Record<BrickKind, string>> = {
   slime: '#63d471',
   water: '#4dabf7',
   fire: '#ff7b39',

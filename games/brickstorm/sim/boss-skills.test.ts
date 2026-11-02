@@ -15,7 +15,7 @@ import {
   shrinkArena,
   spawnBoss,
 } from './boss'
-import { bossBounds, roleBricks } from './boss-kit'
+import { bossBounds, roleBricks, summon } from './boss-kit'
 import { dims } from './dims'
 import { BREACH_CAP, breachUnit, hurtHero } from './health'
 import { BOSS_SKILLS, ROCKET_HIT, SKILL_IDS } from './boss-skills'
@@ -24,7 +24,7 @@ import { damageBrick } from './damage'
 import { cellCenter } from './rows'
 import { canRecall, drainEvents, fire, recall, startNextTurn, step } from './run'
 import { useHelper } from './meta'
-import { ballAt, brick, empty } from './testing'
+import { ballAt, brick, empty, runVolley } from './testing'
 import type { BossSkillId, RunState } from './types'
 
 /** A turn-30 run with a boss that has exactly `skills`, at the top, waiting to aim. */
@@ -595,6 +595,18 @@ describe('boss attacks: they hurt the hero', () => {
     expect(s.hp).toBeCloseTo(hp - ROCKET_HIT * Math.min(BREACH_CAP, breachUnit(s.turn)))
     expect(events.some((e) => e.type === 'heroHit' && e.source === 'rocket')).toBe(true)
     expect(rockets[1].row).toBe(row) // rockets never creep down
+  })
+
+  it('a rocket (or slam) that takes the last health on the boss turn ends the run', () => {
+    const s = fight(['barrage'])
+    s.bricks = s.bricks.filter((b) => b.kind === 'boss')
+    summon(s, [[0, 6]], 1, { role: 'missile' })
+    s.hp = 1
+    s.balls = []
+    fire(s, Math.PI / 2)
+    runVolley(s)
+    expect(s.hp).toBe(0)
+    expect(s.phase).toBe('over')
   })
 
   it('slam warns the turn before, drops every brick a row, and hurts if bricks are close', () => {

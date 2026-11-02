@@ -957,7 +957,7 @@
   display: inline-flex;
   line-height: 0;
 }
-.bs-hero-portrait svg {
+.bs-hero-portrait img {
   border-radius: 14px;
 }
 .bs-hero-card {
@@ -1201,7 +1201,7 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
   }
-  .bs-hero-tile .bs-hero-portrait svg {
+  .bs-hero-tile .bs-hero-portrait img {
     width: 40px;
     height: 40px;
   }

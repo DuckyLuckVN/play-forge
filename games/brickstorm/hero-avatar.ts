@@ -14,8 +14,8 @@ import { drawHat } from './creature/hats'
 import { CREATURE_LOOKS } from './creature/looks'
 import { REAR_HOLD } from './creature/motion'
 import { shadow as groundShadow } from './creature/paint'
-import type { BodyType, CreatureLook, DrawKit, Frame, HandPose } from './creature/types'
-import { heroEmblem } from './hero-art'
+import type { BodyMetrics, BodyType, CreatureLook, DrawKit, Frame, HandPose } from './creature/types'
+import { drawEmblem } from './hero-art'
 import { HEROES, type HeroDef, type HeroId } from './sim/heroes'
 import type { SimEvent } from './sim/types'
 
@@ -235,7 +235,6 @@ export class HeroAvatar {
     ctx.arc(x, y, r, 0, Math.PI * 2)
     ctx.fill()
   }
-  private emblem: HTMLImageElement | null = null
   /** Creature hands follow their solved targets through springs (local units). */
   private handF = new HandFollower()
   private handB = new HandFollower()
@@ -251,7 +250,6 @@ export class HeroAvatar {
     private readonly rng: () => number = Math.random,
   ) {
     this.hero = HEROES[hero]
-    this.loadEmblem()
     this.sigIn = this.nextSigGap()
   }
 
@@ -289,7 +287,6 @@ export class HeroAvatar {
   setHero(id: HeroId): void {
     if (this.hero.id === id) return
     this.hero = HEROES[id]
-    this.loadEmblem()
     this.snapHands = true
     this.setMood('cheer')
   }
@@ -304,13 +301,6 @@ export class HeroAvatar {
     this.knock.x = this.knock.v = this.hop.x = this.hop.v = 0
     // Stand straight up: no KO fall (or any other pose) left to blend out.
     this.pose = { ...BASE }
-  }
-
-  private loadEmblem(): void {
-    if (typeof Image === 'undefined') return
-    const img = new Image()
-    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(heroEmblem(this.hero.emblem, this.hero.color, 24))}`
-    this.emblem = img
   }
 
   /** Switches mood if it matters more than the one playing (or that one is over). */
@@ -774,6 +764,12 @@ export class HeroAvatar {
     return this.hands
   }
 
+  /** The body's metrics for the current frame, in local units (feet at 0, facing +x), with no ball held. */
+  get bodyMetrics(): BodyMetrics {
+    const look = CREATURE_LOOKS[this.hero.id]
+    return BODIES[look.body].metrics(look, this.buildFrame())
+  }
+
   /** Draws the hero standing on `floorY` at its x (or at `at`, for previews), `scale`× board size. */
   draw(ctx: CanvasRenderingContext2D, floorY: number, scale = this.size, at?: number): void {
     const look = CREATURE_LOOKS[this.hero.id]
@@ -910,10 +906,7 @@ export class HeroAvatar {
         else drawGrip(ctx, hands.front, ball, look.hand)
       },
       hat: (box) => drawHat(ctx, this.hero.hat, box, this.hero.color),
-      emblem: (ex, ey, size) => {
-        if (this.emblem?.complete && this.emblem.naturalWidth)
-          ctx.drawImage(this.emblem, ex - size / 2, ey - size / 2, size, size)
-      },
+      emblem: (ex, ey, size) => drawEmblem(ctx, this.hero.emblem, this.hero.color, ex, ey, size),
     }
     body.draw(ctx, look, f, kit)
     ctx.shadowBlur = 0

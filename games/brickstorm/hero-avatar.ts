@@ -983,10 +983,13 @@ export class HeroAvatar {
       hands,
       backHand: () => hand(hands.back),
       frontHand: () => {
-        hand(hands.front)
-        if (!carried) return
-        const ball =
-          f.holding && f.hold ? f.hold : { x: hands.front.x, y: hands.front.y, r: carried.r / scale }
+        const ball = !carried
+          ? null
+          : f.holding && f.hold
+            ? f.hold
+            : { x: hands.front.x, y: hands.front.y, r: carried.r / scale }
+        hand(ball ? { ...hands.front, grip: ball.r } : hands.front)
+        if (!carried || !ball) return
         const b = toBoard(ball)
         // The ball skin draws in board units: undo this frame's flip and scale around the origin.
         ctx.save()
@@ -995,7 +998,8 @@ export class HeroAvatar {
         ctx.translate(-x, -y)
         this.drawBall(ctx, f.holding ? carried.x : b.x, f.holding ? carried.y : b.y, carried.r)
         ctx.restore()
-        drawGrip(ctx, hands.front, ball, look.hand)
+        if (body.drawGrip) body.drawGrip(ctx, hands.front, ball, look)
+        else drawGrip(ctx, hands.front, ball, look.hand)
       },
       hat: (box) => drawHat(ctx, this.hero.hat, box, this.hero.color),
       emblem: (ex, ey, size) => {

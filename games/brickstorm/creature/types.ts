@@ -70,6 +70,8 @@ export interface HandPose {
   ey: number
   open: number
   front: boolean
+  /** Radius of the ball this hand carries, set by the kit while it draws one, so a body can shape the hand round it. */
+  grip?: number
 }
 
 export interface DrawKit {
@@ -88,6 +90,13 @@ export interface BodyType {
   draw(ctx: CanvasRenderingContext2D, look: CreatureLook, f: Frame, k: DrawKit): void
   /** Body-specific hand (e.g. claws, paws). */
   drawHand?(ctx: CanvasRenderingContext2D, h: HandPose, look: CreatureLook, r: number): void
+  /** Body-specific grip drawn over the carried ball (e.g. the crab's upper pincer); default: a thumb over its front edge. */
+  drawGrip?(
+    ctx: CanvasRenderingContext2D,
+    h: HandPose,
+    ball: { x: number; y: number; r: number },
+    look: CreatureLook,
+  ): void
   /** Body shift for this frame in local forward units (+ = the way the creature faces; the avatar applies `facing`). */
   offsetX?(look: CreatureLook, f: Frame): number
   /** Body-specific arm reactions layered on the mood pose (e.g. both arms up on cheer), before the hands are solved. */

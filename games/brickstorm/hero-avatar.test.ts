@@ -306,7 +306,7 @@ describe('signature fidget', () => {
   }
 
   it('plays at least once within 11 s of idle, running 0..1 over 1.2 s', () => {
-    const a = new HeroAvatar('rookie')
+    const a = new HeroAvatar('rookie', () => 0.5)
     const seen = sample(a, 11)
     const start = seen.findIndex((v) => v > 0)
     expect(start).toBeGreaterThan(6 * 60 - 2)

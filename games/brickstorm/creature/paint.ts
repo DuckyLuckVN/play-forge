@@ -90,7 +90,11 @@ export function group(ctx: Ctx, parts: Part[]): void {
   ctx.lineJoin = 'round'
   ctx.lineWidth = 6
   for (const q of parts) if (!q.inner) ctx.stroke(q.p)
+  // A glow (rim light) belongs on the silhouette only: blurring every fill and inner line looks heavy and costs per path.
+  const blur = ctx.shadowBlur
+  if (blur) ctx.shadowBlur = 0
   for (const q of parts) paint(ctx, q)
+  if (blur) ctx.shadowBlur = blur
 }
 
 export function gloss(ctx: Ctx, x: number, y: number, rx: number, ry: number, rot = -0.5): void {

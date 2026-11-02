@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import type { Pose } from '../hero-avatar'
 import { fakeCanvas, installPath2D } from '../test-canvas'
-import { HandFollower, clearHead, drawGrip, drawHand, solveHands } from './hands'
+import { HandFollower, clearHead, drawGrip, drawHand, revealHand, solveHands } from './hands'
 import type { BodyMetrics, HandPose } from './types'
 
 beforeAll(installPath2D)
@@ -11,6 +11,7 @@ const metrics = (): BodyMetrics => ({
   head: { x: 0, y: -40, rx: 10, ry: 10 },
   socketF: { x: 6, y: -26 },
   socketB: { x: -6, y: -26 },
+  bodyBox: { x: -4, y: -28, w: 8, h: 18 },
   upper: 7,
   fore: 7,
   armed: true,
@@ -273,5 +274,43 @@ describe('drawing', () => {
   it('drawHand works open and on a zero-length forearm', () => {
     expect(() => drawHand(fakeCanvas(), hand(1), '#ffd166', 3.5)).not.toThrow()
     expect(() => drawHand(fakeCanvas(), { ...hand(), ex: 14, ey: -20 }, '#ffd166', 3.5)).not.toThrow()
+  })
+})
+
+describe('revealHand (back hand never fully hidden behind the torso)', () => {
+  const m = metrics()
+  const b = m.bodyBox
+  const r = m.handR
+  /** How far the mitt pokes out past the box's nearest-overflowing edge. */
+  const overflow = (h: { x: number; y: number }) =>
+    Math.max(b.x - (h.x - r), h.x + r - (b.x + b.w), b.y - (h.y - r), h.y + r - (b.y + b.h))
+
+  it('pushes a back-arm pose that lands inside the torso out to an edge, arm still joined', () => {
+    const p = pose({ sB: 0.3, eB: 1.5 })
+    const raw = limb(m, m.socketB, p.sB, p.eB).hand
+    expect(overflow(raw)).toBeLessThan(0.8 * r) // the fixture really is (mostly) hidden
+    const { back } = solveHands(m, p, null, false)
+    expect(overflow(back)).toBeGreaterThanOrEqual(0.8 * r) // ≥ ~40% of the mitt shows
+    expect(dist(back, m.head)).toBeGreaterThanOrEqual(Math.max(m.head.rx, m.head.ry) + r + 1)
+    expect(dist(m.socketB, { x: back.ex, y: back.ey })).toBeCloseTo(m.upper, 6)
+    expect(dist({ x: back.ex, y: back.ey }, back)).toBeCloseTo(m.fore, 6)
+  })
+
+  it('leaves a hand that already shows untouched', () => {
+    const h: HandPose = { x: b.x - 1, y: -20, ex: -9, ey: -22, open: 0, front: false }
+    expect(revealHand(m, m.socketB, h)).toBe(h)
+    const p = pose()
+    const raw = limb(m, m.socketB, p.sB, p.eB).hand
+    expect(overflow(raw)).toBeGreaterThanOrEqual(0.8 * r)
+    const { back } = solveHands(m, p, null, false)
+    expect(back.x).toBeCloseTo(raw.x, 9)
+    expect(back.y).toBeCloseTo(raw.y, 9)
+  })
+
+  it('never moves the held front hand, even inside the torso', () => {
+    const hold = { x: 0, y: -18, r: 4 }
+    const { front } = solveHands(m, pose(), hold, true)
+    expect(front.x).toBe(hold.x)
+    expect(front.y).toBe(hold.y)
   })
 })

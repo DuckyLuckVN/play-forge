@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
+import { BODIES } from './creature/bodies'
+import { solveHands } from './creature/hands'
+import { CREATURE_LOOKS } from './creature/looks'
+import type { Frame } from './creature/types'
 import { HeroAvatar, type AvatarContext, type Mood } from './hero-avatar'
 import { HERO_IDS } from './sim/heroes'
 import { fakeCanvas, installPath2D } from './test-canvas'
 
-vi.mock('@forge/fx/tween', () => ({ prefersReducedMotion: () => false }))
+const motion = vi.hoisted(() => ({ reduced: false }))
+vi.mock('@forge/fx/tween', () => ({ prefersReducedMotion: () => motion.reduced }))
 
 const ctx = (patch: Partial<AvatarContext> = {}): AvatarContext => ({
   homeX: 100,
@@ -181,21 +186,63 @@ describe('creature hands', () => {
     }
   })
 
+  /** The rookie's solved back-hand target in board units (size 1, no knock or tremble). */
+  const backTarget = (a: HeroAvatar, floorY = 760) => {
+    const f = (a as unknown as { buildFrame(): Frame }).buildFrame()
+    const look = CREATURE_LOOKS.rookie!
+    const body = BODIES.robot!
+    const m = body.metrics(look, f)
+    const { back } = solveHands(m, body.pose!(look, f), null, false)
+    return { x: a.x + back.x * a.facing, y: floorY + f.hop + back.y }
+  }
+
   it('setHero snaps hands', () => {
     const a = new HeroAvatar('rookie')
     run(a, 0.5, ctx({ hold }))
     a.draw(fakeCanvas(), 760)
     a.setHero('knight')
-    run(a, 0.1, ctx({ hold }))
     a.draw(fakeCanvas(), 760)
     expect(a.lastHands).toBeNull() // legacy drawing
-    a.setHero('rookie')
-    run(a, 1.6, ctx({ hold })) // the switch cheer ends
+    a.setHero('rookie') // cheer: not a hold mood, the hands are free
+    a.update(1 / 60, ctx({ hold }))
     a.draw(fakeCanvas(), 760)
+    // Without the snap the back hand would still be near its old idle spot.
+    near(a.lastHands?.back, backTarget(a))
     const first = a.lastHands
     a.draw(fakeCanvas(), 760)
     expect(a.lastHands).toEqual(first)
-    near(a.lastHands?.front, hold)
+  })
+
+  it('a free hand sits on its target at once under reduced motion', () => {
+    const a = new HeroAvatar('rookie')
+    run(a, 0.5, ctx({ hold }))
+    a.draw(fakeCanvas(), 760)
+    motion.reduced = true
+    try {
+      a.handle({ type: 'levelUp' })
+      a.update(1 / 60, ctx({ hold }))
+      a.draw(fakeCanvas(), 760)
+      near(a.lastHands?.back, backTarget(a))
+    } finally {
+      motion.reduced = false
+    }
+  })
+
+  it('a body shift moves forward with the facing', () => {
+    const robot = BODIES.robot!
+    robot.offsetX = () => 3
+    try {
+      for (const homeX of [100, 300]) {
+        const a = new HeroAvatar('rookie')
+        const h = { x: homeX, y: 740, r: 5 }
+        run(a, 0.5, ctx({ homeX, hold: h }))
+        a.draw(fakeCanvas(), 760)
+        const plain = backTarget(a)
+        expect(a.lastHands!.back.x - plain.x).toBeCloseTo(3 * a.facing, 1)
+      }
+    } finally {
+      delete robot.offsetX
+    }
   })
 
   it('a free hand lags its target, then settles on it', () => {

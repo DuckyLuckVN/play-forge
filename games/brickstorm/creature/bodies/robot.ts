@@ -24,9 +24,14 @@ const HEAD_Y = -39
 const NECK_Y = -27
 const SOCKET = { x: 12, y: -22 }
 const HEAD: HeadBox = { x: 0.5, y: HEAD_Y, rx: 14.5, ry: 12 }
+/** Clearance half-width for the hand solver: the head plus its ear dial (out to x ≈ −19). */
+const HEAD_CLEAR_RX = 16
 /** The hat sits on the head's top edge, its brim just above the screen. */
 const HAT_BOX: HeadBox = { x: 0.5, y: HEAD_Y - 8.2, rx: 13.5, ry: 8 }
 const ARM_W = 4.6
+const TORSO_W = 22
+const TORSO_TOP = -25
+const TORSO_BOTTOM = -8
 /** KO: the body tips back around the heel by up to this angle. */
 const FALL = 1.45
 const FALL_PIVOT = -8
@@ -90,14 +95,34 @@ function applyXf(ctx: Ctx, x: Xf, upper: boolean): void {
   ctx.translate(0, -HIP_Y)
 }
 
+/** Head tilt on the neck: the pose's tilt plus a gentle sway (a happy wobble on cheer). */
+const tiltOf = (f: Frame) =>
+  f.pose.tilt + (f.still ? 0 : happy(f) ? Math.sin(f.t * 14) * 0.12 : Math.sin(f.t * 0.9) * 0.05)
+
 function metrics(_look: CreatureLook, f: Frame): BodyMetrics {
   const x = xfOf(f)
-  const head = toOuter(x, HEAD)
+  // The head turns on its neck: the hands must clear it where it is drawn.
+  const head = toOuter(x, rot(HEAD, { x: 0, y: NECK_Y }, tiltOf(f)))
+  // The body box runs from the shoulders to the feet: the legs (drawn over the back hand) hide it too.
+  const corners = [
+    { x: -TORSO_W / 2, y: TORSO_TOP },
+    { x: TORSO_W / 2, y: TORSO_TOP },
+    { x: -TORSO_W / 2, y: 0 },
+    { x: TORSO_W / 2, y: 0 },
+  ].map((p) => toOuter(x, p))
+  const xs = corners.map((p) => p.x)
+  const ys = corners.map((p) => p.y)
   return {
     headTop: toOuter(x, { x: HEAD.x, y: HEAD.y - HEAD.ry }).y,
-    head: { x: head.x, y: head.y, rx: HEAD.rx, ry: HEAD.ry },
+    head: { x: head.x, y: head.y, rx: HEAD_CLEAR_RX, ry: HEAD.ry },
     socketF: toOuter(x, SOCKET),
     socketB: toOuter(x, { x: -SOCKET.x, y: SOCKET.y }),
+    bodyBox: {
+      x: Math.min(...xs),
+      y: Math.min(...ys),
+      w: Math.max(...xs) - Math.min(...xs),
+      h: Math.max(...ys) - Math.min(...ys),
+    },
     upper: 6.5,
     fore: 6.5,
     armed: true,
@@ -248,7 +273,7 @@ function draw(ctx: Ctx, look: CreatureLook, f: Frame, k: DrawKit): void {
   ctx.save()
   applyXf(ctx, x, true)
   // Torso, belt with a gold buckle, the emblem and a chest light that pulses (glows bright on cast).
-  group(ctx, [{ p: box(-11, -25, 22, 17, 5), c: body }])
+  group(ctx, [{ p: box(-TORSO_W / 2, TORSO_TOP, TORSO_W, TORSO_BOTTOM - TORSO_TOP, 5), c: body }])
   paint(ctx, { p: box(-11, -12.5, 22, 3.4, 1), c: '#20325e', k: 0, inner: true })
   paint(ctx, { p: box(-2.6, -13.3, 5.2, 5, 1.2), c: GOLD, k: 0.4, inner: true })
   k.emblem(3, -19, 7)
@@ -267,7 +292,7 @@ function draw(ctx: Ctx, look: CreatureLook, f: Frame, k: DrawKit): void {
 
   // Head on a neck joint: tilts, with an ear dial and the screen face.
   group(ctx, [{ p: box(-3.5, -29, 7, 5, 1.5), c: NECK, k: 0 }])
-  const tilt = f.pose.tilt + (f.still ? 0 : happy(f) ? Math.sin(f.t * 14) * 0.12 : Math.sin(f.t * 0.9) * 0.05)
+  const tilt = tiltOf(f)
   const hy = HEAD_Y
   ctx.save()
   ctx.translate(0, NECK_Y)

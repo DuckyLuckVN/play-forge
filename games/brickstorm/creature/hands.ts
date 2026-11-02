@@ -87,7 +87,44 @@ function posed(m: BodyMetrics, o: Pt, s: number, e: number, front: boolean): Han
   return handPose(elbow, hand, front)
 }
 
-/** Both hands for a pose. While holding, the front hand sits exactly on the hold point. Pure. */
+/** Centre this far inside the torso edge (× hand radius): about 44% of the mitt shows. */
+const REVEAL_IN = 0.1
+/** A back hand poking out less than this (× radius) counts as hidden. */
+const SHOW = 0.8
+/** Pushing up over the top edge (toward the head) costs this much more than the back or sides. */
+const TOP_COST = 1.5
+
+/**
+ * Spec Hands #5: a back hand that barely shows past the torso box (under ~40% of the mitt) is pushed to the nearest
+ * reachable edge (back, front or bottom before top, never into the head), and its elbow re-solved. Pure.
+ */
+export function revealHand(m: BodyMetrics, socket: Pt, h: HandPose): HandPose {
+  const b = m.bodyBox
+  const r = m.handR
+  // How far the mitt pokes out past the torso (≥ 0.8 r: about 40% or more shows).
+  const out = Math.max(b.x - (h.x - r), h.x + r - (b.x + b.w), b.y - (h.y - r), h.y + r - (b.y + b.h))
+  if (out >= SHOW * r) return h
+  const k = r * REVEAL_IN
+  const clearOfHead = Math.max(m.head.rx, m.head.ry) + r + 1
+  const options = [
+    { x: b.x + k, y: h.y, cost: h.x - b.x },
+    { x: b.x + b.w - k, y: h.y, cost: b.x + b.w - h.x },
+    { x: h.x, y: b.y + b.h - k, cost: b.y + b.h - h.y },
+    { x: h.x, y: b.y + k, cost: (h.y - b.y) * TOP_COST },
+  ]
+    .map((o) => ({
+      ...o,
+      // Unreachable or head-touching spots only win when nothing else is left.
+      cost:
+        o.cost + (dist(o, socket) > m.upper + m.fore ? 1000 : 0) + (dist(o, m.head) < clearOfHead ? 1000 : 0),
+    }))
+    .sort((a, c) => a.cost - c.cost)
+  const at = { x: options[0].x, y: options[0].y }
+  const elbow = reach(m, socket, at)
+  return { ...h, x: at.x, y: at.y, ex: elbow.x, ey: elbow.y }
+}
+
+/** Both hands for a pose. While holding, the front hand sits exactly on the hold point; the back hand never hides fully behind the torso. Pure. */
 export function solveHands(
   m: BodyMetrics,
   pose: Pose,
@@ -98,7 +135,7 @@ export function solveHands(
     holding && hold
       ? handPose(reach(m, m.socketF, hold), { x: hold.x, y: hold.y }, true)
       : posed(m, m.socketF, pose.sF, pose.eF, true)
-  return { front, back: posed(m, m.socketB, pose.sB, pose.eB, false) }
+  return { front, back: revealHand(m, m.socketB, posed(m, m.socketB, pose.sB, pose.eB, false)) }
 }
 
 /** Critically damped spring that drags a hand toward its target; snaps when locked (on the ball) or still (reduced motion). */

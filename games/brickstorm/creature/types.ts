@@ -41,11 +41,22 @@ export interface HeadBox {
   ry: number
 }
 
+/** Axis-aligned rectangle (x, y = top-left). */
+export interface Rect {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+/** Everything in the kit's (outer) frame: local units, feet at 0, facing +x. */
 export interface BodyMetrics {
   headTop: number
   head: HeadBox
   socketF: { x: number; y: number }
   socketB: { x: number; y: number }
+  /** Bounds of the parts drawn over the back hand (torso, legs), used to keep it from vanishing behind them. */
+  bodyBox: Rect
   upper: number
   fore: number
   armed: boolean
@@ -64,9 +75,9 @@ export interface HandPose {
 export interface DrawKit {
   metrics: BodyMetrics
   hands: { front: HandPose; back: HandPose }
-  /** Bodies call before the body. */
+  /** Bodies call before the body. Call it in the kit's frame, not inside a body's own transform. */
   backHand(): void
-  /** Bodies call after the body; draws the held ball and grip too. */
+  /** Bodies call after the body; draws the held ball and grip too. Call it in the kit's frame, not inside a body's own transform. */
   frontHand(): void
   hat(box: HeadBox): void
   emblem(x: number, y: number, size: number): void
@@ -77,7 +88,7 @@ export interface BodyType {
   draw(ctx: CanvasRenderingContext2D, look: CreatureLook, f: Frame, k: DrawKit): void
   /** Body-specific hand (e.g. claws, paws). */
   drawHand?(ctx: CanvasRenderingContext2D, h: HandPose, look: CreatureLook, r: number): void
-  /** Horizontal body shift for this frame. */
+  /** Body shift for this frame in local forward units (+ = the way the creature faces; the avatar applies `facing`). */
   offsetX?(look: CreatureLook, f: Frame): number
   /** Body-specific arm reactions layered on the mood pose (e.g. both arms up on cheer), before the hands are solved. */
   pose?(look: CreatureLook, f: Frame): Pose

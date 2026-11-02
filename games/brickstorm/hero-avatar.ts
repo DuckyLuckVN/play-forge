@@ -1,8 +1,11 @@
-// The hero as a living character beside the ball: drawn in code from a small
-// skeleton (hips, torso, two-part arms and legs, head) so every part can move.
-// Poses blend smoothly toward a target set by the current mood, with springs
-// for hops and knock-backs, so reactions read like a real person's: a wind-up
-// before a throw, a follow-through after, a flinch, a sigh of relief.
+// The hero as a living character beside the ball. This file is the brain:
+// moods, priorities, springs (hop, knock, squash), position and facing, and the
+// hold point. Poses blend toward a target set by the current mood, so reactions
+// read clearly: a wind-up before a throw, a follow-through after, a flinch, a sigh.
+// Heroes with a creature look (creature/looks.ts) are drawn by their body type
+// (creature/bodies) from a shared Frame: the hands are solved from the pose
+// (creature/hands.ts), with the front hand locked on the held ball. Heroes without
+// one still use the old skeleton figure (drawLegacy).
 import { prefersReducedMotion } from '@forge/fx/tween'
 import { BODIES } from './creature/bodies'
 import { HandFollower, drawGrip, drawHand, solveHands } from './creature/hands'
@@ -886,7 +889,7 @@ export class HeroAvatar {
     const tremble =
       !still && (this.mood === 'worried' || this.mood === 'scared') ? Math.sin(this.time * 40) * 0.6 : 0
     const x0 = (at ?? this.x) + (still ? 0 : this.knock.x * this.facing)
-    const x = x0 + (tremble + (body.offsetX?.(look, f) ?? 0)) * scale
+    const x = x0 + (tremble + (body.offsetX?.(look, f) ?? 0) * this.facing) * scale
     const hopY = f.hop
     const y = floorY + hopY * scale
     const toLocal = (p: { x: number; y: number }) => ({

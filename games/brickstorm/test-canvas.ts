@@ -48,11 +48,20 @@ const PATH_METHODS = [
   'addPath',
 ] as const
 
-/** Stubs a global `Path2D` that records nothing (no-op if one exists). */
+/** Stubs a global `Path2D` that records its constructor string (`d`) and method calls (`ops`). No-op if one exists. */
 export function installPath2D(): void {
   const g = globalThis as { Path2D?: unknown }
   if (g.Path2D) return
-  class Path2DStub {}
-  for (const m of PATH_METHODS) (Path2DStub.prototype as Record<string, unknown>)[m] = () => undefined
+  class Path2DStub {
+    ops: CallRecord[] = []
+    constructor(public d = '') {}
+  }
+  for (const m of PATH_METHODS)
+    (Path2DStub.prototype as unknown as Record<string, unknown>)[m] = function (
+      this: Path2DStub,
+      ...args: unknown[]
+    ) {
+      this.ops.push({ name: m, args })
+    }
   g.Path2D = Path2DStub
 }

@@ -19,9 +19,8 @@ import { growCard } from './grow-ui'
 import { coinAmount } from './coin'
 import { BOSS, trackFor } from './music'
 import { rarityName, t } from './i18n'
-import { toBoard } from './input'
-import { ATTACK_TEXT, Juice, STORM_EXPLAIN, STORM_TEXT } from './juice'
-import { skillInfo } from './boss-skill-ui'
+import { hoverCursor, inRect, LONG_PRESS_MS, moved, onBoss, toBoard } from './input'
+import { Juice, STORM_EXPLAIN, STORM_TEXT } from './juice'
 import { BoardRenderer } from './render'
 import { ARENAS, type ArenaId } from './arenas'
 import {
@@ -43,9 +42,11 @@ import { HeroAvatar, type AvatarContext } from './hero-avatar'
 import type { HeroId } from './sim/heroes'
 import { breachDamage } from './sim/health'
 import { applyHelpers, growBoard, revive, reviveCost, useHelper } from './sim/meta'
-import { baseRows, dims } from './sim/dims'
-import { boostDetail, GUIDE, newlySeen } from './guide'
+import { baseCols, baseRows, dims } from './sim/dims'
+import { BOSS_WARN_TURNS } from './sim/boss'
+import { boostDetail, GUIDE, guideIdsAt, newlySeen } from './guide'
 import { NoticeQueue } from './notices'
+import { SaveQueue } from './save-queue'
 import {
   ACTIVE_HELPERS,
   boostsPanel,
@@ -55,6 +56,7 @@ import {
   closeButton,
   panelHead,
   sample,
+  slotStrip,
   statsPanel,
 } from './panels'
 import { BOOST_ICONS } from './icons'
@@ -65,7 +67,8 @@ import {
   holdCost,
   isInstant,
   pickCost,
-  skipPick,
+  closePicks,
+  openPicks,
   isSynergy,
   needsReplace,
   pickBoost,
@@ -172,7 +175,8 @@ document.addEventListener('click', (e) => {
 })
 
 // ---------- Game objects ----------
-const view = createCanvas2D(boardEl, BOARD_W, BOARD_H)
+// 2× density is crisp on any phone; 3× fills 2.25× the pixels every frame for little gain.
+const view = createCanvas2D(boardEl, BOARD_W, BOARD_H, { maxDpr: 2 })
 // Side panels match the board's height; the notice card its width (CSS reads --bs-board-h/w).
 new ResizeObserver(() => {
   const box = view.canvas.getBoundingClientRect()
@@ -199,6 +203,8 @@ let paused = false
 let fast = false
 let aim: number | null = null
 let dragging = false
+/** The canvas was last sized mid-animation (its pixel buffer may be stretched). */
+let smoothSized = false
 let acc = 0
 let panel = ''
 let overShown = false
@@ -211,7 +217,10 @@ let justReset = false
 /** The run's total XP last frame, for the "+N XP" tally. */
 let xpSeen = 0
 /** The level-up celebration for the current pick has started. */
-let pickIntro = false
+/** Skill points the player has been told about (a level-up celebration each time it grows). */
+let pointsSeen = 0
+/** Points shown on the Skills button. */
+let drawerPoints = 0
 /** How many of the current run's coins are already in the wallet. */
 let banked = 0
 
@@ -224,8 +233,15 @@ function setFast(on: boolean) {
 setFast(false)
 
 // ---------- Saving ----------
+/** Saves are batched into one write when the browser is idle, and flushed when the tab hides or closes. */
+const saves = new SaveQueue(() => writeSave(save))
+addEventListener('pagehide', () => saves.flush())
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saves.flush()
+})
+
 function persist() {
-  writeSave(save)
+  saves.request()
 }
 
 /** Banks the run's new coins and snapshots it, at a turn boundary (aim or pick). */
@@ -408,6 +424,7 @@ function holdRun(): () => void {
   }
   return () => {
     panelsKey = ''
+    skillsKey = ''
     // Opened over the pause menu (or another overlay): go back to the pause menu, never a blank paused game.
     if (wasPaused && inRun()) return showPaused()
     paused = wasPaused
@@ -431,14 +448,21 @@ function openGuideFromBar() {
 }
 
 /** A small popup explaining a boost or helper. */
-function showDetail(title: string, body: string, extra: string, back: () => void, iconHtml?: string) {
+function showDetail(
+  title: string,
+  body: string,
+  extra: string,
+  back: () => void,
+  icon?: string | HTMLElement,
+) {
   const art = h('span', { class: 'bs-detail-icon' })
-  if (iconHtml) art.innerHTML = iconHtml
+  if (typeof icon === 'string') art.innerHTML = icon
+  else if (icon) art.append(icon)
   show(
     h(
       'div',
       { class: 'pf-panel bs-detail' },
-      panelHead(title, back, iconHtml ? art : null),
+      panelHead(title, back, icon ? art : null),
       h('p', { class: 'pf-lede', textContent: body }),
       extra && h('p', { class: 'bs-side-empty', textContent: extra }),
     ),
@@ -450,7 +474,7 @@ function boostInfo(id: BoostId, back = holdRun()) {
   if (!run) return
   const b = BOOSTS[id]
   showDetail(
-    `${t(b.name)} ×${run.boosts[id] ?? 0}`,
+    `${t(b.name)} · ${t('Lv {n}', { n: run.boosts[id] ?? 0 })}`,
     boostDetail(id, run.boosts[id] ?? 1),
     t('{rarity} skill', { rarity: rarityName(b.rarity) }),
     back,
@@ -507,6 +531,15 @@ function openDrawer() {
       'div',
       { class: 'pf-panel wide bs-shop' },
       panelHead(t('Skills & helpers'), close),
+      s.pendingPicks > 0 &&
+        button(
+          t('Pick a skill (+{n})', { n: s.pendingPicks }),
+          () => {
+            close()
+            openPickScreen()
+          },
+          'primary wide',
+        ),
       statsPanel(s, save.bestTurn),
       boostsPanel(s, (id) => boostInfo(id, reopen)),
       helpersPanel(
@@ -529,33 +562,53 @@ function useActiveHelper(id: ActiveHelper) {
 }
 
 let panelsKey = ''
+let skillsKey = ''
 let panelsAt = 0
-/** Keeps the wide-screen side panels in step with the run (throttled). */
+/** The side panels only show on wide screens (see .bs-side in the CSS); on phones they are never built. */
+const sidesShown = typeof matchMedia !== 'undefined' ? matchMedia('(min-width: 640px)') : null
+sidesShown?.addEventListener('change', () => {
+  panelsKey = ''
+  skillsKey = ''
+})
+/**
+ * Keeps the wide-screen side panels in step with the run. The stats change on
+ * every hit, so they refresh at most 4 times a second; the skills and helpers
+ * only when they change.
+ */
 function renderPanels(s: RunState | null, time: number) {
-  const key = s
-    ? [
-        s.turn,
-        s.phase,
-        s.combo,
-        s.coins,
-        s.level,
-        Math.floor(s.xp),
-        s.ballCount,
-        JSON.stringify(s.boosts),
-        JSON.stringify(save.helpers),
-        walletTotal(save, s, banked),
-        paused,
-      ].join('|')
-    : 'none'
-  if (key === panelsKey || time - panelsAt < 0.15) return
-  panelsKey = key
-  panelsAt = time
+  if (sidesShown && !sidesShown.matches) return
   if (!s) {
+    if (panelsKey === 'none') return
+    panelsKey = skillsKey = 'none'
     leftSide.replaceChildren()
     rightSide.replaceChildren()
     return
   }
-  leftSide.replaceChildren(navPanel(openShopFromBar, openGuideFromBar), statsPanel(s, save.bestTurn))
+  const key = [
+    s.turn,
+    s.phase,
+    s.combo,
+    s.coins,
+    s.level,
+    Math.floor(s.xp),
+    s.ballCount,
+    walletTotal(save, s, banked),
+    paused,
+  ].join('|')
+  if (key !== panelsKey && (time - panelsAt >= 0.25 || panelsKey === '' || panelsKey === 'none')) {
+    panelsKey = key
+    panelsAt = time
+    leftSide.replaceChildren(navPanel(openShopFromBar, openGuideFromBar), statsPanel(s, save.bestTurn))
+  }
+  const skills = [
+    JSON.stringify(s.boosts),
+    JSON.stringify(save.helpers),
+    s.phase === 'aim' && !paused,
+    s.doubleVolleys,
+    s.bossesBeaten ?? 0,
+  ].join('|')
+  if (skills === skillsKey) return
+  skillsKey = skills
   rightSide.replaceChildren(
     boostsPanel(s, (id) => boostInfo(id)),
     helpersPanel(
@@ -567,16 +620,49 @@ function renderPanels(s: RunState | null, time: number) {
   )
 }
 
-/** Tells the player about brick and pickup kinds the first time they appear. */
-function announceNewKinds(s: RunState) {
-  const fresh = newlySeen(s, save.seen)
-  if (!fresh.length) return
-  for (const id of fresh) {
-    const g = GUIDE.find((e) => e.id === id)
-    if (g) notices.push({ id, title: t('New: {name}', { name: t(g.name) }), text: t(g.text) })
+/** Kinds on the board the player hasn't read about, recomputed only when the board changes. */
+let unseenKey = ''
+/**
+ * New brick and pickup kinds wear a "NEW" tag (no pop-up); holding one opens
+ * its card. The first time any shows up, one hint says how.
+ */
+function markNewKinds(s: RunState) {
+  const key = `${s.turn}|${s.bricks.length}|${s.pickups.length}|${save.seen.length}`
+  if (key === unseenKey) return
+  unseenKey = key
+  const fresh = newlySeen(s, save.seen).filter((id) => GUIDE.some((g) => g.id === id))
+  renderer.unseen = new Set(fresh)
+  if (fresh.length && !save.seen.includes(HOLD_HINT)) {
+    notices.push({
+      id: HOLD_HINT,
+      title: t('New blocks!'),
+      text: t('Hold a block marked NEW to see what it does.'),
+    })
+    save = { ...save, seen: [...save.seen, HOLD_HINT] }
+    persist()
   }
-  save = { ...save, seen: [...save.seen, ...fresh] }
+}
+const HOLD_HINT = 'hint:hold'
+
+/** The guide card for what the player is holding (a brick's kind and shape, or a pickup); it is no longer new. */
+function guideInfo(ids: string[]) {
+  const entries = ids.map((id) => GUIDE.find((g) => g.id === id)).filter((g) => !!g)
+  if (!entries.length || panel) return
+  dragging = false
+  save = { ...save, seen: [...new Set([...save.seen, ...ids])] }
   persist()
+  showDetail(
+    t(entries[0].name),
+    entries.map((g) => t(g.text)).join(' '),
+    entries.length > 1
+      ? entries
+          .slice(1)
+          .map((g) => t(g.name))
+          .join(' · ')
+      : '',
+    holdRun(),
+    sample(entries[0].id),
+  )
 }
 
 /** "−N ♥ next turn": what the bricks one row above the line would cost if they crash. */
@@ -594,7 +680,7 @@ function crashWarning(s: RunState): HTMLElement | null {
 /** Events explained the first time they happen, waiting for the next aim. */
 const eventCards: Array<{ id: string; title: string; text: string }> = []
 
-/** The first time a storm wave or a boss attack happens, queue a card that explains it (once per save). */
+/** The first time a storm wave happens, queue a card that explains it (once per save). Boss attacks are on the boss card. */
 function queueEventCard(id: string, title: string, text: string) {
   const key = `event:${id}`
   if (save.seen.includes(key) || eventCards.some((c) => c.id === id)) return
@@ -628,7 +714,11 @@ function showEventCard() {
 /** Points at a helper (or the shop) when bricks are about to reach the line. */
 function updateDanger() {
   const s = run
-  const hint = s && !paused && !panel && s.turn !== dangerClosedTurn ? dangerHint(s, save.helpers) : null
+  // Not over a boss's entrance either: it shows once the boss has landed.
+  const hint =
+    s && !paused && !panel && !juice.bossArriving && s.turn !== dangerClosedTurn
+      ? dangerHint(s, save.helpers)
+      : null
   const key = hint ? `${s!.turn}:${'use' in hint ? hint.use : 'shop'}` : ''
   if (key === dangerShown) return
   dangerShown = key
@@ -660,9 +750,12 @@ function updateDanger() {
 
 /** Shows the current notice, ticking only while the game is in view. */
 function updateNotice(dt: number) {
-  if (run && !paused && !panel && run.phase !== 'pick') notices.update(dt)
+  // A boss's entrance plays with nothing over it: notices wait (their time doesn't run) until it has landed.
+  const quiet = juice.bossArriving
+  if (run && !paused && !panel && run.phase !== 'pick' && !quiet) notices.update(dt)
   // Hidden behind screens and during the level-up celebration.
-  const n = run && !panel && (run.phase === 'aim' || run.phase === 'volley') ? notices.current : null
+  const n =
+    run && !panel && !quiet && (run.phase === 'aim' || run.phase === 'volley') ? notices.current : null
   if (n !== noticeShown) {
     noticeShown = n
     noticeEl.hidden = !n
@@ -761,6 +854,7 @@ function beginRun(s: RunState) {
   run = s
   overShown = false
   slotsSeen = boostSlots(s)
+  pointsSeen = s.pendingPicks
   juice.turn = s.turn
   juice.setXp(s.level, s.xp / xpToNext(s.level), true)
   juice.setCoins(walletTotal(save, s, banked), true)
@@ -795,16 +889,6 @@ function resumeRun() {
   if (!save.run) return
   banked = save.run.banked
   beginRun(structuredClone(save.run.state))
-}
-
-/** One quiet line when every slot is taken: filled slot dots, and what ⇄ on a card means. */
-function slotsFull(s: RunState): HTMLElement {
-  return h(
-    'div',
-    { class: 'bs-slots-full', role: 'note' } as never,
-    h('span', { class: 'bs-slot-dots' }, ...Array.from({ length: boostSlots(s) }, () => h('i'))),
-    h('span', { textContent: t('Slots full · ⇄ replaces a skill') }),
-  )
 }
 
 /** After a boss: a callout on the pick screen that a boost slot was unlocked (shown once). */
@@ -842,6 +926,14 @@ function pay(cost: number): boolean {
 const canPay = (cost: number) => walletTotal(save, run, banked) >= cost
 
 /** Pays for and takes an offered boost (dropping `replace` for it when slots are full), then the next screen. */
+/** Opens the pick screen to spend a skill point: only between shots, with nothing else open. */
+function openPickScreen() {
+  if (!run || paused || panel || juice.bossDying || juice.bossArriving || !openPicks(run)) return
+  dragging = false
+  checkpoint()
+  showPick()
+}
+
 function takeBoost(id: BoostId, replace?: BoostId) {
   if (!run || !pay(pickCost(run, id))) return
   pickBoost(run, id, replace)
@@ -885,7 +977,7 @@ function showSwap(id: BoostId) {
             'aria-label',
             t('Drop {name} (level {n})', { name: t(b.name), n: s.boosts[old] ?? 0 }),
           )
-          card.append(h('small', { textContent: `×${s.boosts[old]}` }))
+          card.append(h('small', { textContent: t('Lv {n}', { n: s.boosts[old] ?? 0 }) }))
           return card
         }),
       ),
@@ -995,7 +1087,7 @@ function showPick() {
   })
   const heading = h('h2', {
     class: 'pf-heading',
-    textContent: t('Level up! Pick a skill'),
+    textContent: t('Pick a skill'),
     tabIndex: -1,
     autofocus: true,
   })
@@ -1021,44 +1113,30 @@ function showPick() {
   )
   if (!token) rerollBtn.append(' ', coinAmount(cost))
   rerollBtn.disabled = !token && !canPay(cost)
-  const skip = () => settled() && confirmSkip()
+  // "Later": the point (and these offers) wait for when the player opens the screen again.
+  const later = () => {
+    closePicks(s)
+    checkpoint()
+    show(null)
+  }
   show(
     h(
       'div',
       { class: 'pf-panel wide bs-pick' },
-      h('div', { class: 'bs-shop-head' }, heading, wallet(), closeButton(skip)),
+      h(
+        'div',
+        { class: 'bs-shop-head' },
+        heading,
+        s.pendingPicks > 1 && h('span', { class: 'bs-points', textContent: `+${s.pendingPicks}` }),
+        wallet(),
+        closeButton(later),
+      ),
       slotCallout(s),
-      ids.some((id) => needsReplace(s, id)) && slotsFull(s),
+      slotStrip(s),
       h('div', { class: 'bs-cards' }, ...cards),
-      h('div', { class: 'bs-pick-actions' }, rerollBtn, button(t('Skip'), skip)),
+      h('div', { class: 'bs-pick-actions' }, rerollBtn, button(t('Later'), later)),
     ),
     `pick-${s.level}-${s.pendingPicks}-${s.rerollsUsed}-${s.holdsUsed ?? 0}`,
-  )
-}
-
-/** Skipping a pick gives up its boost, so ask first. */
-function confirmSkip() {
-  if (!run) return
-  const s = run
-  show(
-    h(
-      'div',
-      { class: 'pf-panel' },
-      panelHead(t('Skip this level-up?'), showPick),
-      h('p', { class: 'pf-lede', textContent: t("You won't get a skill from this level-up.") }),
-      button(
-        t('Skip'),
-        () => {
-          skipPick(s)
-          checkpoint()
-          if (s.phase === 'pick') showPick()
-          else show(null)
-        },
-        'primary wide',
-      ),
-      button(t('Keep picking'), showPick, 'wide'),
-    ),
-    'pick-skip',
   )
 }
 
@@ -1086,7 +1164,7 @@ function showGrow() {
       h(
         'div',
         { class: 'bs-cards' },
-        growCard('col', s.cols, s.rows, s.cols >= MAX_COLS, () => choose('col')),
+        growCard('col', s.cols, s.rows, baseCols(s) >= MAX_COLS, () => choose('col')),
         growCard('row', s.cols, s.rows, baseRows(s) >= MAX_ROWS, () => choose('row')),
       ),
     ),
@@ -1219,22 +1297,28 @@ startRenderLoop((dt, time) => {
         notices.push({
           id: 'storm:soon',
           title: t('⚡ Storm next turn'),
-          text: t('A special wave arrives next turn, bringing a heart.'),
+          text: t('A special wave arrives next turn.'),
+        })
+      // The boss explains itself once, at the first warning; the countdown banner covers the rest.
+      if (e.type === 'bossSoon' && e.turns === BOSS_WARN_TURNS)
+        notices.push({
+          id: 'boss:soon',
+          title: t('☠ Boss in {n} turns', { n: e.turns }),
+          text: t('No new rows while it lives. Clear the bottom rows and save a helper for the fight.'),
         })
       if (e.type === 'storm') {
         notices.push({ id: `storm:${e.kind}`, title: t(STORM_TEXT[e.kind]), text: t(STORM_EXPLAIN[e.kind]) })
         queueEventCard(`storm:${e.kind}`, t(STORM_TEXT[e.kind]), t(STORM_EXPLAIN[e.kind]))
       }
-      if (e.type === 'bossAttack')
-        queueEventCard(`attack:${e.id}`, t(ATTACK_TEXT[e.id]), skillInfo(e.id).text)
     }
     if (!paused) avatar.update(dt, avatarContext(s))
     juice.setBossHp(s.boss?.hp ?? null)
     juice.setHealth(s.hp)
     // Boss fights get their own music and a card explaining the boss.
     if (s.phase !== 'over' && !isPreviewingMusic()) playMusic(s.boss ? BOSS : trackFor(save.equipped.music))
-    // A new boss waits on the aim screen until the player has read its card.
-    if (s.boss && s.boss !== bossAnnounced && s.phase === 'aim' && !panel && !paused) {
+    // A new boss waits on the aim screen until the player has read its card. The card opens
+    // only once its entrance (the arena opening, the boss landing) has played out in view.
+    if (s.boss && s.boss !== bossAnnounced && s.phase === 'aim' && !panel && !paused && !juice.bossArriving) {
       bossAnnounced = s.boss
       show(
         bossIntro(s.boss, () => show(null)),
@@ -1247,18 +1331,34 @@ startRenderLoop((dt, time) => {
     const xpNow = xpTotal(s.level, s.xp)
     juice.gainXp(xpNow - xpSeen)
     xpSeen = xpNow
-    // Level up: celebrate for a beat, then open the pick screen.
-    if (s.phase !== 'pick') pickIntro = false
-    // A boss's death plays out in full before the pick screen.
-    else if (!panel.startsWith('pick') && !juice.bossDying) {
-      if (!pickIntro) {
-        pickIntro = true
-        juice.startLevelUp()
-      } else if (juice.levelUpDone) showPick()
+    // The Skills button carries the waiting points too (phones have no side panel).
+    if (s.pendingPicks !== drawerPoints) {
+      drawerPoints = s.pendingPicks
+      drawerBtn.replaceChildren(
+        t('Skills & helpers'),
+        ...(drawerPoints > 0 ? [h('span', { class: 'bs-points', textContent: `+${drawerPoints}` })] : []),
+      )
     }
+    // A new skill point: celebrate once the shot is over (after a boss's death has played out). The
+    // pick screen waits until the player opens it (the "+N" pill or the Skills button).
+    if (s.pendingPicks < pointsSeen) pointsSeen = s.pendingPicks
+    else if (s.pendingPicks > pointsSeen && s.phase !== 'volley' && !juice.bossDying && !juice.bossArriving) {
+      pointsSeen = s.pendingPicks
+      juice.startLevelUp()
+    }
+    // A run saved on the pick screen comes back to it.
+    if (s.phase === 'pick' && !panel && !juice.bossDying) showPick()
     if (s.phase === 'grow' && panel !== 'grow') showGrow()
     // A new kind of event explains itself once, when the player is next aiming.
-    if (eventCards.length && s.phase === 'aim' && !panel && !paused && !juice.bossDying) showEventCard()
+    if (
+      eventCards.length &&
+      s.phase === 'aim' &&
+      !panel &&
+      !paused &&
+      !juice.bossDying &&
+      !juice.bossArriving
+    )
+      showEventCard()
     // The knockout plays out first (see Juice.defeatDone).
     if (s.phase === 'over' && !overShown && juice.defeatDone) {
       overShown = true
@@ -1270,48 +1370,111 @@ startRenderLoop((dt, time) => {
   particles.update(dt)
   shake.update(dt)
   juice.update(dt)
-  if (s && s.phase === 'aim') announceNewKinds(s)
+  // The arena closing in after a boss plays once the player is back on the board.
+  if (s && s.phase === 'aim' && !panel && !paused && !juice.bossDying) juice.releaseArena()
+  if (s && s.phase === 'aim') markNewKinds(s)
   updateNotice(dt)
   updateDanger()
   renderPanels(s, time)
-  const d = s ? dims(s) : boardSize(COLS, ROWS)
-  if (view.width !== d.boardW || view.height !== d.boardH) view.setSize(d.boardW, d.boardH)
+  // The board's shown size: eases between sizes while the arena grows for a boss or shrinks after it.
+  const d = s ? renderer.shownDims(s, juice) : boardSize(COLS, ROWS)
+  const w = Math.round(d.boardW)
+  const hgt = Math.round(d.boardH)
+  // While it animates, the canvas keeps its pixel buffer (no reallocation every frame); one exact fit after.
+  const moving = juice.arenaMoving
+  if (view.width !== w || view.height !== hgt) view.setSize(w, hgt, moving)
+  else if (smoothSized && !moving) view.setSize(w, hgt)
+  smoothSized = moving
   renderer.draw(s, juice, s && s.phase === 'aim' && !paused ? aim : null, time)
+  updateCursor()
 })
 
 // ---------- Input ----------
+/** Where the mouse is over the board (board units), or null (touch, or off the page). */
+let mouseAt: [number, number] | null = null
+let cursorShown = ''
+/** The cursor says what a click would do: aim, open a chip, or (held) read about a block. */
+function updateCursor() {
+  const chips = { boss: renderer.bossChip, points: renderer.pointsChip }
+  const cursor = run && mouseAt ? hoverCursor(run, ...mouseAt, chips, aiming()) : 'default'
+  if (cursor === cursorShown) return
+  cursorShown = cursor
+  view.canvas.style.cursor = cursor
+}
+document.addEventListener('pointerleave', () => (mouseAt = null))
 const boardPoint = (e: PointerEvent) =>
   toBoard(view.canvas.getBoundingClientRect(), e.clientX, e.clientY, view.width, view.height)
 const aimAt = (e: PointerEvent) => aimFromPointer(run!.launchX, ...boardPoint(e), restingBall(run!).y)
 
-const aiming = () => !!run && !paused && run.phase === 'aim' && !juice.bossDying
+const aiming = () =>
+  !!run && !paused && run.phase === 'aim' && !juice.bossDying && !juice.bossArriving && !juice.arenaMoving
 
 // Aim and launch work from anywhere on the page, so the guide keeps following
 // the pointer in the side gutters. Presses on buttons and panels are theirs.
 const UI = '.pf-overlay, .pf-bar, .bs-controls, button, a, input'
 
+// The boss card can be read again mid-fight: tap the "☠ Boss" chip in the HUD,
+// or hold still on the boss (a quick tap on it still shoots). Holding a special
+// brick or a pickup the same way opens its guide card.
+let chipPress = false
+let bossPress: { at: [number, number]; timer: ReturnType<typeof setTimeout> } | null = null
+function cancelBossPress() {
+  if (bossPress) clearTimeout(bossPress.timer)
+  bossPress = null
+}
+function reopenBossCard() {
+  if (!run?.boss || panel) return
+  dragging = false
+  show(
+    bossIntro(run.boss, () => show(null), true),
+    'boss',
+  )
+}
+
 window.addEventListener('pointerdown', (e) => {
-  if (run?.phase === 'pick' && !panel) juice.skipLevelUp()
   if (!aiming() || (e.target as Element).closest?.(UI)) return
+  const at = boardPoint(e)
+  if (inRect(...at, renderer.bossChip) || inRect(...at, renderer.pointsChip)) {
+    chipPress = true
+    return
+  }
   dragging = true
   aim = aimAt(e)
+  if (onBoss(run!, ...at)) bossPress = { at, timer: setTimeout(reopenBossCard, LONG_PRESS_MS) }
+  else {
+    const ids = guideIdsAt(run!, ...at)
+    if (ids.length) bossPress = { at, timer: setTimeout(() => guideInfo(ids), LONG_PRESS_MS) }
+  }
 })
 window.addEventListener('pointermove', (e) => {
+  mouseAt = e.pointerType === 'mouse' ? boardPoint(e) : null
+  if (bossPress && moved(bossPress.at, boardPoint(e))) cancelBossPress()
   if (!aiming() || (!dragging && e.pointerType !== 'mouse')) return
   aim = aimAt(e)
 })
 window.addEventListener('pointerup', (e) => {
+  cancelBossPress()
+  if (chipPress) {
+    chipPress = false
+    const at = boardPoint(e)
+    if (aiming() && inRect(...at, renderer.bossChip)) reopenBossCard()
+    else if (aiming() && inRect(...at, renderer.pointsChip)) openPickScreen()
+    return
+  }
   if (!dragging) return
   dragging = false
   if (!aiming()) return
   aim = aimAt(e)
   fire(run!, aim)
 })
-window.addEventListener('pointercancel', () => (dragging = false))
+window.addEventListener('pointercancel', () => {
+  dragging = false
+  chipPress = false
+  cancelBossPress()
+})
 
 window.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return
-  if (run?.phase === 'pick' && !panel && (e.code === 'Space' || e.code === 'Enter')) juice.skipLevelUp()
   // Esc closes a menu that has a ✕.
   const closeX =
     !overlay.hidden && e.code === 'Escape' && overlay.querySelector<HTMLButtonElement>('.bs-close')

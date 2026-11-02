@@ -409,25 +409,13 @@ describe('level-up moment on the bar', () => {
 })
 
 describe('level-up intro', () => {
-  it('celebrates, then lets the pick screen open after a beat', () => {
+  it('celebrates a new skill point (the pick screen waits for the player)', () => {
     const j = juice()
     vi.mocked(playSound).mockClear()
     j.handle({ type: 'levelUp' })
     j.startLevelUp()
     expect(j.banner).toMatchObject({ text: 'LEVEL UP!', big: true })
     expect(playSound).toHaveBeenCalledTimes(1) // the fanfare; the chime plays as the bar crosses
-    expect(j.levelUpDone).toBe(false)
-    j.update(0.6)
-    expect(j.levelUpDone).toBe(false)
-    j.update(0.3)
-    expect(j.levelUpDone).toBe(true)
-  })
-
-  it('can be skipped', () => {
-    const j = juice()
-    j.startLevelUp()
-    j.skipLevelUp()
-    expect(j.levelUpDone).toBe(true)
   })
 
   it('says FREE BOOST for a pick from a mystery brick', () => {

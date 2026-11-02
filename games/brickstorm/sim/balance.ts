@@ -1,9 +1,9 @@
 // Headless bots that play whole runs, for tuning difficulty and the economy.
 // `npm run balance` prints medians against the targets in the v2 plan.
 import { random } from '@forge/core/rng'
-import { needsReplace, pickBoost, pickCost, skipPick, slottedBoosts } from './boosts'
+import { needsReplace, openPicks, pickBoost, pickCost, skipPick, slottedBoosts } from './boosts'
 import { AIM_MIN, MAX_COLS } from './config'
-import { dims } from './dims'
+import { baseCols, dims } from './dims'
 import { growBoard } from './meta'
 import { aimFromPointer } from './physics'
 import { cellCenter, spawnRow, specialChance } from './rows'
@@ -142,9 +142,11 @@ export function simulateRun(
   const levelsAt: number[] = []
   while (s.phase !== 'over' && s.turn < maxTurns) {
     if (s.phase === 'grow') {
-      growBoard(s, s.cols < MAX_COLS ? 'col' : 'row')
+      growBoard(s, baseCols(s) < MAX_COLS ? 'col' : 'row')
       continue
     }
+    // The bot spends its skill points as soon as it has them, between shots.
+    if (s.phase === 'aim' && s.pendingPicks > 0) openPicks(s)
     if (s.phase === 'pick') {
       spent += botPick(s, s.coins - spent)
       continue

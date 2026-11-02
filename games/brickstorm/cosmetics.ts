@@ -192,9 +192,15 @@ export function drawBall(
       g.addColorStop(0, skin.accent)
       g.addColorStop(1, skin.color)
       ctx.save()
-      ctx.shadowColor = skin.color
-      ctx.shadowBlur = 10 + 4 * Math.sin(time * 6)
+      // A soft halo ring instead of shadowBlur: one per ball, a hundred balls a frame.
+      ctx.globalAlpha = 0.3 + 0.1 * Math.sin(time * 6)
+      ctx.fillStyle = skin.color
+      ctx.beginPath()
+      ctx.arc(x, y, r * 1.7, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.globalAlpha = 1
       ctx.fillStyle = g
+      ctx.beginPath()
       ctx.arc(x, y, r, 0, Math.PI * 2)
       ctx.fill()
       ctx.restore()

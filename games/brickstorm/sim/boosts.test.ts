@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BOOSTS, modsOf, pickBoost, reroll, rollChoices, xpToNext, xpTotal } from './boosts'
+import { BOOSTS, modsOf, openPicks, pickBoost, reroll, rollChoices, xpToNext, xpTotal } from './boosts'
 import { drainEvents, fire, step } from './run'
 import { brick, empty, runVolley } from './testing'
 import type { BoostId } from './types'
@@ -122,7 +122,7 @@ describe('picking', () => {
 })
 
 describe('xp in a run', () => {
-  it('levels up from kills and opens a pick after the volley', () => {
+  it('levels up from kills and banks a skill point (opened when the player wants)', () => {
     const s = empty()
     s.xp = xpToNext(0) - 1
     brick(s, 3, 5, 1)
@@ -131,7 +131,8 @@ describe('xp in a run', () => {
     expect(s.level).toBe(1)
     expect(s.pendingPicks).toBe(1)
     expect(drainEvents(s).filter((e) => e.type === 'levelUp')).toHaveLength(1)
-    expect(s.phase).toBe('pick')
+    expect(s.phase).toBe('aim')
+    expect(openPicks(s)).toBe(true)
     expect(s.choices).toHaveLength(3)
   })
 

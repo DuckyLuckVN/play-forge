@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { bankRun, DEFAULT_SAVE } from '../save'
-import { xpToNext } from './boosts'
+import { openPicks, xpToNext } from './boosts'
 import { DANGER_ROW } from './config'
 import { revive, useHelper } from './meta'
 import { createRun, drainEvents, fire, step } from './run'
@@ -44,14 +44,16 @@ describe('review fixes', () => {
     expect(s.events).toHaveLength(1)
   })
 
-  it('a helper that levels you up opens the pick right away, at combo 1×', () => {
+  it('a helper that levels you up banks the point, at combo 1×', () => {
     const s = empty()
     s.xp = xpToNext(0) - 1
     s.combo = 120
     brick(s, 0, 4, 1)
     useHelper(s, 'rowBomb')
     expect(s.combo).toBe(0)
-    expect(s.phase).toBe('pick')
+    expect(s.phase).toBe('aim')
+    expect(s.pendingPicks).toBe(1)
+    expect(openPicks(s)).toBe(true)
     expect(s.choices).toHaveLength(3)
   })
 

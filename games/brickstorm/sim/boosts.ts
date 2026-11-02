@@ -17,7 +17,7 @@ import type { BoostId, RunState } from './types'
 export type Rarity = 'common' | 'rare' | 'epic'
 
 export const BOOSTS: Record<BoostId, { name: string; text: string; rarity: Rarity; max: number }> = {
-  damage: { name: 'Heavy Hitter', text: '+20% ball damage', rarity: 'common', max: 99 },
+  damage: { name: 'Heavy Hitter', text: '+20% ball damage', rarity: 'rare', max: 99 },
   balls: { name: 'Reinforcements', text: '+2 balls', rarity: 'common', max: 99 },
   coins: { name: 'Gold Rush', text: '+30% coins', rarity: 'common', max: 99 },
   speed: { name: 'Tailwind', text: '+15% ball speed', rarity: 'common', max: 5 },
@@ -28,7 +28,7 @@ export const BOOSTS: Record<BoostId, { name: string; text: string; rarity: Rarit
   fireball: {
     name: 'Fireball',
     text: '8% of balls are fireballs that burn through bricks',
-    rarity: 'rare',
+    rarity: 'epic',
     max: 3,
   },
   bombball: { name: 'Bomb Ball', text: '6% of balls explode on their first hit', rarity: 'epic', max: 3 },
@@ -163,6 +163,8 @@ export function xpTotal(level: number, xp: number): number {
 export const BASE_SLOTS = 3
 /** Share of offers drawn from owned boosts once every slot is taken. */
 const OWNED_LEAN = 0.3
+/** Per card, the chance it is one of the hero's favourite skills (when any is still open). */
+export const AFFINITY_CHANCE = 0.2
 /** Boosts that pay out once when picked (+2 balls, Double Down), so they take no slot. */
 const INSTANT: readonly BoostId[] = ['balls', 'double']
 
@@ -197,6 +199,7 @@ export function needsReplace(
  */
 export function rollChoices(s: RunState): BoostId[] {
   const open = (id: BoostId) => (s.boosts[id] ?? 0) < BOOSTS[id].max
+  const affinity = heroOf(s).affinity ?? []
   const full = slottedBoosts(s.boosts).length >= boostSlots(s)
   // A held boost is kept out of the draw and comes back as the first card, but
   // not on the screen it was held on (a reroll there): it waits for the next level-up.
@@ -212,6 +215,13 @@ export function rollChoices(s: RunState): BoostId[] {
   while (picked.length < cards && (pool.length || owned.length)) {
     if (owned.length && (!pool.length || random(s.rng) < OWNED_LEAN)) {
       picked.push(...owned.splice(Math.floor(random(s.rng) * owned.length), 1))
+      continue
+    }
+    // A hero built for some skills (Ember and Fireballs) is offered them more often, whatever their rarity.
+    const fav = pool.filter((id) => affinity.includes(id))
+    if (fav.length && random(s.rng) < AFFINITY_CHANCE) {
+      const id = fav[Math.floor(random(s.rng) * fav.length)]
+      picked.push(...pool.splice(pool.indexOf(id), 1))
       continue
     }
     // Tier first, then an even pick inside it, so the odds don't depend on how
@@ -279,6 +289,22 @@ export function holdBoost(s: RunState, id: BoostId): void {
   s.choices = s.choices.filter((x) => x !== id)
 }
 
+/**
+ * Opens the pick screen to spend a banked skill point, only between shots.
+ * The offers stay the same until one is taken (closing and reopening is no reroll).
+ */
+export function openPicks(s: RunState): boolean {
+  if (s.phase !== 'aim' || s.pendingPicks <= 0) return false
+  s.phase = 'pick'
+  if (!s.choices.length) s.choices = rollChoices(s)
+  return true
+}
+
+/** "Later": back to aiming, keeping the points and the offers. */
+export function closePicks(s: RunState): void {
+  if (s.phase === 'pick') s.phase = 'aim'
+}
+
 /** Passes on this pick: no boost, on to what's next. */
 export function skipPick(s: RunState): void {
   if (s.phase !== 'pick') return
@@ -309,6 +335,7 @@ function finishPick(s: RunState): void {
   if ((s.freePicks ?? 0) > 0) s.freePicks = (s.freePicks ?? 0) - 1
   s.pendingPicks--
   if (s.pendingPicks > 0) {
+    // More points: the screen stays open with fresh offers.
     s.choices = rollChoices(s)
   } else {
     s.choices = []

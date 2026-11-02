@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { boostDetail, GUIDE, newlySeen, runStats } from './guide'
+import { boostDetail, GUIDE, guideIdsAt, newlySeen, runStats } from './guide'
+import { brickRect, cellCenter } from './sim/rows'
 import { BOOSTS } from './sim/boosts'
 import type { BoostId } from './sim/types'
 import { brick, empty } from './sim/testing'
@@ -57,5 +58,29 @@ describe('boostDetail', () => {
   it('has a line for every boost', () => {
     for (const id of Object.keys(BOOSTS) as BoostId[])
       expect(boostDetail(id, 1).length, id).toBeGreaterThan(10)
+  })
+})
+
+describe('guideIdsAt (hold a block to read about it)', () => {
+  it('a special brick: its kind; a shaped one adds its shape', () => {
+    const s = empty()
+    const b = brick(s, 2, 3, 10)
+    b.kind = 'slime'
+    b.shape = 'orb'
+    const r = brickRect(b)
+    expect(guideIdsAt(s, r.x + r.w / 2, r.y + r.h / 2)).toEqual(['brick:slime', 'shape:orb'])
+  })
+  it('a pickup under the point', () => {
+    const s = empty()
+    s.pickups.push({ id: 1, col: 1, row: 1, kind: 'laser' })
+    const c = cellCenter(1, 1)
+    expect(guideIdsAt(s, c.x, c.y)).toEqual(['pickup:laser'])
+  })
+  it('a plain brick, the boss, or empty space: nothing', () => {
+    const s = empty()
+    const b = brick(s, 0, 0, 10)
+    const r = brickRect(b)
+    expect(guideIdsAt(s, r.x + 5, r.y + 5)).toEqual([])
+    expect(guideIdsAt(s, 300, 300)).toEqual([])
   })
 })

@@ -63,7 +63,7 @@ describe('boss skills: summon', () => {
     turns(s, 1)
     const wall = roleBricks(s, 'minion')
     expect(wall).toHaveLength(3)
-    for (const b of wall) expect(b.row).toBe(2)
+    for (const b of wall) expect(b.row).toBe(3) // right under the body (it arrives a row down)
     expect(skillEvents(s, 'mason')).toBe(1)
   })
 
@@ -245,9 +245,9 @@ describe('boss skills: movement', () => {
     turns(s, 3)
     expect(skillEvents(s, 'lunge')).toBe(1)
     bossDrop(s)
-    expect(top(s)).toBe(1)
+    expect(top(s)).toBe(2)
     bossDrop(s)
-    expect(top(s)).toBe(1)
+    expect(top(s)).toBe(2)
   })
 
   it('retreat: backs up after a big volley, never above the top', () => {
@@ -257,7 +257,7 @@ describe('boss skills: movement', () => {
     hit(s, max(s) * 0.25)
     bossVolleyEnd(s)
     bossDrop(s)
-    expect(top(s)).toBe(1)
+    expect(top(s)).toBe(2)
     bossLaunch(s)
     hit(s, max(s) * 0.25)
     bossVolleyEnd(s)
@@ -335,7 +335,7 @@ describe('boss skills: weak points', () => {
     for (const r of runes) damageBrick(s, r, 1e9, 'ball')
     expect(hp(s)).toBeCloseTo(start - max(s) * 0.15)
     bossDrop(s)
-    expect(top(s)).toBe(1)
+    expect(top(s)).toBe(2)
   })
 
   it('power cells: 60% less damage while the cells stand', () => {
@@ -465,7 +465,7 @@ describe('boss skills: rage', () => {
     hit(s, max(s) * 0.6, 'blast')
     const wall = roleBricks(s, 'minion')
     expect(wall.length).toBe(s.cols)
-    for (const b of wall) expect(b.row).toBe(2)
+    for (const b of wall) expect(b.row).toBe(3)
   })
 
   it('shatter: bursts into gold bricks', () => {
@@ -482,14 +482,14 @@ describe('boss skills: rage', () => {
     hit(s, 1)
     bossVolleyEnd(s)
     bossDrop(s)
-    expect(top(s)).toBe(2)
+    expect(top(s)).toBe(3)
     const t = fight(['charge'])
     turns(t, 4)
     bossLaunch(t)
     hit(t, max(t) * 0.2, 'blast')
     bossVolleyEnd(t)
     bossDrop(t)
-    expect(top(t)).toBe(0)
+    expect(top(t)).toBe(1)
   })
 
   it('rally: heals the other bricks', () => {
@@ -660,27 +660,27 @@ describe('boss attacks: they hurt the hero', () => {
 })
 
 describe('boss arena', () => {
-  it('grows BOSS_ROOM rows when a boss arrives and shrinks back once the rows are empty', () => {
+  it('grows BOSS_ROOM rows when a boss arrives and snaps back in one go after it', () => {
     const s = empty()
     const rows = s.rows
     spawnBoss(s, ['minions'], 'block')
     expect(s.rows).toBe(rows + BOSS_ROOM)
     s.boss = null
     s.bricks = []
-    for (let i = 0; i < BOSS_ROOM; i++) shrinkArena(s)
+    shrinkArena(s)
     expect(s.rows).toBe(rows)
     expect(s.bossRoom).toBe(0)
   })
 
-  it('never shrinks onto a brick (that would make it crash)', () => {
+  it('a brick in the rows that go is lifted above the new line, never crashed', () => {
     const s = empty()
     spawnBoss(s, ['minions'], 'block')
     s.boss = null
     s.bricks = []
-    brick(s, 0, s.rows - 2, 10)
-    const rows = s.rows
+    const low = brick(s, 3, s.rows - 2, 10)
     shrinkArena(s)
-    expect(s.rows).toBe(rows)
+    expect(s.bricks).toContain(low)
+    expect(low.row).toBeLessThan(dims(s).dangerRow)
   })
 })
 

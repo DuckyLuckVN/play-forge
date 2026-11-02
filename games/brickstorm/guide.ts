@@ -4,7 +4,9 @@ import { t } from './i18n'
 import { BOOSTS, levelPower, modsOf, runMods, xpToNext } from './sim/boosts'
 import { heroOf } from './sim/heroes'
 import { COMBO_GAP } from './sim/config'
-import type { BoostId, RunState } from './sim/types'
+import { PICKUP_R } from './sim/config'
+import { brickRect, cellCenter } from './sim/rows'
+import type { BoostId, Brick, RunState } from './sim/types'
 
 export interface GuideEntry {
   /** 'brick:bomb', 'pickup:laser', 'ball:fire' … */
@@ -60,7 +62,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'brick:boss',
     name: 'Boss',
-    text: 'Every 30 turns. One big health bar, 2–4 special powers (more for each boss), and no new rows until it falls. Beat it for coins, a free skill and an extra skill slot.',
+    text: 'Every 30 turns, announced 3 turns ahead; the arena grows wider for the fight and the bricks fall every other turn. One big health bar, 2–4 special powers (more for each boss), and no new rows until it falls. Beat it for coins, a free skill and an extra skill slot.',
   },
   {
     id: 'shape:triangle',
@@ -92,6 +94,28 @@ export const GUIDE: GuideEntry[] = [
   },
   { id: 'ball:bomb', name: 'Bomb ball', text: 'Explodes on its first hit, damaging a 3×3 area.' },
 ]
+
+/** The guide entries a brick has: its special kind, and its shape. */
+export function brickGuideIds(b: Pick<Brick, 'kind' | 'shape' | 'role'>): string[] {
+  if (b.kind === 'boss' || b.role) return []
+  const ids = b.kind === 'normal' ? [] : [`brick:${b.kind}`]
+  if (b.shape) ids.push(b.shape === 'orb' ? 'shape:orb' : 'shape:triangle')
+  return ids
+}
+
+/** What the player is holding a finger on (board units): a special brick's or a pickup's guide entries. */
+export function guideIdsAt(s: RunState, x: number, y: number): string[] {
+  const p = s.pickups.find((p) => {
+    const c = cellCenter(p.col, p.row)
+    return Math.hypot(x - c.x, y - c.y) <= PICKUP_R + 6
+  })
+  if (p) return [`pickup:${p.kind}`]
+  const b = s.bricks.find((b) => {
+    const r = brickRect(b)
+    return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h
+  })
+  return b ? brickGuideIds(b) : []
+}
 
 /** Special brick and pickup kinds on the board that the player hasn't been told about yet. */
 export function newlySeen(s: RunState, seen: string[]): string[] {

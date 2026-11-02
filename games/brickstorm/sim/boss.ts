@@ -8,9 +8,10 @@ import { BOSS_HEAL, heal } from './health'
 import { heroOf } from './heroes'
 import { bossParts, crushUnderBoss, moveBoss } from './boss-kit'
 import { bossStep, tallyHit } from './boss-step'
-import { BOSS_SHAPES, shapeOf, shapeSize } from './boss-shapes'
+import { BOSS_SHAPES, bodyBricks, shapeOf, shapeSize } from './boss-shapes'
 import { BOSS_SKILLS, type BossHit, type BossSkill, type Face, SKILL_IDS } from './boss-skills'
-import { BOSS_XP_PER_TURN } from './config'
+import { BOSS_XP_PER_TURN, CELL } from './config'
+import { dims, shiftCols } from './dims'
 import { cellCenter, hpCap, hpScale } from './rows'
 import type { Ball, Boss, BossSkillId, BossTier, Brick, RunState } from './types'
 import { gainXp, type DamageSource } from './damage'
@@ -18,6 +19,15 @@ import { gainXp, type DamageSource } from './damage'
 export { bossParts } from './boss-kit'
 
 export const BOSS_EVERY = 30
+/** The boss is announced this many turns before it arrives. */
+export const BOSS_WARN_TURNS = 3
+
+/** Turns until the next boss (3, 2, 1) while it is being announced; otherwise null. */
+export function turnsUntilBoss(s: Pick<RunState, 'turn' | 'boss'>): number | null {
+  if (s.boss) return null
+  const left = BOSS_EVERY - (s.turn % BOSS_EVERY)
+  return left <= BOSS_WARN_TURNS ? left : null
+}
 /** @deprecated The original five skills; see SKILL_IDS for all of them. */
 export const BOSS_TRAITS: BossSkillId[] = ['shield', 'minions', 'drifter', 'armored', 'enrage']
 export const BOSS_NOUNS = ['Golem', 'Titan', 'Colossus', 'Warden', 'Behemoth', 'Hydra'] as const
@@ -89,29 +99,123 @@ export function rollTraits(s: RunState, tier = bossTier(s.turn)): BossSkillId[] 
 
 /** Skills that hurt the hero directly; every boss gets at least one. */
 export const ATTACKS: BossSkillId[] = ['thorns', 'barrage', 'slam', 'hex']
-/** Rows the board grows by while a boss is on it. */
-export const BOSS_ROOM = 4
+/**
+ * Rows the board grows by while a boss is on it: none. Every screen is
+ * height-limited, so extra rows zoomed the whole board out; the boss arena
+ * grows sideways instead, and the board drops every other turn (rowDrops).
+ * Saves from before keep their extra rows until the fight ends.
+ */
+export const BOSS_ROOM = 0
 /** An arriving boss smashes the bricks within this many cells of its body. */
 const ARRIVAL_RING = 1
 
-/** A boss arrives: the board grows taller, so there is room for it, its summons and its attacks. */
+/** A new boss arrives this many rows down, leaving a gap above it (room to bounce balls over it). */
+export const BOSS_SPAWN_ROW = 1
+/** Columns the board grows by on each side while a boss is on it. */
+export const BOSS_SIDE_COLS = 1
+
+/**
+ * A boss arrives: the board grows taller and wider, so there is room for it,
+ * its summons and its attacks (and for the player to get around it). Side
+ * columns left over from an earlier boss are topped up, not stacked.
+ */
 function growArena(s: RunState): void {
   s.rows += BOSS_ROOM
   s.bossRoom = (s.bossRoom ?? 0) + BOSS_ROOM
-  s.events.push({ type: 'arena', grow: true })
+  const left = Math.max(0, BOSS_SIDE_COLS - (s.bossLeft ?? 0))
+  const right = Math.max(0, BOSS_SIDE_COLS - (s.bossRight ?? 0))
+  if (left) {
+    shiftCols(s, 0, left)
+    s.launchX += left * CELL
+    if (s.nextLaunchX !== null) s.nextLaunchX += left * CELL
+  }
+  s.cols += left + right
+  s.bossLeft = (s.bossLeft ?? 0) + left
+  s.bossRight = (s.bossRight ?? 0) + right
+  s.events.push({ type: 'arena', grow: true, cols: Math.max(left, right), rows: BOSS_ROOM })
 }
 
 /**
- * After a boss: the extra rows go, one per turn, but only once nothing sits
- * where the new line would be (shrinking never makes a brick crash).
+ * After a boss: the arena snaps back to the player's board in one go. Bricks
+ * and pickups in the columns and rows that go move to the nearest free cell
+ * (in their row for a side column, up their column for a bottom row), so
+ * nothing crashes; a brick with no room left is crushed (no coins).
  */
 export function shrinkArena(s: RunState): void {
-  if (!s.bossRoom) return
-  const newLine = s.rows - 2
-  if (s.bricks.some((b) => b.row >= newLine) || s.pickups.some((p) => p.row >= newLine)) return
-  s.rows--
-  s.bossRoom--
-  s.events.push({ type: 'arena', grow: false })
+  const cols = Math.max(s.bossLeft ?? 0, s.bossRight ?? 0)
+  const rows = s.bossRoom ?? 0
+  if (!cols && !rows) return
+  const crushed: Brick[] = []
+  if (cols) snapSides(s, crushed)
+  if (rows) snapRows(s, crushed)
+  if (crushed.length) {
+    s.bricks = s.bricks.filter((b) => !crushed.includes(b))
+    s.events.push({ type: 'bossCrush', at: crushed.map((b) => cellCenter(b.col, b.row)), coins: 0 })
+  }
+  s.events.push({ type: 'arena', grow: false, cols, rows })
+}
+
+type Cell = { col: number; row: number }
+
+/** Moves `item` to the first free cell in `options` (taking it), or returns false. */
+function relocate(item: Cell, options: Cell[], taken: Set<string>): boolean {
+  const spot = options.find((c) => !taken.has(`${c.col},${c.row}`))
+  if (!spot) return false
+  taken.delete(`${item.col},${item.row}`)
+  taken.add(`${spot.col},${spot.row}`)
+  item.col = spot.col
+  item.row = spot.row
+  return true
+}
+
+const occupied = (s: RunState) => new Set([...s.bricks, ...s.pickups].map((c) => `${c.col},${c.row}`))
+
+function snapSides(s: RunState, crushed: Brick[]): void {
+  const left = s.bossLeft ?? 0
+  const right = s.bossRight ?? 0
+  const first = left
+  const last = s.cols - right - 1
+  const taken = occupied(s)
+  const inner = Array.from({ length: last - first + 1 }, (_, i) => first + i)
+  const move = (item: Cell) => {
+    if (item.col >= first && item.col <= last) return true
+    const near = [...inner].sort((a, b) => Math.abs(a - item.col) - Math.abs(b - item.col))
+    return relocate(
+      item,
+      near.map((col) => ({ col, row: item.row })),
+      taken,
+    )
+  }
+  for (const b of s.bricks) if (!move(b)) crushed.push(b)
+  s.pickups = s.pickups.filter(move)
+  s.bricks = s.bricks.filter((b) => !crushed.includes(b))
+  shiftCols(s, 0, -left)
+  for (const b of crushed) b.col -= left // so their rubble lands where they were drawn
+  s.cols -= left + right
+  s.launchX -= left * CELL
+  if (s.nextLaunchX !== null) s.nextLaunchX -= left * CELL
+  const keep = (x: number) => Math.max(CELL / 2, Math.min(s.cols * CELL - CELL / 2, x))
+  s.launchX = keep(s.launchX)
+  if (s.nextLaunchX !== null) s.nextLaunchX = keep(s.nextLaunchX)
+  s.bossLeft = 0
+  s.bossRight = 0
+}
+
+function snapRows(s: RunState, crushed: Brick[]): void {
+  s.rows -= s.bossRoom ?? 0
+  s.bossRoom = 0
+  const line = dims(s).dangerRow
+  const taken = occupied(s)
+  const up = (item: Cell) =>
+    item.row < line ||
+    relocate(
+      item,
+      Array.from({ length: line }, (_, i) => ({ col: item.col, row: line - 1 - i })),
+      taken,
+    )
+  // Lowest first, so each one takes the cell nearest the line.
+  for (const b of [...s.bricks].sort((a, b) => b.row - a.row)) if (!up(b)) crushed.push(b)
+  s.pickups = s.pickups.filter(up)
 }
 
 /** The hero just lost health: skills that feed on it (Drain) react. */
@@ -151,12 +255,8 @@ export function spawnBoss(s: RunState, traits = rollTraits(s), shape = rollShape
   s.boss = boss
   const body = shapeOf(shape)
   const left = Math.floor((s.cols - shapeSize(body).w) / 2)
-  for (const [c, r] of body.cells) {
-    const part: Brick = { id: s.nextId++, col: left + c, row: r, hp, maxHp: hp, kind: 'boss', split: false }
-    const shape = body.shaped?.[`${c},${r}`]
-    if (shape) part.shape = shape
-    s.bricks.push(part)
-  }
+  s.bricks.push(...bodyBricks(shape, left, hp, hp, s.nextId, BOSS_SPAWN_ROW))
+  s.nextId += body.cells.length
   crushUnderBoss(s, ARRIVAL_RING)
   for (const id of traits) BOSS_SKILLS[id]?.spawn?.(s, boss)
   s.events.push({ type: 'boss', noun, traits })

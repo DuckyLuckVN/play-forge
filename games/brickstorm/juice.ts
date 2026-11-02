@@ -8,17 +8,27 @@ import type { Boss, Brick, SimEvent } from './sim/types'
 import { skillGroup, skillInfo } from './boss-skill-ui'
 import { IMPACT_STYLE } from './cosmetics'
 import { t } from './i18n'
+import { BOSS_WARN_TURNS } from './sim/boss'
 import { CELL, TOP } from './sim/config'
 import { HEROES, type HeroId } from './sim/heroes'
-import { BOSS_SOUNDS, BRICK_SOUNDS, HAZARD_SOUNDS, HEALTH_SOUNDS, HERO_SOUNDS } from './sounds'
+import {
+  BOSS_SOUNDS,
+  BRICK_SOUNDS,
+  HAZARD_SOUNDS,
+  HEALTH_SOUNDS,
+  HERO_SOUNDS,
+  SPECIAL_SOUNDS,
+} from './sounds'
+import { arenaProgress, BOSS_DROP, bossDrop } from './boss-entrance'
+import { HAZARD_LABEL, SPECIAL_HIT, SPECIAL_LABEL_GAP, SPECIAL_TRIGGER } from './special-fx'
 
 /** Banner per storm wave. */
 /** What each storm wave means, for the notice card under its banner. */
 export const STORM_EXPLAIN = {
-  wall: 'Bricks fill every column but one. A heart rides with it.',
-  iron: 'Armoured bricks: plain balls chip 1 per hit; fire, bombs and lasers hit fully. A heart rides with it.',
-  gold: 'A row of gold bricks: they pay double coins. A heart rides with it.',
-  bombs: 'A row of bomb bricks: break one and they chain. A heart rides with it.',
+  wall: 'Bricks fill every column but one.',
+  iron: 'Armoured bricks: plain balls chip 1 per hit; fire, bombs and lasers hit fully.',
+  gold: 'A row of gold bricks: they pay double coins.',
+  bombs: 'A row of bomb bricks: break one and they chain.',
 } as const
 
 /** Banner for each boss attack as it lands. */
@@ -52,9 +62,9 @@ export const COMBO_HOLD = 0.6
 export const COMBO_FADE = 0.8
 /** How fast the XP bar's heat cools after a combo, in multiplier per second. */
 const BAR_COOL = 1.2
-export const ARENA_OPEN = 0.35
-export const ARENA_LAND = 0.95
-export const ARENA_SQUEEZE = 0.4
+export const ARENA_OPEN = 1
+export const ARENA_LAND = 3
+export const ARENA_SQUEEZE = 1.8
 export const BOSS_DEATH_BOOM = 2
 export const BOSS_DEATH_LIFE = 2.7
 export const SHOCKWAVE_LIFE = 0.7
@@ -139,6 +149,10 @@ const HELPER_TEXT = {
 
 const BANNER_LIFE = 1.4
 const SOUND_GAP_MS = 30
+/** Special-brick hit sounds come at most this often per kind (a volley can hit armour fifty times). */
+const HIT_SOUND_GAP_MS = 90
+/** Above this many live particles, special-brick hits stop adding sparks (big volleys stay smooth). */
+const HIT_SPARK_LIMIT = 250
 /** XP gained within this many seconds counts toward a rush. */
 const RUSH_WINDOW = 1.5
 /** Bar heat by how much of a level was gained within the window: glow, fire, white-hot (lightning). */
@@ -147,8 +161,6 @@ const HEAT_AT = [0.1, 0.25, 0.5] as const
 const TALLY_HOLD = 1.2
 /** Seconds between XP ticks (at most 8 a second). */
 const XP_TICK_GAP = 0.125
-/** Seconds the level-up celebration plays before the pick screen opens. */
-export const LEVEL_UP_INTRO = 0.8
 /** Seconds the "bricks are tougher" notice shows. */
 export const TOUGHER_LIFE = 2.2
 /** Seconds the new column or row glows after the board grows. */
@@ -224,7 +236,8 @@ export class Juice {
   /** 0..1 white flash over the board; decays in `update`. */
   flash = 0
   /** `color` overrides the default (yolk, or XP green when big). */
-  banner: { text: string; age: number; big?: boolean; color?: string } | null = null
+  /** `life`: seconds before it has faded (1.4 unless set). */
+  banner: { text: string; age: number; big?: boolean; color?: string; life?: number } | null = null
   /** Current turn, for colouring kill bursts like the bricks. */
   turn = 1
   /** Lightning arcs to draw; the renderer reads this list. */
@@ -335,7 +348,6 @@ export class Juice {
   private clock = 0
   private lastXpTick = -Infinity
   /** The level-up celebration before the pick screen; null when none is playing. */
-  private levelUp: { age: number } | null = null
   private leveled = false
   private freePick = false
   /** Chain effects waiting for their ripple delay. */
@@ -362,6 +374,7 @@ export class Juice {
   private hp: number | null = null
   /** When each kind of sound last played, so big volleys don't stack hundreds of tones. */
   private lastPlayed = new Map<string, number>()
+  private lastLabel = new Map<string, number>()
 
   constructor(
     private particles: Particles,
@@ -445,12 +458,30 @@ export class Juice {
       case 'tougher':
         this.tougherAge = 0
         return
+      case 'bossSoon': {
+        // A countdown that gets louder and shakier as the boss gets closer.
+        const urgency = BOSS_WARN_TURNS - e.turns // 0, 1, 2
+        this.show(
+          e.turns === 1 ? t('BOSS NEXT TURN!') : t('BOSS IN {n} TURNS', { n: e.turns }),
+          0.15 + 0.15 * urgency,
+        )
+        this.banner!.big = e.turns === 1
+        this.shake.add(0.1 + 0.1 * urgency)
+        return playSound(pitched(BRICK_SOUNDS.danger, 0.85 + 0.15 * urgency))
+      }
       case 'boss':
-        this.show(t('BOSS FIGHT!'), 0.8)
-        this.banner!.big = true
-        this.shake.add(0.6)
-        playSound(BRICK_SOUNDS.danger)
-        return playSound(pitched(BRICK_SOUNDS.explode, 0.6))
+        // The banner now; the boss itself drops in once the arena has opened (see updateBossEntrance).
+        // A red banner that hangs, a siren, a rumble that builds while the arena opens.
+        this.show(t('BOSS FIGHT!'), 0.4)
+        this.banner = { ...this.banner!, big: true, color: theme.coral, life: 2.8 }
+        this.bossEnter = {
+          age: this.arenaFx?.grow ? this.arenaFx.age : ARENA_LAND,
+          landed: false,
+          falling: false,
+        }
+        this.shake.add(0.25)
+        playSound(BOSS_SOUNDS.siren)
+        return playSound(BRICK_SOUNDS.danger)
       case 'bossSkill': {
         // The boss shouts the skill's name ("MASON!") in its colour.
         const info = skillInfo(e.id)
@@ -521,7 +552,7 @@ export class Juice {
         this.queue.push({ e, at: e.depth * RIPPLE })
         return
       case 'milestone':
-        this.show(t('TURN {turn}! +{coins}', { turn: e.turn, coins: e.coins }), 0.5)
+        this.show(t('TURN {turn}! +{coins} COINS', { turn: e.turn, coins: e.coins }), 0.5)
         return playSound(BRICK_SOUNDS.jackpot)
       case 'helper': {
         this.show(HELPER_TEXT[e.id], 0.5)
@@ -609,13 +640,41 @@ export class Juice {
           speed: e.by === 'void' ? 90 : 160,
           life: 0.4,
         })
+        this.label(
+          `eaten:${e.by}`,
+          e.x,
+          e.y,
+          HAZARD_LABEL[e.by](),
+          e.by === 'slime' ? '#63d471' : e.by === 'void' ? '#c77dff' : '#ff922b',
+        )
         return this.play('eaten', HAZARD_SOUNDS[e.by], 0.6)
       case 'ignite':
         this.particles.burst(e.x, e.y, { count: 8, color: ['#ff922b', '#ffc83d'], speed: 140, life: 0.35 })
+        this.label('ignite', e.x, e.y, HAZARD_LABEL.ignite(), '#ff922b')
         return this.play('ignite', HAZARD_SOUNDS.ignite, 0.6)
       case 'douse':
         this.particles.burst(e.x, e.y, { count: 10, color: ['#4dabf7', '#e7f5ff'], speed: 150, life: 0.4 })
+        this.label('douse', e.x, e.y, HAZARD_LABEL.douse(), '#74c0fc')
         return this.play('douse', HAZARD_SOUNDS.douse, 0.6)
+      case 'special': {
+        const fx = (e.trigger ? SPECIAL_TRIGGER : SPECIAL_HIT)[e.kind]
+        if (!fx) return
+        // Hits on a crowded screen skip their sparks (the sound and word still say it); triggers always burst.
+        if (e.trigger || this.particles.count < HIT_SPARK_LIMIT)
+          this.particles.burst(e.x, e.y, { count: fx.count, color: fx.colors, speed: fx.speed, life: 0.35 })
+        if (fx.label) this.label(`special:${e.kind}`, e.x, e.y, fx.label(), fx.labelColor ?? theme.chalk)
+        // Hits can come fifty a volley: spaced out and quieter than a trigger.
+        return this.play(
+          `special:${e.kind}:${e.trigger}`,
+          fx.sound,
+          e.trigger ? 0.8 : 0.45,
+          e.trigger ? SOUND_GAP_MS : HIT_SOUND_GAP_MS,
+        )
+      }
+      case 'pickupFade':
+        // An unused laser fizzles out at the end of its turn.
+        this.particles.burst(e.x, e.y, { count: 8, color: ['#ff6fb5', '#ffd6ec'], speed: 80, life: 0.45 })
+        return this.play('pickupFade', SPECIAL_SOUNDS.fizzle, 0.6)
       case 'rocket':
         this.beam('rocket', e.x, e.y, e.tx, e.ty, '#ff922b', ROCKET_FLY)
         return playSound(BRICK_SOUNDS.whoosh)
@@ -625,18 +684,22 @@ export class Juice {
       case 'bossStep':
         this.shake.add(0.2)
         return playSound(pitched(BRICK_SOUNDS.explode, 0.45))
-      case 'bossCrush':
+      case 'bossCrush': {
         // The boss bulldozes through: the nearest bricks burst first, then outward.
+        // Arriving, it crushes them as it lands, not before it shows up.
+        const wait = this.arenaFx?.grow ? Math.max(0, ARENA_LAND + BOSS_DROP - this.arenaFx.age) : 0
         for (const at of e.at)
-          this.rubble.push({ ...at, in: Math.random() * 0.12 + this.rubble.length * 0.04 })
-        this.shake.add(Math.min(0.8, 0.2 + 0.05 * e.at.length))
+          this.rubble.push({ ...at, in: wait + Math.random() * 0.12 + this.rubble.length * 0.04 })
+        if (!wait) this.shake.add(Math.min(0.8, 0.2 + 0.05 * e.at.length))
         if (e.coins > 0)
           this.particles.text(e.at[0].x, e.at[0].y - 10, `+${e.coins}`, {
             color: theme.yolk,
             size: 15,
             rise: 34,
           })
-        return playSound(pitched(BRICK_SOUNDS.explode, 0.55))
+        if (!wait) playSound(pitched(BRICK_SOUNDS.explode, 0.55))
+        return
+      }
       case 'bossAttack': {
         this.bossCast = 1
         this.show(t(ATTACK_TEXT[e.id]), e.id === 'slam' ? 0.7 : 0.3)
@@ -676,12 +739,20 @@ export class Juice {
       }
       case 'arena':
         // Before: a rumble. Then the new rows open (or the floor squeezes in). After: a thud and dust.
-        this.arenaFx = { grow: e.grow, age: 0, landed: false }
-        if (e.grow) this.show(t('THE ARENA GROWS!'), 0.3)
-        else if (!this.shrinking) this.show(t('THE ARENA SHRINKS'), 0.2)
-        this.shrinking = !e.grow
-        this.shake.add(e.grow ? 0.35 : 0.2)
-        return playSound(e.grow ? HEALTH_SOUNDS.storm : pitched(BRICK_SOUNDS.explode, 0.5))
+        this.arenaFx = {
+          grow: e.grow,
+          age: 0,
+          landed: false,
+          cols: e.cols ?? 0,
+          rows: e.rows ?? 0,
+          held: !e.grow,
+        }
+        // After a boss the arena shrinks while the pick screen is up: it waits (held) until
+        // the player is back on the board (releaseArena), so they see it close in.
+        if (!e.grow) return
+        this.show(t('THE ARENA GROWS!'), 0.3)
+        this.shake.add(0.35)
+        return playSound(HEALTH_SOUNDS.storm)
       case 'storm':
         this.show(t(STORM_TEXT[e.kind]), 0.5)
         this.banner!.big = true
@@ -807,14 +878,81 @@ export class Juice {
    * The arena changing size: `age` seconds in. Growing: rumble (to ARENA_OPEN),
    * the new rows open (to ARENA_LAND), then a thud. Shrinking: a squeeze, then a thud.
    */
-  arenaFx: { grow: boolean; age: number; landed: boolean } | null = null
-  private shrinking = false
+  arenaFx: {
+    grow: boolean
+    age: number
+    landed: boolean
+    /** Columns gained/lost per side, rows at the bottom. */
+    cols: number
+    rows: number
+    /** A shrink waiting for the player to be back on the board. */
+    held: boolean
+  } | null = null
+
+  /** Plays a held arena shrink: call once the player is back on the board (aiming, no panel). */
+  releaseArena(): void {
+    const a = this.arenaFx
+    if (!a?.held) return
+    a.held = false
+    this.show(t('THE ARENA SHRINKS'), 0.2)
+    this.shake.add(0.3)
+    playSound(HEALTH_SOUNDS.storm, 0.6)
+    playSound(pitched(BRICK_SOUNDS.explode, 0.5))
+  }
   /** The floor's y (set by the renderer), for the arena's dust. */
   floorY = 760
 
+  /** A boss arriving: seconds since it was announced, and whether it has landed (see boss-entrance.ts). */
+  bossEnter: { age: number; landed: boolean; falling: boolean } | null = null
+  /** The arriving boss's feet (set by the renderer), where its landing raises dust. */
+  bossFeet: { x0: number; x1: number; y: number } | null = null
+
+  /** True while the board is changing size (aiming waits: the canvas is moving under the pointer). */
+  get arenaMoving(): boolean {
+    const a = this.arenaFx
+    return !!a && !a.held && arenaProgress(a, ARENA_OPEN, ARENA_LAND, ARENA_SQUEEZE) < 1
+  }
+
+  /** True while a boss is still making its entrance: its card waits until it has landed. */
+  get bossArriving(): boolean {
+    return !!this.bossEnter || !!this.arenaFx?.grow
+  }
+
+  private updateBossEntrance(dt: number): void {
+    const b = this.bossEnter
+    if (!b) return
+    b.age += dt
+    const drop = bossDrop(b.age, ARENA_LAND)
+    // While the arena opens, the ground keeps trembling, harder as it goes.
+    if (!drop.visible) this.shake.add(dt * (0.25 + 0.5 * Math.min(1, b.age / ARENA_LAND)))
+    if (drop.visible && !b.falling) {
+      b.falling = true
+      playSound(BOSS_SOUNDS.fall)
+    }
+    if (drop.landed && !b.landed) {
+      b.landed = true
+      this.shake.add(1)
+      this.flash = Math.max(this.flash, prefersReducedMotion() ? 0 : 0.7)
+      this.hitstop = Math.max(this.hitstop, 0.12)
+      const feet = this.bossFeet
+      if (feet)
+        for (let x = feet.x0; x <= feet.x1; x += 18)
+          this.particles.burst(x, feet.y, {
+            count: 4,
+            color: ['#c9c3e6', '#8a83a8', '#ffc83d'],
+            speed: 180,
+            gravity: 500,
+            life: 0.6,
+          })
+      playSound(HERO_SOUNDS.quake)
+      playSound(HEALTH_SOUNDS.bossCrash, 0.7)
+    }
+    if (drop.done) this.bossEnter = null
+  }
+
   private updateArena(dt: number): void {
     const a = this.arenaFx
-    if (!a) return
+    if (!a || a.held) return
     a.age += dt
     const land = a.grow ? ARENA_LAND : ARENA_SQUEEZE
     if (!a.landed && a.age >= land) {
@@ -914,9 +1052,8 @@ export class Juice {
     } else this.xpTally = { amount: points, age: 0 }
   }
 
-  /** Starts the level-up celebration that plays before the pick screen. */
+  /** The level-up celebration: a skill point is waiting for the player to spend. */
   startLevelUp(): void {
-    this.levelUp = { age: 0 }
     this.show(this.leveled || !this.freePick ? t('LEVEL UP!') : t('FREE SKILL!'), 0.6)
     this.banner!.big = true
     this.leveled = this.freePick = false
@@ -925,16 +1062,6 @@ export class Juice {
     if (!prefersReducedMotion()) this.shake.add(0.3)
     celebrate([theme.yolk, '#4be3a0', '#5ab8ff', '#b48cff'])
     playSound(BRICK_SOUNDS.fanfare)
-  }
-
-  /** True once the celebration has played (or was skipped). */
-  get levelUpDone(): boolean {
-    const len = prefersReducedMotion() ? LEVEL_UP_INTRO / 2 : LEVEL_UP_INTRO
-    return !this.levelUp || this.levelUp.age >= len
-  }
-
-  skipLevelUp(): void {
-    this.levelUp = null
   }
 
   private updateXp(dt: number): void {
@@ -968,7 +1095,6 @@ export class Juice {
       if (this.xpGlow > 0) this.xpSparks++
       playSound(xpTick(this.shownXp % 1), this.xpGlow > 0 ? 1 : CALM_TICK_VOLUME)
     }
-    if (this.levelUp) this.levelUp.age += dt
     if (this.comboTierAge !== null) this.comboTierAge += dt
     // When the combo ends the multiplier lingers a moment, then fades out gently.
     if (this.comboMult <= 1) {
@@ -1106,6 +1232,7 @@ export class Juice {
     this.bossSmug = Math.max(0, this.bossSmug - dt * 0.8)
     this.bossGloat = Math.max(0, this.bossGloat - dt * 0.6)
     this.updateArena(dt)
+    this.updateBossEntrance(dt)
     this.hurtFlash = Math.max(0, this.hurtFlash - dt * 2)
     this.healGlow = Math.max(0, this.healGlow - dt * 1.5)
     this.heroHurt = Math.max(0, this.heroHurt - dt * 2.5)
@@ -1116,15 +1243,23 @@ export class Juice {
       this.hpGhost = Math.max(this.hp, this.hpGhost - Math.max(8, (this.hpGhost - this.hp) * 3) * dt)
     if (this.banner) {
       this.banner.age += dt
-      if (this.banner.age > BANNER_LIFE) this.banner = null
+      if (this.banner.age > (this.banner.life ?? BANNER_LIFE)) this.banner = null
     }
   }
 
-  private play(key: string, sound: Sound, volume = 1): void {
+  private play(key: string, sound: Sound, volume = 1, gapMs = SOUND_GAP_MS): void {
     const now = performance.now()
-    if (now - (this.lastPlayed.get(key) ?? -Infinity) < SOUND_GAP_MS) return
+    if (now - (this.lastPlayed.get(key) ?? -Infinity) < gapMs) return
     this.lastPlayed.set(key, now)
     playSound(sound, volume)
+  }
+
+  /** A small word rising over (x, y), at most once per SPECIAL_LABEL_GAP for the same `key`. */
+  private label(key: string, x: number, y: number, text: string, color: string): void {
+    const now = performance.now()
+    if (now - (this.lastLabel.get(key) ?? -Infinity) < SPECIAL_LABEL_GAP * 1000) return
+    this.lastLabel.set(key, now)
+    this.particles.text(x, y - 10, text, { color, size: 13, rise: 26 })
   }
 
   private show(text: string, flash: number): void {

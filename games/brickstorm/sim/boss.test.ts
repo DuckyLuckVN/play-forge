@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BOSS_EVERY, bossHp, bossParts, bossTier, rollTraits, spawnBoss } from './boss'
+import { BOSS_EVERY, BOSS_SPAWN_ROW, bossHp, bossParts, bossTier, rollTraits, spawnBoss } from './boss'
 import { BOSS_SHAPES, shapeOf } from './boss-shapes'
 import { SKILL_IDS } from './boss-skills'
 import { damageBrick } from './damage'
@@ -55,7 +55,7 @@ describe('boss', () => {
     const parts = bossParts(s)
     expect(BOSS_SHAPES[s.boss!.shape!].tier).toBe(1)
     expect(parts).toHaveLength(BOSS_SHAPES[s.boss!.shape!].cells.length)
-    expect(Math.min(...parts.map((b) => b.row))).toBe(0)
+    expect(Math.min(...parts.map((b) => b.row))).toBe(BOSS_SPAWN_ROW) // a free row above it
     // Only what its skills summon (thorns, wards…) shares the board with it.
     expect(s.bricks.filter((b) => b.kind !== 'boss' && !b.role)).toHaveLength(0)
     const events = drainEvents(s)
@@ -191,7 +191,8 @@ describe('boss', () => {
     const s = withBoss(['drifter'])
     const left = () => Math.min(...bossParts(s).map((b) => b.col))
     const seen: number[] = [left()]
-    for (let i = 0; i < 8; i++) {
+    // The widened arena: far enough to reach both walls from the middle.
+    for (let i = 0; i < 2 * s.cols; i++) {
       startNextTurn(s)
       seen.push(left())
     }
@@ -204,10 +205,10 @@ describe('boss', () => {
     const s = withBoss(['enrage'])
     const top = () => Math.min(...bossParts(s).map((b) => b.row))
     startNextTurn(s)
-    expect(top()).toBe(0)
+    expect(top()).toBe(BOSS_SPAWN_ROW)
     s.boss!.hp = s.boss!.maxHp / 3
     startNextTurn(s)
-    expect(top()).toBe(1)
+    expect(top()).toBe(BOSS_SPAWN_ROW + 1)
   })
 
   it('takes a big hit from Row Bomb instead of losing a piece', () => {
@@ -270,7 +271,7 @@ describe('boss hitbox', () => {
     }
     return top
   }
-  const bottom = TOP + 2 * CELL - BRICK_INSET
+  const bottom = TOP + (2 + BOSS_SPAWN_ROW) * CELL - BRICK_INSET
 
   it('stops a normal ball at the bottom of the body', () => {
     expect(shootUp('normal', 0)).toBeGreaterThanOrEqual(bottom + 7 - 1)
@@ -285,12 +286,13 @@ describe('boss hitbox', () => {
   })
 
   it('has no gaps on the seam between two parts', () => {
-    expect(shootUp('normal', 0, 3 * CELL)).toBeGreaterThanOrEqual(bottom + 7 - 0.1)
+    // The block spans columns 3–5 of the widened (9-column) board: the seam between its first two parts.
+    expect(shootUp('normal', 0, 4 * CELL)).toBeGreaterThanOrEqual(bottom + 7 - 0.1)
   })
 
   it('follows the shape: a notch in the body is open', () => {
     // The fortress has towers at both ends and an open gap under its middle.
-    const notchBottom = TOP + 2 * CELL - BRICK_INSET
+    const notchBottom = TOP + (2 + BOSS_SPAWN_ROW) * CELL - BRICK_INSET
     expect(shootUp('normal', 0, 3.5 * CELL, 'fortress')).toBeGreaterThanOrEqual(notchBottom + 7 - 1)
     expect(shootUp('normal', 0, 3.5 * CELL, 'fortress')).toBeLessThan(notchBottom + 7 + 2)
   })

@@ -1069,24 +1069,101 @@
   );
 }
 
-/* Slots full: one quiet line over the cards. */
-.bs-slots-full {
+/* The pick screen's skill slots: a socket per slot, filled (icon, level, rarity colour) or empty (dashed "+"). */
+.bs-slot-strip {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgb(0 0 0 / 0.22);
+}
+.bs-slot-count {
   font-size: 13px;
+  font-weight: 700;
   color: var(--pf-haze);
 }
-.bs-slot-dots {
-  display: inline-flex;
-  gap: 3px;
+.bs-slot-strip.full .bs-slot-count {
+  color: #ff8787;
 }
-.bs-slot-dots i {
-  width: 8px;
-  height: 8px;
+.bs-socks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.bs-sock {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
-  background: #b48cff;
-  box-shadow: 0 0 6px rgb(180 140 255 / 0.6);
+  box-sizing: border-box;
+}
+.bs-sock.filled {
+  border: 2px solid currentColor;
+  background: color-mix(in srgb, currentColor 22%, var(--pf-felt));
+  box-shadow: 0 0 8px color-mix(in srgb, currentColor 45%, transparent);
+}
+.bs-sock.filled svg {
+  width: 24px;
+  height: 24px;
+}
+.bs-sock.common {
+  color: #5ab8ff;
+}
+.bs-sock.rare {
+  color: #b48cff;
+}
+.bs-sock.epic {
+  color: var(--pf-yolk);
+}
+.bs-sock-lv {
+  position: absolute;
+  right: -8px;
+  bottom: -6px;
+  min-width: 16px;
+  padding: 0 4px;
+  white-space: nowrap;
+  border-radius: 8px;
+  background: var(--pf-night, #14102a);
+  color: var(--pf-chalk);
+  font: 800 10px/16px inherit;
+  font-style: normal;
+  text-align: center;
+}
+.bs-sock.empty {
+  border: 2px dashed var(--pf-rim);
+  color: var(--pf-haze);
+  box-shadow: inset 0 0 8px rgb(0 0 0 / 0.5);
+}
+.bs-sock.empty b {
+  font-size: 18px;
+  line-height: 1;
+  opacity: 0.6;
+}
+/* The next free socket: where the skill you pick goes. */
+.bs-sock.empty.next {
+  border-color: #4be3a0;
+  color: #4be3a0;
+  animation: bs-sock-glow 1.4s ease-in-out infinite;
+}
+.bs-sock.empty.next b {
+  opacity: 1;
+}
+@keyframes bs-sock-glow {
+  50% {
+    box-shadow:
+      0 0 12px rgb(75 227 160 / 0.6),
+      inset 0 0 6px rgb(75 227 160 / 0.3);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bs-sock.empty.next {
+    animation: none;
+  }
 }
 .bs-card .bs-tag.swap {
   background: rgb(255 107 107 / 0.18);
@@ -1267,4 +1344,20 @@
 }
 .bs-event-head .pf-heading {
   font-size: 26px;
+}
+
+/* Skill points waiting: a small green "+N" on the pick heading and the Skills button. */
+.bs-points {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #4be3a0;
+  color: var(--pf-ink);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.5;
+  vertical-align: middle;
+  white-space: nowrap;
+  flex: none;
 }

@@ -1,6 +1,6 @@
 // Boss bodies: each is a set of cells (so the hitbox is exactly what is drawn)
 // with a "core" rectangle that holds the face and the health bar.
-import type { BossTier, BrickShape } from './types'
+import type { BossTier, Brick, BrickShape } from './types'
 
 export interface BossShape {
   /** Cells as [col, row] offsets from the shape's top-left. */
@@ -124,4 +124,34 @@ export function shapeSize(shape: BossShape): { w: number; h: number } {
     w: Math.max(...shape.cells.map(([c]) => c)) + 1,
     h: Math.max(...shape.cells.map(([, r]) => r)) + 1,
   }
+}
+
+/**
+ * The bricks of a body, `left` cells from the board edge, with its triangle and
+ * orb parts. The board and the boss card both build from this, so they match.
+ */
+export function bodyBricks(
+  id: string | undefined,
+  left: number,
+  hp: number,
+  maxHp: number,
+  firstId = 0,
+  /** Rows down from the top of the board. */
+  top = 0,
+): Brick[] {
+  const body = shapeOf(id)
+  return body.cells.map(([c, r], i) => {
+    const part: Brick = {
+      id: firstId + i,
+      col: left + c,
+      row: top + r,
+      hp,
+      maxHp,
+      kind: 'boss',
+      split: false,
+    }
+    const shape = body.shaped?.[`${c},${r}`]
+    if (shape) part.shape = shape
+    return part
+  })
 }

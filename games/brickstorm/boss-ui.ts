@@ -5,9 +5,9 @@ import { drawBoss } from './boss-art'
 import { bossName, skillInfo } from './boss-skill-ui'
 import { t } from './i18n'
 import { panelHead } from './panels'
-import { shapeOf, shapeSize } from './sim/boss-shapes'
+import { bodyBricks, shapeOf, shapeSize } from './sim/boss-shapes'
 import { CELL, TOP } from './sim/config'
-import type { Boss, Brick } from './sim/types'
+import type { Boss } from './sim/types'
 
 export { bossName } from './boss-skill-ui'
 
@@ -25,15 +25,7 @@ function bossPreview(boss: Boss): HTMLCanvasElement {
   canvas.style.height = `${hgt}px`
   const ctx = canvas.getContext('2d')
   if (!ctx) return canvas
-  const parts: Brick[] = shape.cells.map(([col, row], id) => ({
-    id,
-    col,
-    row,
-    hp: boss.hp,
-    maxHp: boss.maxHp,
-    kind: 'boss',
-    split: false,
-  }))
+  const parts = bodyBricks(boss.shape, 0, boss.hp, boss.maxHp)
   const start = performance.now()
   const frame = (now: number) => {
     ctx.setTransform(2, 0, 0, 2, 0, 0)
@@ -46,9 +38,11 @@ function bossPreview(boss: Boss): HTMLCanvasElement {
   return canvas
 }
 
-/** The card that introduces a boss: it waits for the player to close it. */
-export function bossIntro(boss: Boss, onClose: () => void): HTMLElement {
-  const fight = h('button', { class: 'pf-btn primary wide', type: 'button', onclick: onClose }, t('Fight!'))
+/** The card that introduces a boss (or, `again`, recalls it mid-fight): it waits for the player to close it. */
+export function bossIntro(boss: Boss, onClose: () => void, again = false): HTMLElement {
+  // Reopened mid-fight (from the HUD chip or a long press on the boss): back to it.
+  const label = again ? t('Back to the fight') : t('Fight!')
+  const fight = h('button', { class: 'pf-btn primary wide', type: 'button', onclick: onClose }, label)
   fight.autofocus = true
   return h(
     'div',

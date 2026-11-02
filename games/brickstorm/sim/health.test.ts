@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { spawnBoss } from './boss'
 import { DANGER_ROW } from './config'
+import { damageBrick } from './damage'
 import { BOSS_HEAL, breachDamage, breachUnit, HEART_HEAL, heal, POTION_HEAL, resolveBreaches } from './health'
 import { revive, useHelper } from './meta'
 import { heartChance } from './rows'
@@ -92,8 +94,36 @@ describe('hero health', () => {
     expect(s.hp).toBe(20 + 100 * POTION_HEAL)
   })
 
-  it('beating a boss heals', () => {
-    expect(BOSS_HEAL).toBeGreaterThan(0)
+  it('beating a boss does not heal (only a hero who says so does)', () => {
+    expect(BOSS_HEAL).toBe(0)
+    const s = empty()
+    s.turn = 30
+    spawnBoss(s, [], 'block')
+    s.hp = 40
+    damageBrick(
+      s,
+      s.bricks.find((b) => b.kind === 'boss')!,
+      1e9,
+      'ball',
+    )
+    expect(s.boss).toBeFalsy()
+    expect(s.hp).toBe(40)
+    expect(drainEvents(s).some((e) => e.type === 'heal')).toBe(false)
+  })
+
+  it('the Paladin still heals when a boss falls', () => {
+    const s = empty()
+    s.hero = 'paladin'
+    s.turn = 30
+    spawnBoss(s, [], 'block')
+    s.hp = 40
+    damageBrick(
+      s,
+      s.bricks.find((b) => b.kind === 'boss')!,
+      1e9,
+      'ball',
+    )
+    expect(s.hp).toBeGreaterThan(40)
   })
 })
 

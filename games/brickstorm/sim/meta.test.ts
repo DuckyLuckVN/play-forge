@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { reroll, rerollCost } from './boosts'
+import { openPicks, reroll, rerollCost } from './boosts'
 import { DANGER_ROW } from './config'
 import { applyHelpers, revive, reviveCost } from './meta'
 import { brick, empty } from './testing'
@@ -62,12 +62,13 @@ describe('revive', () => {
 })
 
 describe('applyHelpers', () => {
-  it('adds balls and opens a free pick', () => {
+  it('adds balls and banks a free skill point', () => {
     const s = empty()
     applyHelpers(s, { headStart: true, luckyStart: true })
     expect(s.ballCount).toBe(6)
-    expect(s.phase).toBe('pick')
+    expect(s.phase).toBe('aim')
     expect(s.pendingPicks).toBe(1)
+    expect(openPicks(s)).toBe(true)
     expect(s.choices).toHaveLength(3)
   })
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { BOARD_W, CELL, COLS, DANGER_ROW, ROWS } from './config'
 import { dims } from './dims'
-import { pickBoost, xpToNext } from './boosts'
+import { openPicks, xpToNext } from './boosts'
 import { growBoard } from './meta'
 import { spawnRow } from './rows'
 import { fire } from './run'
@@ -96,7 +96,7 @@ describe('board growth', () => {
     expect(maxX).toBeLessThanOrEqual(dims(s).boardW)
   })
 
-  it('a level-up pick at turn 50 is followed by the grow choice', () => {
+  it('a level-up at turn 50: the grow choice comes first, the point waits', () => {
     const s = empty()
     s.turn = 49
     s.xp = xpToNext(0) - 1
@@ -105,8 +105,10 @@ describe('board growth', () => {
     fire(s, Math.PI / 2)
     runVolley(s)
     expect(s.turn).toBe(50)
-    expect(s.phase).toBe('pick')
-    pickBoost(s, s.choices[0])
     expect(s.phase).toBe('grow')
+    growBoard(s, 'col')
+    expect(s.phase).toBe('aim')
+    expect(s.pendingPicks).toBe(1)
+    expect(openPicks(s)).toBe(true)
   })
 })

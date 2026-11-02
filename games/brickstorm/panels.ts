@@ -9,6 +9,7 @@ import { drawKindGlyph, drawPickupGlyph, HAZARD_FILL, shapedBrickPath } from './
 import { CELL, TOP } from './sim/config'
 import type { Helpers } from './save'
 import { BOOSTS, boostSlots, slottedBoosts } from './sim/boosts'
+import { slotView } from './slot-view'
 import type { ActiveHelper, BoostId, BrickKind, PickupKind, RunState } from './sim/types'
 
 export const ACTIVE_HELPERS: Array<{ id: ActiveHelper; name: string; glyph: string; text: string }> = [
@@ -116,7 +117,7 @@ function boostTile(s: RunState, id: BoostId, onInfo: (id: BoostId) => void): HTM
     { class: `bs-tile ${b.rarity}`, type: 'button', onclick: () => onInfo(id) },
     art,
     h('span', { class: 'bs-tile-name', textContent: name }),
-    h('span', { class: 'bs-badge', textContent: `×${s.boosts[id]}` }),
+    h('span', { class: 'bs-badge', textContent: t('Lv {n}', { n: s.boosts[id] ?? 0 }) }),
     infoButton(name, () => onInfo(id)),
   )
   tile.setAttribute('aria-label', t('{name} level {n}. Show details', { name, n: s.boosts[id] ?? 0 }))
@@ -301,5 +302,44 @@ export function guidePanel(onBack: () => void): HTMLElement {
         ),
       ),
     ),
+  )
+}
+
+/**
+ * The pick screen's skill slots, always shown: a socket per slot, filled ones
+ * with the skill's icon and level in its rarity colour, empty ones dashed with
+ * a "+" (the next one glows: that is where a new skill goes). Full slots say
+ * that ⇄ on a card swaps one out.
+ */
+export function slotStrip(s: RunState): HTMLElement {
+  const v = slotView(s)
+  const sockets = v.sockets.map((k) => {
+    if (k.kind === 'empty') {
+      const el = h('span', { class: `bs-sock empty${k.next ? ' next' : ''}` }, h('b', { textContent: '+' }))
+      el.setAttribute('aria-label', t('Empty skill slot'))
+      el.title = t('Empty skill slot')
+      return el
+    }
+    const name = t(BOOSTS[k.id].name)
+    const el = h(
+      'span',
+      { class: `bs-sock filled ${k.rarity}` },
+      h('i', { class: 'bs-sock-lv', textContent: t('Lv {n}', { n: k.level }) }),
+    )
+    el.insertAdjacentHTML('afterbegin', BOOST_ICONS[k.id])
+    el.setAttribute('aria-label', t('{name} level {n}', { name, n: k.level }))
+    el.title = name
+    return el
+  })
+  return h(
+    'div',
+    { class: `bs-slot-strip${v.full ? ' full' : ''}`, role: 'note' } as never,
+    h('span', {
+      class: 'bs-slot-count',
+      textContent: v.full
+        ? t('Slots full · ⇄ replaces a skill')
+        : t('Skill slots {n}/{max}', { n: v.used, max: v.max }),
+    }),
+    h('div', { class: 'bs-socks' }, ...sockets),
   )
 }

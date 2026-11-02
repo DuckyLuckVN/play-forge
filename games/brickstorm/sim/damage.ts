@@ -108,9 +108,11 @@ function onDeath(s: RunState, brick: Brick, depth: number): void {
   const { x, y } = cellCenter(brick.col, brick.row)
   switch (brick.kind) {
     case 'bomb':
+      s.events.push({ type: 'special', kind: 'bomb', x, y, trigger: true })
       explode(s, brick.col, brick.row, 0.5 * brick.maxHp, depth)
       return
     case 'lightning': {
+      s.events.push({ type: 'special', kind: 'lightning', x, y, trigger: true })
       const row = oncePerBoss(s.bricks.filter((b) => b.row === brick.row && b.kind !== 'water'))
       for (const b of row) {
         const t = cellCenter(b.col, b.row)
@@ -130,6 +132,7 @@ function onDeath(s: RunState, brick: Brick, depth: number): void {
     }
     case 'splitter': {
       if (brick.split) return
+      s.events.push({ type: 'special', kind: 'splitter', x, y, trigger: true })
       const hp = Math.ceil(brick.maxHp / 2)
       const cells = [
         [brick.col - 1, brick.row],

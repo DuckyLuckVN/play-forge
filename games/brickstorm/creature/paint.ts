@@ -1,5 +1,7 @@
 /** Shared drawing kit for creature heroes: one thick outline, thin inner lines, two-tone cel shading, gloss, faces. */
 
+import type { Frame } from './types'
+
 type Ctx = CanvasRenderingContext2D
 
 export const OUTLINE = '#141a2e'
@@ -23,7 +25,9 @@ export function mix(a: string, b: string, t: number): string {
 export const darkOf = (c: string) => mix(c, '#1e2a5a', 0.38)
 export const lightOf = (c: string) => mix(c, '#ffffff', 0.3)
 
-const clamp = (v: number, a = 0, b = 1) => Math.max(a, Math.min(b, v))
+export const clamp = (v: number, a = 0, b = 1) => Math.max(a, Math.min(b, v))
+/** Smoothstep on 0..1. */
+export const smooth = (k: number) => k * k * (3 - 2 * k)
 const easeOut = (k: number) => 1 - (1 - clamp(k)) ** 3
 /** 0..1..0 bump over [a, b]. */
 const bump = (x: number, a: number, b: number) =>
@@ -41,6 +45,23 @@ export function look(t: number, seed: number): number {
 /** Idle sway: 0 when still (reduced motion / static portraits). */
 export const idleOffset = (t: number, still: boolean, phase: number, amp: number): number =>
   still ? 0 : Math.sin(t * 2 + phase) * amp
+
+/** Ellipse path. */
+export const ell = (x: number, y: number, rx: number, ry: number, rot = 0): Path2D => {
+  const p = new Path2D()
+  p.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2)
+  return p
+}
+
+/** Rounded-rectangle path (x, y = top-left). */
+export const box = (x: number, y: number, w: number, h: number, r: number | number[]): Path2D => {
+  const p = new Path2D()
+  p.roundRect(x, y, w, h, r)
+  return p
+}
+
+/** The joyful moods (and happy eyes) that draw happy arcs. */
+export const happy = (f: Frame): boolean => f.mood === 'cheer' || f.mood === 'pump' || f.eyes === 'happy'
 
 export interface Part {
   p: Path2D

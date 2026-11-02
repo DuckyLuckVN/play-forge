@@ -7,16 +7,21 @@
 import type { Pose } from '../../hero-avatar'
 import {
   OUTLINE,
+  box,
+  clamp,
   darkOf,
   dotEye,
+  ell,
   gloss,
   group,
+  happy,
   happyEye,
   lightOf,
   look as wander,
   mix,
   openMouth,
   paint,
+  smooth,
   ticks,
 } from '../paint'
 import type { BodyMetrics, BodyType, CreatureLook, DrawKit, Frame, HeadBox } from '../types'
@@ -47,15 +52,6 @@ const HOP_LAG = 0.3
 const TOP_EXTRA = 0.5
 /** A full melt flattens the jelly by this share (a puddle tall enough to keep its face). */
 const MELT_Y = 0.62
-
-const clamp = (v: number, a = 0, b = 1) => Math.max(a, Math.min(b, v))
-const smooth = (k: number) => k * k * (3 - 2 * k)
-const happy = (f: Frame) => f.mood === 'cheer' || f.mood === 'pump' || f.eyes === 'happy'
-const ell = (x: number, y: number, rx: number, ry: number, rot = 0) => {
-  const p = new Path2D()
-  p.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2)
-  return p
-}
 
 /** Reaction splat (+ = wider and flatter): a bouncy spring on cheer and pump, a flat splat on hurt. */
 function splatOf(f: Frame): number {
@@ -282,9 +278,9 @@ function belt(ctx: Ctx, j: Jelly, blob: Path2D): void {
   ctx.restore()
   ctx.save()
   ride(ctx, j, { x: -14, y: -12 })
-  paint(ctx, { p: roundBox(-4, -4.5, 8, 9, 2), c: mix(BELT, '#c77d0a', 0.4), k: 0.4, inner: true, lw: 1.5 })
+  paint(ctx, { p: box(-4, -4.5, 8, 9, 2), c: mix(BELT, '#c77d0a', 0.4), k: 0.4, inner: true, lw: 1.5 })
   paint(ctx, {
-    p: roundBox(-4, -4.5, 8, 3.2, [2, 2, 0.6, 0.6]),
+    p: box(-4, -4.5, 8, 3.2, [2, 2, 0.6, 0.6]),
     c: mix(BELT, '#000000', 0.15),
     k: 0,
     inner: true,
@@ -303,12 +299,6 @@ function belt(ctx: Ctx, j: Jelly, blob: Path2D): void {
   ctx.lineTo(0, 1.4)
   ctx.stroke()
   ctx.restore()
-}
-
-const roundBox = (x: number, y: number, w: number, h: number, r: number | number[]) => {
-  const p = new Path2D()
-  p.roundRect(x, y, w, h, r)
-  return p
 }
 
 /** Determined brows, eyes that look around, and the open grin; xx on KO, squeezed on a flinch. */

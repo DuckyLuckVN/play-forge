@@ -5,7 +5,7 @@
  */
 import type { Pose } from '../../hero-avatar'
 import { drawArm } from '../hands'
-import { darkOf, gloss, group, happyEye, look as wander, mix, paint, ticks } from '../paint'
+import { box, darkOf, ell, gloss, group, happy, happyEye, look as wander, mix, paint, ticks } from '../paint'
 import type { BodyMetrics, BodyType, CreatureLook, DrawKit, Frame, HeadBox } from '../types'
 
 type Ctx = CanvasRenderingContext2D
@@ -35,18 +35,6 @@ const TORSO_BOTTOM = -8
 /** KO: the body tips back around the heel by up to this angle. */
 const FALL = 1.45
 const FALL_PIVOT = -8
-
-const box = (x: number, y: number, w: number, h: number, r: number | number[]) => {
-  const p = new Path2D()
-  p.roundRect(x, y, w, h, r)
-  return p
-}
-const ell = (x: number, y: number, rx: number, ry: number) => {
-  const p = new Path2D()
-  p.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2)
-  return p
-}
-const happy = (f: Frame) => f.mood === 'cheer' || f.mood === 'pump' || f.eyes === 'happy'
 
 /** The body's frame transform (outer → upper body): KO tip, squash, crouch, lean. */
 interface Xf {

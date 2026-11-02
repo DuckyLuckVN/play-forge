@@ -115,6 +115,76 @@ describe('clearHead', () => {
   })
 })
 
+describe('clearHead with real mood angles', () => {
+  // [s, e]: pump, scared, aim (front) and the back arm's tucked pose, plus raised-arm extremes.
+  const ANGLES: [number, number][] = [
+    [2.2, 2.4],
+    [1.0, 2.5],
+    [1.4, 2.5],
+    [2.45, 2.4],
+    [-2.3, 1.7],
+    [-2.8, 2.2],
+    [2.9, 0.2],
+    [3.0, 1.2],
+  ]
+  const variants: BodyMetrics[] = []
+  for (const sx of [4, 6, 9])
+    for (const [upper, fore] of [
+      [7, 7],
+      [7, 8],
+    ])
+      for (const hr of [10, 12])
+        for (const side of [1, -1])
+          variants.push({
+            ...metrics(),
+            head: { x: 0, y: -40, rx: hr, ry: hr },
+            socketF: { x: side * sx, y: -28 },
+            socketB: { x: side * sx, y: -28 },
+            upper,
+            fore,
+          })
+
+  it('hand and elbow both clear the head', () => {
+    for (const m of variants)
+      for (const [s0, e] of ANGLES) {
+        const s = clearHead(m, m.socketF, s0, e)
+        const { elbow, hand } = limb(m, m.socketF, s, e)
+        const r = m.head.rx
+        const tag = `socket ${m.socketF.x} ${m.upper}/${m.fore} r${r} s${s0} e${e}`
+        expect(dist(hand, m.head), tag).toBeGreaterThanOrEqual(r + m.handR + 1 - 1e-9)
+        expect(dist(elbow, m.head), tag).toBeGreaterThanOrEqual(r - 1e-9)
+      }
+  })
+
+  it('picks the nearest clear angle (no closer 0.08 step clears)', () => {
+    for (const m of variants)
+      for (const [s0, e] of ANGLES) {
+        const s = clearHead(m, m.socketF, s0, e)
+        const k = Math.round(Math.abs(s - s0) / 0.08)
+        for (let j = 0; j < k; j++)
+          for (const a of [s0 + j * 0.08, s0 - j * 0.08]) {
+            const { elbow, hand } = limb(m, m.socketF, a, e)
+            const r = m.head.rx
+            expect(dist(hand, m.head) >= r + m.handR + 1 && dist(elbow, m.head) >= r).toBe(false)
+          }
+      }
+  })
+
+  it('reviewer cases: pump end pose stays out of the head', () => {
+    const base = { ...metrics(), head: { x: 0, y: -40, rx: 10, ry: 10 } }
+    for (const m of [
+      { ...base, socketF: { x: 6, y: -28 } },
+      { ...base, socketF: { x: 4, y: -28 } },
+      { ...base, socketF: { x: 4, y: -28 }, fore: 8 },
+    ]) {
+      const s = clearHead(m, m.socketF, 2.2, 2.4)
+      const { elbow, hand } = limb(m, m.socketF, s, 2.4)
+      expect(dist(hand, m.head)).toBeGreaterThanOrEqual(14)
+      expect(dist(elbow, m.head)).toBeGreaterThanOrEqual(10)
+    }
+  })
+})
+
 describe('HandFollower', () => {
   it('follower returns to the ball fast once locked', () => {
     const f = new HandFollower()
@@ -183,6 +253,13 @@ describe('drawing', () => {
       expect(shapes[0].args[1]).toBeCloseTo(ball.y + r * 0.35, 6)
       expect(shapes[0].args[2]).toBeCloseTo(r * 0.42, 6)
     }
+  })
+
+  it('drawGrip restores the canvas state', () => {
+    const c = fakeCanvas()
+    drawGrip(c, hand(), { x: 14, y: -20, r: 5 }, '#ffd166')
+    expect(c.calls[0]).toBe('save')
+    expect(c.calls[c.calls.length - 1]).toBe('restore')
   })
 
   it('drawHand outlines the mitt before filling it', () => {

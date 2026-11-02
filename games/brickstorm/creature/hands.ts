@@ -13,7 +13,8 @@ interface Ball extends Pt {
 }
 
 const HEAD_STEP = 0.08
-const HEAD_STEPS = 16
+/** 40 × 0.08 > π: the search covers every shoulder angle. */
+const HEAD_STEPS = 40
 /** Spring stiffness; damping 2·√k makes it critically damped (no overshoot). */
 const SPRING_K = 260
 const SPRING_C = 2 * Math.sqrt(SPRING_K)
@@ -32,19 +33,32 @@ function limb(m: BodyMetrics, o: Pt, s: number, e: number): { elbow: Pt; hand: P
 
 const dist = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y)
 
-/** Shoulder angle nudged (±0.08 a step, up to 16 steps) until the arm clears the head; each step takes the side that moves the hand further away. */
+/**
+ * Nearest shoulder angle to `s` (searching ±k·0.08, k ≤ 40, i.e. past ±π) where the hand is at least
+ * max(rx,ry)+handR+1 and the elbow at least max(rx,ry) from the head centre, so the pose's intent is kept.
+ * When no angle clears, returns the one with the best clearance margin.
+ */
 export function clearHead(m: BodyMetrics, socket: Pt, s: number, e: number): number {
   const head = m.head
   const r = Math.max(head.rx, head.ry)
-  const clear = (a: number) => {
+  /** ≥ 0 when both hand and elbow clear the head. */
+  const margin = (a: number) => {
     const { elbow, hand } = limb(m, socket, a, e)
-    return dist(hand, head) >= r + m.handR + 1 && dist(elbow, head) >= r
+    return Math.min(dist(hand, head) - (r + m.handR + 1), dist(elbow, head) - r)
   }
-  const handDist = (a: number) => dist(limb(m, socket, a, e).hand, head)
-  for (let i = 0; i < HEAD_STEPS && !clear(s); i++) {
-    s = handDist(s + HEAD_STEP) >= handDist(s - HEAD_STEP) ? s + HEAD_STEP : s - HEAD_STEP
+  if (margin(s) >= 0) return s
+  let best = s
+  let bestM = margin(s)
+  for (let k = 1; k <= HEAD_STEPS; k++) {
+    const up = s + k * HEAD_STEP
+    const down = s - k * HEAD_STEP
+    const mu = margin(up)
+    const md = margin(down)
+    if (mu >= 0 || md >= 0) return mu >= md ? up : down
+    if (mu > bestM) [best, bestM] = [up, mu]
+    if (md > bestM) [best, bestM] = [down, md]
   }
-  return s
+  return best
 }
 
 /** Elbow for a hand placed exactly on `target` (two-bone IK; straight arm toward it when out of reach). */
@@ -148,6 +162,7 @@ export function drawGrip(ctx: Ctx, h: HandPose, ball: Ball, color: string): void
   const x = ball.x + ball.r * 0.55
   const y = ball.y + ball.r * 0.35
   const r = ball.r * 0.42
+  ctx.save()
   ctx.beginPath()
   ctx.ellipse(x, y, r, r * 0.8, Math.atan2(y - h.y, x - h.x), 0, Math.PI * 2)
   ctx.strokeStyle = OUTLINE
@@ -160,4 +175,5 @@ export function drawGrip(ctx: Ctx, h: HandPose, ball: Ball, color: string): void
   ctx.beginPath()
   ctx.arc(x - r * 0.3, y - r * 0.3, r * 0.35, 0, Math.PI * 2)
   ctx.fill()
+  ctx.restore()
 }

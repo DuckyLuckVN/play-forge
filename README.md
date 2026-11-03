@@ -59,6 +59,7 @@ engine/                  reusable library, imported as '@forge'
     audio-menu.ts        sound button + music / effects volume popover
     lang-menu.ts         language button (EN / VI); see core/i18n.ts for translator()
     dom.ts, icons.ts     tiny DOM helper, toasts, inline SVG icons
+icon.svg                 the tab icon for every page (the build inlines it into each file)
 launcher/                the game picker page (dist/index.html)
 games/
   games.json             launcher + README listing
@@ -122,7 +123,7 @@ To test multiplayer locally without the internet, open the game in two tabs with
    - `mount(session, stage)`: render from `session.state`, send input with `session.sendInput`, return a cleanup function.
    - `scores(state)`: drives the score chips in the top bar and the scores on the seats after a match.
    - `outcome(state, selfId)`: the result headline, plus `win` / `lose` / `draw` / `done` to pick the end sound.
-6. Add a `cover.svg` (320×200), an `icon.svg` (64×64, bold shapes that read at 16 px; link it from `index.html` with `<link rel="icon" type="image/svg+xml" href="./icon.svg" />`, and the build inlines it) and an entry in `games/games.json`. The launcher and the README games table update from it (`npm run build` or `npm run readme`).
+6. Add a `cover.svg` (320×200) and an entry in `games/games.json`. Keep the tab icon link from the copied `index.html` (`../../icon.svg`): every page shares the one Play Forge icon. The launcher and the README games table update from it (`npm run build` or `npm run readme`).
 7. Languages (English and Vietnamese): wrap on-screen text in `t('English text', { params })` from `translator(VI)` in `@forge/core/i18n`, with `{name}` placeholders. Add the Vietnamese to the game's dictionary (see `games/brickstorm/i18n.ts`); anything missing shows in English. The player picks a language from the language button in the header (`langMenu()` from `@forge/ui/lang-menu`), and the page reloads in it. Add the game's description to the launcher's dictionary in `launcher/main.ts`.
 
 ## Deploy

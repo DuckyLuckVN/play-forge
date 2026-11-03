@@ -1,5 +1,5 @@
 # play-forge
-A collection of fun, interactive mini-games designed to bring people together. Play, compete, and challenge your friends through a variety of casual, board, and multiplayer games — all in one place.
+Fun mini-games to play with friends: solo, on one device, or online. No accounts, no server.
 
 ## Play
 
@@ -14,136 +14,64 @@ A collection of fun, interactive mini-games designed to bring people together. P
 | [Fuse](https://duckyluckvn.github.io/play-forge/games/fuse/) | 1–4 | Slide and fuse tiles into huge numbers. Smash rocks, chain combos, race the computer or up to 4 friends. |
 <!-- games:end -->
 
-- **Online:** the GitHub Pages links above (deployed automatically on every push to `main`).
-- **Offline / no hosting:** run `npm run build` and open `dist/games/<game>/index.html` directly. Each game is **one self-contained HTML file**: copy it anywhere, double-click it, and play. Multiplayer still works from `file://`.
+**Online with friends:** click **Create room** and share the 5-letter code or the invite link.
 
-Multiplayer: one player clicks **Create room** and shares the 5-letter code (or the invite link). Friends enter the code and click **Join**.
+**Offline:** `npm run build`, then open `dist/games/<game>/index.html`. Each game is one self-contained HTML file.
 
-## How multiplayer works (no server)
+## Features
 
-```
- Browser A (host) ◄──── WebRTC data channel ────► Browser B
-        ▲                                               ▲
-        └──── public Nostr relays (connection setup only) ┘
-```
+- **Multiplayer without a server:** browsers connect directly over WebRTC ([Trystero](https://github.com/dmotz/trystero)). See [How multiplayer works](#how-multiplayer-works).
+- **In every online room:** avatars, emoji reactions, text chat (press **Enter**) and voice chat (open mic or hold **V** to talk).
+- **English and Vietnamese**, generated music and sounds, and a phone-friendly layout.
 
-- **Transport:** [Trystero](https://github.com/dmotz/trystero) handles WebRTC. Peers find each other through public Nostr relays, so we run no server. Only connection setup goes through relays. Game traffic is direct peer to peer.
-- **Netcode:** host-authoritative. The room creator runs the simulation at a fixed tick rate. Guests send inputs to the host, and the host broadcasts the state after every tick. Each game is a pure `setup` / `tick` function over JSON data, so the same code runs solo (offline transport) and online.
-- **Reconnecting:** each player has an id that survives reloads, so:
-  - **A player who reloads or drops** keeps their seat (and their piece mid-match) for 20 seconds. A reloaded tab rejoins its room automatically.
-  - **If the host reloads,** the room reopens with the same code and seats, and guests wait for it (up to 30 seconds) instead of being kicked out.
-  - **Going offline** shows a notice.
-- **Social:** every online room gets these from the shared shell, so new games get them for free:
-  - **Avatars:** 24 cartoon characters. Pick one next to your name; the choice is remembered. Players on older versions get a fixed default.
-  - **Reactions:** 16 animated reactions from the 😊 button, including 4 for voice ("turn on your mic", "mute your mic", "can you hear me?", "can't hear you"). They float up from your seat (or drop from your score chip in game). You can send 3 per 2 seconds.
-  - **Text chat:** the 💬 button, or press **Enter** when the game isn't using it (Caro and Fuse use Enter to place and fire). Messages are plain text, up to 200 characters, 5 per 5 seconds. A badge counts unread messages, and new ones pop up as toasts while chat is closed. Chat lives in the host's memory, which sends the last 30 messages to anyone who joins later.
-  - **Voice chat:** the mic button joins voice (the browser asks for the mic only then). Choose open mic or push to talk (hold **V**, or hold the mic button). The headset menu has voice volume, plus a volume (up to 150%) and mute for each player. You hear others without joining. Voice needs https or localhost, uses the same peer-to-peer links as the game, and doesn't work with `?net=local`.
-- **On phones** (520px wide or less), the top bar keeps only home, scores and **⋯**. ⋯ holds voice settings, language, sound and leave. A floating button in the bottom-right corner opens 🎤 💬 😀; when it's closed it glows while your mic is live, shows a red dot when you're muted and a green dot for unread chat. Menus open as bottom sheets that stay above the keyboard. Desktop shows everything in the bar.
-- **Limits:** a host reload ends the current match (the room and seats survive). Keep the host's tab visible, because browsers throttle background tabs. A few strict networks (symmetric NAT) need a TURN server. You can pass one to Trystero via `turnConfig`.
-
-## Project layout
+## How multiplayer works
 
 ```
-engine/                  reusable library, imported as '@forge'
-  app.ts                 createGameApp(): top bar, start screen, lobby with seats + ready-up,
-                         3-2-1 countdown, pause (solo), results. Same flow for every game
-  audio/
-    sound.ts             Web Audio synth (no sound files), shared UI sounds, volume settings
-    music.ts, tracks.ts  step sequencer for background music + stock tracks (lounge, arcade)
-  fx/                    particles + floating text, screen shake, confetti, easing helpers
-  core/                  emitter, fixed-rate ticker + render loop, input (keys/swipe), seeded RNG
-  net/
-    transport.ts         Transport interface (+ optional `media` for voice) + offline transport
-    trystero.ts          internet P2P (WebRTC)
-    broadcast.ts         same-browser tabs (dev/testing)
-    session.ts           host-authoritative Session: lobby, ready, countdown, pause, reconnects
-    smoothing.ts         keeps the last two states so renderers can interpolate between ticks
-  social/                avatars, reactions, voice chat (wired into app.ts for online rooms)
-    avatars.ts           24 avatars drawn from shared SVG parts; avatar-ui.ts picker + element
-    reactions.ts         reaction list, RateLimiter, ReactionHub ('rx' channel); reaction-art.ts, reaction-ui.ts
-    voice-state.ts       pure voice logic (settings, peer roster, speaking detector), unit tested
-    voice.ts, voice-ui.ts VoiceChat (mic, WebRTC streams, Web Audio volumes) and its top-bar controls
-    chat.ts, chat-ui.ts  ChatHub ('tx' channel: rate limits, history for late joiners) and the chat popover
-    room-social.ts       RoomSocial: creates reactions, chat and voice for one online room
-    i18n.ts              Vietnamese for everything in social/
-  render2d/canvas.ts     HiDPI, letterboxed 2D canvas
-  ui/
-    theme.ts             design tokens: colours for CSS and canvas, player colours
-    base.css             shared components: buttons, panels, seats, chips, toasts, countdown
-    audio-menu.ts        sound button + music / effects volume popover
-    lang-menu.ts         language button (EN / VI); see core/i18n.ts for translator()
-    dom.ts, icons.ts     tiny DOM helper, iconButton, toasts, inline SVG icons
-    popover.ts           shared top-bar popover (sound, language, reactions, voice, chat, ⋯ menu, phone fan);
-                         a bottom sheet on phones
-    slider.ts            labelled volume slider (sound menu, voice menu)
-    badge.ts             number badge on a button (people in voice, unread chat)
-icon.svg                 the tab icon for every page (the build inlines it into each file)
-launcher/                the game picker page (dist/index.html)
-games/
-  games.json             launcher + README listing
-  snake/                 main.ts (wiring), sim.ts (rules), render.ts, sounds.ts, cover.svg, tests
-  caro/                  turn-based example: rules.ts, ai.ts (3 levels), sim.ts, whiteboard.ts
-                         (shared drawing on its own transport channel), render.ts, i18n.ts (VI)
-  fuse/                  slide-and-merge puzzle: board.ts (pure slide rules), sim.ts (solo, rival
-                         computer, online race with rock attacks), look.ts (palette + layout), render.ts
-scripts/                 build.mjs (single-file builds), readme.mjs (README games table)
+ Browser A (host) ◄──── direct WebRTC connection ────► Browser B
+        ▲                                                   ▲
+        └────── public Nostr relays (only to find each other) ┘
 ```
 
-## Design system
-
-Every page uses the same tokens and components, so a new game looks and behaves like the others for free.
-
-- **Look:** a "game night table". Deep indigo background, chunky buttons that press down, players as coloured tokens in seats. Font: Fredoka, bundled into the file so it works offline.
-- **Colours:** defined once in `engine/ui/theme.ts`. CSS reads them as `--pf-*` variables, and canvas code imports `theme` and `playerColor(slot)`.
-- **Flow:** start screen (name, game options, Play solo / Create room / Join) → room (seats, "I'm ready", host starts) → 3-2-1 → play → results with a rematch ready-up. Solo games can pause (Esc / P, or automatically when the tab is hidden).
-- **Sound:** shared UI sounds (clicks, join/leave, ready, countdown, win/lose) play automatically. Games add their own with `playSound()`.
-- **Music:** generated live (no files). The lounge track plays on the launcher, menus and lobbies, and gameplay crossfades to the game's track. Music and effects volumes are separate sliders, saved in localStorage and shared by every page. Music fades out in background tabs.
-- **Motion:** panels rise in only when the screen changes, and tokens, badges and score chips pop only when something new happens. Wins get confetti. All of it respects reduced-motion settings.
-- **Copy:** sentence case, plain verbs, and an action keeps the same name throughout (for example "Create room" and "Leave room").
-
-## Tech choices
-
-| Need | Choice | Why |
-| --- | --- | --- |
-| Language / build | TypeScript + Vite + `vite-plugin-singlefile` | Fast dev server; production output is a single HTML file that works on `file://` and static hosts |
-| 2D | Canvas 2D (`engine/render2d`) | Zero dependencies, enough for grid/arcade games. Add **PixiJS** later for sprite-heavy games |
-| 3D | **three.js** (add when the first 3D game arrives, as `engine/render3d`) | Most mature WebGL/WebGPU library. The session/netcode layer is renderer-agnostic, so nothing else changes |
-| P2P | Trystero (Nostr strategy) | Serverless signalling, bundles into the single file |
-| Tests | Vitest + Playwright | Game rules are pure functions (unit tests); Playwright drives real browsers through whole flows |
-| Code quality | ESLint + Prettier | Consistent style and early bug catching, checked in CI |
+- **No server:** players find each other through public relays, then talk directly, browser to browser.
+- **The host runs the game:** guests send their moves to the host, and the host sends the game state back to everyone.
+- **Reconnecting:**
+  - A player who reloads or drops keeps their seat for 20 seconds and rejoins automatically.
+  - If the host reloads, the room reopens with the same code and seats. Guests wait up to 30 seconds.
+- **Limits:**
+  - A host reload ends the current match (the room survives).
+  - Keep the host's tab visible, because browsers slow down background tabs.
+  - A few strict networks can't connect directly and would need a TURN server.
 
 ## Develop
 
 ```bash
 npm install
-npm run dev          # http://localhost:5173 (launcher), /games/snake/
-npm test             # unit tests (rules, session, networked game over BroadcastChannel)
-npm run test:e2e     # browser tests (Playwright) against the production build
-npm run lint         # ESLint
-npm run format       # Prettier (format:check in CI)
-npm run check        # typecheck + lint + format check + unit tests
+npm run dev          # http://localhost:5173
+npm run check        # typecheck + lint + format + unit tests
+npm run test:e2e     # browser tests (first time: npx playwright install chromium)
 npm run build        # dist/ (or: npm run build -- snake)
 ```
 
-First time running browser tests: `npx playwright install chromium`.
+Test multiplayer without internet: open a game in two tabs with `?net=local` (voice needs the real network).
 
-The end-to-end tests drive real pages: menus, the home button, saved volume, a solo game from start to game over, the single file opened straight from disk, and multiplayer (ready-up, guest input, reloads, leaving). Multiplayer tests use `?net=local`, so they need no internet and give the same result every run. They are not run in CI; run them locally before a release.
+## Project layout
 
-To test multiplayer locally without the internet, open the game in two tabs with `?net=local`, e.g. `http://localhost:5173/games/snake/?net=local`.
+```
+engine/      shared library ('@forge'): game shell (app.ts), net, social, audio, ui, fx
+games/       one folder per game + games.json (launcher and README table)
+launcher/    the game picker page
+scripts/     single-file build and README table generator
+```
 
 ## Adding a game
 
-1. Copy `games/snake` to `games/<id>/`. `index.html` only loads `main.ts`; the engine builds the page.
-2. Write the rules in `sim.ts` as a `GameDefinition<State, Input>` (`setup`, `tick`, `isFinished`, optional `countdown`). Add `options` (e.g. speed, board size) and the engine shows them as pickers: on the start screen (remembered per player), and in the room, where only the host can change them. `tickRate` can be a function of the options; `setup` receives them too. Keep the state JSON-serialisable, and use `@forge/core/rng` with the seed stored in state for randomness.
-3. For sounds and effects on every player's screen, push one-tick events into the state (e.g. `state.events = [{ type: 'eat', player }]`) and play them in `mount` when a new state arrives.
-4. For smooth movement, render from `smoothState(session)`: interpolate between `prev` and `curr` with `alpha()`. Use `Particles`, `Shake` and `ease` from `@forge/fx` for effects. `games/snake/render.ts` shows all of these.
-5. In `main.ts`, call `createGameApp({ def, title, tagline, controls, music, mount, scores, outcome })`:
-   - `mount(session, stage)`: render from `session.state`, send input with `session.sendInput`, return a cleanup function.
-   - `scores(state)`: drives the score chips in the top bar and the scores on the seats after a match.
-   - `outcome(state, selfId)`: the result headline, plus `win` / `lose` / `draw` / `done` to pick the end sound.
-6. Add a `cover.svg` (320×200) and an entry in `games/games.json`. Keep the tab icon link from the copied `index.html` (`../../icon.svg`): every page shares the one Play Forge icon. The launcher and the README games table update from it (`npm run build` or `npm run readme`).
-7. Languages (English and Vietnamese): wrap on-screen text in `t('English text', { params })` from `translator(VI)` in `@forge/core/i18n`, with `{name}` placeholders. Add the Vietnamese to the game's dictionary (see `games/brickstorm/i18n.ts`); anything missing shows in English. The player picks a language from the language button in the header (`langMenu()` from `@forge/ui/lang-menu`), and the page reloads in it. Add the game's description to the launcher's dictionary in `launcher/main.ts`.
+1. Copy `games/snake` to `games/<id>/`.
+2. Write the rules in `sim.ts` as a `GameDefinition` (`setup`, `tick`, `isFinished`). Keep the state plain JSON.
+3. In `main.ts`, call `createGameApp({ def, title, mount, scores, outcome })`. The engine gives you the menus, rooms, social features and sounds.
+4. Add `cover.svg` and an entry in `games/games.json`. Put on-screen text through `t()` with a Vietnamese dictionary (see `games/brickstorm/i18n.ts`).
+
+`games/snake` is the reference for rendering, effects and input.
 
 ## Deploy
 
-`.github/workflows/pages.yml` tests, builds, and publishes `dist/` on every push to `main`. One-time setup: **Settings → Pages → Source: GitHub Actions**.
+Every push to `main` is tested, built and published to GitHub Pages (`.github/workflows/pages.yml`).

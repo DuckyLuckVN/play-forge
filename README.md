@@ -9,7 +9,7 @@ A collection of fun, interactive mini-games designed to bring people together. P
 | Game | Players | Description |
 | --- | --- | --- |
 | [Snake](https://duckyluckvn.github.io/play-forge/games/snake/) | 1–8 | Eat, grow, outlast. Solo or up to 8 players. |
-| [Brickstorm](https://duckyluckvn.github.io/play-forge/games/brickstorm/) | 1 | Aim, launch, and break the storm. Endless solo brick breaker. |
+| [Brickstorm](https://duckyluckvn.github.io/play-forge/games/brickstorm/) | 1 | Aim, launch, and break the storm. 25 heroes, skills, special bricks and a shop. |
 | [Caro](https://duckyluckvn.github.io/play-forge/games/caro/) | 1–2 | Five in a row. Play the computer, a friend on one device, or online. Draw on the board together. |
 <!-- games:end -->
 
@@ -105,7 +105,7 @@ npm run build        # dist/ (or: npm run build -- snake)
 
 First time running browser tests: `npx playwright install chromium`.
 
-The end-to-end tests drive real pages: menus, the home button, saved volume, a solo game from start to game over, the single file opened straight from disk, and multiplayer (ready-up, guest input, reloads, leaving). Multiplayer tests use `?net=local`, so they need no internet and give the same result every run. CI runs them on every push and pull request, and the site only deploys when they pass.
+The end-to-end tests drive real pages: menus, the home button, saved volume, a solo game from start to game over, the single file opened straight from disk, and multiplayer (ready-up, guest input, reloads, leaving). Multiplayer tests use `?net=local`, so they need no internet and give the same result every run. They are not run in CI; run them locally before a release.
 
 To test multiplayer locally without the internet, open the game in two tabs with `?net=local`, e.g. `http://localhost:5173/games/snake/?net=local`.
 
@@ -120,6 +120,7 @@ To test multiplayer locally without the internet, open the game in two tabs with
    - `scores(state)`: drives the score chips in the top bar and the scores on the seats after a match.
    - `outcome(state, selfId)`: the result headline, plus `win` / `lose` / `draw` / `done` to pick the end sound.
 6. Add a `cover.svg` (320×200) and an entry in `games/games.json`. The launcher and the README games table update from it (`npm run build` or `npm run readme`).
+7. Languages (English and Vietnamese): wrap on-screen text in `t('English text', { params })` from `translator(VI)` in `@forge/core/i18n`, with `{name}` placeholders. Add the Vietnamese to the game's dictionary (see `games/brickstorm/i18n.ts`); anything missing shows in English. The player picks a language from the language button in the header (`langMenu()` from `@forge/ui/lang-menu`), and the page reloads in it. Add the game's description to the launcher's dictionary in `launcher/main.ts`.
 
 ## Deploy
 

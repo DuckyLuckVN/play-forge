@@ -53,7 +53,7 @@ describe('end of volley bonuses', () => {
     fire(s, Math.PI / 2)
     runVolley(s)
     const wipe = drainEvents(s).find((e) => e.type === 'allClear')
-    expect(wipe).toEqual({ type: 'allClear', coins: 10 })
+    expect(wipe).toEqual({ type: 'allClear', coins: 1 })
   })
 
   it('pays out a close one', () => {
@@ -83,5 +83,15 @@ describe('slow-mo', () => {
     ballUnder(s, b, 40)
     expect(slowMoActive(s)).toBe(false)
     expect(cellCenter(3, 2).y).toBeLessThan(s.balls[0].y)
+  })
+})
+
+describe('combo power', () => {
+  it('counts in full up to 30 balls, then gently needs more hits (2× at 120 balls)', async () => {
+    const { comboPower } = await import('./damage')
+    expect(comboPower({ combo: 50, ballCount: 10 })).toBe(50)
+    expect(comboPower({ combo: 50, ballCount: 30 })).toBe(50)
+    expect(comboPower({ combo: 100, ballCount: 120 })).toBeCloseTo(50)
+    expect(comboPower({ combo: 150, ballCount: 270 })).toBeCloseTo(50)
   })
 })

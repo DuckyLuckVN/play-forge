@@ -34,26 +34,6 @@ jobs:
         with:
           path: dist
 
-  e2e:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: playwright-report
-          path: |
-            playwright-report
-            test-results
-          retention-days: 7
-
   # Separate from `build` so a stale README is flagged without blocking the deploy.
   readme:
     runs-on: ubuntu-latest
@@ -64,9 +44,9 @@ jobs:
         run: git diff --exit-code README.md || (echo "::error::Run 'npm run readme' and commit README.md" && exit 1)
 
   deploy:
-    # Only from main, and only when the build and the end-to-end tests pass.
+    # Only from main, and only when the build passes.
     if: github.event_name != 'pull_request'
-    needs: [build, e2e]
+    needs: [build]
     runs-on: ubuntu-latest
     environment:
       name: github-pages

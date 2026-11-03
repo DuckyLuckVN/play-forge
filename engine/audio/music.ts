@@ -241,8 +241,14 @@ function fadeOut(p: Playing) {
   }, 1200)
 }
 
+/** Debug pages (`?debug`) play no music, so testing stays quiet; effects still play. */
+export function musicMuted(search = globalThis.location?.search ?? ''): boolean {
+  return new URLSearchParams(search).has('debug')
+}
+
 /** Play a track, crossfading from the current one. Same track: no-op. */
 export function playMusic(track: Track | null): void {
+  if (musicMuted()) track = null
   wanted = track
   if (current?.track === track) return
   whenUnlocked(() => {

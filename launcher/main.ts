@@ -28,8 +28,6 @@ const t = translator({
     'Ăn, lớn lên, trụ lâu nhất. Chơi một mình hoặc tối đa 8 người.',
   'Aim, launch, and break the storm. 25 heroes, skills, special bricks and a shop.':
     'Ngắm, bắn và phá tan cơn bão gạch. 25 anh hùng, kỹ năng, gạch đặc biệt và cửa hàng.',
-  'Aim, launch, and break the storm. Endless solo brick breaker.':
-    'Ngắm, bắn và phá tan cơn bão gạch. Phá gạch một mình không hồi kết.',
   'Five in a row. Play the computer, a friend on one device, or online. Draw on the board together.':
     'Năm con liên tiếp. Chơi với máy, với bạn trên cùng một máy, hoặc trực tuyến. Cùng vẽ lên bàn cờ.',
   '{n} player': '{n} người chơi',

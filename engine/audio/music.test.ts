@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { noteToMidi, parseSteps } from './music'
+import { musicMuted, noteToMidi, parseSteps } from './music'
 import { ARCADE, LOUNGE } from './tracks'
 
 describe('music', () => {
@@ -27,5 +27,14 @@ describe('music', () => {
         expect(longest % len).toBe(0)
       }
     }
+  })
+})
+
+describe('debug mode', () => {
+  it('mutes music when the page is opened with ?debug', () => {
+    expect(musicMuted('?debug')).toBe(true)
+    expect(musicMuted('?seed=3&debug')).toBe(true)
+    expect(musicMuted('?seed=3')).toBe(false)
+    expect(musicMuted('')).toBe(false)
   })
 })

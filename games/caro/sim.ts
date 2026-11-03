@@ -42,6 +42,8 @@ export type EndReason = 'five' | 'draw' | 'left' | 'resign'
 export interface CaroState {
   size: number
   rule: Rule
+  /** Announce fours (sound, ring, callout). Off for players who'd rather spot them. */
+  hints: boolean
   board: Mark[]
   /** [X, O]; X moves first. */
   seats: [Seat, Seat]
@@ -95,6 +97,7 @@ export function createState(players: PlayerInfo[], seed: number, options: GameOp
   return {
     size,
     rule: options.rule === 'blocked' ? 'blocked' : 'free',
+    hints: options.hints !== 'off',
     board: emptyBoard(size),
     seats,
     turn: 1,
@@ -132,7 +135,8 @@ function place(state: CaroState, cell: number, auto = false) {
   const line = findWin(state.board, state.size, cell, state.rule)
   if (line) return finish(state, side, 'five', line)
   if (isFull(state.board)) return finish(state, 0, 'draw')
-  if (makesFour(state.board, state.size, cell, state.rule)) state.events.push({ type: 'four', side })
+  if (state.hints && makesFour(state.board, state.size, cell, state.rule))
+    state.events.push({ type: 'four', side })
   state.turn = opponent(side)
   state.clock = state.turnTicks
   if (seatOfSide(state, state.turn).kind === 'ai') {
@@ -255,6 +259,15 @@ export const caroGame: GameDefinition<CaroState, CaroInput> = {
         { value: 'off', label: t('Off') },
         { value: '30', label: '30s' },
         { value: '15', label: '15s' },
+      ],
+    },
+    {
+      id: 'hints',
+      label: t('Four warnings'),
+      default: 'on',
+      choices: [
+        { value: 'on', label: t('On') },
+        { value: 'off', label: t('Off') },
       ],
     },
   ],

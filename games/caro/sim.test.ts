@@ -118,6 +118,20 @@ describe('moves', () => {
     expect(s.events).toContainEqual({ type: 'four', side: 1 })
   })
 
+  it('stays quiet about fours when warnings are off', () => {
+    const s = duel({ hints: 'off' })
+    expect(s.hints).toBe(false)
+    for (let i = 0; i < 3; i++) step(s, [move('p0', 30 + i), move('p1', 100 + i * 3)])
+    step(s, [move('p0', 33)])
+    expect(s.events.some((e) => e.type === 'four')).toBe(false)
+    expect(s.events).toContainEqual({ type: 'place', cell: 33, side: 1, auto: false })
+  })
+
+  it('warns about fours by default', () => {
+    expect(duel().hints).toBe(true)
+    expect(duel({ hints: 'nope' }).hints).toBe(true)
+  })
+
   it('a full board without five is a draw', () => {
     const s = duel()
     s.board.fill(1)

@@ -15,6 +15,8 @@ export const VI: Dictionary = {
   'Blocked ends': 'Chặn 2 đầu',
   'Turn timer': 'Giới hạn lượt',
   Off: 'Tắt',
+  On: 'Bật',
+  'Four warnings': 'Cảnh báo 4 quân',
 
   // Start screen
   'Five in a row on notebook paper. Beat the computer, a friend beside you, or anyone online.':

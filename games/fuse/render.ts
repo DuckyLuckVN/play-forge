@@ -56,6 +56,8 @@ interface Callout {
   color: string
   size: number
   at: number
+  /** Comic-book starburst behind the text. */
+  burst?: boolean
 }
 
 /** Per-frame inputs that live outside the game state. */
@@ -85,6 +87,9 @@ export class FuseRenderer {
   private scoreShown = 0
   private meterFlash = -10
   private hitFlash = -10
+  private boomFlash = -10
+  private sized = false
+  private rings: { x: number; y: number; t0: number; size: number; color: string }[] = []
   private readonly still = prefersReducedMotion()
 
   constructor(
@@ -100,7 +105,9 @@ export class FuseRenderer {
   onState(s: FuseState): void {
     this.state = s
     const rivals = s.boards.length - 1
-    if (this.layout.size !== s.size || this.layout.rivals !== rivals) {
+    const l = this.layout
+    if (!this.sized || l.size !== s.size || l.rivals !== rivals) {
+      this.sized = true
       this.layout = layoutFor(s.size, rivals)
       this.view.setSize(this.layout.width, this.layout.height)
       this.sprites.clear()
@@ -115,8 +122,12 @@ export class FuseRenderer {
     }
     this.boardId = b.id
     this.lastTick = s.tick
+    const blasted = new Map<number, number>()
+    for (const e of s.events)
+      if (e.type === 'blast' && e.p === b.id)
+        for (const sp of this.sprites.values()) if (sp.cell === e.cell) blasted.set(e.cell, sp.v)
     this.sync(s, b, fresh)
-    this.effects(s, b)
+    this.effects(s, b, blasted)
   }
 
   private spritePos(sp: { fx: number; fy: number; tx: number; ty: number; t0: number }): [number, number] {
@@ -183,13 +194,13 @@ export class FuseRenderer {
     }
   }
 
-  say(x: number, y: number, text: string, color: string, size = 30): void {
-    this.callouts.push({ x, y, text, color, size, at: this.time })
+  say(x: number, y: number, text: string, color: string, size = 30, burst = false): void {
+    this.callouts.push({ x, y, text, color, size, at: this.time, burst })
     if (this.callouts.length > 6) this.callouts.shift()
   }
 
   /** Bursts, callouts and shakes for this tick's events on the local board. */
-  private effects(s: FuseState, b: Board) {
+  private effects(s: FuseState, b: Board, blasted: Map<number, number>) {
     const l = this.layout
     const mid = l.bx + l.bw / 2
     for (const e of s.events) {
@@ -268,14 +279,38 @@ export class FuseRenderer {
           break
         case 'blast': {
           const [x, y] = this.center(e.cell)
+          const tier = blasted.get(e.cell) ?? (e.rock ? ROCK : 1)
+          const chunk = tier === ROCK ? DUST : [tileColor(tier, this.time), '#ffffff']
+          this.boomFlash = this.time
+          this.rings.push({ x, y, t0: this.time, size: l.cell * 1.9, color: '#ffffff' })
+          this.rings.push({ x, y, t0: this.time + 0.07, size: l.cell * 2.6, color: theme.coral })
+          // Bits of whatever blew up, hot sparks, then a puff of smoke.
           this.particles.burst(x, y, {
-            count: 50,
-            color: [theme.coral, theme.yolk, '#ffffff'],
-            speed: 380,
-            life: 0.6,
+            count: 26,
+            color: chunk,
+            speed: 460,
+            life: 0.8,
+            size: 9,
+            gravity: 1100,
+            shape: 'square',
+          })
+          this.particles.burst(x, y, {
+            count: 44,
+            color: [theme.yolk, '#ff9f43', theme.coral, '#ffffff'],
+            speed: 520,
+            life: 0.55,
             size: 5,
           })
-          this.shake.add(0.45)
+          this.particles.burst(x, y, {
+            count: 10,
+            color: ['#4a4e70', '#5d6186'],
+            speed: 70,
+            life: 1,
+            size: 18,
+            gravity: -60,
+          })
+          this.say(x, y - 6, t('BOOM!'), theme.yolk, 46, true)
+          this.shake.add(0.65)
           break
         }
         case 'charged':
@@ -301,7 +336,8 @@ export class FuseRenderer {
     this.bump = [damp(this.bump[0], 0, 18, dt), damp(this.bump[1], 0, 18, dt)]
     const { ctx } = this.view
     const l = this.layout
-    ctx.clearRect(0, 0, l.width, l.height)
+    // The whole canvas, not just the layout: sparks fall past the board.
+    ctx.clearRect(0, 0, this.view.width, this.view.height)
     const s = this.state
     if (!s) return
     const b = this.myBoard(s)
@@ -322,6 +358,7 @@ export class FuseRenderer {
     for (const pass of [true, false])
       for (const sp of this.sprites.values()) if ((sp.v === ROCK) === pass) this.drawSprite(ctx, sp)
     this.drawAim(ctx, ui)
+    this.drawBoom(ctx)
     this.particles.draw(ctx)
     this.drawCallouts(ctx)
     ctx.restore()
@@ -510,6 +547,31 @@ export class FuseRenderer {
     ctx.restore()
   }
 
+  /** Shockwave rings and a quick white flash over the board. */
+  private drawBoom(ctx: CanvasRenderingContext2D) {
+    const l = this.layout
+    const flash = 1 - clamp01((this.time - this.boomFlash) / 0.18)
+    if (flash > 0 && !this.still) {
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.35 * flash})`
+      roundRect(ctx, l.bx, l.by, l.bw, l.bw, 22)
+      ctx.fill()
+    }
+    const LIFE = 0.4
+    this.rings = this.rings.filter((r) => this.time - r.t0 < LIFE)
+    ctx.save()
+    for (const r of this.rings) {
+      const p = (this.time - r.t0) / LIFE
+      if (p < 0) continue
+      ctx.globalAlpha = 1 - p
+      ctx.strokeStyle = r.color
+      ctx.lineWidth = 14 * (1 - p) + 2
+      ctx.beginPath()
+      ctx.arc(r.x, r.y, r.size * ease.outCubic(p), 0, Math.PI * 2)
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
+
   private drawCallouts(ctx: CanvasRenderingContext2D) {
     const LIFE = 1.1
     this.callouts = this.callouts.filter((c) => this.time - c.at < LIFE)
@@ -527,6 +589,21 @@ export class FuseRenderer {
       const w = ctx.measureText(c.text).width / 2 + 8
       const x = Math.min(l.width - w, Math.max(w, c.x))
       const y = c.y - 34 * ease.outCubic(p)
+      if (c.burst) {
+        ctx.save()
+        ctx.translate(x, y)
+        ctx.rotate(-0.12 + Math.sin(p * 20) * 0.04)
+        starburst(ctx, (w + 14) * pop, c.size * 0.95 * pop, 14)
+        ctx.fillStyle = theme.coral
+        ctx.fill()
+        ctx.lineWidth = 5
+        ctx.strokeStyle = theme.night
+        ctx.stroke()
+        starburst(ctx, (w + 2) * pop, c.size * 0.72 * pop, 14)
+        ctx.fillStyle = '#ff9f43'
+        ctx.fill()
+        ctx.restore()
+      }
       ctx.lineWidth = 7
       ctx.strokeStyle = theme.night
       ctx.strokeText(c.text, x, y)
@@ -610,8 +687,13 @@ export class FuseRenderer {
     ctx.fillStyle = theme.haze
     ctx.font = `600 16px ${FONT}`
     ctx.fillText(t('Blast'), right, y + 26)
-    for (let i = 0; i < MAX_BLASTS; i++)
-      drawBomb(ctx, right - 16 - i * 38, y + 50, 15, i < b.blasts, this.time)
+    const popped = 1 + 0.35 * Math.sin(clamp01((this.time - this.meterFlash) / 0.35) * Math.PI)
+    for (let i = 0; i < MAX_BLASTS; i++) {
+      const on = i < b.blasts
+      // The newest charge pops in when it's earned.
+      const scale = on && i === b.blasts - 1 ? popped : 1
+      drawBomb(ctx, right - 17 - i * 40, y + 56, 16 * scale, on, this.time + i * 0.7)
+    }
     const mw = 120
     const mx = right - mw
     const my = y + 80
@@ -692,32 +774,72 @@ export class FuseRenderer {
   }
 }
 
+/** A round cartoon bomb. Ready ones wobble, blink and fizz. */
 function drawBomb(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, on: boolean, time: number) {
   ctx.save()
+  ctx.translate(x, y)
+  if (on) ctx.rotate(Math.sin(time * 5) * 0.12)
   ctx.globalAlpha = on ? 1 : 0.3
-  ctx.fillStyle = on ? '#2b2f52' : theme.pit
-  ctx.strokeStyle = on ? theme.coral : theme.rim
+  // Fuse.
+  ctx.strokeStyle = on ? '#c9a46a' : theme.rim
   ctx.lineWidth = 3
   ctx.beginPath()
-  ctx.arc(x, y, r, 0, Math.PI * 2)
-  ctx.fill()
+  ctx.moveTo(r * 0.45, -r * 0.8)
+  ctx.quadraticCurveTo(r * 1.15, -r * 1.25, r * 0.7, -r * 1.65)
   ctx.stroke()
-  // Fuse and spark.
+  // Cap.
+  ctx.fillStyle = on ? '#5d6186' : theme.rim
+  ctx.save()
+  ctx.rotate(0.6)
+  ctx.fillRect(-r * 0.28, -r * 1.12, r * 0.56, r * 0.36)
+  ctx.restore()
+  // Body with a glossy shine.
+  const g = ctx.createRadialGradient(-r * 0.35, -r * 0.35, r * 0.1, 0, 0, r)
+  g.addColorStop(0, on ? '#6a6f9e' : theme.pit)
+  g.addColorStop(1, on ? '#1d2040' : theme.pit)
+  ctx.fillStyle = g
   ctx.beginPath()
-  ctx.moveTo(x + r * 0.6, y - r * 0.6)
-  ctx.quadraticCurveTo(x + r * 1.1, y - r * 1.3, x + r * 0.5, y - r * 1.5)
+  ctx.arc(0, 0, r, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = on ? theme.coral : theme.rim
+  ctx.lineWidth = 2.5
   ctx.stroke()
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.45)'
+  ctx.beginPath()
+  ctx.ellipse(-r * 0.4, -r * 0.42, r * 0.22, r * 0.13, -0.6, 0, Math.PI * 2)
+  ctx.fill()
   if (on) {
+    // Eyes that blink now and then.
+    const blink = time % 3.2 < 0.12 ? 0.15 : 1
+    ctx.fillStyle = '#ffffff'
+    for (const ex of [-r * 0.28, r * 0.28]) {
+      ctx.beginPath()
+      ctx.ellipse(ex, r * 0.1, r * 0.13, r * 0.19 * blink, 0, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    // A fizzing star spark on the fuse.
+    ctx.translate(r * 0.7, -r * 1.65)
+    ctx.rotate(time * 9)
+    const k = 5 + Math.sin(time * 24) * 1.5
+    starburst(ctx, k, k, 5)
     ctx.fillStyle = theme.yolk
-    ctx.beginPath()
-    ctx.arc(x + r * 0.5, y - r * 1.5, 3 + Math.sin(time * 20) * 1.2, 0, Math.PI * 2)
     ctx.fill()
   }
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.35)'
-  ctx.beginPath()
-  ctx.arc(x - r * 0.35, y - r * 0.35, r * 0.25, 0, Math.PI * 2)
-  ctx.fill()
   ctx.restore()
+}
+
+/** A spiky star path centred on 0,0 with `points` spikes. */
+function starburst(ctx: CanvasRenderingContext2D, rx: number, ry: number, points: number) {
+  ctx.beginPath()
+  for (let i = 0; i < points * 2; i++) {
+    const a = (i / (points * 2)) * Math.PI * 2
+    const k = i % 2 ? 0.62 : 1
+    const px = Math.cos(a) * rx * k
+    const py = Math.sin(a) * ry * k
+    if (i) ctx.lineTo(px, py)
+    else ctx.moveTo(px, py)
+  }
+  ctx.closePath()
 }
 
 function clip(ctx: CanvasRenderingContext2D, text: string, max: number): string {

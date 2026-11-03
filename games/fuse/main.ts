@@ -13,7 +13,7 @@ import { bestKey, loadBest, saveBest } from './best'
 import type { Dir } from './board'
 import './fuse.css'
 import { t } from './i18n'
-import { cellAt, swipeDir } from './look'
+import { cellAt, layoutFor, swipeDir } from './look'
 import { FuseRenderer, type ViewInput } from './render'
 import { boardOf, fuseGame, isRace, type FuseInput, type FuseState } from './sim'
 import { BOUNCE, comboSound, FUSE_SOUNDS, mergeSound, recordSound } from './sounds'
@@ -55,7 +55,8 @@ function mount(session: Session<FuseState, FuseInput>, stage: HTMLElement): () =
   const root = h('div', { class: 'fuse' }, host, toolbar)
   stage.append(root)
 
-  const view = createCanvas2D(host, 560, 668, { maxDpr: 2 })
+  const first = layoutFor(5, 0)
+  const view = createCanvas2D(host, first.width, first.height, { maxDpr: 2 })
   view.canvas.classList.add('fuse-canvas')
   view.canvas.setAttribute('role', 'img')
   view.canvas.setAttribute('aria-label', t('Fuse board'))

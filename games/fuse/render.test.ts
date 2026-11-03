@@ -24,3 +24,47 @@ describe('roundRect', () => {
     expect(radii.every((r) => r >= 0)).toBe(true)
   })
 })
+
+describe('FuseRenderer', () => {
+  /** A canvas context that accepts every call and records clearRect boxes. */
+  function fakeView(width: number, height: number) {
+    const clears: number[][] = []
+    const gradient = { addColorStop: () => {} }
+    const ctx = new Proxy({} as Record<string, unknown>, {
+      get: (target, key) =>
+        key in target
+          ? target[key as string]
+          : key === 'clearRect'
+            ? (...a: number[]) => clears.push(a)
+            : key === 'measureText'
+              ? () => ({ width: 10 })
+              : () => gradient,
+      set: (target, key, v) => ((target[key as string] = v), true),
+    })
+    const view = {
+      ctx: ctx as unknown as CanvasRenderingContext2D,
+      canvas: {} as HTMLCanvasElement,
+      width,
+      height,
+      setSize(w: number, h: number) {
+        view.width = w
+        view.height = h
+      },
+      destroy() {},
+    }
+    return { view, clears }
+  }
+
+  it('fits the canvas to the board and clears all of it, so falling sparks leave no trails', async () => {
+    const { createState } = await import('./sim')
+    const { FuseRenderer } = await import('./render')
+    const { layoutFor } = await import('./look')
+    // main.ts creates the canvas at a guessed size; a solo 5×5 board is shorter.
+    const { view, clears } = fakeView(560, 668)
+    const r = new FuseRenderer(view, 'p0')
+    r.onState(createState([{ id: 'p0', name: 'P', slot: 0, ready: true, connected: true }], 1))
+    expect(view.height).toBe(layoutFor(5, 0).height)
+    r.frame(0.016, { armed: false, hover: -1, cursor: -1 })
+    expect(clears.at(-1)).toEqual([0, 0, view.width, view.height])
+  })
+})

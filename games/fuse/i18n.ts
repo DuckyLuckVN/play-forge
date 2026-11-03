@@ -38,6 +38,7 @@ export const VI: Dictionary = {
   // Moments
   'Combo ×{n}': 'Combo ×{n}',
   'Smash!': 'Vỡ!',
+  'BOOM!': 'BÙM!',
   'Incoming!': 'Đá rơi!',
   'Blast ready!': 'Có bom!',
   'Blocked!': 'Chặn được!',

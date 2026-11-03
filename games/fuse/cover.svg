@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" width="320" height="200">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a2f6b"/>
+      <stop offset="1" stop-color="#161a3a"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+  </defs>
+  <rect width="320" height="200" fill="url(#bg)"/>
+  <rect x="70" y="14" width="180" height="172" rx="18" fill="#10132c" stroke="#343b7a" stroke-width="3"/>
+  <g font-family="Fredoka, ui-rounded, system-ui, sans-serif" font-weight="700" text-anchor="middle">
+    <!-- row 1 -->
+    <rect x="80" y="24" width="48" height="48" rx="9" fill="#8ee6c4"/>
+    <text x="104" y="56" font-size="22" fill="#1d1440">2</text>
+    <rect x="136" y="24" width="48" height="48" rx="9" fill="#5ab8ff"/>
+    <text x="160" y="56" font-size="22" fill="#fff">8</text>
+    <path d="M200 30 l18 -4 l14 10 l2 18 l-12 14 l-18 0 l-8 -14 z" fill="#767b9c" stroke="#3b3e5a" stroke-width="3"/>
+    <path d="M214 30 l4 12 l-6 6 l4 14" stroke="#25273d" stroke-width="3" fill="none"/>
+    <!-- row 2 -->
+    <rect x="80" y="80" width="48" height="48" rx="9" fill="#e27bff"/>
+    <text x="104" y="112" font-size="22" fill="#fff">64</text>
+    <rect x="136" y="80" width="104" height="48" rx="9" fill="#ffc83d" filter="url(#glow)" opacity="0.7"/>
+    <rect x="136" y="80" width="48" height="48" rx="9" fill="#ff9f43"/>
+    <text x="160" y="112" font-size="20" fill="#fff">512</text>
+    <rect x="192" y="80" width="48" height="48" rx="9" fill="#ff9f43"/>
+    <text x="216" y="112" font-size="20" fill="#fff">512</text>
+    <!-- row 3 -->
+    <rect x="80" y="136" width="48" height="40" rx="9" fill="#ff6fb5"/>
+    <text x="104" y="164" font-size="20" fill="#fff">128</text>
+    <rect x="136" y="136" width="48" height="40" rx="9" fill="#7c8cff"/>
+    <text x="160" y="164" font-size="22" fill="#fff">16</text>
+    <rect x="192" y="136" width="48" height="40" rx="9" fill="#5cd2e6"/>
+    <text x="216" y="164" font-size="22" fill="#fff">4</text>
+  </g>
+  <g fill="url(#gloss)">
+    <rect x="82" y="26" width="44" height="22" rx="7"/>
+    <rect x="138" y="26" width="44" height="22" rx="7"/>
+    <rect x="82" y="82" width="44" height="22" rx="7"/>
+    <rect x="138" y="82" width="44" height="22" rx="7"/>
+    <rect x="194" y="82" width="44" height="22" rx="7"/>
+  </g>
+  <!-- sparks where the 512s fuse -->
+  <g fill="#fff06a">
+    <circle cx="188" cy="76" r="4"/>
+    <circle cx="196" cy="68" r="2.5"/>
+    <circle cx="180" cy="66" r="2"/>
+    <circle cx="190" cy="134" r="3"/>
+  </g>
+  <path d="M30 104 h28 m-10 -10 l10 10 l-10 10" stroke="#ffc83d" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M290 104 h-28 m10 -10 l-10 10 l10 10" stroke="#ffc83d" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

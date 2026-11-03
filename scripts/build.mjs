@@ -5,7 +5,8 @@
 //
 // Each game file works when opened straight from disk (file://) or from any
 // static host such as GitHub Pages.
-import { readdirSync, existsSync } from 'node:fs'
+import { readdirSync, existsSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build } from 'vite'
 import { viteSingleFile } from 'vite-plugin-singlefile'
@@ -13,6 +14,22 @@ import { updateReadme } from './readme.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const engine = fileURLToPath(new URL('../engine', import.meta.url))
+
+/**
+ * Inlines the page's SVG favicon as a data URI, so each built page stays one
+ * self-contained file (Vite would otherwise emit the icon next to it).
+ */
+const inlineIcon = (dir) => ({
+  name: 'inline-icon',
+  transformIndexHtml: {
+    order: 'pre',
+    handler: (html) =>
+      html.replace(/(<link rel="icon"[^>]*href=")([^"]+\.svg)(")/, (_, before, href, after) => {
+        const svg = readFileSync(resolve(dir, href), 'utf8').trim()
+        return before + 'data:image/svg+xml,' + encodeURIComponent(svg) + after
+      }),
+  },
+})
 
 const only = process.argv[2] // optional: `npm run build -- snake`
 const games = readdirSync(`${root}/games`, { withFileTypes: true })
@@ -33,7 +50,7 @@ for (const t of targets) {
     base: './',
     logLevel: 'warn',
     resolve: { alias: { '@forge': engine } },
-    plugins: [viteSingleFile()],
+    plugins: [inlineIcon(t.dir), viteSingleFile()],
     build: {
       outDir: `${root}/${t.out}`,
       emptyOutDir: t.empty ?? true,

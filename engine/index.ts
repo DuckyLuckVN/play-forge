@@ -1,5 +1,5 @@
 // Public API of the play-forge engine. Games import from '@forge'.
-export { createGameApp, type GameAppOptions, type Outcome, type Scoreline } from './app'
+export { createGameApp, type GameAppOptions, type Outcome, type Scoreline, type SummaryRow } from './app'
 export { playMusic, stopMusic, type Instrument, type Part, type Track } from './audio/music'
 export {
   getAudioSettings,
@@ -27,6 +27,7 @@ export {
   type Lang,
   type Params,
 } from './core/i18n'
+export { bestScores, type BestScores } from './core/best'
 export { bindInput, type Direction, type InputBindings } from './core/input'
 export { startRenderLoop, startTicker } from './core/loop'
 export { random, randomInt, randomSeed, type RngState } from './core/rng'
@@ -34,6 +35,7 @@ export { celebrate } from './fx/confetti'
 export { Particles, type BurstOptions, type TextOptions } from './fx/particles'
 export { Shake } from './fx/shake'
 export { clamp, clamp01, damp, ease, lerp, prefersReducedMotion, progress } from './fx/tween'
+export { ramp, telegraph, tierAt, withinWindow } from './reflex'
 export { createBroadcastTransport } from './net/broadcast'
 export {
   Session,

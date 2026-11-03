@@ -308,6 +308,69 @@ body {
   line-height: 1.05;
 }
 
+.pf-btn.loading {
+  cursor: progress;
+  opacity: 0.75;
+  animation: pf-loading 1.1s ease-in-out infinite;
+}
+@keyframes pf-loading {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* ---------- Results stat grid ---------- */
+.pf-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.pf-stat {
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--pf-pit);
+  text-align: center;
+}
+
+.pf-stat dt {
+  font-size: 13px;
+  color: var(--pf-haze);
+}
+
+.pf-stat dd {
+  margin: 2px 0 0;
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.pf-stat.hi {
+  box-shadow: inset 0 0 0 2px var(--pf-yolk);
+}
+
+.pf-stat.hi dd {
+  color: var(--pf-yolk);
+}
+
+/* Phones: tighter cells so the whole results panel fits on screen. */
+@media (max-width: 480px) {
+  .pf-summary {
+    gap: 6px;
+  }
+  .pf-stat {
+    padding: 6px 4px;
+    border-radius: 10px;
+  }
+  .pf-stat dt {
+    font-size: 11px;
+  }
+  .pf-stat dd {
+    font-size: 17px;
+  }
+}
+
 /* ---------- Room code ---------- */
 
 .pf-room {

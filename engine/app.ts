@@ -500,10 +500,16 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       if (e.key === 'Enter') join()
     }
 
-    const solo = button('Play solo', () => {
-      saveName()
-      begin(createOfflineTransport(), true, { offline: true })
-    })
+    // Single-player games have no rooms: just a big Play button.
+    const online = def.maxPlayers > 1
+    const solo = button(
+      online ? 'Play solo' : 'Play',
+      () => {
+        saveName()
+        begin(createOfflineTransport(), true, { offline: true })
+      },
+      online ? '' : 'primary',
+    )
     const create = button(
       'Create room',
       () => {
@@ -531,9 +537,9 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
           h('label', { class: 'pf-field', htmlFor: 'pf-name' }, 'Your name', name),
         ),
         menuOptions(),
-        h('div', { class: 'pf-row' }, def.minPlayers <= 1 && solo, create),
-        h('div', { class: 'pf-or', textContent: "or join a friend's room" }),
-        h('div', { class: 'pf-row' }, code, joinBtn),
+        h('div', { class: 'pf-row' }, def.minPlayers <= 1 && solo, online && create),
+        online && h('div', { class: 'pf-or', textContent: "or join a friend's room" }),
+        online && h('div', { class: 'pf-row' }, code, joinBtn),
         error && h('p', { class: 'pf-note error', textContent: error }),
         opts.controls && h('p', { class: 'pf-note', textContent: opts.controls }),
       ),

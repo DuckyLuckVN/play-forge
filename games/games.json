@@ -22,5 +22,11 @@
     "title": "Fuse",
     "description": "Slide and fuse tiles into huge numbers. Smash rocks, chain combos, race the computer or up to 4 friends.",
     "players": "1–4"
+  },
+  {
+    "id": "phantom-drift",
+    "title": "Phantom Drift",
+    "description": "Dodge down a neon rift. Read the danger, graze it for points, go Phantom and phase through.",
+    "players": "1"
   }
 ]

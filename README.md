@@ -12,6 +12,7 @@ Fun mini-games to play with friends: solo, on one device, or online. No accounts
 | [Brickstorm](https://duckyluckvn.github.io/play-forge/games/brickstorm/) | 1 | Aim, launch, and break the storm. 25 heroes, skills, special bricks and a shop. |
 | [Caro](https://duckyluckvn.github.io/play-forge/games/caro/) | 1–2 | Five in a row. Play the computer, a friend on one device, or online. Draw on the board together. |
 | [Fuse](https://duckyluckvn.github.io/play-forge/games/fuse/) | 1–4 | Slide and fuse tiles into huge numbers. Smash rocks, chain combos, race the computer or up to 4 friends. |
+| [Phantom Drift](https://duckyluckvn.github.io/play-forge/games/phantom-drift/) | 1 | Dodge down a neon rift. Read the danger, graze it for points, go Phantom and phase through. |
 <!-- games:end -->
 
 **Online with friends:** click **Create room** and share the 5-letter code or the invite link.
@@ -71,6 +72,8 @@ scripts/     single-file build and README table generator
 4. Add `cover.svg` and an entry in `games/games.json`. Put on-screen text through `t()` with a Vietnamese dictionary (see `games/brickstorm/i18n.ts`).
 
 `games/snake` is the reference for rendering, effects and input.
+
+Solo-only games set `maxPlayers: 1`: the start screen then shows just **Play**, with no rooms. Reaction games can reuse `engine/reflex` (difficulty ramp, telegraph timing, timing windows) and `bestScores()` for personal bests (see `games/phantom-drift`).
 
 ## Deploy
 

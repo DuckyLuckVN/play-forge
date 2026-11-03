@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" width="320" height="200">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0b0820"/>
+      <stop offset="0.55" stop-color="#1d1145"/>
+      <stop offset="1" stop-color="#0b0820"/>
+    </linearGradient>
+    <radialGradient id="rift" cx="0.5" cy="0.12" r="0.6">
+      <stop offset="0" stop-color="#5ff3ff" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#5ff3ff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4"/>
+    </filter>
+  </defs>
+  <rect width="320" height="200" fill="url(#bg)"/>
+  <rect width="320" height="200" fill="url(#rift)"/>
+  <!-- Track -->
+  <path d="M146 22 L174 22 L300 200 L20 200 Z" fill="#14234a" opacity="0.9"/>
+  <g stroke="#5ff3ff" stroke-linecap="round">
+    <path d="M146 22 L20 200" stroke-width="3"/>
+    <path d="M174 22 L300 200" stroke-width="3"/>
+    <path d="M155 22 L113 200" stroke-width="1.5" opacity="0.35"/>
+    <path d="M165 22 L207 200" stroke-width="1.5" opacity="0.35"/>
+  </g>
+  <g stroke="#5ff3ff" stroke-width="1" opacity="0.25">
+    <path d="M132 42 L188 42"/><path d="M112 70 L208 70"/><path d="M84 110 L236 110"/><path d="M45 165 L275 165"/>
+  </g>
+  <!-- Shards -->
+  <g fill="#ff3d6e">
+    <path d="M161 52 l3 7 l7 1 l-6 4 l2 8 l-6 -5 l-6 5 l2 -8 l-6 -4 l7 -1 z" filter="url(#glow)"/>
+    <path d="M161 52 l3 7 l7 1 l-6 4 l2 8 l-6 -5 l-6 5 l2 -8 l-6 -4 l7 -1 z"/>
+    <path d="M226 92 l5 11 l11 2 l-9 6 l3 12 l-10 -8 l-10 8 l3 -12 l-9 -6 l11 -2 z"/>
+  </g>
+  <!-- Wisp -->
+  <circle cx="98" cy="110" r="16" fill="#5ff3ff" opacity="0.3" filter="url(#glow)"/>
+  <circle cx="98" cy="110" r="7" fill="#5ff3ff"/>
+  <circle cx="96" cy="108" r="2.5" fill="#fff"/>
+  <!-- Ghost with afterimages -->
+  <g opacity="0.25" fill="#e9fbff">
+    <path d="M186 186 v-38 a22 22 0 0 1 44 0 v38 l-7 -6 l-8 6 l-7 -6 l-7 6 l-8 -6 z"/>
+  </g>
+  <path d="M146 186 v-38 a22 22 0 0 1 44 0 v38 l-7 -6 l-8 6 l-7 -6 l-7 6 l-8 -6 z" fill="#e9fbff" filter="url(#glow)" opacity="0.7"/>
+  <path d="M146 186 v-38 a22 22 0 0 1 44 0 v38 l-7 -6 l-8 6 l-7 -6 l-7 6 l-8 -6 z" fill="#e9fbff"/>
+  <ellipse cx="160" cy="150" rx="4" ry="6" fill="#1b1240"/>
+  <ellipse cx="177" cy="150" rx="4" ry="6" fill="#1b1240"/>
+  <!-- Near-miss sparks -->
+  <g stroke="#ffd84d" stroke-width="2.5" stroke-linecap="round">
+    <path d="M200 140 l14 -6"/><path d="M202 152 l16 0"/><path d="M200 164 l14 6"/>
+  </g>
+</svg>

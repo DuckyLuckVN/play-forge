@@ -1,0 +1,563 @@
+// Draws the rift in pseudo-3D: depth z maps to a vanishing point near the top.
+// Everything is drawn from shapes; the look of each thing is its rule.
+
+import { Particles } from '@forge/fx/particles'
+import { Shake } from '@forge/fx/shake'
+import { clamp01, damp, ease, lerp, prefersReducedMotion, progress } from '@forge/fx/tween'
+import type { Smoothed } from '@forge/net/smoothing'
+import type { Canvas2D } from '@forge/render2d/canvas'
+import { FONT } from '@forge/ui/theme'
+import { telegraph } from '@forge/reflex'
+import {
+  MAX_HEARTS,
+  PHANTOM_COST,
+  PHANTOM_TICKS,
+  multiplier,
+  SPAWN_Z,
+  type DriftEvent,
+  type DriftState,
+  type Faller,
+  type Obj,
+} from './sim'
+
+export const WIDTH = 420
+export const HEIGHT = 720
+const HORIZON = 120
+const PLAYER_Y = 600
+const TRACK_W = 340
+/** Perspective depth: bigger = flatter. */
+const D = 28
+
+const C = {
+  sky: '#0b0820',
+  skyLow: '#1d1145',
+  ghost: '#e9fbff',
+  wisp: '#5ff3ff',
+  shard: '#ff3d6e',
+  shardCore: '#ffb3c7',
+  wall: '#ff2f8f',
+  sweeper: '#ff9a3d',
+  faller: '#c13dff',
+  phantom: '#b48cff',
+  heart: '#ff5d7a',
+  gold: '#ffd84d',
+}
+
+/** Rift hue per tier, so progress shows without words. Cool hues only: hazards are warm. */
+const TIER_HUES = [185, 193, 201, 209, 217, 225, 233, 241, 249, 257]
+
+const scale = (z: number) => 1 / (1 + Math.max(z, -D * 0.7) / D)
+
+export class DriftRenderer {
+  private fx = new Particles()
+  private shake = new Shake(12)
+  private time = 0
+  private travel = 0
+  private lanesShown = 3
+  private hue = TIER_HUES[0]
+  private flash = { at: -10, color: '#fff' }
+  private trail: { x: number; t: number }[] = []
+  private scoreShown = 0
+  private scorePop = -10
+  private reduced = prefersReducedMotion()
+
+  constructor(
+    private view: Canvas2D,
+    private smooth: Smoothed<DriftState>,
+  ) {}
+
+  /** Screen position for a lane (may be fractional) at depth z. */
+  private at(lane: number, z: number): [x: number, y: number, s: number] {
+    const s = scale(z)
+    const laneW = TRACK_W / this.lanesShown
+    const x = WIDTH / 2 + (lane - (this.lanesShown - 1) / 2) * laneW * s
+    return [x, HORIZON + (PLAYER_Y - HORIZON) * s, s]
+  }
+
+  private laneW() {
+    return TRACK_W / this.lanesShown
+  }
+
+  onState(state: DriftState): void {
+    for (const e of state.events) this.onEvent(e, state)
+  }
+
+  private onEvent(e: DriftEvent, s: DriftState) {
+    const [px, py] = this.at(s.player.x, 0)
+    switch (e.type) {
+      case 'wisp': {
+        const [x, y] = this.at(e.lane, 0)
+        this.fx.burst(x, y - 20, { count: 16, color: [C.wisp, '#fff'], speed: 170, life: 0.45, size: 5 })
+        this.fx.text(x, y - 60, `+${e.points}`, { color: C.wisp, size: 20, rise: 40 })
+        break
+      }
+      case 'nearMiss': {
+        const [x, y] = this.at(e.lane, 0)
+        const dir = Math.sign(px - x) || 1
+        this.fx.burst(lerp(x, px, 0.5), y - 20, {
+          count: 22,
+          color: [C.gold, '#fff'],
+          speed: 260,
+          life: 0.4,
+          size: 4,
+          angle: dir > 0 ? 0 : Math.PI,
+          spread: Math.PI * 0.9,
+        })
+        this.fx.text(px, py - 90, `+${e.points}`, { color: C.gold, size: 26, rise: 50 })
+        this.shake.add(0.12)
+        break
+      }
+      case 'hit':
+        this.fx.burst(px, py - 20, {
+          count: 30,
+          color: [C.shard, '#fff', C.ghost],
+          speed: 260,
+          life: 0.6,
+          size: 6,
+        })
+        this.shake.add(0.6)
+        this.flash = { at: this.time, color: C.shard }
+        break
+      case 'slam': {
+        const [x, y] = this.at(e.lane, 0)
+        this.fx.burst(x, y, {
+          count: 18,
+          color: [C.faller, '#fff'],
+          speed: 200,
+          life: 0.4,
+          size: 6,
+          shape: 'square',
+          angle: -Math.PI / 2,
+          spread: Math.PI,
+        })
+        this.shake.add(0.3)
+        break
+      }
+      case 'phantom':
+        this.flash = { at: this.time, color: C.phantom }
+        this.fx.burst(px, py - 20, { count: 40, color: [C.phantom, '#fff'], speed: 220, life: 0.7, size: 5 })
+        break
+      case 'charged':
+        this.fx.burst(px, py - 20, { count: 20, color: [C.phantom, C.wisp], speed: 140, life: 0.6, size: 4 })
+        break
+      case 'heal':
+        this.fx.burst(40, 40, { count: 16, color: [C.heart, '#fff'], speed: 120, life: 0.6, size: 5 })
+        break
+      case 'tier':
+        this.flash = { at: this.time, color: `hsl(${TIER_HUES[e.tier % TIER_HUES.length]} 100% 70%)` }
+        break
+    }
+  }
+
+  frame(dt: number): void {
+    this.time += dt
+    this.fx.update(dt)
+    this.shake.update(dt)
+    const { ctx } = this.view
+    const curr = this.smooth.curr
+    ctx.clearRect(0, 0, WIDTH, HEIGHT)
+    if (!curr) return
+    const prev = this.smooth.prev && this.smooth.prev.tick === curr.tick - 1 ? this.smooth.prev : null
+    const a = prev ? this.smooth.alpha() : 1
+    const phantom = curr.tick < curr.player.phantomUntil
+
+    this.lanesShown = damp(this.lanesShown, curr.lanes, 6, dt)
+    this.hue = damp(this.hue, TIER_HUES[curr.tier % TIER_HUES.length], 2, dt)
+    if (!curr.over) this.travel += curr.speed * dt
+
+    ctx.save()
+    this.shake.apply(ctx)
+    this.drawSky()
+    this.drawTrack()
+    const prevObjs = new Map(prev?.objects.map((o) => [o.id, o]))
+    const objs = [...curr.objects].sort((p, q) => q.z - p.z)
+    // Things behind the player row first, the ghost, then things past it.
+    for (const o of objs) if (o.z >= 0) this.drawObj(o, prevObjs.get(o.id), a)
+    for (const f of curr.fallers) this.drawFaller(f, curr.tick + a)
+    const x = prev ? lerp(prev.player.x, curr.player.x, a) : curr.player.x
+    this.drawGhost(x, curr, phantom)
+    for (const o of objs) if (o.z < 0) this.drawObj(o, prevObjs.get(o.id), a)
+    ctx.restore()
+
+    this.fx.draw(ctx)
+    this.drawFlash(phantom)
+    this.drawHud(curr)
+  }
+
+  private drawSky() {
+    const { ctx } = this.view
+    const g = ctx.createLinearGradient(0, 0, 0, HEIGHT)
+    g.addColorStop(0, C.sky)
+    g.addColorStop(0.5, C.skyLow)
+    g.addColorStop(1, C.sky)
+    ctx.fillStyle = g
+    ctx.fillRect(-20, -20, WIDTH + 40, HEIGHT + 40)
+    // Rift glow at the vanishing point.
+    const glow = ctx.createRadialGradient(WIDTH / 2, HORIZON, 0, WIDTH / 2, HORIZON, 260)
+    glow.addColorStop(0, `hsl(${this.hue} 100% 65% / 0.55)`)
+    glow.addColorStop(1, `hsl(${this.hue} 100% 50% / 0)`)
+    ctx.fillStyle = glow
+    ctx.fillRect(0, 0, WIDTH, HEIGHT)
+    // Drifting stars.
+    ctx.fillStyle = 'rgb(255 255 255 / 0.5)'
+    for (let i = 0; i < 40; i++) {
+      const sx = (i * 97.3) % WIDTH
+      const sy = ((i * 53.7 + this.travel * (0.2 + (i % 5) * 0.08)) % HORIZON) * 1
+      ctx.fillRect(sx, sy, 1.5, 1.5)
+    }
+  }
+
+  private drawTrack() {
+    const { ctx } = this.view
+    const n = this.lanesShown
+    const edge = (side: number, z: number) => this.at(side < 0 ? -0.5 : n - 0.5, z)
+    const far = SPAWN_Z * 1.1
+    const near = -D * 0.6
+    const [lx0, ly0] = edge(-1, far)
+    const [rx0] = edge(1, far)
+    const [lx1, ly1] = edge(-1, near)
+    const [rx1] = edge(1, near)
+    ctx.fillStyle = `hsl(${this.hue} 60% 12% / 0.85)`
+    ctx.beginPath()
+    ctx.moveTo(lx0, ly0)
+    ctx.lineTo(rx0, ly0)
+    ctx.lineTo(rx1, ly1)
+    ctx.lineTo(lx1, ly1)
+    ctx.closePath()
+    ctx.fill()
+
+    // Scrolling cross lines sell the speed.
+    const gap = 12
+    const offset = this.travel % gap
+    ctx.lineWidth = 1
+    for (let z = far - offset; z > near; z -= gap) {
+      const [x0, y] = edge(-1, z)
+      const [x1] = edge(1, z)
+      ctx.strokeStyle = `hsl(${this.hue} 100% 70% / ${0.06 + 0.25 * scale(z) ** 2})`
+      ctx.beginPath()
+      ctx.moveTo(x0, y)
+      ctx.lineTo(x1, y)
+      ctx.stroke()
+    }
+    // Lane dividers and glowing edges.
+    for (let l = 0; l <= Math.ceil(n); l++) {
+      const side = l - 0.5
+      const fade = l === Math.ceil(n) ? clamp01(n - (l - 1)) : 1
+      const isEdge = l === 0 || l === Math.ceil(n)
+      const [x0, y0] = this.at(side, far)
+      const [x1, y1] = this.at(side, near)
+      ctx.strokeStyle = `hsl(${this.hue} 100% ${isEdge ? 70 : 60}% / ${(isEdge ? 0.9 : 0.25) * fade})`
+      ctx.lineWidth = isEdge ? 3 : 1.5
+      ctx.beginPath()
+      ctx.moveTo(x0, y0)
+      ctx.lineTo(x1, y1)
+      ctx.stroke()
+    }
+  }
+
+  private drawObj(o: Obj, before: Obj | undefined, a: number) {
+    const z = before ? lerp(before.z, o.z, a) : o.z
+    const lane = before ? lerp(before.lane, o.lane, a) : o.lane
+    if (z > SPAWN_Z * 1.05) return
+    const fadeIn = clamp01((SPAWN_Z - z) / 12)
+    const { ctx } = this.view
+    ctx.globalAlpha = fadeIn
+    if (o.kind === 'shard') this.drawShard(lane, z, o.done)
+    else if (o.kind === 'wisp') this.drawWisp(lane, z, o.id)
+    else if (o.kind === 'wall') this.drawWall(o.gap!, z)
+    else this.drawSweeper(lane, z, o.to!)
+    ctx.globalAlpha = 1
+  }
+
+  private drawShard(lane: number, z: number, spent?: boolean) {
+    const { ctx } = this.view
+    const [x, y, s] = this.at(lane, z)
+    const r = this.laneW() * 0.32 * s
+    ctx.save()
+    ctx.translate(x, y - r)
+    ctx.rotate(Math.sin(this.time * 3 + lane) * 0.15)
+    ctx.globalAlpha *= spent ? 0.4 : 1
+    ctx.fillStyle = C.shard
+    ctx.shadowColor = C.shard
+    ctx.shadowBlur = this.reduced ? 0 : 14 * s
+    ctx.beginPath()
+    // Spiky crystal: alternating long and short points.
+    for (let i = 0; i < 10; i++) {
+      const ang = (i / 10) * Math.PI * 2 - Math.PI / 2
+      const rr = i % 2 ? r * 0.45 : r * (i === 0 ? 1.25 : 0.95)
+      ctx.lineTo(Math.cos(ang) * rr, Math.sin(ang) * rr)
+    }
+    ctx.closePath()
+    ctx.fill()
+    ctx.shadowBlur = 0
+    ctx.fillStyle = C.shardCore
+    ctx.beginPath()
+    ctx.moveTo(0, -r * 0.7)
+    ctx.lineTo(r * 0.22, 0)
+    ctx.lineTo(0, r * 0.3)
+    ctx.lineTo(-r * 0.22, 0)
+    ctx.fill()
+    ctx.restore()
+  }
+
+  private drawWisp(lane: number, z: number, id: number) {
+    const { ctx } = this.view
+    const [x, y, s] = this.at(lane, z)
+    const bob = Math.sin(this.time * 6 + id) * 4 * s
+    const r = this.laneW() * 0.16 * s
+    const cy = y - r * 2.2 + bob
+    const halo = ctx.createRadialGradient(x, cy, 0, x, cy, r * 3)
+    halo.addColorStop(0, 'rgb(95 243 255 / 0.6)')
+    halo.addColorStop(1, 'rgb(95 243 255 / 0)')
+    ctx.fillStyle = halo
+    ctx.beginPath()
+    ctx.arc(x, cy, r * 3, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = C.wisp
+    ctx.beginPath()
+    ctx.arc(x, cy, r, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = '#fff'
+    ctx.beginPath()
+    ctx.arc(x - r * 0.3, cy - r * 0.3, r * 0.35, 0, Math.PI * 2)
+    ctx.fill()
+  }
+
+  private drawWall(gap: number, z: number) {
+    const { ctx } = this.view
+    const lanes = Math.round(this.lanesShown)
+    const [, y, s] = this.at(0, z)
+    const h = 34 * s
+    for (let l = 0; l < lanes; l++) {
+      const [x] = this.at(l, z)
+      const w = this.laneW() * s * 0.96
+      if (l === gap) {
+        // The gap shimmers: the way through.
+        ctx.strokeStyle = `rgb(95 243 255 / ${0.4 + 0.4 * Math.sin(this.time * 12)})`
+        ctx.lineWidth = 2
+        ctx.strokeRect(x - w / 2, y - h, w, h)
+        continue
+      }
+      ctx.fillStyle = C.wall
+      ctx.shadowColor = C.wall
+      ctx.shadowBlur = this.reduced ? 0 : 12 * s
+      ctx.fillRect(x - w / 2, y - h, w, h)
+      ctx.shadowBlur = 0
+      ctx.fillStyle = 'rgb(255 255 255 / 0.35)'
+      ctx.fillRect(x - w / 2, y - h, w, h * 0.18)
+    }
+  }
+
+  private drawSweeper(lane: number, z: number, to: number) {
+    const { ctx } = this.view
+    // Dotted trail: where it will be when it reaches you.
+    ctx.fillStyle = 'rgb(255 154 61 / 0.45)'
+    for (let i = 1; i <= 6; i++) {
+      const t = i / 6
+      const [tx, ty, ts] = this.at(lerp(lane, to, t), lerp(z, 0, t))
+      ctx.beginPath()
+      ctx.arc(tx, ty - 6 * ts, 3 * ts, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    const [x, y, s] = this.at(lane, z)
+    const r = this.laneW() * 0.3 * s
+    ctx.save()
+    ctx.translate(x, y - r)
+    ctx.rotate(this.time * 10)
+    ctx.fillStyle = C.sweeper
+    ctx.shadowColor = C.sweeper
+    ctx.shadowBlur = this.reduced ? 0 : 12 * s
+    ctx.beginPath()
+    for (let i = 0; i < 16; i++) {
+      const ang = (i / 16) * Math.PI * 2
+      const rr = i % 2 ? r * 0.75 : r
+      ctx.lineTo(Math.cos(ang) * rr, Math.sin(ang) * rr)
+    }
+    ctx.closePath()
+    ctx.fill()
+    ctx.shadowBlur = 0
+    ctx.fillStyle = C.sky
+    ctx.beginPath()
+    ctx.arc(0, 0, r * 0.3, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  }
+
+  private drawFaller(f: Faller, now: number) {
+    const { ctx } = this.view
+    const { progress: p, fired } = telegraph(f.slamAt, f.tele, now)
+    const [x, y] = this.at(f.lane, 0)
+    const w = this.laneW() * 0.8
+    // Shadow grows as it gets closer.
+    ctx.fillStyle = `rgb(193 61 255 / ${0.15 + 0.45 * p})`
+    ctx.beginPath()
+    ctx.ellipse(x, y, (w / 2) * (0.4 + 0.6 * p), 10 * (0.4 + 0.6 * p), 0, 0, Math.PI * 2)
+    ctx.fill()
+    if (fired) return
+    // The block shakes harder the closer the slam.
+    const jitter = this.reduced ? 0 : Math.sin(this.time * 70) * 4 * p
+    const top = lerp(-60, y - w * 0.9, ease.inCubic(p))
+    ctx.fillStyle = C.faller
+    ctx.shadowColor = C.faller
+    ctx.shadowBlur = this.reduced ? 0 : 16
+    ctx.beginPath()
+    ctx.roundRect(x - w / 2 + jitter, top, w, w * 0.8, 8)
+    ctx.fill()
+    ctx.shadowBlur = 0
+    ctx.fillStyle = 'rgb(255 255 255 / 0.3)'
+    ctx.fillRect(x - w / 2 + jitter + 6, top + 6, w - 12, 6)
+  }
+
+  private drawGhost(lx: number, s: DriftState, phantom: boolean) {
+    const { ctx } = this.view
+    const [x, y] = this.at(lx, 0)
+    const invuln = s.tick < s.player.invulnUntil
+    const blink = invuln && !phantom && Math.floor(this.time * 14) % 2 === 0
+    // Afterimages trail the slide.
+    this.trail.push({ x, t: this.time })
+    this.trail = this.trail.filter((p) => this.time - p.t < 0.15)
+    const color = phantom ? C.phantom : C.ghost
+    for (const p of this.trail) {
+      ctx.globalAlpha = 0.25 * (1 - (this.time - p.t) / 0.15)
+      this.ghostShape(p.x, y, color)
+    }
+    ctx.globalAlpha = blink ? 0.25 : phantom ? 0.55 + 0.2 * Math.sin(this.time * 20) : 1
+    if (!this.reduced) {
+      ctx.shadowColor = color
+      ctx.shadowBlur = phantom ? 30 : 16
+    }
+    this.ghostShape(x, y, color)
+    ctx.shadowBlur = 0
+    // Eyes look the way it slides.
+    const look = Math.max(-1, Math.min(1, (s.player.target - lx) * 2))
+    ctx.fillStyle = '#1b1240'
+    for (const side of [-1, 1]) {
+      ctx.beginPath()
+      ctx.ellipse(x + side * 9 + look * 3, y - 42, 4, 6, 0, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.globalAlpha = 1
+    // A full meter makes the ghost sparkle: ready to go Phantom.
+    if (s.player.charge >= PHANTOM_COST && !phantom && Math.random() < 0.4)
+      this.fx.burst(x + (Math.random() - 0.5) * 40, y - 40, {
+        count: 1,
+        color: C.phantom,
+        speed: 30,
+        life: 0.5,
+      })
+  }
+
+  private ghostShape(x: number, y: number, color: string) {
+    const { ctx } = this.view
+    const w = 22
+    const top = y - 66
+    const bottom = y - 10
+    ctx.fillStyle = color
+    ctx.beginPath()
+    ctx.arc(x, top + w, w, Math.PI, 0)
+    ctx.lineTo(x + w, bottom)
+    for (let i = 4; i >= 0; i--) {
+      const wx = x - w + (i / 4) * 2 * w
+      ctx.lineTo(wx, bottom + (i % 2 ? 8 : 0) + Math.sin(this.time * 10 + i) * 2)
+    }
+    ctx.closePath()
+    ctx.fill()
+  }
+
+  private drawFlash(phantom: boolean) {
+    const { ctx } = this.view
+    const t = progress(this.time, this.flash.at, 0.35)
+    if (t < 1) {
+      ctx.globalAlpha = (1 - ease.outCubic(t)) * 0.35
+      ctx.fillStyle = this.flash.color
+      ctx.fillRect(0, 0, WIDTH, HEIGHT)
+      ctx.globalAlpha = 1
+    }
+    if (phantom) {
+      const v = ctx.createRadialGradient(
+        WIDTH / 2,
+        HEIGHT / 2,
+        HEIGHT * 0.3,
+        WIDTH / 2,
+        HEIGHT / 2,
+        HEIGHT * 0.7,
+      )
+      v.addColorStop(0, 'rgb(180 140 255 / 0)')
+      v.addColorStop(1, 'rgb(180 140 255 / 0.35)')
+      ctx.fillStyle = v
+      ctx.fillRect(0, 0, WIDTH, HEIGHT)
+    }
+  }
+
+  private drawHud(s: DriftState) {
+    const { ctx } = this.view
+    const p = s.player
+    // Hearts
+    for (let i = 0; i < MAX_HEARTS; i++) this.heart(28 + i * 30, 30, i < p.hearts)
+    // Score, popping when it jumps.
+    const score = Math.floor(s.score)
+    if (score - this.scoreShown >= 10) this.scorePop = this.time
+    this.scoreShown = score
+    const pop = 1 + 0.25 * (1 - ease.outCubic(progress(this.time, this.scorePop, 0.25)))
+    ctx.fillStyle = '#fff'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.font = `700 ${Math.round(30 * pop)}px ${FONT}`
+    ctx.fillText(score.toLocaleString(), WIDTH / 2, 32)
+    // Multiplier
+    const mult = multiplier(p.combo)
+    if (mult > 1) {
+      ctx.fillStyle = C.gold
+      ctx.font = `700 22px ${FONT}`
+      ctx.textAlign = 'right'
+      ctx.fillText(`×${mult}`, WIDTH - 20, 32)
+    }
+    // Phantom meter: a ring that fills with wisps and pulses when ready.
+    const cx = WIDTH - 40
+    const cy = HEIGHT - 44
+    const fill = Math.min(1, p.charge / PHANTOM_COST)
+    const phantom = s.tick < p.phantomUntil
+    ctx.lineWidth = 6
+    ctx.strokeStyle = 'rgb(255 255 255 / 0.15)'
+    ctx.beginPath()
+    ctx.arc(cx, cy, 22, 0, Math.PI * 2)
+    ctx.stroke()
+    const ready = fill >= 1
+    ctx.strokeStyle = ready || phantom ? C.phantom : C.wisp
+    ctx.beginPath()
+    const left = phantom ? (p.phantomUntil - s.tick) / PHANTOM_TICKS : fill
+    ctx.arc(cx, cy, 22, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left)
+    ctx.stroke()
+    ctx.globalAlpha = ready ? 0.7 + 0.3 * Math.sin(this.time * 8) : 0.5
+    this.ghostIcon(cx, cy, ready ? C.phantom : '#fff')
+    ctx.globalAlpha = 1
+  }
+
+  /** Where the meter sits, for tapping it on touch screens. */
+  static meterHit(x: number, y: number): boolean {
+    return Math.hypot(x - (WIDTH - 40), y - (HEIGHT - 44)) < 40
+  }
+
+  private ghostIcon(cx: number, cy: number, color: string) {
+    const { ctx } = this.view
+    ctx.fillStyle = color
+    ctx.beginPath()
+    ctx.arc(cx, cy - 2, 9, Math.PI, 0)
+    ctx.lineTo(cx + 9, cy + 10)
+    ctx.lineTo(cx + 3, cy + 6)
+    ctx.lineTo(cx - 3, cy + 10)
+    ctx.lineTo(cx - 9, cy + 6)
+    ctx.closePath()
+    ctx.fill()
+  }
+
+  private heart(x: number, y: number, full: boolean) {
+    const { ctx } = this.view
+    ctx.fillStyle = full ? C.heart : 'rgb(255 255 255 / 0.15)'
+    ctx.beginPath()
+    ctx.moveTo(x, y + 9)
+    ctx.bezierCurveTo(x - 14, y - 1, x - 8, y - 12, x, y - 5)
+    ctx.bezierCurveTo(x + 8, y - 12, x + 14, y - 1, x, y + 9)
+    ctx.fill()
+  }
+}

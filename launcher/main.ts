@@ -32,6 +32,8 @@ const t = translator({
     'Năm con liên tiếp. Chơi với máy, với bạn trên cùng một máy, hoặc trực tuyến. Cùng vẽ lên bàn cờ.',
   'Slide and fuse tiles into huge numbers. Smash rocks, chain combos, race the computer or up to 4 friends.':
     'Trượt và ghép ô thành những con số khổng lồ. Đập đá, nối combo, đua với máy hoặc tối đa 4 người bạn.',
+  'Dodge down a neon rift. Read the danger, graze it for points, go Phantom and phase through.':
+    'Né trong khe nứt neon. Đọc nguy hiểm, sượt qua để ghi điểm, hóa Bóng ma và xuyên qua.',
   '{n} player': '{n} người chơi',
   '{n} players': '{n} người chơi',
   Play: 'Chơi',

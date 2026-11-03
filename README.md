@@ -11,6 +11,7 @@ A collection of fun, interactive mini-games designed to bring people together. P
 | [Snake](https://duckyluckvn.github.io/play-forge/games/snake/) | 1–8 | Eat, grow, outlast. Solo or up to 8 players. |
 | [Brickstorm](https://duckyluckvn.github.io/play-forge/games/brickstorm/) | 1 | Aim, launch, and break the storm. 25 heroes, skills, special bricks and a shop. |
 | [Caro](https://duckyluckvn.github.io/play-forge/games/caro/) | 1–2 | Five in a row. Play the computer, a friend on one device, or online. Draw on the board together. |
+| [Fuse](https://duckyluckvn.github.io/play-forge/games/fuse/) | 1–4 | Slide and fuse tiles into huge numbers. Smash rocks, chain combos, race the computer or up to 4 friends. |
 <!-- games:end -->
 
 - **Online:** the GitHub Pages links above (deployed automatically on every push to `main`).
@@ -58,12 +59,15 @@ engine/                  reusable library, imported as '@forge'
     audio-menu.ts        sound button + music / effects volume popover
     lang-menu.ts         language button (EN / VI); see core/i18n.ts for translator()
     dom.ts, icons.ts     tiny DOM helper, toasts, inline SVG icons
+icon.svg                 the tab icon for every page (the build inlines it into each file)
 launcher/                the game picker page (dist/index.html)
 games/
   games.json             launcher + README listing
   snake/                 main.ts (wiring), sim.ts (rules), render.ts, sounds.ts, cover.svg, tests
   caro/                  turn-based example: rules.ts, ai.ts (3 levels), sim.ts, whiteboard.ts
                          (shared drawing on its own transport channel), render.ts, i18n.ts (VI)
+  fuse/                  slide-and-merge puzzle: board.ts (pure slide rules), sim.ts (solo, rival
+                         computer, online race with rock attacks), look.ts (palette + layout), render.ts
 scripts/                 build.mjs (single-file builds), readme.mjs (README games table)
 ```
 
@@ -119,7 +123,7 @@ To test multiplayer locally without the internet, open the game in two tabs with
    - `mount(session, stage)`: render from `session.state`, send input with `session.sendInput`, return a cleanup function.
    - `scores(state)`: drives the score chips in the top bar and the scores on the seats after a match.
    - `outcome(state, selfId)`: the result headline, plus `win` / `lose` / `draw` / `done` to pick the end sound.
-6. Add a `cover.svg` (320×200) and an entry in `games/games.json`. The launcher and the README games table update from it (`npm run build` or `npm run readme`).
+6. Add a `cover.svg` (320×200) and an entry in `games/games.json`. Keep the tab icon link from the copied `index.html` (`../../icon.svg`): every page shares the one Play Forge icon. The launcher and the README games table update from it (`npm run build` or `npm run readme`).
 7. Languages (English and Vietnamese): wrap on-screen text in `t('English text', { params })` from `translator(VI)` in `@forge/core/i18n`, with `{name}` placeholders. Add the Vietnamese to the game's dictionary (see `games/brickstorm/i18n.ts`); anything missing shows in English. The player picks a language from the language button in the header (`langMenu()` from `@forge/ui/lang-menu`), and the page reloads in it. Add the game's description to the launcher's dictionary in `launcher/main.ts`.
 
 ## Deploy

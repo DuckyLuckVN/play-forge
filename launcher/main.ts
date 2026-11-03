@@ -30,6 +30,8 @@ const t = translator({
     'Ngắm, bắn và phá tan cơn bão gạch. 25 anh hùng, kỹ năng, gạch đặc biệt và cửa hàng.',
   'Five in a row. Play the computer, a friend on one device, or online. Draw on the board together.':
     'Năm con liên tiếp. Chơi với máy, với bạn trên cùng một máy, hoặc trực tuyến. Cùng vẽ lên bàn cờ.',
+  'Slide and fuse tiles into huge numbers. Smash rocks, chain combos, race the computer or up to 4 friends.':
+    'Trượt và ghép ô thành những con số khổng lồ. Đập đá, nối combo, đua với máy hoặc tối đa 4 người bạn.',
   '{n} player': '{n} người chơi',
   '{n} players': '{n} người chơi',
   Play: 'Chơi',

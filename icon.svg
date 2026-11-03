@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#303883"/>
+      <stop offset="1" stop-color="#161a3a"/>
+    </linearGradient>
+    <linearGradient id="face" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe27d"/>
+      <stop offset="1" stop-color="#ffb81f"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.45" cy="0.55" r="0.5">
+      <stop offset="0" stop-color="#ffc83d" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#ffc83d" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <!-- Table: deep indigo tile with a soft rim light. -->
+  <rect width="64" height="64" rx="15" fill="url(#bg)"/>
+  <rect x="1.25" y="1.25" width="61.5" height="61.5" rx="13.75" fill="none" stroke="#5b64c4" stroke-opacity="0.55" stroke-width="1.5"/>
+  <circle cx="30" cy="34" r="26" fill="url(#glow)"/>
+  <!-- A chunky play button that presses down, like the site's buttons. -->
+  <path d="M22 18.5 L46 33.5 L22 48.5 Z" fill="#c98f00" stroke="#c98f00" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M22 15.5 L46 30.5 L22 45.5 Z" fill="url(#face)" stroke="url(#face)" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M22.5 19 L33 25.5" stroke="#fff6d6" stroke-width="3.2" stroke-linecap="round" opacity="0.85"/>
+  <!-- Forge sparks. -->
+  <path d="M51 6.5 l2.2 5.6 5.6 2.2 -5.6 2.2 -2.2 5.6 -2.2 -5.6 -5.6 -2.2 5.6 -2.2z" fill="#ff6fb5"/>
+  <circle cx="54.5" cy="27" r="2.3" fill="#4be3a0"/>
+  <circle cx="44" cy="51.5" r="1.8" fill="#5ab8ff"/>
+</svg>

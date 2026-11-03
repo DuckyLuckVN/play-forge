@@ -28,5 +28,17 @@
     "title": "Phantom Drift",
     "description": "Dodge down a neon rift. Read the danger, graze it for points, go Phantom and phase through.",
     "players": "1"
+  },
+  {
+    "id": "halo-guard",
+    "title": "Halo Guard",
+    "description": "Guard the core from four sides. Parry at the last instant, let the gold sparks in, unleash Nova.",
+    "players": "1"
+  },
+  {
+    "id": "synthstride",
+    "title": "Synthstride",
+    "description": "Dance across a neon grid to the beat. Read the glowing tiles, dodge on the drop, grab the notes.",
+    "players": "1"
   }
 ]

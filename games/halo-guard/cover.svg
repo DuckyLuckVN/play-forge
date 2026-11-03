@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" width="320" height="200">
+  <defs>
+    <radialGradient id="bg" cx="0.5" cy="0.5" r="0.75">
+      <stop offset="0" stop-color="#1b2458"/>
+      <stop offset="1" stop-color="#070a1c"/>
+    </radialGradient>
+    <radialGradient id="core" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.5" stop-color="#dff8ff"/>
+      <stop offset="1" stop-color="#5ff3ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="laneH" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff3d6e" stop-opacity="0"/>
+      <stop offset="1" stop-color="#ff3d6e" stop-opacity="0.45"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="320" height="200" fill="url(#bg)"/>
+  <g stroke="#7fd4ff" stroke-opacity="0.12" fill="none">
+    <circle cx="160" cy="100" r="58"/>
+    <circle cx="160" cy="100" r="84"/>
+    <circle cx="160" cy="100" r="112"/>
+  </g>
+  <rect x="20" y="92" width="100" height="16" fill="url(#laneH)"/>
+  <rect x="160" y="0" width="16" height="60" fill="#ffd84d" fill-opacity="0.12" transform="translate(-8 0)"/>
+  <g filter="url(#glow)">
+    <path d="M44 100 L62 93 L68 100 L62 107 Z" fill="#ff3d6e" transform="translate(30 0)"/>
+    <path d="M160 26 l3 9 9 3 -9 3 -3 9 -3 -9 -9 -3 9 -3 z" fill="#ffd84d"/>
+    <g transform="translate(250 100)" fill="#ff9a3d">
+      <path d="M0 -16 L4 -6 L14 -8 L8 0 L14 8 L4 6 L0 16 L-4 6 L-14 8 L-8 0 L-14 -8 L-4 -6 Z"/>
+    </g>
+    <circle cx="160" cy="100" r="40" fill="url(#core)"/>
+    <circle cx="160" cy="100" r="17" fill="#dff8ff"/>
+    <circle cx="160" cy="100" r="7" fill="#5ff3ff"/>
+    <path d="M 128 76 A 40 40 0 0 0 128 124" stroke="#5ff3ff" stroke-width="7" fill="none" stroke-linecap="round" transform="rotate(0 160 100) translate(-6 0)"/>
+  </g>
+</svg>

@@ -56,8 +56,11 @@ export interface GameAppOptions<S, I> {
   tagline?: string
   /** How to play, shown on the start and pause screens. */
   controls?: string
-  /** Gameplay music. Menus and lobbies use the shared lounge track. */
-  music?: Track
+  /**
+   * Gameplay music. Menus and lobbies use the shared lounge track. `null`: no
+   * background music while playing (the game makes its own, e.g. beat-synced).
+   */
+  music?: Track | null
   /**
    * Called once per session with the stage element to render into. Set up
    * rendering, input and sounds here and return a cleanup function.
@@ -330,7 +333,13 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
 
   function syncMusic() {
     const phase = session?.phase
-    playMusic(phase === 'countdown' || phase === 'playing' ? (opts.music ?? ARCADE) : LOUNGE)
+    playMusic(
+      phase === 'countdown' || phase === 'playing'
+        ? opts.music === undefined
+          ? ARCADE
+          : opts.music
+        : LOUNGE,
+    )
   }
 
   /** Sounds, toasts and effects for lobby changes. */

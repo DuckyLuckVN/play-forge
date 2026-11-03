@@ -11,6 +11,7 @@ A collection of fun, interactive mini-games designed to bring people together. P
 | [Snake](https://duckyluckvn.github.io/play-forge/games/snake/) | 1–8 | Eat, grow, outlast. Solo or up to 8 players. |
 | [Brickstorm](https://duckyluckvn.github.io/play-forge/games/brickstorm/) | 1 | Aim, launch, and break the storm. 25 heroes, skills, special bricks and a shop. |
 | [Caro](https://duckyluckvn.github.io/play-forge/games/caro/) | 1–2 | Five in a row. Play the computer, a friend on one device, or online. Draw on the board together. |
+| [Fuse](https://duckyluckvn.github.io/play-forge/games/fuse/) | 1–4 | Slide and fuse tiles into huge numbers. Smash rocks, chain combos, race the computer or up to 4 friends. |
 <!-- games:end -->
 
 - **Online:** the GitHub Pages links above (deployed automatically on every push to `main`).
@@ -64,6 +65,8 @@ games/
   snake/                 main.ts (wiring), sim.ts (rules), render.ts, sounds.ts, cover.svg, tests
   caro/                  turn-based example: rules.ts, ai.ts (3 levels), sim.ts, whiteboard.ts
                          (shared drawing on its own transport channel), render.ts, i18n.ts (VI)
+  fuse/                  slide-and-merge puzzle: board.ts (pure slide rules), sim.ts (solo, rival
+                         computer, online race with rock attacks), look.ts (palette + layout), render.ts
 scripts/                 build.mjs (single-file builds), readme.mjs (README games table)
 ```
 

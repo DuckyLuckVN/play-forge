@@ -53,7 +53,8 @@ describe('Phantom Drift fairness', () => {
       expect({ seed, hits }).toEqual({ seed, hits: 0 })
       expect(s.lanes).toBe(5)
     }
-  })
+    // 40 five-minute runs: give it room when the whole suite runs in parallel.
+  }, 30_000)
 
   it('offers enough wisps for a first Phantom around 25 s', () => {
     let total = 0

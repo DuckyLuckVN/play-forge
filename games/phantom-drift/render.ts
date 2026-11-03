@@ -1,18 +1,19 @@
-// Draws the rift in pseudo-3D: depth z maps to a vanishing point near the top.
-// Everything is drawn from shapes; the look of each thing is its rule.
+// 2D fallback renderer (no WebGL): the rift in pseudo-3D, depth z maps to a
+// vanishing point near the top. Everything is drawn from shapes.
 
 import { Particles } from '@forge/fx/particles'
 import { Shake } from '@forge/fx/shake'
 import { clamp01, damp, ease, lerp, prefersReducedMotion, progress } from '@forge/fx/tween'
 import type { Smoothed } from '@forge/net/smoothing'
-import type { Canvas2D } from '@forge/render2d/canvas'
-import { FONT } from '@forge/ui/theme'
+import { createCanvas2D, type Canvas2D } from '@forge/render2d/canvas'
 import { telegraph } from '@forge/reflex'
+import { DriftHud } from './hud'
+import { riftHue } from './ambience'
+import { C } from './palette'
+import type { DriftView } from './view'
 import {
-  MAX_HEARTS,
+  DEATH_TICKS,
   PHANTOM_COST,
-  PHANTOM_TICKS,
-  multiplier,
   SPAWN_Z,
   type DriftEvent,
   type DriftState,
@@ -28,24 +29,6 @@ const TRACK_W = 340
 /** Perspective depth: bigger = flatter. */
 const D = 28
 
-const C = {
-  sky: '#0b0820',
-  skyLow: '#1d1145',
-  ghost: '#e9fbff',
-  wisp: '#5ff3ff',
-  shard: '#ff3d6e',
-  shardCore: '#ffb3c7',
-  wall: '#ff2f8f',
-  sweeper: '#ff9a3d',
-  faller: '#c13dff',
-  phantom: '#b48cff',
-  heart: '#ff5d7a',
-  gold: '#ffd84d',
-}
-
-/** Rift hue per tier, so progress shows without words. Cool hues only: hazards are warm. */
-const TIER_HUES = [185, 193, 201, 209, 217, 225, 233, 241, 249, 257]
-
 const scale = (z: number) => 1 / (1 + Math.max(z, -D * 0.7) / D)
 
 export class DriftRenderer {
@@ -54,16 +37,15 @@ export class DriftRenderer {
   private time = 0
   private travel = 0
   private lanesShown = 3
-  private hue = TIER_HUES[0]
+  private hue = riftHue(0)
   private flash = { at: -10, color: '#fff' }
   private trail: { x: number; t: number }[] = []
-  private scoreShown = 0
-  private scorePop = -10
   private reduced = prefersReducedMotion()
 
   constructor(
     private view: Canvas2D,
     private smooth: Smoothed<DriftState>,
+    private hud: DriftHud,
   ) {}
 
   /** Screen position for a lane (may be fractional) at depth z. */
@@ -88,7 +70,8 @@ export class DriftRenderer {
       case 'wisp': {
         const [x, y] = this.at(e.lane, 0)
         this.fx.burst(x, y - 20, { count: 16, color: [C.wisp, '#fff'], speed: 170, life: 0.45, size: 5 })
-        this.fx.text(x, y - 60, `+${e.points}`, { color: C.wisp, size: 20, rise: 40 })
+        this.hud.text(x, y - 60, `+${e.points}`, C.wisp, 20)
+        this.hud.spark(x, y - 30)
         break
       }
       case 'nearMiss': {
@@ -103,10 +86,22 @@ export class DriftRenderer {
           angle: dir > 0 ? 0 : Math.PI,
           spread: Math.PI * 0.9,
         })
-        this.fx.text(px, py - 90, `+${e.points}`, { color: C.gold, size: 26, rise: 50 })
+        this.hud.text(px, py - 90, `+${e.points}`, C.gold, 26)
         this.shake.add(0.12)
         break
       }
+      case 'die':
+        this.hud.clearBanners()
+        this.fx.burst(px, py - 30, {
+          count: 70,
+          color: [C.ghost, C.wisp, '#fff'],
+          speed: 300,
+          life: 1,
+          size: 7,
+        })
+        this.shake.add(0.8)
+        this.flash = { at: this.time, color: '#ffffff' }
+        break
       case 'hit':
         this.fx.burst(px, py - 20, {
           count: 30,
@@ -117,6 +112,7 @@ export class DriftRenderer {
         })
         this.shake.add(0.6)
         this.flash = { at: this.time, color: C.shard }
+        this.hud.hit()
         break
       case 'slam': {
         const [x, y] = this.at(e.lane, 0)
@@ -141,10 +137,15 @@ export class DriftRenderer {
         this.fx.burst(px, py - 20, { count: 20, color: [C.phantom, C.wisp], speed: 140, life: 0.6, size: 4 })
         break
       case 'heal':
-        this.fx.burst(40, 40, { count: 16, color: [C.heart, '#fff'], speed: 120, life: 0.6, size: 5 })
+        this.hud.heal()
+        break
+      case 'multiplier':
+        this.hud.multiplier()
+        this.hud.text(px, py - 120, `×${e.mult}`, C.gold, 34)
         break
       case 'tier':
-        this.flash = { at: this.time, color: `hsl(${TIER_HUES[e.tier % TIER_HUES.length]} 100% 70%)` }
+        this.hud.tier()
+        this.flash = { at: this.time, color: `hsl(${riftHue(s.tick / 60)} 100% 70%)` }
         break
     }
   }
@@ -162,8 +163,8 @@ export class DriftRenderer {
     const phantom = curr.tick < curr.player.phantomUntil
 
     this.lanesShown = damp(this.lanesShown, curr.lanes, 6, dt)
-    this.hue = damp(this.hue, TIER_HUES[curr.tier % TIER_HUES.length], 2, dt)
-    if (!curr.over) this.travel += curr.speed * dt
+    this.hue = riftHue((curr.tick + a) / 60)
+    this.travel = prev ? lerp(prev.dist, curr.dist, a) : curr.dist
 
     ctx.save()
     this.shake.apply(ctx)
@@ -175,13 +176,19 @@ export class DriftRenderer {
     for (const o of objs) if (o.z >= 0) this.drawObj(o, prevObjs.get(o.id), a)
     for (const f of curr.fallers) this.drawFaller(f, curr.tick + a)
     const x = prev ? lerp(prev.player.x, curr.player.x, a) : curr.player.x
-    this.drawGhost(x, curr, phantom)
+    if (curr.diedAt === null) this.drawGhost(x, curr, phantom)
     for (const o of objs) if (o.z < 0) this.drawObj(o, prevObjs.get(o.id), a)
     ctx.restore()
 
     this.fx.draw(ctx)
     this.drawFlash(phantom)
-    this.drawHud(curr)
+    this.hud.draw(ctx, WIDTH, HEIGHT, curr, dt)
+    if (curr.diedAt !== null) {
+      // Dying: the screen sinks into the dark before the results.
+      const k = Math.min(1, (curr.tick - curr.diedAt) / DEATH_TICKS)
+      ctx.fillStyle = `rgb(6 4 18 / ${0.7 * ease.inOutCubic(k)})`
+      ctx.fillRect(0, 0, WIDTH, HEIGHT)
+    }
   }
 
   private drawSky() {
@@ -488,76 +495,27 @@ export class DriftRenderer {
       ctx.fillRect(0, 0, WIDTH, HEIGHT)
     }
   }
+}
 
-  private drawHud(s: DriftState) {
-    const { ctx } = this.view
-    const p = s.player
-    // Hearts
-    for (let i = 0; i < MAX_HEARTS; i++) this.heart(28 + i * 30, 30, i < p.hearts)
-    // Score, popping when it jumps.
-    const score = Math.floor(s.score)
-    if (score - this.scoreShown >= 10) this.scorePop = this.time
-    this.scoreShown = score
-    const pop = 1 + 0.25 * (1 - ease.outCubic(progress(this.time, this.scorePop, 0.25)))
-    ctx.fillStyle = '#fff'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.font = `700 ${Math.round(30 * pop)}px ${FONT}`
-    ctx.fillText(score.toLocaleString(), WIDTH / 2, 32)
-    // Multiplier
-    const mult = multiplier(p.combo)
-    if (mult > 1) {
-      ctx.fillStyle = C.gold
-      ctx.font = `700 22px ${FONT}`
-      ctx.textAlign = 'right'
-      ctx.fillText(`×${mult}`, WIDTH - 20, 32)
-    }
-    // Phantom meter: a ring that fills with wisps and pulses when ready.
-    const cx = WIDTH - 40
-    const cy = HEIGHT - 44
-    const fill = Math.min(1, p.charge / PHANTOM_COST)
-    const phantom = s.tick < p.phantomUntil
-    ctx.lineWidth = 6
-    ctx.strokeStyle = 'rgb(255 255 255 / 0.15)'
-    ctx.beginPath()
-    ctx.arc(cx, cy, 22, 0, Math.PI * 2)
-    ctx.stroke()
-    const ready = fill >= 1
-    ctx.strokeStyle = ready || phantom ? C.phantom : C.wisp
-    ctx.beginPath()
-    const left = phantom ? (p.phantomUntil - s.tick) / PHANTOM_TICKS : fill
-    ctx.arc(cx, cy, 22, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left)
-    ctx.stroke()
-    ctx.globalAlpha = ready ? 0.7 + 0.3 * Math.sin(this.time * 8) : 0.5
-    this.ghostIcon(cx, cy, ready ? C.phantom : '#fff')
-    ctx.globalAlpha = 1
-  }
-
-  /** Where the meter sits, for tapping it on touch screens. */
-  static meterHit(x: number, y: number): boolean {
-    return Math.hypot(x - (WIDTH - 40), y - (HEIGHT - 44)) < 40
-  }
-
-  private ghostIcon(cx: number, cy: number, color: string) {
-    const { ctx } = this.view
-    ctx.fillStyle = color
-    ctx.beginPath()
-    ctx.arc(cx, cy - 2, 9, Math.PI, 0)
-    ctx.lineTo(cx + 9, cy + 10)
-    ctx.lineTo(cx + 3, cy + 6)
-    ctx.lineTo(cx - 3, cy + 10)
-    ctx.lineTo(cx - 9, cy + 6)
-    ctx.closePath()
-    ctx.fill()
-  }
-
-  private heart(x: number, y: number, full: boolean) {
-    const { ctx } = this.view
-    ctx.fillStyle = full ? C.heart : 'rgb(255 255 255 / 0.15)'
-    ctx.beginPath()
-    ctx.moveTo(x, y + 9)
-    ctx.bezierCurveTo(x - 14, y - 1, x - 8, y - 12, x, y - 5)
-    ctx.bezierCurveTo(x + 8, y - 12, x + 14, y - 1, x, y + 9)
-    ctx.fill()
+/** The 2D renderer as a {@link DriftView}: used when WebGL2 is unavailable. */
+export function createView2D(stage: HTMLElement, smooth: Smoothed<DriftState>): DriftView {
+  const view = createCanvas2D(stage, WIDTH, HEIGHT, { maxDpr: 2 })
+  const hud = new DriftHud()
+  const renderer = new DriftRenderer(view, smooth, hud)
+  return {
+    banner: (m) => hud.banner(m),
+    surface: view.canvas,
+    onState: (s) => renderer.onState(s),
+    frame: (dt) => renderer.frame(dt),
+    hudPoint(clientX, clientY) {
+      const r = view.canvas.getBoundingClientRect()
+      return {
+        x: ((clientX - r.left) / r.width) * WIDTH,
+        y: ((clientY - r.top) / r.height) * HEIGHT,
+        w: WIDTH,
+        h: HEIGHT,
+      }
+    },
+    destroy: () => view.destroy(),
   }
 }

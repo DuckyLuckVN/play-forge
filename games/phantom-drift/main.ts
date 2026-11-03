@@ -1,32 +1,36 @@
-import {
-  bestScores,
-  bindInput,
-  createCanvas2D,
-  createGameApp,
-  playSound,
-  smoothState,
-  startRenderLoop,
-} from '@forge'
+import { bestScores, bindInput, createGameApp, playSound, smoothState, startRenderLoop } from '@forge'
 import type { Session } from '@forge/net/session'
+import { webglAvailable } from '@forge/render3d'
+import { meterHit } from './hud'
 import { t } from './i18n'
-import { DriftRenderer, HEIGHT, WIDTH } from './render'
+import { createView2D } from './render'
+import { Drift3D } from './render3d'
 import { displayScore, phantomDrift, type DriftInput, type DriftState } from './sim'
-import { DRIFT_SOUNDS, DRIFT_TRACK } from './sounds'
+import { DRIFT_TRACK, eventSound, HEARTBEAT_TICKS, MORE_SOUNDS } from './sounds'
+import { Moments } from './moments'
+import { summaryRows } from './stats'
+import type { DriftView } from './view'
 
 const best = bestScores('phantom-drift')
+
+/** Built and warmed while the menu shows, then reused by every run. */
+let drift3d: Drift3D | null = null
+async function preload(): Promise<void> {
+  if (!webglAvailable()) return
+  const view = new Drift3D()
+  await view.warm()
+  drift3d = view
+}
 /** Set when the last run beat this browser's best (read by `outcome`). */
 let newBest = false
 
 const SWIPE = 24
 
 /** Touch / mouse: tap a side or swipe to move, swipe up or tap the ring to go Phantom. */
-function bindPointer(canvas: HTMLCanvasElement, send: (i: DriftInput) => void): () => void {
+function bindPointer(view: DriftView, send: (i: DriftInput) => void): () => void {
+  const canvas = view.surface
   let start: { x: number; y: number } | null = null
   let swiped = false
-  const logical = (e: PointerEvent): [number, number] => {
-    const r = canvas.getBoundingClientRect()
-    return [((e.clientX - r.left) / r.width) * WIDTH, ((e.clientY - r.top) / r.height) * HEIGHT]
-  }
   const down = (e: PointerEvent) => {
     start = { x: e.clientX, y: e.clientY }
     swiped = false
@@ -43,8 +47,8 @@ function bindPointer(canvas: HTMLCanvasElement, send: (i: DriftInput) => void): 
   }
   const up = (e: PointerEvent) => {
     if (start && !swiped) {
-      const [x, y] = logical(e)
-      send(DriftRenderer.meterHit(x, y) ? 'phase' : x < WIDTH / 2 ? 'left' : 'right')
+      const { x, y, w, h } = view.hudPoint(e.clientX, e.clientY)
+      send(meterHit(x, y, w, h) ? 'phase' : x < w / 2 ? 'left' : 'right')
     }
     start = null
   }
@@ -63,18 +67,35 @@ function bindPointer(canvas: HTMLCanvasElement, send: (i: DriftInput) => void): 
 }
 
 function mount(session: Session<DriftState, DriftInput>, stage: HTMLElement): () => void {
-  const view = createCanvas2D(stage, WIDTH, HEIGHT, { maxDpr: 2 })
-  view.canvas.setAttribute('role', 'img')
-  view.canvas.setAttribute('aria-label', t('Phantom Drift rift'))
   const smooth = smoothState(session)
-  const renderer = new DriftRenderer(view, smooth)
+  // Full 3D where WebGL2 works; the 2D rift otherwise.
+  // The 3D view is built and warmed once (preload); the 2D rift is the fallback.
+  const view: DriftView = drift3d ? drift3d.attach(stage, smooth) : createView2D(stage, smooth)
+  view.surface.setAttribute('role', 'img')
+  view.surface.setAttribute('aria-label', t('Phantom Drift rift'))
   newBest = false
+  let lastBeat = -Infinity
+  const moments = new Moments(best.load(), t)
 
   const offState = session.on('state', (s) => {
-    renderer.onState(s)
+    view.onState(s)
     for (const e of s.events) {
-      if (e.type in DRIFT_SOUNDS) playSound(DRIFT_SOUNDS[e.type as keyof typeof DRIFT_SOUNDS])
-      if (e.type === 'over') newBest = best.save(displayScore(s))
+      const sound = eventSound(e, s)
+      if (sound) playSound(sound)
+      if (e.type === 'over') {
+        newBest = best.save(displayScore(s))
+        moments.setBest(best.load())
+      }
+    }
+    for (const m of moments.update(s)) {
+      view.banner(m)
+      if (m.big) playSound(MORE_SOUNDS.fanfare)
+    }
+    // Last heart: a heartbeat until you heal (tick-driven, so it pauses too).
+    if (s.tick < lastBeat) lastBeat = -Infinity
+    if (s.player.hearts === 1 && !s.over && s.tick - lastBeat >= HEARTBEAT_TICKS) {
+      lastBeat = s.tick
+      playSound(MORE_SOUNDS.heartbeat)
     }
   })
   const send = (input: DriftInput) => session.sendInput(input)
@@ -92,8 +113,8 @@ function mount(session: Session<DriftState, DriftInput>, stage: HTMLElement): ()
     },
     send,
   )
-  const stopPointer = bindPointer(view.canvas, send)
-  const stopRender = startRenderLoop((dt) => renderer.frame(dt))
+  const stopPointer = bindPointer(view, send)
+  const stopRender = startRenderLoop((dt) => view.frame(dt))
   return () => {
     offState()
     smooth.dispose()
@@ -106,12 +127,15 @@ function mount(session: Session<DriftState, DriftInput>, stage: HTMLElement): ()
 
 createGameApp<DriftState, DriftInput>({
   def: phantomDrift,
+  // The score climbs every moment; the HUD has its own pop.
+  bumpScores: false,
   title: 'Phantom Drift',
   tagline: t('Drift through the rift. Dodge, graze, go Phantom.'),
   controls: t(
     'Move with ←/→ or A/D, swipe, or tap either side. Space, ↑ or swipe up turns you Phantom when the ring is full.',
   ),
   music: DRIFT_TRACK,
+  preload,
   mount,
   scores: (s) => [{ id: s.player.id, score: displayScore(s), out: s.over }],
   outcome(s) {
@@ -122,4 +146,5 @@ createGameApp<DriftState, DriftInput>({
       result: 'done',
     }
   },
+  summary: (s) => summaryRows(s, t),
 })

@@ -32,6 +32,10 @@ export const PHANTOM_COST = 10
 export const PHANTOM_TICKS = 2 * TICK_RATE
 /** Leaving a lane less than this before danger arrives = near miss (150 ms). */
 export const NEAR_WINDOW = 9
+/** Dying phase before the results: the death plays out (2 s). */
+export const DEATH_TICKS = 120
+/** Per-tick speed decay while dying: the rift coasts to a stop. */
+const DEATH_BRAKE = 0.94
 const SLAM_TICKS = 6
 
 const DISTANCE_POINTS = 0.2
@@ -102,10 +106,25 @@ export type DriftEvent =
   | { type: 'phantomEnd' }
   | { type: 'charged' }
   | { type: 'slam'; lane: number }
+  /** A faller starts warning over `lane`; it slams in `ticks`. */
+  | { type: 'warn'; lane: number; ticks: number }
+  | { type: 'multiplier'; mult: number }
   | { type: 'heal' }
   | { type: 'tier'; tier: number }
   | { type: 'lanes'; lanes: number }
+  /** Last heart gone: the dying phase starts. */
+  | { type: 'die' }
   | { type: 'over' }
+
+/** Totals for the end-of-run summary. */
+export interface RunStats {
+  wisps: number
+  nearMisses: number
+  bestCombo: number
+  phantoms: number
+  /** Depth units per second. */
+  topSpeed: number
+}
 
 export interface DriftState {
   tick: number
@@ -114,6 +133,8 @@ export interface DriftState {
   lanes: number
   /** Depth units per second right now. */
   speed: number
+  /** Total depth travelled, for scrolling scenery. */
+  dist: number
   score: number
   player: Player
   objects: Obj[]
@@ -123,7 +144,12 @@ export interface DriftState {
   spawnIn: number
   nextId: number
   nextRow: number
+  /** Tick the ghost died (dying phase runs until `over`). */
+  diedAt: number | null
+  /** Distance when it died: what the run counts, not the coast to a stop. */
+  diedDist: number | null
   over: boolean
+  stats: RunStats
   events: DriftEvent[]
 }
 
@@ -134,6 +160,7 @@ export function createState(players: PlayerInfo[], seed: number): DriftState {
     tier: 0,
     lanes: laneCount(0),
     speed: speedAt(0),
+    dist: 0,
     score: 0,
     player: {
       id: players[0]?.id ?? 'solo',
@@ -154,7 +181,10 @@ export function createState(players: PlayerInfo[], seed: number): DriftState {
     spawnIn: 30, // half a second to settle in
     nextId: 1,
     nextRow: 1,
+    diedAt: null,
+    diedDist: null,
     over: false,
+    stats: { wisps: 0, nearMisses: 0, bestCombo: 0, phantoms: 0, topSpeed: speedAt(0) },
     events: [],
   }
 }
@@ -177,6 +207,7 @@ function applyInput(s: DriftState, input: DriftInput) {
     if (p.charge >= PHANTOM_COST && !phantom(s)) {
       p.charge = 0
       p.phantomUntil = s.tick + PHANTOM_TICKS
+      s.stats.phantoms++
       s.events.push({ type: 'phantom' })
     }
     return
@@ -200,9 +231,13 @@ function hit(s: DriftState) {
 }
 
 function reward(s: DriftState, base: number): number {
-  const points = base * multiplier(s.player.combo)
+  const before = multiplier(s.player.combo)
+  const points = base * before
   s.score += points
   s.player.combo++
+  s.stats.bestCombo = Math.max(s.stats.bestCombo, s.player.combo)
+  const after = multiplier(s.player.combo)
+  if (after > before) s.events.push({ type: 'multiplier', mult: after })
   return points
 }
 
@@ -210,6 +245,7 @@ function nearMiss(s: DriftState, lanes: number[], arrivedAt: number) {
   const p = s.player
   if (!lanes.includes(p.leftLane) || !withinWindow(p.leftAt, arrivedAt, NEAR_WINDOW)) return
   const points = reward(s, NEAR_POINTS)
+  s.stats.nearMisses++
   s.events.push({ type: 'nearMiss', lane: p.leftLane, points })
 }
 
@@ -234,6 +270,7 @@ function updateDifficulty(s: DriftState) {
   if (tier !== s.tier) {
     s.tier = tier
     s.speed = speedAt(tier)
+    s.stats.topSpeed = Math.max(s.stats.topSpeed, s.speed)
     s.events.push({ type: 'tier', tier })
     const lanes = laneCount(tier)
     if (lanes !== s.lanes) {
@@ -257,6 +294,7 @@ function updateObjects(s: DriftState) {
       if (overlapping && Math.abs(p.x - o.lane) < PICK_DX) {
         o.done = true
         const points = reward(s, WISP_POINTS)
+        s.stats.wisps++
         const was = p.charge
         p.charge = Math.min(PHANTOM_COST, p.charge + 1)
         s.events.push({ type: 'wisp', lane: o.lane, points })
@@ -290,7 +328,10 @@ function updateFallers(s: DriftState) {
       const l = randomInt(s.rng, s.lanes)
       if (!lanes.includes(l)) lanes.push(l)
     }
-    for (const lane of lanes) s.fallers.push({ id: s.nextId++, lane, slamAt: d.at, tele: d.at - s.tick })
+    for (const lane of lanes) {
+      s.fallers.push({ id: s.nextId++, lane, slamAt: d.at, tele: d.at - s.tick })
+      s.events.push({ type: 'warn', lane, ticks: d.at - s.tick })
+    }
   }
   s.drops = s.drops.filter((d) => s.tick < d.at - tele)
 
@@ -306,9 +347,28 @@ function updateFallers(s: DriftState) {
   s.fallers = s.fallers.filter((f) => s.tick < f.slamAt + SLAM_TICKS)
 }
 
+/** The death playing out: no input, no hits, no score; the world brakes to a stop. */
+function stepDying(s: DriftState) {
+  s.speed *= DEATH_BRAKE
+  const dz = s.speed / TICK_RATE
+  s.dist += dz
+  for (const o of s.objects) o.z -= dz
+  s.fallers = []
+  s.drops = []
+  if (s.tick - s.diedAt! >= DEATH_TICKS - 1) {
+    s.over = true
+    s.events.push({ type: 'over' })
+  }
+  s.tick++
+}
+
 export function step(s: DriftState, inputs: InputEvent<DriftInput>[]): DriftState {
   if (s.over) return s
   s.events = []
+  if (s.diedAt !== null) {
+    stepDying(s)
+    return s
+  }
   const p = s.player
   for (const { input } of inputs) if (INPUTS.includes(input)) applyInput(s, input)
 
@@ -321,6 +381,7 @@ export function step(s: DriftState, inputs: InputEvent<DriftInput>[]): DriftStat
     spawnRow(s)
     s.spawnIn += rowIntervalTicks(Math.floor(s.tick / TIER_TICKS))
   }
+  s.dist += s.speed / TICK_RATE
   updateObjects(s)
   updateFallers(s)
 
@@ -335,8 +396,9 @@ export function step(s: DriftState, inputs: InputEvent<DriftInput>[]): DriftStat
   }
 
   if (p.hearts <= 0) {
-    s.over = true
-    s.events.push({ type: 'over' })
+    s.diedAt = s.tick
+    s.diedDist = s.dist
+    s.events.push({ type: 'die' })
   }
   s.tick++
   return s

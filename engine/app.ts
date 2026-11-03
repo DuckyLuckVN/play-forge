@@ -41,6 +41,14 @@ export interface Outcome {
   result: 'win' | 'lose' | 'draw' | 'done'
 }
 
+/** One stat on the solo results screen, e.g. { label: 'Distance', value: '1.2 km' }. */
+export interface SummaryRow {
+  label: string
+  value: string
+  /** Stands out (a new best, a standout number). */
+  highlight?: boolean
+}
+
 export interface GameAppOptions<S, I> {
   def: GameDefinition<S, I>
   title: string
@@ -57,8 +65,21 @@ export interface GameAppOptions<S, I> {
   mount(session: Session<S, I>, stage: HTMLElement): () => void
   /** Scores shown in the top bar while playing and on the seats afterwards. */
   scores?(state: S): Scoreline[]
+  /**
+   * Pop the top-bar chip when a score goes up (default true). Turn off for
+   * scores that climb continuously (distance), or the chip never sits still.
+   */
+  bumpScores?: boolean
   /** End-of-match headline, from the local player's point of view. */
   outcome?(state: S, selfId: string): Outcome
+  /** Optional stat grid under the headline on the solo results screen. */
+  summary?(state: S, selfId: string): SummaryRow[]
+  /**
+   * Heavy setup to finish before play can start (e.g. building a 3D scene and
+   * compiling its shaders). Starts at page load; the start buttons show
+   * "Loading…" until it settles. A failed preload still lets players in.
+   */
+  preload?(): Promise<unknown>
 }
 
 const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -418,25 +439,49 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     }
   }
 
+  // Chips are rebuilt only when who's shown changes; scores update in place,
+  // so a fast-climbing score doesn't make the bar flicker or jump.
   let scoresKey = ''
   let lastScores = new Map<string, number>()
+  const chipText = new Map<string, Text>()
   function renderScores() {
     const s = session
     const playing = s && (s.phase === 'playing' || s.phase === 'countdown')
     const lines = playing && s.state && opts.scores ? opts.scores(s.state) : []
-    const key = JSON.stringify(lines)
-    if (key === scoresKey) return
+    const key = JSON.stringify(lines.map((l) => [l.id, !!l.out]))
+    const label = (line: Scoreline) => {
+      const p = s!.lobby.players.find((q) => q.id === line.id)
+      return `${p?.name ?? 'Gone'} ${line.score}`
+    }
+    if (key === scoresKey) {
+      for (const line of lines) {
+        const text = chipText.get(line.id)
+        if (!text || line.score === lastScores.get(line.id)) continue
+        text.data = label(line)
+        const bumped = line.score > (lastScores.get(line.id) ?? line.score)
+        const chip = text.parentElement
+        if (bumped && chip && opts.bumpScores !== false) {
+          chip.classList.remove('bump')
+          void chip.offsetWidth // restart the animation
+          chip.classList.add('bump')
+        }
+      }
+      lastScores = new Map(lines.map((l) => [l.id, l.score]))
+      return
+    }
     scoresKey = key
+    chipText.clear()
     scoresEl.replaceChildren(
       ...lines.map((line) => {
         const p = s!.lobby.players.find((q) => q.id === line.id)
-        const bumped = line.score > (lastScores.get(line.id) ?? line.score)
-        const cls = ['pf-chip', line.out && 'out', line.id === s!.selfId && 'self', bumped && 'bump']
+        const cls = ['pf-chip', line.out && 'out', line.id === s!.selfId && 'self']
+        const text = document.createTextNode(label(line))
+        chipText.set(line.id, text)
         const chip = h(
           'span',
           { class: cls.filter(Boolean).join(' ') },
           h('span', { class: 'dot' }, p && avatarEl(avatarFor(p))),
-          `${p?.name ?? 'Gone'} ${line.score}`,
+          text,
         )
         chip.style.setProperty('--c', playerColor(p?.slot ?? 0))
         chip.dataset.player = line.id
@@ -465,8 +510,34 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     if (!keepFocus) panel.querySelector<HTMLElement>('[autofocus]')?.focus({ preventScroll: true })
   }
 
+  // Start buttons wait for the game's preload (see GameAppOptions.preload).
+  let loading = !!opts.preload
+  const gated = new Map<HTMLButtonElement, string>()
+  function gate(...buttons: HTMLButtonElement[]) {
+    if (!loading) return
+    for (const b of buttons) {
+      gated.set(b, b.textContent ?? '')
+      b.disabled = true
+      b.classList.add('loading')
+      b.textContent = 'Loading…'
+    }
+  }
+  opts
+    .preload?.()
+    .catch((err) => console.warn('Preload failed; starting anyway.', err))
+    .finally(() => {
+      loading = false
+      for (const [b, label] of gated) {
+        b.disabled = false
+        b.classList.remove('loading')
+        b.textContent = label
+      }
+      gated.clear()
+    })
+
   function showMenu(error = '') {
     render()
+    gated.clear()
     const fromLink = /room=([A-Z0-9]+)/i.exec(location.hash)?.[1]?.toUpperCase() ?? ''
     const name = h('input', {
       class: 'pf-input',
@@ -523,6 +594,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     )
     const joinBtn = button('Join', join, fromLink ? 'primary' : '')
     if (fromLink) joinBtn.autofocus = true
+    gate(solo, create, joinBtn)
 
     show(
       h(
@@ -772,6 +844,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         'div',
         { class: 'pf-panel' },
         h('p', { class: 'pf-headline', textContent: outcome ? outcome.headline : 'Game over' }),
+        s.state && opts.summary && summaryGrid(opts.summary(s.state, s.selfId)),
         again,
         button('Back to menu', leave, 'quiet'),
       ),
@@ -821,6 +894,22 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     store.save(null)
     showMenu()
   }
+}
+
+function summaryGrid(rows: SummaryRow[]): HTMLElement | null {
+  if (!rows.length) return null
+  return h(
+    'dl',
+    { class: 'pf-summary' },
+    ...rows.map((r) =>
+      h(
+        'div',
+        { class: r.highlight ? 'pf-stat hi' : 'pf-stat' },
+        h('dt', { textContent: r.label }),
+        h('dd', { textContent: r.value }),
+      ),
+    ),
+  )
 }
 
 function button(text: string, onclick: () => void, variant = ''): HTMLButtonElement {

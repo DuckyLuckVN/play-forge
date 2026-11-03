@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   createState,
+  DEATH_TICKS,
   HEART_REGEN_TICKS,
   INVULN_TICKS,
   laneCount,
@@ -198,16 +199,41 @@ describe('Phantom Drift sim', () => {
     expect(s.player.hearts).toBe(3)
   })
 
-  it('ends when the last heart is gone', () => {
+  it('dies on the last heart, plays out a dying phase, then ends', () => {
     const s = quiet()
     s.player.hearts = 1
     place(s, { kind: 'shard', lane: 1, z: 4 })
-    run(s, 10)
+    const seen = events(s, 10)
+    expect(seen).toContain('die')
+    expect(s.over).toBe(false)
+    expect(s.diedAt).not.toBeNull()
+    run(s, DEATH_TICKS - 12)
+    expect(s.over).toBe(false)
+    expect(events(s, 5)).toContain('over')
     expect(s.over).toBe(true)
     expect(phantomDrift.isFinished(s)).toBe(true)
     const frozen = s.tick
     step(s, [])
     expect(s.tick).toBe(frozen)
+  })
+
+  it('while dying: no input, no hits, no score, the world slows to a stop', () => {
+    const s = quiet()
+    s.player.hearts = 1
+    place(s, { kind: 'shard', lane: 1, z: 4 })
+    run(s, 10)
+    const score = s.score
+    const x = s.player.x
+    const diedDist = s.diedDist
+    place(s, { kind: 'shard', lane: 1, z: 3 })
+    step(s, send('left'))
+    const seen = events(s, 30)
+    expect(s.player.x).toBe(x)
+    expect(seen).not.toContain('hit')
+    expect(s.score).toBe(score)
+    expect(s.diedDist).toBe(diedDist)
+    run(s, DEATH_TICKS - 45)
+    expect(s.speed).toBeLessThan(speedAt(0) * 0.05)
   })
 
   it('speeds up by tier and widens the rift at tiers 3 and 5', () => {
@@ -228,5 +254,62 @@ describe('Phantom Drift sim', () => {
     const s = quiet()
     run(s, 600)
     expect(s.score).toBeGreaterThan(50)
+    expect(s.dist).toBeCloseTo(speedAt(0) * 10)
+  })
+})
+
+describe('Phantom Drift run stats', () => {
+  it('counts wisps, near misses, best combo and Phantoms', () => {
+    const s = quiet()
+    place(s, { kind: 'wisp', lane: 1, z: 5 })
+    run(s, 15)
+    place(s, { kind: 'shard', lane: 1, z: 7 })
+    step(s, send('left'))
+    run(s, 30)
+    s.player.charge = PHANTOM_COST
+    step(s, send('phase'))
+    expect(s.stats).toMatchObject({ wisps: 1, nearMisses: 1, bestCombo: 2, phantoms: 1 })
+  })
+
+  it('remembers the best combo after a hit resets it', () => {
+    const s = quiet()
+    s.player.combo = 6
+    place(s, { kind: 'wisp', lane: 1, z: 4 })
+    run(s, 10)
+    place(s, { kind: 'shard', lane: 1, z: 4 })
+    run(s, 10)
+    expect(s.player.combo).toBe(0)
+    expect(s.stats.bestCombo).toBe(7)
+  })
+
+  it('announces a higher multiplier once per level', () => {
+    const s = quiet()
+    s.player.combo = 4
+    place(s, { kind: 'wisp', lane: 1, z: 4 })
+    const seen: unknown[] = []
+    for (let i = 0; i < 10; i++) {
+      step(s, [])
+      seen.push(...s.events.filter((e) => e.type === 'multiplier'))
+    }
+    expect(seen).toEqual([{ type: 'multiplier', mult: 2 }])
+  })
+
+  it('warns when a faller starts its telegraph, with how long it takes', () => {
+    const s = quiet()
+    s.drops.push({ at: s.tick + 60, count: 1 })
+    const warns: unknown[] = []
+    for (let i = 0; i < 60; i++) {
+      step(s, [])
+      warns.push(...s.events.filter((e) => e.type === 'warn'))
+    }
+    expect(warns).toHaveLength(1)
+    expect(warns[0]).toMatchObject({ type: 'warn', lane: 1 })
+    expect((warns[0] as { ticks: number }).ticks).toBeGreaterThan(20)
+  })
+
+  it('tracks top speed', () => {
+    const s = quiet()
+    run(s, TIER_TICKS * 2 + 1)
+    expect(s.stats.topSpeed).toBe(speedAt(2))
   })
 })

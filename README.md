@@ -75,6 +75,10 @@ scripts/     single-file build and README table generator
 
 Solo-only games set `maxPlayers: 1`: the start screen then shows just **Play**, with no rooms. Reaction games can reuse `engine/reflex` (difficulty ramp, telegraph timing, timing windows) and `bestScores()` for personal bests (see `games/phantom-drift`).
 
+3D games import `@forge/render3d` (three.js scene with bloom and automatic quality drop, HUD overlay, 3D particles, mesh pool). It is kept out of `@forge` so 2D games don't ship three.js. Phantom Drift also shows the pattern of a 2D fallback when WebGL2 is missing.
+
+Heavy setup (building a 3D scene, compiling shaders) goes in `createGameApp({ preload })`: it starts at page load and the start button shows "Loading…" until it's done, so play never freezes on start.
+
 ## Deploy
 
 Every push to `main` is tested, built and published to GitHub Pages (`.github/workflows/pages.yml`).

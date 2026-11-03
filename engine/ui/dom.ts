@@ -1,4 +1,4 @@
-type Child = Node | string | false | null | undefined
+export type Child = Node | string | false | null | undefined
 
 /** Small hyperscript helper: h('button', { class: 'pf-btn', onclick }, 'Go'). */
 export function h<K extends keyof HTMLElementTagNameMap>(
@@ -20,6 +20,21 @@ export function icon(svg: string, cls = 'pf-icon'): HTMLSpanElement {
   const el = h('span', { class: cls })
   el.innerHTML = svg
   return el
+}
+
+/** A square icon button with a tooltip and accessible name, e.g. in the top bar. */
+export function iconButton(svg: string, label: string, onclick?: () => void): HTMLButtonElement {
+  const b = h('button', { class: 'pf-btn icon', type: 'button' })
+  if (onclick) b.onclick = onclick
+  b.append(icon(svg))
+  setLabel(b, label)
+  return b
+}
+
+/** Sets an element's tooltip and accessible name together. */
+export function setLabel(el: HTMLElement, label: string): void {
+  el.title = label
+  el.setAttribute('aria-label', label)
 }
 
 let toastHost: HTMLElement | null = null

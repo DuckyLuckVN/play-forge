@@ -1,5 +1,6 @@
 import { getLang, LANGS, setLang, translator } from '../core/i18n'
-import { h } from './dom'
+import { h, setLabel } from './dom'
+import { popover } from './popover'
 
 const t = translator({ Language: 'Ngôn ngữ', 'Language: {name}': 'Ngôn ngữ: {name}' })
 
@@ -15,10 +16,7 @@ export function langMenu(): HTMLElement {
     type: 'button',
     textContent: current.id.toUpperCase(),
   })
-  button.title = label
-  button.setAttribute('aria-label', label)
-  button.setAttribute('aria-haspopup', 'dialog')
-  button.setAttribute('aria-expanded', 'false')
+  setLabel(button, label)
 
   const options = LANGS.map((l) => {
     const on = l.id === current.id
@@ -32,34 +30,14 @@ export function langMenu(): HTMLElement {
     if (on) b.setAttribute('aria-current', 'true')
     return b
   })
-  const pop = h(
-    'div',
-    { class: 'pf-popover pf-lang-pop', role: 'dialog' } as never,
+  return popover(
+    {
+      button,
+      label: t('Language'),
+      class: 'pf-lang-pop',
+      onOpen: () => (options.find((o) => o.hasAttribute('aria-current')) ?? options[0]).focus(),
+    },
     h('span', { class: 'pf-option-label', textContent: t('Language') }),
     ...options,
-  )
-  pop.setAttribute('aria-label', t('Language'))
-  pop.hidden = true
-  const root = h('div', { class: 'pf-popover-anchor' }, button, pop)
-
-  const close = () => {
-    pop.hidden = true
-    button.setAttribute('aria-expanded', 'false')
-  }
-  button.onclick = () => {
-    pop.hidden = !pop.hidden
-    button.setAttribute('aria-expanded', String(!pop.hidden))
-    if (!pop.hidden) (options.find((o) => o.hasAttribute('aria-current')) ?? options[0]).focus()
-  }
-  document.addEventListener('pointerdown', (e) => {
-    if (!root.contains(e.target as Node)) close()
-  })
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !pop.hidden) {
-      e.stopPropagation()
-      close()
-      button.focus()
-    }
-  })
-  return root
+  ).root
 }

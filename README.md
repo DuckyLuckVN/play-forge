@@ -33,6 +33,12 @@ Multiplayer: one player clicks **Create room** and shares the 5-letter code (or 
   - **A player who reloads or drops** keeps their seat (and their piece mid-match) for 20 seconds. A reloaded tab rejoins its room automatically.
   - **If the host reloads,** the room reopens with the same code and seats, and guests wait for it (up to 30 seconds) instead of being kicked out.
   - **Going offline** shows a notice.
+- **Social:** every online room gets these from the shared shell, so new games get them for free:
+  - **Avatars:** 24 cartoon characters. Pick one next to your name; the choice is remembered. Players on older versions get a fixed default.
+  - **Reactions:** 16 animated reactions from the 😊 button, including 4 for voice ("turn on your mic", "mute your mic", "can you hear me?", "can't hear you"). They float up from your seat (or drop from your score chip in game). You can send 3 per 2 seconds.
+  - **Text chat:** the 💬 button, or press **Enter** when the game isn't using it (Caro and Fuse use Enter to place and fire). Messages are plain text, up to 200 characters, 5 per 5 seconds. A badge counts unread messages, and new ones pop up as toasts while chat is closed. Chat lives in the host's memory, which sends the last 30 messages to anyone who joins later.
+  - **Voice chat:** the mic button joins voice (the browser asks for the mic only then). Choose open mic or push to talk (hold **V**, or hold the mic button). The headset menu has voice volume, plus a volume (up to 150%) and mute for each player. You hear others without joining. Voice needs https or localhost, uses the same peer-to-peer links as the game, and doesn't work with `?net=local`.
+- **On phones** (520px wide or less), the top bar keeps only home, scores and **⋯**. ⋯ holds voice settings, language, sound and leave. A floating button in the bottom-right corner opens 🎤 💬 😀; when it's closed it glows while your mic is live, shows a red dot when you're muted and a green dot for unread chat. Menus open as bottom sheets that stay above the keyboard. Desktop shows everything in the bar.
 - **Limits:** a host reload ends the current match (the room and seats survive). Keep the host's tab visible, because browsers throttle background tabs. A few strict networks (symmetric NAT) need a TURN server. You can pass one to Trystero via `turnConfig`.
 
 ## Project layout
@@ -47,18 +53,30 @@ engine/                  reusable library, imported as '@forge'
   fx/                    particles + floating text, screen shake, confetti, easing helpers
   core/                  emitter, fixed-rate ticker + render loop, input (keys/swipe), seeded RNG
   net/
-    transport.ts         Transport interface + offline transport
+    transport.ts         Transport interface (+ optional `media` for voice) + offline transport
     trystero.ts          internet P2P (WebRTC)
     broadcast.ts         same-browser tabs (dev/testing)
     session.ts           host-authoritative Session: lobby, ready, countdown, pause, reconnects
     smoothing.ts         keeps the last two states so renderers can interpolate between ticks
+  social/                avatars, reactions, voice chat (wired into app.ts for online rooms)
+    avatars.ts           24 avatars drawn from shared SVG parts; avatar-ui.ts picker + element
+    reactions.ts         reaction list, RateLimiter, ReactionHub ('rx' channel); reaction-art.ts, reaction-ui.ts
+    voice-state.ts       pure voice logic (settings, peer roster, speaking detector), unit tested
+    voice.ts, voice-ui.ts VoiceChat (mic, WebRTC streams, Web Audio volumes) and its top-bar controls
+    chat.ts, chat-ui.ts  ChatHub ('tx' channel: rate limits, history for late joiners) and the chat popover
+    room-social.ts       RoomSocial: creates reactions, chat and voice for one online room
+    i18n.ts              Vietnamese for everything in social/
   render2d/canvas.ts     HiDPI, letterboxed 2D canvas
   ui/
     theme.ts             design tokens: colours for CSS and canvas, player colours
     base.css             shared components: buttons, panels, seats, chips, toasts, countdown
     audio-menu.ts        sound button + music / effects volume popover
     lang-menu.ts         language button (EN / VI); see core/i18n.ts for translator()
-    dom.ts, icons.ts     tiny DOM helper, toasts, inline SVG icons
+    dom.ts, icons.ts     tiny DOM helper, iconButton, toasts, inline SVG icons
+    popover.ts           shared top-bar popover (sound, language, reactions, voice, chat, ⋯ menu, phone fan);
+                         a bottom sheet on phones
+    slider.ts            labelled volume slider (sound menu, voice menu)
+    badge.ts             number badge on a button (people in voice, unread chat)
 icon.svg                 the tab icon for every page (the build inlines it into each file)
 launcher/                the game picker page (dist/index.html)
 games/

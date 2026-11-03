@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createBroadcastTransport } from './broadcast'
-import { Session, type GameDefinition, type SessionOptions } from './session'
+import { cleanAvatar, Session, type GameDefinition, type SessionOptions } from './session'
 import { createOfflineTransport } from './transport'
 
 // A tiny counter game: each input adds to the player's total.
@@ -72,6 +72,31 @@ describe('Session', () => {
     // Ready flags reset for the rematch.
     expect(guest.self!.ready).toBe(false)
     expect(host.canStart).toBe(false)
+  })
+
+  it('shares each player’s avatar, and accepts players without one', async () => {
+    const r = room()
+    join(r, { host: true, playerId: 'host', avatar: 'cat' })
+    const guest = join(r, { playerId: 'guest', avatar: 'robot' })
+    join(r, { playerId: 'old' }) // an older client: no avatar
+
+    await until(() => guest.lobby.players.length === 3)
+    const byId = (id: string) => guest.lobby.players.find((p) => p.id === id)
+    expect(byId('host')?.avatar).toBe('cat')
+    expect(byId('guest')?.avatar).toBe('robot')
+    expect(byId('old')).toBeDefined()
+    expect(byId('old')!.avatar).toBeUndefined()
+  })
+
+  it('drops avatar ids that are not short slugs', async () => {
+    const r = room()
+    const host = join(r, { host: true, playerId: 'host' })
+    join(r, { playerId: 'bad', avatar: '<img src=x onerror=alert(1)>' })
+    await until(() => host.lobby.players.length === 2)
+    expect(host.lobby.players.find((p) => p.id === 'bad')!.avatar).toBeUndefined()
+    expect(cleanAvatar('panda')).toBe('panda')
+    expect(cleanAvatar('x'.repeat(25))).toBeUndefined()
+    expect(cleanAvatar(42)).toBeUndefined()
   })
 
   it('keeps a dropped player’s seat during the grace period and restores it', async () => {

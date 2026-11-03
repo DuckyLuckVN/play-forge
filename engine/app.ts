@@ -15,11 +15,17 @@ import {
 } from './net/session'
 import { createOfflineTransport, randomId, type Transport } from './net/transport'
 import { createTrysteroTransport } from './net/trystero'
+import { avatarEl, avatarPicker } from './social/avatar-ui'
+import { avatarFor, storedAvatar } from './social/avatars'
+import { ReactionLayer, reactionPicker } from './social/reaction-ui'
+import { t as ts } from './social/i18n'
+import { RoomSocial } from './social/room-social'
 import { audioMenu } from './ui/audio-menu'
 import { langMenu } from './ui/lang-menu'
-import { h, icon, toast } from './ui/dom'
+import { h, icon, iconButton, toast } from './ui/dom'
 import { icons } from './ui/icons'
 import { optionPickers } from './ui/options'
+import { popover } from './ui/popover'
 import { applyTheme, playerColor } from './ui/theme'
 
 export interface Scoreline {
@@ -123,8 +129,6 @@ function roomStore(gameId: string) {
   }
 }
 
-const initial = (name: string) => [...name.trim()][0]?.toUpperCase() ?? '?'
-
 /**
  * Standard shell for a game: top bar, start screen (solo / create / join),
  * lobby with seats and ready-up, countdown, pause, results, music and
@@ -140,8 +144,38 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
 
   // ---------- Shell ----------
   const scoresEl = h('div', { class: 'pf-bar-scores' })
-  const pauseBtn = barButton(icons.pause, 'Pause', () => session?.setPaused(true))
-  const leaveBtn = barButton(icons.leave, 'Leave', () => leave())
+  const pauseBtn = iconButton(icons.pause, 'Pause', () => session?.setPaused(true))
+  const leaveBtn = iconButton(icons.leave, 'Leave', () => leave())
+  // Reactions, voice and chat: only in online rooms; `social` is set while in one.
+  let social: RoomSocial | null = null
+  const reactBtn = reactionPicker((id) => social?.reactions.send(id) ?? false)
+  const reactionLayer = new ReactionLayer()
+  // Everyday room controls (mic, chat, reactions) and settings (voice, language,
+  // sound, leave). Desktop shows them all in the bar; phones put the everyday
+  // ones behind a floating button and the settings behind ⋯ (CSS decides).
+  const quickSlot = h('div', { class: 'pf-slot' })
+  const settingsSlot = h('div', { class: 'pf-slot' })
+  const fan = popover(
+    {
+      button: iconButton(icons.chat, ts('Voice, chat and reactions')),
+      label: ts('Voice, chat and reactions'),
+      class: 'pf-fan',
+      role: 'group',
+    },
+    quickSlot,
+    reactBtn,
+  )
+  fan.root.classList.add('pf-fan-anchor')
+  fan.root.querySelector('button')!.classList.add('pf-fab')
+  const more = popover(
+    { button: iconButton(icons.more, ts('More')), label: ts('More'), class: 'pf-overflow' },
+    settingsSlot,
+    langMenu(),
+    audioMenu(),
+    leaveBtn,
+  )
+  more.root.classList.add('pf-more-anchor')
+  more.root.querySelector('button')!.classList.add('pf-more-btn')
   const home = h('a', { class: 'pf-btn icon', href: LAUNCHER_URL, title: 'All games' })
   home.setAttribute('aria-label', 'All games')
   home.append(icon(icons.home))
@@ -151,7 +185,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     home,
     h('h1', { class: 'pf-bar-title', textContent: opts.title }),
     scoresEl,
-    h('div', { class: 'pf-bar-actions' }, pauseBtn, langMenu(), audioMenu(), leaveBtn),
+    h('div', { class: 'pf-bar-actions' }, fan.root, pauseBtn, more.root),
   )
   const stage = h('main', { class: 'pf-stage' })
   const overlay = h('div', { class: 'pf-overlay' })
@@ -205,6 +239,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     const s = (session = new Session(def, transport, {
       host,
       name,
+      avatar: storedAvatar(),
       playerId,
       options: chosenOptions(),
       ...extra,
@@ -215,9 +250,15 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     seenReady.clear()
     if (!extra.offline) store.save({ playerId, room, host, snapshot: host ? s.snapshot() : undefined })
     const unmount = opts.mount(s, stage)
+    // After mount, so the game's key handlers run before chat's Enter shortcut.
+    const roomSocial = extra.offline ? null : new RoomSocial(s as Session<unknown, unknown>, reactionLayer)
+    social = roomSocial
+    quickSlot.replaceChildren(...(roomSocial?.quick ?? []))
+    settingsSlot.replaceChildren(...(roomSocial?.settings ?? []))
     const offs = [
       s.on('lobby', (lobby) => {
         react(s, lobby)
+        roomSocial?.refresh()
         if (s.isHost && !s.offline) store.save({ playerId, room, host: true, snapshot: s.snapshot() })
         render()
       }),
@@ -244,6 +285,10 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     cleanup = () => {
       clearTimeout(hintTimer)
       offs.forEach((off) => off())
+      roomSocial?.dispose()
+      social = null
+      quickSlot.replaceChildren()
+      settingsSlot.replaceChildren()
       unmount()
     }
     if (extra.offline) s.start()
@@ -351,6 +396,9 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     const s = session
     pauseBtn.hidden = !(s?.offline && s.phase === 'playing' && !s.lobby.paused)
     leaveBtn.hidden = !s
+    // Reactions need someone to see them: online rooms we're seated or watching in.
+    fan.root.hidden = !s || s.offline || (!s.isHost && !s.lobby.hostId)
+    if (fan.root.hidden) fan.close()
     const leaveLabel = s?.offline ? 'Quit to menu' : 'Leave room'
     leaveBtn.title = leaveLabel
     leaveBtn.setAttribute('aria-label', leaveLabel)
@@ -387,10 +435,12 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         const chip = h(
           'span',
           { class: cls.filter(Boolean).join(' ') },
-          h('span', { class: 'dot' }),
+          h('span', { class: 'dot' }, p && avatarEl(avatarFor(p))),
           `${p?.name ?? 'Gone'} ${line.score}`,
         )
         chip.style.setProperty('--c', playerColor(p?.slot ?? 0))
+        chip.dataset.player = line.id
+        if (social?.isSpeaking(line.id)) chip.classList.add('speaking')
         return chip
       }),
     )
@@ -474,7 +524,12 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         { class: 'pf-panel' },
         h('h2', { class: 'pf-heading', textContent: opts.title }),
         opts.tagline && h('p', { class: 'pf-lede', textContent: opts.tagline }),
-        h('label', { class: 'pf-field', htmlFor: 'pf-name' }, 'Your name', name),
+        h(
+          'div',
+          { class: 'pf-identity' },
+          avatarPicker(storedAvatar(), (id) => storedAvatar(id)),
+          h('label', { class: 'pf-field', htmlFor: 'pf-name' }, 'Your name', name),
+        ),
         menuOptions(),
         h('div', { class: 'pf-row' }, def.minPlayers <= 1 && solo, create),
         h('div', { class: 'pf-or', textContent: "or join a friend's room" }),
@@ -555,7 +610,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   function roomCodeBox() {
     // A file:// link is useless to a friend; they type the code instead.
     const canLink = location.protocol !== 'file:'
-    const copy = barButton(icons.copy, 'Copy invite link', async () => {
+    const copy = iconButton(icons.copy, 'Copy invite link', async () => {
       await navigator.clipboard?.writeText(location.href).catch(() => {})
       toast('Invite link copied')
     })
@@ -599,11 +654,15 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         const isHost = p.id === hostId
         const isSelf = p.id === s.selfId
         const score = scores.find((l) => l.id === p.id)
-        const token = h('div', {
-          class: `pf-token${seenTokens.has(p.id) ? '' : ' pop'}`,
-          textContent: score ? String(score.score) : initial(p.name),
-        })
+        const token = h(
+          'div',
+          { class: `pf-token${seenTokens.has(p.id) ? '' : ' pop'}` },
+          avatarEl(avatarFor(p)),
+          score && h('span', { class: 'pf-token-score', textContent: String(score.score) }),
+        )
         seenTokens.add(p.id)
+        token.dataset.player = p.id
+        if (social?.isSpeaking(p.id)) token.classList.add('speaking')
         token.style.setProperty('--c', playerColor(p.slot))
         if (isHost || p.ready) {
           const badge = h('span', {
@@ -760,14 +819,6 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
 
 function button(text: string, onclick: () => void, variant = ''): HTMLButtonElement {
   return h('button', { class: `pf-btn ${variant}`.trim(), textContent: text, onclick, type: 'button' })
-}
-
-function barButton(svg: string, label: string, onclick: () => void): HTMLButtonElement {
-  const b = button('', onclick, 'icon')
-  b.append(icon(svg))
-  b.title = label
-  b.setAttribute('aria-label', label)
-  return b
 }
 
 function listNames(players: PlayerInfo[]): string {

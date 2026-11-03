@@ -13,6 +13,8 @@ export interface PlayerInfo {
   ready: boolean
   /** False while the player is dropped and may still come back. */
   connected: boolean
+  /** Chosen avatar id. Optional: older clients don't send one. */
+  avatar?: string
 }
 
 export interface InputEvent<I> {
@@ -103,6 +105,8 @@ export interface RoomSnapshot {
 export interface SessionOptions {
   host: boolean
   name: string
+  /** Avatar id shown to others; an opaque short token to the session. */
+  avatar?: string
   /** Stable id for the local player; keep it across reloads to reclaim a seat. */
   playerId: string
   /** Single-player session on the offline transport. */
@@ -134,6 +138,12 @@ const CH = { hello: 'hello', bye: 'bye', ready: 'ready', lobby: 'lobby', input: 
 interface Hello {
   id: string
   name: string
+  avatar?: string
+}
+
+/** Keep only short slug-like avatar ids; anything else is dropped. */
+export function cleanAvatar(raw: unknown): string | undefined {
+  return typeof raw === 'string' && /^[a-z0-9-]{1,24}$/.test(raw) ? raw : undefined
 }
 
 const DEFAULT_COUNTDOWN = 3
@@ -182,6 +192,8 @@ export class Session<S, I> {
     this.offline = opts.offline ?? false
     this.graceMs = opts.graceMs ?? 20000
     const self: PlayerInfo = { id: this.selfId, name: opts.name, slot: 0, ready: true, connected: true }
+    const avatar = cleanAvatar(opts.avatar)
+    if (avatar) self.avatar = avatar
     this.lobby = {
       hostId: opts.host ? this.selfId : '',
       phase: 'lobby',
@@ -216,7 +228,7 @@ export class Session<S, I> {
       )
     } else {
       const hostWaitMs = opts.hostWaitMs ?? 30000
-      const hello: Hello = { id: this.selfId, name: opts.name }
+      const hello: Hello = { id: this.selfId, name: opts.name, avatar: cleanAvatar(opts.avatar) }
       this.unsubs.push(
         // We don't know which peer is the host, so greet everyone; only the
         // host answers. Re-greeting on reconnect reclaims our seat.
@@ -403,6 +415,7 @@ export class Session<S, I> {
         .trim()
         .slice(0, 16) || 'Player'
     if (!id || id === this.selfId) return
+    const avatar = cleanAvatar(msg?.avatar)
     const { players } = this.lobby
     const existing = players.find((p) => p.id === id)
 
@@ -416,6 +429,8 @@ export class Session<S, I> {
       this.dropTimers.delete(id)
       existing.connected = true
       existing.name = name
+      if (avatar) existing.avatar = avatar
+      else delete existing.avatar
     } else {
       this.playerOfPeer.set(peer, id)
       if (players.length >= this.def.maxPlayers) {
@@ -426,7 +441,7 @@ export class Session<S, I> {
       }
       let slot = 0
       while (players.some((p) => p.slot === slot)) slot++
-      players.push({ id, name, slot, ready: false, connected: true })
+      players.push({ id, name, slot, ready: false, connected: true, ...(avatar && { avatar }) })
       players.sort((a, b) => a.slot - b.slot)
     }
     // State first, so the lobby (e.g. a results screen) can render with it.

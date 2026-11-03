@@ -663,6 +663,258 @@ body {
   opacity: 0;
 }
 
+/* ---------- Count badge on a button (ui/badge.ts) ---------- */
+.pf-btn.icon:has(> .pf-count) {
+  position: relative;
+}
+.pf-count {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #4be3a0;
+  color: var(--pf-night);
+  border: 2px solid var(--pf-night);
+  font: 700 12px/1 var(--pf-font);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.pf-count[hidden] {
+  display: none;
+}
+.pf-count.pop {
+  animation: pf-pop 360ms cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+/* ---------- Top-bar groups: everyday controls (fan) and settings (⋯) ----------
+   Desktop: both groups sit inline in the bar and their toggle buttons hide.
+   Phones: the fan becomes a floating button bottom-right, settings go behind
+   ⋯, and every other popover opens as a bottom sheet. */
+
+.pf-fan-anchor,
+.pf-more-anchor,
+.pf-popover.pf-fan,
+.pf-popover.pf-overflow,
+.pf-slot {
+  display: contents;
+}
+.pf-fan-anchor[hidden],
+.pf-slot[hidden] {
+  display: none;
+}
+/* Desktop: the groups' panels are always shown inline, even while their
+   (hidden) toggle says closed. Beats the global [hidden] !important rule. */
+.pf-popover.pf-fan[hidden],
+.pf-popover.pf-overflow[hidden] {
+  display: contents !important;
+}
+.pf-fab,
+.pf-more-btn {
+  display: none;
+}
+
+@media (max-width: 520px) {
+  /* ⋯ menu: a labelled list of the settings buttons. */
+  .pf-more-anchor {
+    display: block;
+    position: relative;
+  }
+  .pf-more-btn {
+    display: inline-flex;
+  }
+  .pf-popover.pf-overflow {
+    display: grid;
+    width: 240px;
+    gap: 4px;
+    padding: 8px;
+  }
+  .pf-popover.pf-overflow[hidden] {
+    display: none !important;
+  }
+  .pf-overflow .pf-slot,
+  .pf-overflow .pf-popover-anchor {
+    display: block;
+  }
+  .pf-overflow .pf-btn.icon {
+    width: 100%;
+    height: 48px;
+    margin: 0;
+    padding: 0 12px;
+    justify-content: flex-start;
+    gap: 12px;
+    box-shadow: none;
+    border-color: transparent;
+    background: none;
+  }
+  .pf-overflow .pf-btn.icon:hover {
+    background: var(--pf-rim);
+    transform: none;
+  }
+  .pf-overflow .pf-btn.icon::after {
+    content: attr(title);
+    font-weight: 600;
+    font-size: 16px;
+    letter-spacing: normal;
+  }
+  /* Language shows "EN" as its icon; keep it icon-sized. */
+  .pf-overflow .pf-lang-btn {
+    font-size: 13px;
+  }
+  .pf-overflow .pf-btn.icon[aria-label^='Leave'],
+  .pf-overflow .pf-btn.icon[aria-label^='Quit'] {
+    color: var(--pf-coral);
+  }
+  .pf-overflow .pf-count {
+    position: static;
+    margin-left: auto;
+    order: 2;
+  }
+
+  /* Floating button bottom-right; the fan opens as a column above it. */
+  .pf-fan-anchor {
+    display: block;
+    position: fixed;
+    right: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    z-index: 40;
+  }
+  .pf-fan-anchor[hidden] {
+    display: none;
+  }
+  .pf-btn.icon.pf-fab {
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 56px;
+    margin: 0;
+    border-radius: 50%;
+    --face: var(--pf-yolk);
+    --edge: var(--pf-yolk-edge);
+    --text: var(--pf-ink);
+    box-shadow:
+      0 4px 0 var(--edge),
+      0 10px 24px rgb(0 0 0 / 0.45);
+  }
+  .pf-popover.pf-fan {
+    display: flex;
+    flex-direction: column-reverse;
+    align-items: center;
+    gap: 12px;
+    position: absolute;
+    top: auto;
+    bottom: calc(100% + 12px);
+    right: 4px;
+    width: auto;
+    padding: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
+    transform-origin: bottom center;
+  }
+  .pf-popover.pf-fan[hidden] {
+    display: none !important;
+  }
+  .pf-fan .pf-slot {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 12px;
+  }
+  /* Only the fan's own buttons, not those inside the sheets they open. */
+  .pf-fan > .pf-slot > .pf-btn.icon,
+  .pf-fan :is(.pf-slot, .pf-fan) > .pf-popover-anchor > .pf-btn.icon {
+    width: 48px;
+    height: 48px;
+    margin: 0;
+    border-radius: 50%;
+    box-shadow:
+      0 3px 0 var(--edge),
+      0 8px 18px rgb(0 0 0 / 0.4);
+  }
+  /* A settings sheet opened from ⋯ takes over: hide the menu rows behind it
+     and the floating button over it. */
+  .pf-overflow:has(.pf-popover:not([hidden])) {
+    background: none;
+    border-color: transparent;
+    box-shadow: none;
+    animation: none;
+  }
+  .pf-overflow:has(.pf-popover:not([hidden]))
+    :is(
+      .pf-overflow > .pf-btn.icon,
+      .pf-overflow > .pf-popover-anchor > .pf-btn.icon,
+      .pf-slot > .pf-popover-anchor > .pf-btn.icon
+    ) {
+    visibility: hidden;
+  }
+  body:has(.pf-overflow .pf-popover:not([hidden])) .pf-fan-anchor {
+    visibility: hidden;
+  }
+  /* Let room screens scroll clear of the floating button. */
+  body:has(.pf-fan-anchor:not([hidden])) .pf-overlay {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+  /* While the fan is closed, the button still tells you what matters. */
+  .pf-fan-anchor:has(.pf-voice-mic.live) > .pf-fab {
+    box-shadow:
+      0 4px 0 var(--edge),
+      0 0 0 4px #4be3a0,
+      0 0 18px 6px rgb(75 227 160 / 0.55);
+  }
+  .pf-fan-anchor:has(.pf-voice-mic.muted) > .pf-fab::before,
+  .pf-fan-anchor:has(.pf-count:not([hidden])) > .pf-fab::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 3px solid var(--pf-night);
+  }
+  .pf-fan-anchor:has(.pf-voice-mic.muted) > .pf-fab::before {
+    left: -2px;
+    background: var(--pf-coral);
+  }
+  .pf-fan-anchor:has(.pf-count:not([hidden])) > .pf-fab::after {
+    right: -2px;
+    background: #4be3a0;
+  }
+
+  /* Every other popover (sound, language, voice, chat, reactions) is a bottom
+     sheet, lifted above the on-screen keyboard (see ui/popover.ts). `body`
+     outranks the fixed widths that feature styles give their popovers. */
+  body .pf-popover:not(.pf-overflow, .pf-fan) {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: var(--pf-kb, 0px);
+    width: auto;
+    max-width: none;
+    max-height: calc(var(--pf-vh, 100dvh) * 0.8);
+    overflow-y: auto;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    border-radius: 22px 22px 0 0;
+    border-bottom: 0;
+    box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.45);
+    animation: pf-sheet 240ms cubic-bezier(0.2, 1.1, 0.4, 1);
+    z-index: 50;
+  }
+  body .pf-popover.pf-rx-tray {
+    grid-template-columns: repeat(4, 1fr);
+    justify-items: center;
+  }
+}
+@keyframes pf-sheet {
+  from {
+    transform: translateY(100%);
+  }
+}
+
 /* ---------- Small screens & motion ---------- */
 
 @media (max-width: 520px) {

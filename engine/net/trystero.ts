@@ -10,12 +10,13 @@ import type { Transport } from './transport'
  */
 export function createTrysteroTransport(appId: string, roomId: string): Transport {
   const room = joinRoom({ appId }, roomId)
-  const events = new Emitter<{ join: [string]; leave: [string] }>()
+  const events = new Emitter<{ join: [string]; leave: [string]; stream: [MediaStream, string] }>()
   const channels = new Emitter<Record<string, [unknown, string]>>()
   const actions = new Map<string, MessageAction>()
 
   room.onPeerJoin = (id) => events.emit('join', id)
   room.onPeerLeave = (id) => events.emit('leave', id)
+  room.onPeerStream = (stream, id) => events.emit('stream', stream, id)
 
   const action = (channel: string) => {
     let a = actions.get(channel)
@@ -39,6 +40,14 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
     },
     onPeerJoin: (h) => events.on('join', h),
     onPeerLeave: (h) => events.on('leave', h),
+    media: {
+      addStream(stream, to) {
+        // Delivery failures (peer gone mid-setup) only cost that peer's audio.
+        for (const p of room.addStream(stream, to ? { target: to } : undefined)) p.catch(() => {})
+      },
+      removeStream: (stream, to) => room.removeStream(stream, to ? { target: to } : undefined),
+      onPeerStream: (h) => events.on('stream', h),
+    },
     leave() {
       events.clear()
       channels.clear()

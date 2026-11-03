@@ -289,7 +289,8 @@ function mount(session: Session<CaroState, CaroInput>, stage: HTMLElement): () =
       const y = Math.min(s.size - 1, Math.max(0, Math.floor(ui.cursor / s.size) + dy))
       ui.cursor = y * s.size + x
       ui.hover = -1
-    } else if ((e.code === 'Enter' || e.code === 'Space') && ui.cursor >= 0) {
+    } else if ((e.code === 'Enter' || e.code === 'Space') && ui.cursor >= 0 && ui.canPlay) {
+      // Only on our turn: otherwise Enter is free for the shared chat shortcut.
       e.preventDefault()
       play(ui.cursor)
     } else if (e.code === 'KeyU') undo()

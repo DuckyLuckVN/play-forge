@@ -15,6 +15,17 @@ export interface Transport {
   onPeerJoin(handler: (peerId: string) => void): () => void
   onPeerLeave(handler: (peerId: string) => void): () => void
   leave(): void
+  /** Audio/video streams. Optional: only real network transports have it. */
+  readonly media?: MediaChannel
+}
+
+/** Sends live media (e.g. voice) to peers. Used by voice chat. */
+export interface MediaChannel {
+  /** Send to every peer, or only to `to` (e.g. someone who just joined). */
+  addStream(stream: MediaStream, to?: string): void
+  removeStream(stream: MediaStream, to?: string): void
+  /** Returns an unsubscribe function. */
+  onPeerStream(handler: (stream: MediaStream, peerId: string) => void): () => void
 }
 
 export function randomId(length = 12): string {

@@ -1,6 +1,9 @@
+import { pickDpr } from './quality'
+
 /**
  * A transparent 2D canvas stacked over a 3D view, for HUDs and floating text.
- * Draw in CSS pixels; HiDPI is handled.
+ * Draw in CSS pixels; HiDPI is handled (capped by the same pixel budget as
+ * the 3D view, since clearing + compositing it costs fill every frame).
  */
 export interface Overlay2D {
   canvas: HTMLCanvasElement
@@ -29,7 +32,7 @@ export function createOverlay2D(parent: HTMLElement, maxDpr = 2): Overlay2D {
       ctx.clearRect(0, 0, overlay.width, overlay.height)
     },
     resize(w, h) {
-      dpr = Math.min(maxDpr, window.devicePixelRatio || 1)
+      dpr = pickDpr(window.devicePixelRatio, maxDpr, w, h)
       overlay.width = w
       overlay.height = h
       canvas.width = Math.round(w * dpr)

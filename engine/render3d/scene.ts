@@ -12,6 +12,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { prefersReducedMotion } from '../fx/tween'
+import { pickDpr, QualityGovernor } from './quality'
 
 export interface Scene3DOptions {
   fov?: number
@@ -42,8 +43,10 @@ export interface Scene3D {
 /** True when this browser can make a WebGL2 context (three.js needs WebGL2). */
 export function webglAvailable(): boolean {
   try {
-    const c = document.createElement('canvas')
-    return !!c.getContext('webgl2')
+    const gl = document.createElement('canvas').getContext('webgl2')
+    // Free the probe context now; browsers cap live contexts and GPU memory.
+    gl?.getExtension('WEBGL_lose_context')?.loseContext()
+    return !!gl
   } catch {
     return false
   }
@@ -68,21 +71,19 @@ const PunchShader = {
     }`,
 }
 
-/** Frames measured before deciding whether this device can afford bloom. */
-const PROBE_FRAMES = 90
-const SLOW_FRAME = 1 / 42
-
 /**
  * A full-size three.js view inside `parent`: renderer, camera, optional bloom
- * and a hit "punch" pass. Quality drops automatically (no bloom, 1× pixels)
- * when the device can't keep up.
+ * and a hit "punch" pass. Pixels are capped to a budget, and quality steps
+ * down (fewer pixels, then no bloom) whenever frames miss the refresh rate.
  */
 export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): Scene3D {
   const root = document.createElement('div')
   root.style.cssText = 'position:absolute;inset:0 16px 16px;border-radius:14px;overflow:hidden'
   parent.appendChild(root)
 
-  const renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
+  // No MSAA: the scene renders into the composer's (non-MSAA) targets, so
+  // canvas antialiasing would only cost a full-screen resolve every frame.
+  const renderer = new WebGLRenderer({ antialias: false, powerPreference: 'high-performance' })
   renderer.outputColorSpace = SRGBColorSpace
   renderer.toneMapping = ACESFilmicToneMapping
   renderer.domElement.style.cssText = 'display:block;width:100%;height:100%'
@@ -90,7 +91,8 @@ export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): S
 
   const scene = new Scene()
   const camera = new PerspectiveCamera(opts.fov ?? 60, 1, 0.1, opts.far ?? 400)
-  let maxDpr = opts.maxDpr ?? 2
+  const maxDpr = opts.maxDpr ?? 2
+  const quality = new QualityGovernor()
 
   const composer = new EffectComposer(renderer)
   composer.addPass(new RenderPass(scene, camera))
@@ -98,7 +100,16 @@ export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): S
     opts.bloom && !prefersReducedMotion()
       ? new UnrealBloomPass(new Vector2(1, 1), opts.bloom.strength, opts.bloom.radius, opts.bloom.threshold)
       : null
-  if (bloom) composer.addPass(bloom)
+  if (bloom) {
+    // Blur at no more than CSS resolution (the pass halves it again): retina
+    // detail is invisible in a glow, and this is the most fill-heavy pass.
+    const setSize = bloom.setSize.bind(bloom)
+    bloom.setSize = (w, h) => {
+      const k = Math.min(1, 1 / renderer.getPixelRatio())
+      setSize(Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k)))
+    }
+    composer.addPass(bloom)
+  }
   const punch = new ShaderPass(PunchShader)
   composer.addPass(punch)
   composer.addPass(new OutputPass())
@@ -123,6 +134,8 @@ export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): S
     },
     destroy() {
       observer.disconnect()
+      canvas.removeEventListener('webglcontextlost', onLost)
+      canvas.removeEventListener('webglcontextrestored', fit)
       composer.dispose()
       renderer.dispose()
       root.remove()
@@ -134,33 +147,32 @@ export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): S
     const h = Math.max(1, root.clientHeight)
     view.width = w
     view.height = h
-    const dpr = Math.min(maxDpr, window.devicePixelRatio || 1)
+    const level = quality.current
+    const dpr = pickDpr(window.devicePixelRatio, Math.min(maxDpr, level.dpr), w, h)
+    if (bloom) bloom.enabled = level.bloom
     renderer.setPixelRatio(dpr)
     renderer.setSize(w, h, false)
     composer.setPixelRatio(dpr)
     composer.setSize(w, h)
-    // Bloom at half resolution: it's blurry anyway.
-    bloom?.resolution.set(w / 2, h / 2)
+    quality.restart()
     camera.aspect = w / h
     camera.updateProjectionMatrix()
     for (const l of listeners) l(w, h)
   }
 
-  let frames = 0
-  let slowTime = 0
   function render(dt: number) {
-    if (frames < PROBE_FRAMES) {
-      frames++
-      slowTime += dt
-      if (frames === PROBE_FRAMES && slowTime / PROBE_FRAMES > SLOW_FRAME) {
-        if (bloom) bloom.enabled = false
-        maxDpr = 1
-        fit()
-      }
-    }
+    if (quality.sample(dt)) fit()
     punch.uniforms.amount.value = view.glitch
     composer.render(dt)
   }
+
+  // The GPU dropped our context (usually memory pressure). three.js keeps the
+  // scene and re-uploads it on restore; we come back one quality level lower
+  // so it is less likely to happen again, with buffers sized for that level.
+  const canvas = renderer.domElement
+  const onLost = () => quality.stepDown()
+  canvas.addEventListener('webglcontextlost', onLost)
+  canvas.addEventListener('webglcontextrestored', fit)
 
   const observer = new ResizeObserver(fit)
   observer.observe(root)

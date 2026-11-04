@@ -34,10 +34,8 @@ const t = translator({
     'Trượt và ghép ô thành những con số khổng lồ. Đập đá, nối combo, đua với máy hoặc tối đa 4 người bạn.',
   'Dodge down a neon rift. Read the danger, graze it for points, go Phantom and phase through.':
     'Né trong khe nứt neon. Đọc nguy hiểm, sượt qua để ghi điểm, hóa Bóng ma và xuyên qua.',
-  'Guard the core from four sides. Parry at the last instant, let the gold sparks in, unleash Nova.':
-    'Bảo vệ lõi từ bốn phía. Đỡ vào khoảnh khắc cuối, để tia sáng vàng bay vào, bung Nova.',
-  'Dance across a neon grid to the beat. Read the glowing tiles, dodge on the drop, grab the notes.':
-    'Nhảy trên lưới neon theo nhịp. Đọc ô phát sáng, né đúng nhịp, nhặt nốt nhạc.',
+  'Dance across a neon grid to the beat. Read the warned tiles, dodge on the drop, grab the notes. Solo or with up to 4 friends.':
+    'Nhảy trên lưới neon theo nhịp. Đọc ô cảnh báo, né đúng nhịp, nhặt nốt nhạc. Chơi một mình hoặc tối đa 4 người.',
   '{n} player': '{n} người chơi',
   '{n} players': '{n} người chơi',
   Play: 'Chơi',

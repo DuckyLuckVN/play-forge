@@ -1,7 +1,7 @@
 // Numbers shown to the player: survival time and the run summary.
 import type { SummaryRow } from '@forge/app'
 import type { Params } from '@forge/core/i18n'
-import { TICK_RATE, type StrideState } from './sim'
+import { dancerOf, TICK_RATE, type StrideState } from './sim'
 
 export function timeText(ticks: number): string {
   const total = Math.floor(ticks / TICK_RATE)
@@ -10,14 +10,16 @@ export function timeText(ticks: number): string {
 
 type T = (en: string, params?: Params) => string
 
-/** Six cells for the results screen (score and best are in the headline). */
-export function summaryRows(s: StrideState, t: T): SummaryRow[] {
+/** Six cells for one player's results (score and rank are in the headline). Empty for spectators. */
+export function summaryRows(s: StrideState, t: T, id: string): SummaryRow[] {
+  const d = dancerOf(s, id)
+  if (!d) return []
   return [
-    { label: t('Time'), value: timeText(s.diedAt ?? s.tick) },
-    { label: t('Top tempo'), value: `${s.stats.topBpm} BPM` },
-    { label: t('Perfect steps'), value: String(s.stats.perfects), highlight: s.stats.perfects >= 100 },
-    { label: t('Notes'), value: String(s.stats.notes) },
-    { label: t('Dodges'), value: String(s.stats.dodges), highlight: s.stats.dodges >= 30 },
-    { label: t('Best groove'), value: String(s.vitals.bestCombo), highlight: s.vitals.bestCombo >= 32 },
+    { label: t('Time'), value: timeText(d.diedAt ?? s.tick) },
+    { label: t('Top tempo'), value: `${d.stats.topBpm} BPM` },
+    { label: t('Perfect steps'), value: String(d.stats.perfects), highlight: d.stats.perfects >= 100 },
+    { label: t('Chains'), value: String(d.stats.chains), highlight: d.stats.chains >= 5 },
+    { label: t('Dodges'), value: String(d.stats.dodges), highlight: d.stats.dodges >= 30 },
+    { label: t('Best groove'), value: String(d.vitals.bestCombo), highlight: d.vitals.bestCombo >= 32 },
   ]
 }

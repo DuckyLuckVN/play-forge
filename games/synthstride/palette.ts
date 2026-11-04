@@ -8,6 +8,8 @@ export const C = {
   playerGlow: '#5ff3ff',
   warn: '#ff3d8e',
   strike: '#ff2f6e',
+  /** Off-beat strikes land between beats: orange, not pink. */
+  offbeat: '#ff9a3d',
   note: '#ffd84d',
   drop: '#b48cff',
   perfect: '#7dffb0',

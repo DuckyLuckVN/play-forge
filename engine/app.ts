@@ -75,14 +75,24 @@ export interface GameAppOptions<S, I> {
   bumpScores?: boolean
   /** End-of-match headline, from the local player's point of view. */
   outcome?(state: S, selfId: string): Outcome
-  /** Optional stat grid under the headline on the solo results screen. */
+  /** Optional stat grid under the headline on the results screen (solo, and your own in a room). */
   summary?(state: S, selfId: string): SummaryRow[]
+  /**
+   * Show a ranked list (from `scores`, highest first) on a room's results
+   * screen. Default false: games with their own winner rules keep the seats only.
+   */
+  ranking?: boolean
   /**
    * Heavy setup to finish before play can start (e.g. building a 3D scene and
    * compiling its shaders). Starts at page load; the start buttons show
    * "Loading…" until it settles. A failed preload still lets players in.
    */
   preload?(): Promise<unknown>
+  /**
+   * Extra controls on the start screen, under the option pickers (e.g. a
+   * timing calibration button). Called each time the menu is drawn.
+   */
+  menuExtras?(): HTMLElement | null
 }
 
 const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -618,6 +628,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
           h('label', { class: 'pf-field', htmlFor: 'pf-name' }, 'Your name', name),
         ),
         menuOptions(),
+        opts.menuExtras?.() ?? null,
         h('div', { class: 'pf-row' }, def.minPlayers <= 1 && solo, online && create),
         online && h('div', { class: 'pf-or', textContent: "or join a friend's room" }),
         online && h('div', { class: 'pf-row' }, code, joinBtn),
@@ -777,6 +788,28 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     )
   }
 
+  /** Results ranking: #1 first, each in their seat colour, you highlighted. */
+  function rankList(s: Session<S, I>) {
+    if (!s.state || !opts.scores) return null
+    const lines = [...opts.scores(s.state)].sort((a, b) => b.score - a.score)
+    return h(
+      'ol',
+      { class: 'pf-ranking' },
+      ...lines.map((line, i) => {
+        const p = s.lobby.players.find((q) => q.id === line.id)
+        const row = h(
+          'li',
+          { class: line.id === s.selfId ? 'self' : '' },
+          h('span', { class: 'pf-rank', textContent: `#${i + 1}` }),
+          h('span', { class: 'pf-rank-name', textContent: p?.name ?? '?' }),
+          h('span', { class: 'pf-rank-score', textContent: line.score.toLocaleString() }),
+        )
+        if (p) row.style.setProperty('--c', playerColor(p.slot))
+        return row
+      }),
+    )
+  }
+
   function showRoom(s: Session<S, I>) {
     const finished = s.phase === 'finished'
     const outcome = finished && s.state && opts.outcome?.(s.state, s.selfId)
@@ -823,6 +856,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         outcome
           ? h('p', { class: 'pf-headline', textContent: outcome.headline })
           : h('h2', { class: 'pf-heading', textContent: `${opts.title} room` }),
+        finished && opts.ranking && rankList(s),
+        finished && s.state && opts.summary && summaryGrid(opts.summary(s.state, s.selfId)),
         roomCodeBox(),
         seats(s),
         optionPickers(

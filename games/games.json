@@ -30,15 +30,9 @@
     "players": "1"
   },
   {
-    "id": "halo-guard",
-    "title": "Halo Guard",
-    "description": "Guard the core from four sides. Parry at the last instant, let the gold sparks in, unleash Nova.",
-    "players": "1"
-  },
-  {
     "id": "synthstride",
     "title": "Synthstride",
-    "description": "Dance across a neon grid to the beat. Read the glowing tiles, dodge on the drop, grab the notes.",
-    "players": "1"
+    "description": "Dance across a neon grid to the beat. Read the warned tiles, dodge on the drop, grab the notes. Solo or with up to 4 friends.",
+    "players": "1–4"
   }
 ]

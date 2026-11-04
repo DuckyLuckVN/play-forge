@@ -1,4 +1,4 @@
-// Screen-space HUD for 2D reaction games (Halo Guard, Synthstride): hearts and
+// Screen-space HUD for 2D reaction games (e.g. Synthstride): hearts and
 // combo multiplier up top; a bottom-centre cluster (score | skill ring with its
 // key hint | a second readout); floating text, banners and red edge flashes.
 // Draws in whatever units the canvas uses. Import from '@forge/reflex/hud2d'

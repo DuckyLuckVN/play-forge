@@ -28,5 +28,11 @@
     "title": "Phantom Drift",
     "description": "Dodge down a neon rift. Read the danger, graze it for points, go Phantom and phase through.",
     "players": "1"
+  },
+  {
+    "id": "synthstride",
+    "title": "Synthstride",
+    "description": "Dance across a neon grid to the beat. Read the warned tiles, dodge on the drop, grab the notes. Solo or with up to 4 friends.",
+    "players": "1–4"
   }
 ]

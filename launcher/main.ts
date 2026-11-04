@@ -6,7 +6,8 @@ import { LOUNGE } from '@forge/audio/tracks'
 import { translator } from '@forge/core/i18n'
 import { audioMenu } from '@forge/ui/audio-menu'
 import { langMenu } from '@forge/ui/lang-menu'
-import { h } from '@forge/ui/dom'
+import { h, icon } from '@forge/ui/dom'
+import { icons } from '@forge/ui/icons'
 import { applyTheme } from '@forge/ui/theme'
 import games from '../games/games.json'
 
@@ -34,6 +35,8 @@ const t = translator({
     'Trượt và ghép ô thành những con số khổng lồ. Đập đá, nối combo, đua với máy hoặc tối đa 4 người bạn.',
   'Dodge down a neon rift. Read the danger, graze it for points, go Phantom and phase through.':
     'Né trong khe nứt neon. Đọc nguy hiểm, sượt qua để ghi điểm, hóa Bóng ma và xuyên qua.',
+  'Dance across a neon grid to the beat. Read the warned tiles, dodge on the drop, grab the notes. Solo or with up to 4 friends.':
+    'Nhảy trên lưới neon theo nhịp. Đọc ô cảnh báo, né đúng nhịp, nhặt nốt nhạc. Chơi một mình hoặc tối đa 4 người.',
   '{n} player': '{n} người chơi',
   '{n} players': '{n} người chơi',
   Play: 'Chơi',
@@ -68,11 +71,8 @@ const shelf = h(
         { class: 'lc-game-body' },
         h('h2', { textContent: g.title }),
         h('p', { textContent: t(g.description) }),
-        h('span', {
-          class: 'lc-players',
-          textContent: t(g.players === '1' ? '{n} player' : '{n} players', { n: g.players }),
-        }),
       ),
+      gameMeta(g.players),
       h('span', { class: 'pf-btn primary', textContent: t('Play') }),
     )
     card.style.setProperty('--i', String(i))
@@ -80,6 +80,16 @@ const shelf = h(
     return card
   }),
 )
+
+/** Card footer: the player count, one line, pinned above the button so every card lines up. */
+function gameMeta(players: string) {
+  return h(
+    'div',
+    { class: 'lc-meta' },
+    icon(icons.users),
+    t(players === '1' ? '{n} player' : '{n} players', { n: players }),
+  )
+}
 
 const steps = [
   ['Pick a game', 'Everything runs in your browser. Nothing to install, no accounts.'],

@@ -47,6 +47,28 @@ describe('Session', () => {
     return s
   }
 
+  it('sends guests the netView of the state, while the host keeps the full state', async () => {
+    const r = room()
+    type Secret = Counter & { hostOnly?: string }
+    const def = {
+      ...counter,
+      setup: (players: Parameters<typeof counter.setup>[0]) => ({
+        ...counter.setup(players, 0, {}),
+        hostOnly: 'x',
+      }),
+      netView: ({ hostOnly: _, ...rest }: Secret) => rest,
+    } as GameDefinition<Counter, number>
+    const host = join(r, { host: true, playerId: 'host' }, def)
+    const guest = join(r, { playerId: 'guest' }, def)
+    await until(() => guest.lobby.players.length === 2)
+    guest.setReady(true)
+    await until(() => host.canStart)
+    host.start()
+    await until(() => guest.state !== null && (guest.state as Counter).ticks > 0)
+    expect((host.state as Secret).hostOnly).toBe('x')
+    expect((guest.state as Secret).hostOnly).toBeUndefined()
+  })
+
   it('runs a host-authoritative match between two peers', async () => {
     const r = room()
     const host = join(r, { host: true, playerId: 'host' })

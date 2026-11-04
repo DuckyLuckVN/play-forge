@@ -13,6 +13,7 @@ Fun mini-games to play with friends: solo, on one device, or online. No accounts
 | [Caro](https://duckyluckvn.github.io/play-forge/games/caro/) | 1–2 | Five in a row. Play the computer, a friend on one device, or online. Draw on the board together. |
 | [Fuse](https://duckyluckvn.github.io/play-forge/games/fuse/) | 1–4 | Slide and fuse tiles into huge numbers. Smash rocks, chain combos, race the computer or up to 4 friends. |
 | [Phantom Drift](https://duckyluckvn.github.io/play-forge/games/phantom-drift/) | 1 | Dodge down a neon rift. Read the danger, graze it for points, go Phantom and phase through. |
+| [Synthstride](https://duckyluckvn.github.io/play-forge/games/synthstride/) | 1–4 | Dance across a neon grid to the beat. Read the warned tiles, dodge on the drop, grab the notes. Solo or with up to 4 friends. |
 <!-- games:end -->
 
 **Online with friends:** click **Create room** and share the 5-letter code or the invite link.
@@ -73,7 +74,7 @@ scripts/     single-file build and README table generator
 
 `games/snake` is the reference for rendering, effects and input.
 
-Solo-only games set `maxPlayers: 1`: the start screen then shows just **Play**, with no rooms. Reaction games can reuse `engine/reflex` (difficulty ramp, telegraph timing, timing windows) and `bestScores()` for personal bests (see `games/phantom-drift`).
+Solo-only games set `maxPlayers: 1`: the start screen then shows just **Play**, with no rooms. Reaction games can reuse `engine/reflex` (difficulty ramp, telegraph timing, timing windows) and `bestScores()` for personal bests (see `games/phantom-drift`). `@forge/reflex/vitals` adds hearts, hit invulnerability, regen and combo multipliers; `@forge/reflex/hud2d` is a ready-made 2D HUD (hearts, score, skill ring with key hint, multiplier, banners), used by Synthstride. Games can add their own controls to the start screen with `menuExtras()` (Synthstride's timing calibration). Rhythm or timing-critical online games can use `TickClock` (`@forge/net/clock`): a jitter-free local estimate of the host's tick, for scheduling audio and timestamping inputs (Synthstride sends `step@tick:seq` and the host judges and lag-compensates from that). `GameDefinition.netView()` trims host-only data from what guests receive each tick, and `ranking: true` adds a ranked list (plus your own `summary`) to a room's results screen. Set `music: null` when a game makes its own soundtrack (Synthstride plays its music from the sim's beat events, so it can never drift from the gameplay).
 
 3D games import `@forge/render3d` (three.js scene with bloom and automatic quality drop, HUD overlay, 3D particles, mesh pool). It is kept out of `@forge` so 2D games don't ship three.js. Phantom Drift also shows the pattern of a 2D fallback when WebGL2 is missing.
 

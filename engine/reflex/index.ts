@@ -1,5 +1,5 @@
-// Small, pure helpers shared by the reaction games (Phantom Drift, Halo Guard,
-// Synthstride). All timing is in simulation ticks so it stays deterministic.
+// Small, pure helpers shared by the reaction games (Phantom Drift, Synthstride).
+// All timing is in simulation ticks so it stays deterministic.
 
 import { clamp01, lerp } from '../fx/tween'
 

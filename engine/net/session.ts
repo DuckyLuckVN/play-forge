@@ -46,6 +46,12 @@ export interface GameDefinition<S, I> {
   /** Advance one step. May mutate and return `state`. */
   tick(state: S, inputs: InputEvent<I>[]): S
   isFinished(state: S): boolean
+  /**
+   * What guests receive each tick (default: the whole state). Leave out
+   * host-only bookkeeping to save bandwidth; guests only render, so they must
+   * not need it. The host itself always keeps the full state.
+   */
+  netView?(state: S): unknown
   /** Called on the host when a player is gone for good mid-game. */
   removePlayer?(state: S, playerId: string): void
 }
@@ -435,7 +441,7 @@ export class Session<S, I> {
       this.playerOfPeer.set(peer, id)
       if (players.length >= this.def.maxPlayers) {
         // Room is full: they still receive the lobby and watch.
-        if (this.state) this.transport.send(CH.state, this.state, peer)
+        if (this.state) this.transport.send(CH.state, this.netState(), peer)
         this.transport.send(CH.lobby, this.lobby, peer)
         return
       }
@@ -445,7 +451,7 @@ export class Session<S, I> {
       players.sort((a, b) => a.slot - b.slot)
     }
     // State first, so the lobby (e.g. a results screen) can render with it.
-    if (this.state) this.transport.send(CH.state, this.state, peer)
+    if (this.state) this.transport.send(CH.state, this.netState(), peer)
     this.broadcastLobby()
   }
 
@@ -536,7 +542,12 @@ export class Session<S, I> {
   }
 
   private broadcastState() {
-    this.transport.send(CH.state, this.state)
+    this.transport.send(CH.state, this.netState())
+  }
+
+  /** The state as guests get it (see GameDefinition.netView). */
+  private netState() {
+    return this.state && this.def.netView ? this.def.netView(this.state) : this.state
   }
 
   private setState(state: S) {

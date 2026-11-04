@@ -1,3 +1,4 @@
+import { pickDpr } from '../render3d/quality'
 import { PLAYER_COLORS } from '../ui/theme'
 import { Particles } from './particles'
 import { prefersReducedMotion } from './tween'
@@ -12,10 +13,11 @@ export function celebrate(colors: string[] = PLAYER_COLORS): void {
   canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:30'
   document.body.append(canvas)
   const ctx = canvas.getContext('2d')!
-  // Confetti is soft: past 2× density it only costs fill time on big phone screens.
-  const dpr = Math.min(2, window.devicePixelRatio || 1)
   const w = innerWidth
   const h = innerHeight
+  // Confetti is soft: extra density only costs fill time and GPU memory on big
+  // screens (it plays over a live game), so it shares the 3D pixel budget.
+  const dpr = pickDpr(window.devicePixelRatio, 2, w, h)
   canvas.width = w * dpr
   canvas.height = h * dpr
   ctx.scale(dpr, dpr)

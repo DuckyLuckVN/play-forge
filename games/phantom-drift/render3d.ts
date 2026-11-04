@@ -138,9 +138,10 @@ export class Drift3D implements DriftView {
 
   constructor() {
     this.parking = document.createElement('div')
-    // Real size so warm-up renders allocate real buffers, but never seen.
+    // About the stage's size, so warm-up renders allocate near-final buffers
+    // (no big reallocation when a run starts), but never seen.
     this.parking.style.cssText =
-      'position:fixed;left:-10000px;top:0;width:800px;height:600px;pointer-events:none;opacity:0'
+      'position:fixed;left:-10000px;top:0;width:100vw;height:85vh;pointer-events:none;opacity:0'
     document.body.appendChild(this.parking)
     this.view = createScene3D(this.parking, {
       fov: 58,
@@ -158,10 +159,11 @@ export class Drift3D implements DriftView {
     this.sunLight.position.set(3, 9, 7)
     scene.add(this.hemi, this.sunLight)
 
-    this.ghostLight.position.set(0, 1, 0.6)
     this.ghost.root.scale.setScalar(0.8)
-    this.ghost.root.add(this.ghostLight)
-    scene.add(this.ghost.root)
+    // The light lives in the scene, not on the ghost: hiding a light changes
+    // the light count, which recompiles every lit shader (a ~300 ms freeze
+    // at the first death). It follows the ghost and dims to 0 instead.
+    scene.add(this.ghost.root, this.ghostLight)
     for (let i = 0; i < AFTERIMAGES; i++) {
       const m = makeAfterimage()
       this.afterimages.push(m)
@@ -512,6 +514,7 @@ export class Drift3D implements DriftView {
       root.position.set(gx, 0.18 + t * 0.3, 0)
       root.scale.setScalar(0.8 * (1 + 0.35 * ease.inCubic(t)))
       body.visible = Math.floor(this.time * 30) % 2 === 0
+      this.followLight()
       mat.uniforms.core.value.set('#ffffff')
       mat.uniforms.rim.value.set(C.shard)
       return
@@ -519,6 +522,7 @@ export class Drift3D implements DriftView {
     if (!this.shattered) {
       this.shattered = true
       root.visible = false
+      this.ghostLight.intensity = 0
       const y = root.position.y + 0.9
       this.ghostBits.burst(gx, y, 0, { count: 26, color: '#dff6ff', speed: 7, size: 0.28, life: 1.7 })
       this.fx.burst(gx, y, 0, {
@@ -565,6 +569,13 @@ export class Drift3D implements DriftView {
     ctx.fillRect(0, 0, w, h)
   }
 
+  /** Keep the ghost's glow just above and in front of it. */
+  private followLight() {
+    const { root } = this.ghost
+    const k = root.scale.x
+    this.ghostLight.position.set(root.position.x, root.position.y + k, root.position.z + 0.6 * k)
+  }
+
   private drawGhost(s: DriftState, gx: number, tx: number, phantom: boolean) {
     const { root, body, mat, eyes } = this.ghost
     root.visible = true
@@ -584,6 +595,7 @@ export class Drift3D implements DriftView {
     mat.uniforms.rim.value.copy(WISP_COLOR).lerp(PHANTOM_COLOR, this.phantom)
     this.ghostLight.color.copy(mat.uniforms.rim.value)
     this.ghostLight.intensity = 2.5 + this.phantom * 3
+    this.followLight()
 
     // Afterimages: more of them in Phantom or mid-slide.
     this.history.unshift(gx)

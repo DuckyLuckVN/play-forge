@@ -4,8 +4,8 @@ import { translator, type Dictionary } from '@forge/core/i18n'
 
 export const VI: Dictionary = {
   'Step to the beat. Dodge what lands on it.': 'Bước theo nhịp. Né những gì giáng xuống theo nhịp.',
-  'Step with the arrows or WASD, tap a tile, or swipe. Moves on the beat score and build your groove. Warned tiles show a dashed edge, then stripes on the beat before they strike; a half-moon means between beats. Step through note chains in order. Space or the ring starts Overdrive when full.':
-    'Bước bằng phím mũi tên hoặc WASD, chạm vào ô, hoặc vuốt. Bước đúng nhịp để ghi điểm và tăng groove. Ô cảnh báo có viền nét đứt, rồi có sọc ở nhịp ngay trước khi nổ; ô có hình bán nguyệt nổ giữa hai nhịp. Đi qua chuỗi nốt nhạc theo thứ tự. Space hoặc chạm vòng tròn để bật Overdrive khi đầy.',
+  '←↑↓→ / WASD, tap or swipe: step\n🥁 Step on the beat: points + groove\n⚠️ Dashed → striped → strike · ◐ = between beats\n🎵 Notes in order · ⚡ Space: Overdrive':
+    '←↑↓→ / WASD, chạm hoặc vuốt: bước\n🥁 Bước đúng nhịp: điểm + groove\n⚠️ Nét đứt → sọc → nổ · ◐ = giữa hai nhịp\n🎵 Nốt theo thứ tự · ⚡ Space: Overdrive',
   'Synthstride dance floor': 'Sàn nhảy Synthstride',
   TAP: 'CHẠM',
   PERFECT: 'HOÀN HẢO',

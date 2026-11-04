@@ -264,7 +264,10 @@ createGameApp<StrideState, StrideInput>({
   title: 'Synthstride',
   tagline: t('Step to the beat. Dodge what lands on it.'),
   controls: t(
-    'Step with the arrows or WASD, tap a tile, or swipe. Moves on the beat score and build your groove. Warned tiles show a dashed edge, then stripes on the beat before they strike; a half-moon means between beats. Step through note chains in order. Space or the ring starts Overdrive when full.',
+    `←↑↓→ / WASD, tap or swipe: step
+🥁 Step on the beat: points + groove
+⚠️ Dashed → striped → strike · ◐ = between beats
+🎵 Notes in order · ⚡ Space: Overdrive`,
   ),
   // The soundtrack is played from the game's own beat clock (see scheduleBeat).
   music: null,

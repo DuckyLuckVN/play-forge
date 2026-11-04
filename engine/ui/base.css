@@ -234,6 +234,8 @@ body {
 .pf-lede {
   margin: -6px 0 0;
   color: var(--pf-haze);
+  /* Keep line breaks in multi-line text (e.g. a game's controls). */
+  white-space: pre-line;
 }
 
 .pf-field {
@@ -295,6 +297,8 @@ body {
   color: var(--pf-haze);
   text-align: center;
   font-size: 15px;
+  /* Keep line breaks in multi-line text (e.g. a game's controls). */
+  white-space: pre-line;
 }
 .pf-note.error {
   color: var(--pf-coral);

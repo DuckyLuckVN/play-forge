@@ -64,7 +64,7 @@
 
 .lc-game {
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto 1fr auto auto;
   gap: 14px;
   padding: 12px 12px 14px;
   border-radius: var(--pf-radius-lg);
@@ -108,8 +108,19 @@
   margin: 4px 0 8px;
   color: var(--pf-haze);
 }
-.lc-players {
+/* Footer: the player count on one line, pinned above the button. */
+.lc-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
   font-weight: 600;
+  color: var(--pf-chalk);
+}
+.lc-meta .pf-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--pf-haze);
 }
 .lc-game .pf-btn {
   margin: 0 4px var(--pf-edge);

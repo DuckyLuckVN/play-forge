@@ -428,7 +428,10 @@ export class Juice {
         this.shake.add(0.08)
         return this.play('kill', BRICK_SOUNDS.kill, 0.8)
       case 'pickup':
-        this.particles.burst(e.x, e.y, { count: 8, color: e.kind === 'ball' ? theme.chalk : theme.yolk })
+        this.particles.burst(e.x, e.y, {
+          count: e.kind === 'skill' || e.kind === 'socket' ? 18 : 8,
+          color: e.kind === 'ball' ? theme.chalk : e.kind === 'skill' ? '#4be3a0' : theme.yolk,
+        })
         return this.play(e.kind, e.kind === 'ball' ? BRICK_SOUNDS.pickupBall : BRICK_SOUNDS.pickupCoin)
       case 'wall':
         return this.play('wall', BRICK_SOUNDS.wall)
@@ -564,6 +567,16 @@ export class Juice {
         this.growFx = { axis: e.axis, age: 0 }
         this.show(e.axis === 'col' ? t('WIDER!') : t('TALLER!'), 0.6)
         return playSound(BRICK_SOUNDS.secondWind)
+      case 'bonus':
+        this.show(t('BONUS ROUND!'), 0.5)
+        return playSound(BRICK_SOUNDS.jackpot)
+      case 'slot':
+        this.show(t('NEW SKILL SLOT!'), 1)
+        this.shake.add(0.3)
+        celebrate([theme.yolk, '#4be3a0'])
+        return playSound(BRICK_SOUNDS.allClear)
+      case 'bonusMiss':
+        return playSound(SPECIAL_SOUNDS.fizzle)
       case 'jackpot':
         this.show(t('JACKPOT ROW!'), 0.4)
         return playSound(BRICK_SOUNDS.jackpot)

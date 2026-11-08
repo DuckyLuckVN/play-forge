@@ -36,5 +36,7 @@ export const icons = {
   users: svg(
     '<circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c.5-3 2.8-4.5 5.5-4.5s5 1.5 5.5 4.5"/><path d="M15.5 6a3 3 0 0 1 0 5.5M17.5 14.8c1.7.6 2.7 2 3 4.2"/>',
   ),
+  fullscreen: svg('<path d="M4.5 9V4.5H9M15 4.5h4.5V9M19.5 15v4.5H15M9 19.5H4.5V15"/>'),
+  fullscreenExit: svg('<path d="M9 4.5V9H4.5M19.5 9H15V4.5M15 19.5V15h4.5M4.5 15H9v4.5"/>'),
   crown: svg('<path d="M4 17.5h16M5 15 4 7.5l4.5 3.5L12 5.5l3.5 5.5L20 7.5 19 15z"/>'),
 }

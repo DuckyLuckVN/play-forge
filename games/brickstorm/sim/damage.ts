@@ -1,6 +1,6 @@
 // The one damage pipeline: every way a brick can lose hp goes through here, so
 // kills, coins, XP and on-death effects are counted exactly once.
-import { runMods, xpToNext } from './boosts'
+import { runMods, xpToNext, type Mods } from './boosts'
 import { random, randomInt } from '@forge/core/rng'
 import { CELL, COMBO_TIERS, KILL_XP, XP_COMBO_TIERS, XP_PER_BRICK } from './config'
 import { dims } from './dims'
@@ -56,8 +56,8 @@ export function damageBrick(
   // Armour shrugs off plain ball hits; fire, explosions, lightning and lasers get through.
   const before = brick.hp
   brick.hp -= brick.kind === 'armored' && source === 'ball' ? Math.min(amount, 1) : amount
-  // XP for the share of the brick knocked off; overkill earns nothing.
-  earnXp(s, (XP_PER_BRICK * (before - Math.max(0, brick.hp))) / brick.maxHp)
+  // XP for the share of the brick knocked off; overkill earns nothing. A bonus round's ghost pays none.
+  if (!brick.ghost) earnXp(s, (XP_PER_BRICK * (before - Math.max(0, brick.hp))) / brick.maxHp)
   if (brick.role) bossRoleHit(s, brick, amount, source, hit.face)
   if (brick.hp <= 0) killBrick(s, brick, depth)
 }
@@ -67,9 +67,15 @@ export function gainXp(s: RunState, amount: number): void {
   while (s.xp >= xpToNext(s.level)) {
     s.xp -= xpToNext(s.level)
     s.level++
-    s.pendingPicks++
+    gainPoint(s)
     s.events.push({ type: 'levelUp' })
   }
+}
+
+/** A skill point, and its orb to drop in with the next row. */
+function gainPoint(s: RunState): void {
+  s.pendingPicks++
+  s.orbsDue = (s.orbsDue ?? 0) + 1
 }
 
 export function killBrick(s: RunState, brick: Brick, depth: number): void {
@@ -79,6 +85,12 @@ export function killBrick(s: RunState, brick: Brick, depth: number): void {
   s.bricks.splice(i, 1)
   if (brick.role) bossRoleKill(s, brick)
   const mods = runMods(s)
+  if (brick.ghost) {
+    // A bonus round's ghost: it just breaks (Aftershock still spreads), no coins, XP or kill.
+    const { x, y } = cellCenter(brick.col, brick.row)
+    s.events.push({ type: 'kill', id: brick.id, x, y, maxHp: brick.maxHp, kind: brick.kind, coins: 0 })
+    return aftershock(s, brick, depth, mods)
+  }
   // Only some bricks drop a coin; gold always pays, triple.
   const base = Math.max(1, Math.round(comboMultiplier(comboPower(s)) * mods.coinMult))
   let coins = mods.midas
@@ -90,12 +102,16 @@ export function killBrick(s: RunState, brick: Brick, depth: number): void {
   const { x, y } = cellCenter(brick.col, brick.row)
   s.events.push({ type: 'kill', id: brick.id, x, y, maxHp: brick.maxHp, kind: brick.kind, coins })
   onDeath(s, brick, depth)
-  if (mods.aftershock) {
-    const near = oncePerBoss(
-      s.bricks.filter((b) => Math.abs(b.col - brick.col) + Math.abs(b.row - brick.row) === 1),
-    )
-    for (const b of near) damageBrick(s, b, mods.aftershock * mods.damageMult, 'blast', depth + 1)
-  }
+  aftershock(s, brick, depth, mods)
+}
+
+/** Aftershock: a destroyed brick hurts its 4 neighbours. */
+function aftershock(s: RunState, brick: Brick, depth: number, mods: Mods): void {
+  if (!mods.aftershock) return
+  const near = oncePerBoss(
+    s.bricks.filter((b) => Math.abs(b.col - brick.col) + Math.abs(b.row - brick.row) === 1),
+  )
+  for (const b of near) damageBrick(s, b, mods.aftershock * mods.damageMult, 'blast', depth + 1)
 }
 
 /** Share of ordinary bricks that drop a coin. */
@@ -124,7 +140,7 @@ function onDeath(s: RunState, brick: Brick, depth: number): void {
     case 'mystery': {
       const reward = MYSTERY_REWARDS[randomInt(s.rng, MYSTERY_REWARDS.length)]
       if (reward === 'balls') s.pendingBalls += 3
-      else if (reward === 'pick') s.pendingPicks++
+      else if (reward === 'pick') gainPoint(s)
       else if (reward === 'coins') s.coins += 50
       else s.fireCharges += 3
       s.events.push({ type: 'mystery', x, y, reward })

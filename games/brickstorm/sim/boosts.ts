@@ -102,9 +102,9 @@ function rollTier(s: RunState): Rarity {
 
 export type Mods = ReturnType<typeof modsOf>
 
-/** The run's stats: its skills and its hero. */
-export function runMods(s: Pick<RunState, 'boosts'> & { hero?: HeroId }): Mods {
-  return modsOf(s.boosts, s.hero)
+/** The run's stats: its skills (as the current volley has them) and its hero. */
+export function runMods(s: Pick<RunState, 'boosts' | 'volleyBoosts'> & { hero?: HeroId }): Mods {
+  return modsOf(s.volleyBoosts ?? s.boosts, s.hero)
 }
 
 /**
@@ -159,7 +159,7 @@ export function xpTotal(level: number, xp: number): number {
   return XP_BASE * level + (XP_STEP * level * (level - 1)) / 2 + xp
 }
 
-/** Lasting boosts the player can hold this many of; each boss beaten adds one. */
+/** Lasting boosts the player can hold this many of; each boss bonus round won adds one. */
 export const BASE_SLOTS = 3
 /** Share of offers drawn from owned boosts once every slot is taken. */
 const OWNED_LEAN = 0.3
@@ -168,8 +168,15 @@ export const AFFINITY_CHANCE = 0.2
 /** Boosts that pay out once when picked (+2 balls, Double Down), so they take no slot. */
 const INSTANT: readonly BoostId[] = ['balls', 'double']
 
-export function boostSlots(s: Pick<RunState, 'bossesBeaten'> & { hero?: HeroId }): number {
-  return BASE_SLOTS + (s.bossesBeaten ?? 0) + (heroOf(s).slots ?? 0)
+type SlotState = Pick<RunState, 'bossesBeaten' | 'extraSlots'> & { hero?: HeroId }
+
+/** Slots won so far. Runs saved before bonus rounds got one per boss beaten. */
+export function slotsWon(s: SlotState): number {
+  return s.extraSlots ?? s.bossesBeaten ?? 0
+}
+
+export function boostSlots(s: SlotState): number {
+  return BASE_SLOTS + slotsWon(s) + (heroOf(s).slots ?? 0)
 }
 
 /** The boosts that fill slots, in the order they were first picked. */
@@ -183,10 +190,7 @@ export function slottedBoosts(boosts: RunState['boosts']): BoostId[] {
 }
 
 /** Taking `id` would need a free slot and there is none: the player must drop a boost for it. */
-export function needsReplace(
-  s: Pick<RunState, 'boosts' | 'bossesBeaten'> & { hero?: HeroId },
-  id: BoostId,
-): boolean {
+export function needsReplace(s: Pick<RunState, 'boosts'> & SlotState, id: BoostId): boolean {
   if (INSTANT.includes(id) || (s.boosts[id] ?? 0) > 0) return false
   return slottedBoosts(s.boosts).length >= boostSlots(s)
 }
@@ -255,8 +259,8 @@ const HOLD_SHARE = 0.75
 const HOLD_MIN = 5
 
 /**
- * What taking `id` now costs: free for the run's first level-up and for boss
- * and mystery rewards; otherwise by rarity and strength, rising each level, and
+ * What taking `id` now costs: free for the run's first level-up and for free
+ * picks (Lucky Start); otherwise by rarity and strength, rising each level, and
  * more for an upgrade of a boost you own.
  */
 export function pickCost(s: RunState, id: BoostId): number {
@@ -300,9 +304,24 @@ export function openPicks(s: RunState): boolean {
   return true
 }
 
-/** "Later": back to aiming, keeping the points and the offers. */
+/**
+ * A ball touched a skill orb: with a point to spend, the volley pauses on the
+ * pick screen (from aiming, e.g. the Vacuum helper, it simply opens).
+ */
+export function orbPicks(s: RunState): boolean {
+  if (s.phase === 'aim') return openPicks(s)
+  if (s.phase !== 'volley' || s.pendingPicks <= 0) return false
+  s.phase = 'pick'
+  s.midVolley = true
+  if (!s.choices.length) s.choices = rollChoices(s)
+  return true
+}
+
+/** "Later": back to aiming (or the paused volley), keeping the points and the offers. */
 export function closePicks(s: RunState): void {
-  if (s.phase === 'pick') s.phase = 'aim'
+  if (s.phase !== 'pick') return
+  s.phase = s.midVolley ? 'volley' : 'aim'
+  s.midVolley = false
 }
 
 /** Passes on this pick: no boost, on to what's next. */
@@ -317,10 +336,11 @@ export function skipPick(s: RunState): void {
  */
 export function pickBoost(s: RunState, id: BoostId, replace?: BoostId): void {
   if (s.phase !== 'pick' || !s.choices.includes(id)) return
-  if (needsReplace(s, id)) {
-    if (!replace || !slottedBoosts(s.boosts).includes(replace)) return
-    delete s.boosts[replace]
-  }
+  const swap = needsReplace(s, id)
+  if (swap && (!replace || !slottedBoosts(s.boosts).includes(replace))) return
+  // Mid-volley, the volley keeps flying with the skills it started with.
+  if (s.midVolley) s.volleyBoosts ??= { ...s.boosts }
+  if (swap) delete s.boosts[replace!]
   s.boosts[id] = (s.boosts[id] ?? 0) + 1
   if (id === 'balls') s.ballCount += 2
   if (id === 'double') s.doubleVolleys += 3
@@ -337,6 +357,9 @@ function finishPick(s: RunState): void {
   if (s.pendingPicks > 0) {
     // More points: the screen stays open with fresh offers.
     s.choices = rollChoices(s)
+  } else if (s.midVolley) {
+    s.choices = []
+    closePicks(s)
   } else {
     s.choices = []
     // A board growth due this turn comes right after the pick.
@@ -349,6 +372,20 @@ function finishPick(s: RunState): void {
 /** Coins for the next reroll this run: 25, 50, 100… */
 export function rerollCost(s: RunState): number {
   return 25 * 2 ** s.rerollsUsed
+}
+
+/** A skill point can pay for a reroll while another one is left to pick with. */
+export function canRerollWithPoint(s: RunState): boolean {
+  return s.phase === 'pick' && s.pendingPicks >= 2
+}
+
+/** Rerolls the offers for one skill point (a paid one first: free ones are kept for a pick). */
+export function rerollWithPoint(s: RunState): boolean {
+  if (!canRerollWithPoint(s)) return false
+  s.pendingPicks--
+  s.freePicks = Math.min(s.freePicks ?? 0, s.pendingPicks)
+  s.choices = rollChoices(s)
+  return true
 }
 
 /** Rerolls the offered boosts. The caller has already paid (coins or a token). */

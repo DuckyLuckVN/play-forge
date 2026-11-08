@@ -175,11 +175,14 @@ export interface Brick {
   spikes?: Face[]
   /** Not a square: a triangle (named by its right-angle corner) or a round orb. Missing = square. */
   shape?: BrickShape
+  /** A boss bonus round's block: no coins, no XP, never moves, gone when the round ends. */
+  ghost?: boolean
 }
 
 export type BrickShape = 'tri-tl' | 'tri-tr' | 'tri-bl' | 'tri-br' | 'orb'
 
-export type PickupKind = 'ball' | 'coin' | 'fire' | 'laser' | 'heart'
+/** `skill`: a level-up's orb, opens the pick screen. `socket`: a bonus round's prize, a new skill slot. */
+export type PickupKind = 'ball' | 'coin' | 'fire' | 'laser' | 'heart' | 'skill' | 'socket'
 
 export interface Pickup {
   id: number
@@ -252,6 +255,12 @@ export type SimEvent =
   | { type: 'closeOne'; coins: number }
   | { type: 'danger' }
   | { type: 'levelUp' }
+  /** A boss bonus round started: shoot the socket before time runs out. */
+  | { type: 'bonus' }
+  /** The bonus round's socket was hit: the player now has `slots` skill slots. */
+  | { type: 'slot'; slots: number }
+  /** The bonus round ran out of time: no slot. */
+  | { type: 'bonusMiss' }
   | { type: 'turn'; turn: number }
   | { type: 'boss'; noun: string; traits: BossTrait[] }
   /** The boss fell. `ghost` is its body as it was, so the death can be shown after the sim removed it. */
@@ -365,7 +374,16 @@ export interface RunState {
   xp: number
   level: number
   pendingPicks: number
-  /** Of the pending picks, how many are free (boss rewards, Lucky Start). Missing in older saves. */
+  /** Skill orbs from level-ups still to drop in with the next rows. Missing in older saves. */
+  orbsDue?: number
+  /** The pick screen was opened by a skill orb mid-volley: closing it resumes the volley. */
+  midVolley?: boolean
+  /**
+   * The skills the current volley flies with, set when a pick is taken mid-volley:
+   * the new skill counts from the next volley. Cleared when the volley ends.
+   */
+  volleyBoosts?: Partial<Record<BoostId, number>> | null
+  /** Of the pending picks, how many are free (Lucky Start). Missing in older saves. */
   freePicks?: number
   choices: BoostId[]
   /** A boost the player paid to see again at the next level-up. */
@@ -403,8 +421,14 @@ export interface RunState {
   /** Columns the board gained on its left / right for the boss fight; they go once empty. Missing = 0. */
   bossLeft?: number
   bossRight?: number
-  /** Bosses beaten this run; each adds a boost slot. Missing in older saves. */
+  /** Bosses beaten this run (stats). Missing in older saves. */
   bossesBeaten?: number
+  /** Skill slots won in boss bonus rounds. Missing in older saves: then each beaten boss gave one. */
+  extraSlots?: number
+  /** A boss fell: its bonus round opens when the current volley ends. */
+  bonusDue?: boolean
+  /** The boss bonus round in progress: real seconds `left`; `won` once the socket is hit (paused for the news). */
+  bonus?: { left: number; won?: boolean; spawn: boolean } | null
   /** The hero this run is played with. */
   hero: HeroId
   /** Hero health: bricks crashing into the line take it; at 0 the run is over. May be fractional. */

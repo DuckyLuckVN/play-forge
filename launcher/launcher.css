@@ -1,7 +1,7 @@
 .lc-bar {
   position: fixed;
-  top: 12px;
-  right: 16px;
+  top: calc(12px + env(safe-area-inset-top));
+  right: calc(16px + env(safe-area-inset-right));
   z-index: 15;
   display: flex;
   gap: 8px;
@@ -10,7 +10,8 @@
 .lc {
   max-width: 880px;
   margin: 0 auto;
-  padding: 56px 16px 64px;
+  padding: calc(56px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
+    calc(64px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
 }
 
 .lc-head {

@@ -28,6 +28,16 @@ export {
   type Params,
 } from './core/i18n'
 export { bestScores, type BestScores } from './core/best'
+export {
+  bindGestures,
+  GESTURE_IGNORE,
+  GestureClassifier,
+  type BindGestureOptions,
+  type Gesture,
+  type GestureHandlers,
+  type GestureOptions,
+  type Point,
+} from './core/gesture'
 export { bindInput, type Direction, type InputBindings } from './core/input'
 export { startRenderLoop, startTicker } from './core/loop'
 export { random, randomInt, randomSeed, type RngState } from './core/rng'
@@ -54,6 +64,13 @@ export { createCanvas2D, type Canvas2D } from './render2d/canvas'
 export { audioMenu } from './ui/audio-menu'
 export { langMenu } from './ui/lang-menu'
 export { h, icon, iconButton, setLabel, toast } from './ui/dom'
+export {
+  fullscreenButton,
+  isFullscreen,
+  isFullscreenSupported,
+  onFullscreenChange,
+  toggleFullscreen,
+} from './ui/fullscreen'
 export { popover, type Popover, type PopoverOptions } from './ui/popover'
 export { icons } from './ui/icons'
 export { applyTheme, FONT, PLAYER_COLORS, playerColor, theme } from './ui/theme'

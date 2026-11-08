@@ -1,4 +1,14 @@
-import { bestScores, bindInput, createGameApp, playSound, smoothState, startRenderLoop } from '@forge'
+import {
+  bestScores,
+  bindGestures,
+  bindInput,
+  clamp,
+  createGameApp,
+  playSound,
+  smoothState,
+  startRenderLoop,
+  type Point,
+} from '@forge'
 import type { Session } from '@forge/net/session'
 import { webglAvailable } from '@forge/render3d'
 import { meterHit } from './hud'
@@ -24,46 +34,48 @@ async function preload(): Promise<void> {
 /** Set when the last run beat this browser's best (read by `outcome`). */
 let newBest = false
 
-const SWIPE = 24
-
-/** Touch / mouse: tap a side or swipe to move, swipe up or tap the ring to go Phantom. */
-function bindPointer(view: DriftView, send: (i: DriftInput) => void): () => void {
-  const canvas = view.surface
-  let start: { x: number; y: number } | null = null
-  let swiped = false
-  const down = (e: PointerEvent) => {
-    start = { x: e.clientX, y: e.clientY }
-    swiped = false
+/**
+ * Touch / mouse: swipe left/right = one lane, swipe up = Phantom; tap a side to
+ * step or the ring to go Phantom; hold = glide to the lane under your finger
+ * and follow it (one lane per input, so the normal slide speed still applies).
+ */
+function bindPointer(view: DriftView, state: () => DriftState | null, send: (i: DriftInput) => void) {
+  /** Lane asked for during this hold; null = not following (hold began on the ring). */
+  let aim: number | null = null
+  const follow = ({ x }: Point) => {
+    const s = state()
+    if (aim === null || !s) return
+    // Screen x split evenly across the lanes: close enough to both views' tracks.
+    const p = view.hudPoint(x, 0)
+    const want = clamp(Math.floor((p.x / p.w) * s.lanes), 0, s.lanes - 1)
+    aim = clamp(aim, 0, s.lanes - 1)
+    for (; aim < want; aim++) send('right')
+    for (; aim > want; aim--) send('left')
   }
-  const move = (e: PointerEvent) => {
-    if (!start) return
-    const dx = e.clientX - start.x
-    const dy = e.clientY - start.y
-    if (Math.max(Math.abs(dx), Math.abs(dy)) < SWIPE) return
-    if (Math.abs(dx) > Math.abs(dy)) send(dx > 0 ? 'right' : 'left')
-    else if (dy < 0) send('phase')
-    start = { x: e.clientX, y: e.clientY } // chain swipes in one drag
-    swiped = true
+  const onRing = ({ x, y }: Point) => {
+    const p = view.hudPoint(x, y)
+    return meterHit(p.x, p.y, p.w, p.h)
   }
-  const up = (e: PointerEvent) => {
-    if (start && !swiped) {
-      const { x, y, w, h } = view.hudPoint(e.clientX, e.clientY)
-      send(meterHit(x, y, w, h) ? 'phase' : x < w / 2 ? 'left' : 'right')
-    }
-    start = null
-  }
-  const cancel = () => (start = null)
-  canvas.style.touchAction = 'none'
-  canvas.addEventListener('pointerdown', down)
-  canvas.addEventListener('pointermove', move)
-  canvas.addEventListener('pointerup', up)
-  canvas.addEventListener('pointercancel', cancel)
-  return () => {
-    canvas.removeEventListener('pointerdown', down)
-    canvas.removeEventListener('pointermove', move)
-    canvas.removeEventListener('pointerup', up)
-    canvas.removeEventListener('pointercancel', cancel)
-  }
+  return bindGestures(
+    {
+      onSwipe: (dir) => {
+        if (dir === 'left' || dir === 'right') send(dir)
+        else if (dir === 'up') send('phase')
+      },
+      onTap: (pt) => {
+        const p = view.hudPoint(pt.x, pt.y)
+        send(onRing(pt) ? 'phase' : p.x < p.w / 2 ? 'left' : 'right')
+      },
+      onHold: (pt) => {
+        aim = null
+        if (onRing(pt)) return send('phase')
+        aim = state()?.player.target ?? null
+        follow(pt)
+      },
+      onHoldMove: follow,
+    },
+    { target: view.surface },
+  )
 }
 
 function mount(session: Session<DriftState, DriftInput>, stage: HTMLElement): () => void {
@@ -113,7 +125,7 @@ function mount(session: Session<DriftState, DriftInput>, stage: HTMLElement): ()
     },
     send,
   )
-  const stopPointer = bindPointer(view, send)
+  const stopPointer = bindPointer(view, () => session.state, send)
   const stopRender = startRenderLoop((dt) => view.frame(dt))
   return () => {
     offState()
@@ -132,7 +144,7 @@ createGameApp<DriftState, DriftInput>({
   title: 'Phantom Drift',
   tagline: t('Drift through the rift. Dodge, graze, go Phantom.'),
   controls: t(
-    'Move with ←/→ or A/D, swipe, or tap either side. Space, ↑ or swipe up turns you Phantom when the ring is full.',
+    'Move with ←/→ or A/D, swipe, tap either side, or hold and slide. Space, ↑ or swipe up turns you Phantom when the ring is full.',
   ),
   music: DRIFT_TRACK,
   preload,

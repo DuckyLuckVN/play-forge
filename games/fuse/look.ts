@@ -103,12 +103,6 @@ export function cellAt(l: Layout, px: number, py: number): number {
   return cx < 0 || cy < 0 || cx >= l.size || cy >= l.size ? -1 : cy * l.size + cx
 }
 
-/** Swipe direction for a drag, or null if it's too short (a tap). */
-export function swipeDir(dx: number, dy: number, min = 24): 'up' | 'down' | 'left' | 'right' | null {
-  if (Math.max(Math.abs(dx), Math.abs(dy)) < min) return null
-  return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up'
-}
-
 /** "2:05" for a clock in seconds. */
 export const clockText = (seconds: number) => {
   const s = Math.max(0, Math.ceil(seconds))

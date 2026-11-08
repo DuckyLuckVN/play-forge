@@ -1,4 +1,5 @@
 import {
+  bindGestures,
   createCanvas2D,
   createGameApp,
   h,
@@ -13,7 +14,7 @@ import { bestKey, loadBest, saveBest } from './best'
 import type { Dir } from './board'
 import './fuse.css'
 import { t } from './i18n'
-import { cellAt, layoutFor, swipeDir } from './look'
+import { cellAt, layoutFor } from './look'
 import { FuseRenderer, type ViewInput } from './render'
 import { boardOf, fuseGame, isRace, type FuseInput, type FuseState } from './sim'
 import { BOUNCE, comboSound, FUSE_SOUNDS, mergeSound, recordSound } from './sounds'
@@ -167,40 +168,26 @@ function mount(session: Session<FuseState, FuseInput>, stage: HTMLElement): () =
     session.sendInput({ t: 'undo' })
   }
 
-  // ---------- Pointer: swipe (touch or mouse drag) to slide; tap to blast when armed ----------
-  const toLogical = (e: PointerEvent): [number, number] => {
+  // ---------- Pointer: swipe anywhere on the page (touch or mouse drag) to slide; tap the board to blast ----------
+  const toLogical = (x: number, y: number): [number, number] => {
     const r = view.canvas.getBoundingClientRect()
-    return [((e.clientX - r.left) * view.width) / r.width, ((e.clientY - r.top) * view.height) / r.height]
+    return [((x - r.left) * view.width) / r.width, ((y - r.top) * view.height) / r.height]
   }
-  let start: { x: number; y: number; id: number } | null = null
-  const onDown = (e: PointerEvent) => {
-    if (e.button > 0) return
-    e.preventDefault()
-    start = { x: e.clientX, y: e.clientY, id: e.pointerId }
-    view.canvas.setPointerCapture(e.pointerId)
-  }
-  const onMove = (e: PointerEvent) => {
-    if (e.pointerType === 'mouse') ui.hover = cellAt(renderer.layout, ...toLogical(e))
-    if (!start || start.id !== e.pointerId) return
-    // Slide as soon as the swipe is clear, not on release: it feels snappier.
-    const dir = swipeDir(e.clientX - start.x, e.clientY - start.y, 28)
-    if (dir) {
-      start = null
-      slide(dir)
-    }
-  }
-  const onUp = (e: PointerEvent) => {
-    if (!start || start.id !== e.pointerId) return
-    start = null
-    if (ui.armed) blastAt(cellAt(renderer.layout, ...toLogical(e)))
-  }
-  const onCancel = () => (start = null)
-  const onLeave = () => (ui.hover = -1)
-  view.canvas.addEventListener('pointerdown', onDown)
-  view.canvas.addEventListener('pointermove', onMove)
-  view.canvas.addEventListener('pointerup', onUp)
-  view.canvas.addEventListener('pointercancel', onCancel)
-  view.canvas.addEventListener('pointerleave', onLeave)
+  const stopGestures = bindGestures(
+    {
+      onSwipe: slide,
+      onTap: ({ x, y }) => {
+        const r = view.canvas.getBoundingClientRect()
+        const onBoard = x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
+        if (ui.armed && onBoard) blastAt(cellAt(renderer.layout, ...toLogical(x, y)))
+      },
+    },
+    { threshold: 28 },
+  )
+  view.canvas.addEventListener('pointermove', (e) => {
+    if (e.pointerType === 'mouse') ui.hover = cellAt(renderer.layout, ...toLogical(e.clientX, e.clientY))
+  })
+  view.canvas.addEventListener('pointerleave', () => (ui.hover = -1))
 
   // ---------- Keyboard: arrows / WASD slide; B aims a blast (arrows + Enter); U undo ----------
   const onKey = (e: KeyboardEvent) => {
@@ -263,6 +250,7 @@ function mount(session: Session<FuseState, FuseInput>, stage: HTMLElement): () =
   return () => {
     offState()
     offLobby()
+    stopGestures()
     stopRender()
     window.removeEventListener('keydown', onKey)
     view.destroy()

@@ -28,6 +28,16 @@ export {
   type Params,
 } from './core/i18n'
 export { bestScores, type BestScores } from './core/best'
+export {
+  bindGestures,
+  GESTURE_IGNORE,
+  GestureClassifier,
+  type BindGestureOptions,
+  type Gesture,
+  type GestureHandlers,
+  type GestureOptions,
+  type Point,
+} from './core/gesture'
 export { bindInput, type Direction, type InputBindings } from './core/input'
 export { startRenderLoop, startTicker } from './core/loop'
 export { random, randomInt, randomSeed, type RngState } from './core/rng'

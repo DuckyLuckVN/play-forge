@@ -433,6 +433,27 @@ export class Juice {
           color: e.kind === 'ball' ? theme.chalk : e.kind === 'skill' ? '#4be3a0' : theme.yolk,
         })
         return this.play(e.kind, e.kind === 'ball' ? BRICK_SOUNDS.pickupBall : BRICK_SOUNDS.pickupCoin)
+      case 'orbPick':
+        // A skill is coming: a bright pop and a word, so the pick screen at the turn's end is expected.
+        this.particles.burst(e.x, e.y, {
+          count: 26,
+          color: ['#4be3a0', '#ffffff', theme.yolk],
+          speed: 240,
+          life: 0.5,
+        })
+        // Kept clear of the side walls so the whole line shows.
+        this.particles.text(
+          Math.min(Math.max(e.x, 110), this.width - 110),
+          e.y - 14,
+          t('Skill pick after this turn!'),
+          {
+            color: '#4be3a0',
+            size: 15,
+            rise: 44,
+          },
+        )
+        this.shake.add(0.12)
+        return playSound(BRICK_SOUNDS.levelUp)
       case 'wall':
         return this.play('wall', BRICK_SOUNDS.wall)
       case 'fever':

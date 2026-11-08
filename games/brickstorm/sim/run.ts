@@ -20,7 +20,7 @@ import {
   TICK,
 } from './config'
 import { random } from '@forge/core/rng'
-import { boostSlots, levelPower, orbPicks, runMods, slotsWon, type Mods } from './boosts'
+import { boostSlots, levelPower, openOrbPick, orbPicks, runMods, slotsWon, type Mods } from './boosts'
 import { BONUS_TIME, clearBonus, placeBonus } from './bonus'
 import { comboPower, damageBrick, explode, oncePerBoss, zap } from './damage'
 import { baseRows, dims } from './dims'
@@ -123,12 +123,7 @@ export function fire(s: RunState, angle: number): void {
   const a = Math.max(AIM_MIN, Math.min(Math.PI - AIM_MIN, angle))
   const speed = BALL_SPEED * mods.speedMult
   const [vx, vy] = antiStall(Math.cos(a) * speed, -Math.sin(a) * speed)
-  let n = s.ballCount
-  // Double Down is used up as the volley leaves, so one taken mid-volley still doubles 3 more.
-  if (s.doubleVolleys > 0) {
-    n *= 2
-    s.doubleVolleys--
-  }
+  let n = s.doubleVolleys > 0 ? s.ballCount * 2 : s.ballCount
   if (s.surgeNext) n = Math.ceil(n * 1.5)
   s.surgeNext = false
   n += s.rainNext ?? 0
@@ -184,7 +179,7 @@ export function bombBlast(s: RunState, mods = runMods(s)): number {
   return BOMB_BALL_HITS * mods.damageMult * levelPower(s.level) * (s.overcharged ? 2 : 1)
 }
 
-/** The volley is playing: not paused on a skill orb's pick screen or a won bonus round. */
+/** The volley is playing: not paused on a won bonus round's slot news. */
 function live(s: RunState): boolean {
   return s.phase === 'volley' && !s.bonus?.won
 }
@@ -208,7 +203,7 @@ export function step(s: RunState): void {
 
   for (const ball of s.balls) {
     if (ball.status === 'flying') moveBall(s, ball, mods)
-    if (!live(s)) return // a skill orb or the socket paused it
+    if (!live(s)) return // the socket paused it
   }
 
   if (s.balls.every((b) => b.status === 'landed')) endTurn(s)
@@ -388,8 +383,10 @@ export function applyPickup(s: RunState, p: Pickup, mods = runMods(s)): void {
   else if (p.kind === 'coin') s.coins += Math.round(COIN_PICKUP * mods.coinMult)
   else if (p.kind === 'fire') s.fireCharges += 3
   else if (p.kind === 'heart') heal(s, s.maxHp * HEART_HEAL, 'heart')
-  else if (p.kind === 'skill') orbPicks(s)
-  else if (p.kind === 'socket') winSlot(s)
+  else if (p.kind === 'skill') {
+    if (s.phase === 'volley' && s.pendingPicks > 0) s.events.push({ type: 'orbPick', x, y })
+    orbPicks(s)
+  } else if (p.kind === 'socket') winSlot(s)
   else laserRow(s, p.row)
 }
 
@@ -418,7 +415,7 @@ export function rowDrops(s: RunState, mods = runMods(s)): number {
   return mods.glass && s.turn % 10 === 0 ? 2 : 1
 }
 
-/** The balls are home: the next launch point, the balls picked up, and lasers and mid-volley picks settle. */
+/** The balls are home: the next launch point, the balls picked up, and lasers settle. */
 function settleVolley(s: RunState): void {
   s.launchX = s.nextLaunchX ?? s.launchX
   s.ballCount += s.pendingBalls
@@ -430,8 +427,7 @@ function settleVolley(s: RunState): void {
       s.events.push({ type: 'pickupFade', kind: p.kind, ...cellCenter(p.col, p.row) })
   s.pickups = s.pickups.filter((p) => !p.used && p.kind !== 'laser')
   s.overcharged = false
-  // Skills picked mid-volley count from now on.
-  s.volleyBoosts = null
+  if (s.doubleVolleys > 0) s.doubleVolleys--
 }
 
 function endTurn(s: RunState): void {
@@ -440,6 +436,7 @@ function endTurn(s: RunState): void {
   // A bonus round's volley: nothing falls and no new turn starts; shoot again while time lasts.
   if (s.bonus) {
     s.phase = 'aim'
+    openOrbPick(s)
     return
   }
 
@@ -552,14 +549,17 @@ export function resumeBonus(s: RunState): void {
   if (s.bonus && !s.bonus.won) s.bonus.left = BONUS_TIME
 }
 
-/** Back to aiming, or to a board growth first if one is due. Skill points are banked, not opened. */
+/**
+ * Back to aiming, or to a board growth first if one is due. Skill points are banked:
+ * the pick screen opens only when the player taps for it, or a skill orb was touched.
+ */
 export function openPickOrAim(s: RunState): void {
-  // Skill points wait: the player opens the pick screen when they choose (openPicks).
   if (s.growPending && (s.cols < MAX_COLS || baseRows(s) < MAX_ROWS)) {
     s.phase = 'grow'
   } else {
     s.growPending = false
     s.phase = 'aim'
+    openOrbPick(s)
   }
 }
 

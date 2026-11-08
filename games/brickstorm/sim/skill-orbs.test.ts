@@ -1,5 +1,5 @@
-// Each level-up drops a skill orb into the next row. A ball touching it pauses
-// the volley on the pick screen; a pick made there waits for the next round.
+// Each level-up drops a skill orb into the next row. A ball touching it flags
+// the pick screen, which opens when the turn ends (the volley keeps flying).
 import { describe, expect, it } from 'vitest'
 import { CELL } from './config'
 import {
@@ -13,6 +13,7 @@ import {
 } from './boosts'
 import { gainXp } from './damage'
 import { dims } from './dims'
+import { growBoard } from './meta'
 import { fire, step } from './run'
 import { spawnRow } from './rows'
 import { empty, runVolley } from './testing'
@@ -27,8 +28,8 @@ function orbAhead(points = 1): RunState {
   return s
 }
 
-/** Fires straight up and steps until the volley pauses or ends. */
-function shootUntilPaused(s: RunState): void {
+/** Fires straight up and steps until the volley (and its turn) ends. */
+function shootTurn(s: RunState): void {
   fire(s, Math.PI / 2)
   for (let i = 0; i < 60 * 60 && s.phase === 'volley'; i++) step(s)
 }
@@ -57,78 +58,90 @@ describe('skill orbs', () => {
     }
   })
 
-  it('a ball touching it pauses the volley on the pick screen', () => {
+  it('a ball touching it does not pause the volley', () => {
     const s = orbAhead()
-    shootUntilPaused(s)
-    expect(s.phase).toBe('pick')
-    expect(s.midVolley).toBe(true)
-    expect(s.choices).toHaveLength(3)
+    fire(s, Math.PI / 2)
+    for (let i = 0; i < 60 * 60 && s.pickups.some((p) => p.kind === 'skill'); i++) step(s)
     expect(s.pickups.some((p) => p.kind === 'skill')).toBe(false)
-    expect(s.balls.some((b) => b.status !== 'landed')).toBe(true)
-    // Paused: stepping does nothing until the screen closes.
-    const ball = { ...s.balls[0] }
-    step(s)
-    expect(s.balls[0].y).toBe(ball.y)
+    expect(s.phase).toBe('volley')
+    expect(s.events.some((e) => e.type === 'pickup' && e.kind === 'skill')).toBe(true)
   })
 
-  it('closing it keeps the point and resumes the volley', () => {
+  it('announces the coming pick only when a point is left', () => {
+    const withPoint = orbAhead(1)
+    shootTurn(withPoint)
+    expect(withPoint.events.some((e) => e.type === 'orbPick')).toBe(true)
+    const spent = orbAhead(0)
+    shootTurn(spent)
+    expect(spent.events.some((e) => e.type === 'orbPick')).toBe(false)
+  })
+
+  it('the pick screen opens when the turn ends', () => {
     const s = orbAhead()
-    shootUntilPaused(s)
+    shootTurn(s)
+    expect(s.phase).toBe('pick')
+    expect(s.balls).toHaveLength(0)
+    expect(s.choices).toHaveLength(3)
+    expect(s.pickAfterVolley).toBeFalsy()
+  })
+
+  it('closing it keeps the point; a later turn does not reopen it', () => {
+    const s = orbAhead()
+    shootTurn(s)
     closePicks(s)
-    expect(s.phase).toBe('volley')
-    expect(s.midVolley).toBe(false)
-    expect(s.pendingPicks).toBe(1)
-    runVolley(s)
     expect(s.phase).toBe('aim')
     expect(s.pendingPicks).toBe(1)
+    fire(s, Math.PI / 2)
+    runVolley(s)
+    expect(s.phase).toBe('aim')
   })
 
-  it('a pick made mid-volley takes effect from the next round', () => {
+  it('a pick at the end of the turn works from the next shot', () => {
     const s = orbAhead()
     s.level = 1
     const before = runMods(s).damageMult
-    shootUntilPaused(s)
+    shootTurn(s)
     s.choices = ['damage', 'big', 'coins']
     pickBoost(s, 'damage')
-    expect(s.phase).toBe('volley')
-    expect(s.pendingPicks).toBe(0)
-    expect(runMods(s).damageMult).toBe(before)
-    runVolley(s)
     expect(s.phase).toBe('aim')
     expect(runMods(s).damageMult).toBeGreaterThan(before)
   })
 
-  it('Double Down picked mid-volley still doubles the next 3 volleys', () => {
+  it('a board growth due comes first, then the pick screen', () => {
     const s = orbAhead()
-    s.ballCount = 2
-    shootUntilPaused(s)
-    s.choices = ['double', 'big', 'coins']
-    pickBoost(s, 'double')
-    runVolley(s)
-    for (let i = 0; i < 3; i++) {
-      s.bricks = []
-      s.pickups = []
-      fire(s, Math.PI / 2)
-      expect(s.balls).toHaveLength(4)
-      runVolley(s)
-    }
-    s.pickups = []
-    fire(s, Math.PI / 2)
-    expect(s.balls).toHaveLength(2)
+    s.growPending = true
+    s.turn = 0
+    shootTurn(s)
+    expect(s.phase).toBe('grow')
+    growBoard(s, 'row')
+    expect(s.phase).toBe('pick')
   })
 
-  it('with points left the screen stays open; the last pick resumes the volley', () => {
-    const s = orbAhead(2)
-    shootUntilPaused(s)
-    pickBoost(s, s.choices[0])
+  it('a bonus-round volley opens it too', () => {
+    const s = orbAhead()
+    s.bonus = { left: 10, spawn: true }
+    shootTurn(s)
     expect(s.phase).toBe('pick')
-    pickBoost(s, s.choices[0])
-    expect(s.phase).toBe('volley')
+  })
+
+  it('the run ending that turn opens nothing', () => {
+    const s = orbAhead()
+    s.hp = 0.0001
+    s.bricks.push({
+      id: s.nextId++,
+      col: 0,
+      row: dims(s).dangerRow - 1,
+      hp: 999,
+      maxHp: 999,
+      kind: 'normal',
+    } as never)
+    shootTurn(s)
+    expect(s.phase).toBe('over')
   })
 
   it('with no points to spend, the orb is just collected', () => {
     const s = orbAhead(0)
-    shootUntilPaused(s)
+    shootTurn(s)
     expect(s.phase).toBe('aim')
     expect(s.pickups.some((p) => p.kind === 'skill')).toBe(false)
   })

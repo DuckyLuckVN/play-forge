@@ -248,6 +248,8 @@ export type SimEvent =
   | { type: 'hit'; x: number; y: number; combo: number; power: number; crit: boolean }
   | { type: 'kill'; id: number; x: number; y: number; maxHp: number; kind: BrickKind; coins: number }
   | { type: 'pickup'; kind: PickupKind; x: number; y: number }
+  /** A ball touched a skill orb with a point to spend: the pick screen opens when the turn ends. */
+  | { type: 'orbPick'; x: number; y: number }
   | { type: 'wall' }
   | { type: 'land' }
   | { type: 'fever' }
@@ -376,13 +378,8 @@ export interface RunState {
   pendingPicks: number
   /** Skill orbs from level-ups still to drop in with the next rows. Missing in older saves. */
   orbsDue?: number
-  /** The pick screen was opened by a skill orb mid-volley: closing it resumes the volley. */
-  midVolley?: boolean
-  /**
-   * The skills the current volley flies with, set when a pick is taken mid-volley:
-   * the new skill counts from the next volley. Cleared when the volley ends.
-   */
-  volleyBoosts?: Partial<Record<BoostId, number>> | null
+  /** A ball touched a skill orb this volley: the pick screen opens when the turn ends. */
+  pickAfterVolley?: boolean
   /** Of the pending picks, how many are free (Lucky Start). Missing in older saves. */
   freePicks?: number
   choices: BoostId[]

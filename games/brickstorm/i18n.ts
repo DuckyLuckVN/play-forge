@@ -340,8 +340,9 @@ export const VI: Dictionary = {
   'Reroll (use 1 skill point)': 'Đổi lại (dùng 1 điểm kỹ năng)',
   'Needs 2 skill points: one stays to pick with.': 'Cần 2 điểm kỹ năng: giữ lại một điểm để chọn.',
   'Skill orb': 'Quả cầu kỹ năng',
-  'Drops in after each level-up. Touch it to pick a skill right away; the skill works from your next shot.':
-    'Xuất hiện sau mỗi lần lên cấp. Chạm vào để chọn kỹ năng ngay; kỹ năng có hiệu lực từ cú bắn sau.',
+  'Drops in after each level-up. Touch it with a ball and the skill picker opens when the turn ends.':
+    'Xuất hiện sau mỗi lần lên cấp. Cho bóng chạm vào, bảng chọn kỹ năng sẽ mở khi hết lượt.',
+  'Skill pick after this turn!': 'Chọn kỹ năng sau lượt này!',
   'Skill socket': 'Ổ cắm kỹ năng',
   'After a boss: hit it before the timer runs out to unlock a new skill slot.':
     'Sau trận trùm: bắn trúng nó trước khi hết giờ để mở thêm một ô kỹ năng.',

@@ -297,8 +297,8 @@ export const VI: Dictionary = {
   'No new rows until it falls. Hit any part to drain its health before it reaches the line.':
     'Không có hàng mới cho tới khi nó gục. Đánh vào bất kỳ phần nào để rút máu trước khi nó chạm vạch.',
   Boss: 'Trùm',
-  'Every 30 turns, announced 3 turns ahead; the arena grows wider for the fight and the bricks fall every other turn. One big health bar, 2–4 special powers (more for each boss), and no new rows until it falls. Beat it for coins, a free skill and an extra skill slot.':
-    'Mỗi 30 lượt, báo trước 3 lượt; đấu trường rộng hơn cho trận đánh và gạch rơi cách một lượt. Một thanh máu lớn, 2–4 chiêu thức (mỗi trùm sau nhiều hơn), và không có hàng mới cho tới khi nó gục. Hạ nó để nhận xu, một kỹ năng miễn phí và thêm một ô kỹ năng.',
+  'Every 30 turns, announced 3 turns ahead; the arena grows wider for the fight and the bricks fall every other turn. One big health bar, 2–4 special powers (more for each boss), and no new rows until it falls. Beat it for coins, then hit the socket in the 10-second bonus round for an extra skill slot.':
+    'Mỗi 30 lượt, báo trước 3 lượt; đấu trường rộng hơn cho trận đánh và gạch rơi cách một lượt. Một thanh máu lớn, 2–4 chiêu thức (mỗi trùm sau nhiều hơn), và không có hàng mới cho tới khi nó gục. Hạ nó để nhận xu, rồi bắn trúng ổ cắm trong vòng thưởng 10 giây để có thêm một ô kỹ năng.',
   'Play again': 'Chơi lại',
   Home: 'Trang chủ',
   Run: 'Lượt chơi',
@@ -325,17 +325,32 @@ export const VI: Dictionary = {
   'Empty skill slot': 'Ô kỹ năng trống',
   NEW: 'MỚI',
   'New blocks!': 'Khối mới!',
-  'Hold a block marked NEW to see what it does.': 'Giữ một khối có nhãn MỚI để xem nó làm gì.',
+  'Hold any block or item to see what it does.': 'Giữ một khối hoặc vật phẩm bất kỳ để xem nó làm gì.',
   'Skill slots {n}/{max}': 'Ô kỹ năng {n}/{max}',
   '{name} level {n}': '{name} cấp {n}',
   'New skill slot!': 'Ô kỹ năng mới!',
-  'Boss beaten: you can now hold {n} skills.': 'Đã hạ trùm: giờ bạn giữ được {n} kỹ năng.',
+  'You now have {n} skill slots.': 'Giờ bạn có {n} ô kỹ năng.',
+  OK: 'OK',
+  'NEW SKILL SLOT!': 'Ô KỸ NĂNG MỚI!',
+  'BONUS ROUND!': 'VÒNG THƯỞNG!',
+  'Hit the socket! {n}s': 'Bắn trúng ổ cắm! {n}s',
+  'Slot missed': 'Lỡ mất ô kỹ năng',
+  'Skill point ready!': 'Có điểm kỹ năng!',
+  'Tap to pick': 'Chạm để chọn',
+  'Reroll (use 1 skill point)': 'Đổi lại (dùng 1 điểm kỹ năng)',
+  'Needs 2 skill points: one stays to pick with.': 'Cần 2 điểm kỹ năng: giữ lại một điểm để chọn.',
+  'Skill orb': 'Quả cầu kỹ năng',
+  'Drops in after each level-up. Touch it to pick a skill right away; the skill works from your next shot.':
+    'Xuất hiện sau mỗi lần lên cấp. Chạm vào để chọn kỹ năng ngay; kỹ năng có hiệu lực từ cú bắn sau.',
+  'Skill socket': 'Ổ cắm kỹ năng',
+  'After a boss: hit it before the timer runs out to unlock a new skill slot.':
+    'Sau trận trùm: bắn trúng nó trước khi hết giờ để mở thêm một ô kỹ năng.',
   '+1 SKILL SLOT!': '+1 Ô KỸ NĂNG!',
   'Slots full · ⇄ replaces a skill': 'Hết ô · ⇄ thay một kỹ năng',
   'Replaces one of your skills': 'Thay một kỹ năng bạn đang có',
   'Swap for {name}?': 'Đổi lấy {name}?',
-  'Your skill slots are full ({n}/{max}). Pick one to drop for it. Each boss you beat adds a slot.':
-    'Các ô kỹ năng đã đầy ({n}/{max}). Chọn một cái để bỏ. Mỗi trùm bạn hạ thêm một ô.',
+  'Your skill slots are full ({n}/{max}). Pick one to drop for it. Hit the socket after a boss for another slot.':
+    'Các ô kỹ năng đã đầy ({n}/{max}). Chọn một cái để bỏ. Bắn trúng ổ cắm sau trận trùm để có thêm ô.',
   'Drop {name} (level {n})': 'Bỏ {name} (cấp {n})',
   '{name} level {n}. Show details': '{name} cấp {n}. Xem chi tiết',
   'Level up to pick skills.': 'Lên cấp để chọn kỹ năng.',

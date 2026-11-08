@@ -1,4 +1,4 @@
-// "NEW" on a brick or pickup kind the player hasn't read about yet; holding it
+// "NEW" on a pickup kind the player hasn't read about yet; holding it
 // opens its guide card (and the tag goes).
 import { FONT, theme } from '@forge/ui/theme'
 

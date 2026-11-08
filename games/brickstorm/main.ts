@@ -64,6 +64,7 @@ import { BOOST_ICONS } from './icons'
 import {
   BOOSTS,
   boostSlots,
+  canRerollWithPoint,
   holdBoost,
   holdCost,
   isInstant,
@@ -75,6 +76,7 @@ import {
   pickBoost,
   reroll,
   rerollCost,
+  rerollWithPoint,
   slottedBoosts,
   xpToNext,
   xpTotal,
@@ -86,11 +88,14 @@ import {
   canRecall,
   createRun,
   drainEvents,
+  endBonus,
   fire,
   recall,
   restingBall,
+  resumeBonus,
   speedMultiplier,
   step,
+  tickBonus,
 } from './sim/run'
 import type { ActiveHelper, BoostId, RunState, StartHelper } from './sim/types'
 
@@ -220,8 +225,8 @@ let panel = ''
 let overShown = false
 /** The boss the notice card last explained. */
 let bossAnnounced: object | null = null
-/** Boost slots the player has been shown; more means a boss just gave one. */
-let slotsSeen = 0
+/** "Skill point ready!" was shown this run (once per run). */
+let pointToastShown = false
 /** A fresh start just happened: the home screen offers to undo it. */
 let justReset = false
 /** The run's total XP last frame, for the "+N XP" tally. */
@@ -615,7 +620,7 @@ function renderPanels(s: RunState | null, time: number) {
     JSON.stringify(save.helpers),
     s.phase === 'aim' && !paused,
     s.doubleVolleys,
-    s.bossesBeaten ?? 0,
+    boostSlots(s),
   ].join('|')
   if (skills === skillsKey) return
   skillsKey = skills
@@ -633,8 +638,8 @@ function renderPanels(s: RunState | null, time: number) {
 /** Kinds on the board the player hasn't read about, recomputed only when the board changes. */
 let unseenKey = ''
 /**
- * New brick and pickup kinds wear a "NEW" tag (no pop-up); holding one opens
- * its card. The first time any shows up, one hint says how.
+ * New pickup kinds wear a "NEW" tag (no pop-up); holding any special block or
+ * pickup opens its card. The first time a new kind shows up, one hint says how.
  */
 function markNewKinds(s: RunState) {
   const key = `${s.turn}|${s.bricks.length}|${s.pickups.length}|${save.seen.length}`
@@ -646,7 +651,7 @@ function markNewKinds(s: RunState) {
     notices.push({
       id: HOLD_HINT,
       title: t('New blocks!'),
-      text: t('Hold a block marked NEW to see what it does.'),
+      text: t('Hold any block or item to see what it does.'),
     })
     save = { ...save, seen: [...save.seen, HOLD_HINT] }
     persist()
@@ -863,7 +868,7 @@ function beginRun(s: RunState) {
   justReset = false
   run = s
   overShown = false
-  slotsSeen = boostSlots(s)
+  pointToastShown = false
   pointsSeen = s.pendingPicks
   juice.turn = s.turn
   juice.setXp(s.level, s.xp / xpToNext(s.level), true)
@@ -898,24 +903,37 @@ function startRun(use: Partial<Record<StartHelper, boolean>>, hero: HeroId = equ
 function resumeRun() {
   if (!save.run) return
   banked = save.run.banked
-  beginRun(structuredClone(save.run.state))
+  const s = structuredClone(save.run.state)
+  resumeBonus(s)
+  beginRun(s)
 }
 
-/** After a boss: a callout on the pick screen that a boost slot was unlocked (shown once). */
-function slotCallout(s: RunState): HTMLElement | null {
-  const slots = boostSlots(s)
-  if (slots <= slotsSeen) return null
-  slotsSeen = slots
-  return h(
-    'div',
-    { class: 'bs-slot-callout', role: 'status' },
-    h('span', { class: 'bs-socket-ring' }),
+/** The bonus round's socket was hit: the news, then (OK) the round ends and play goes on. */
+function showSlotWon(s: RunState) {
+  const back = holdRun()
+  const ok = () => {
+    back()
+    endBonus(s)
+    checkpoint()
+  }
+  show(
     h(
       'div',
-      {},
-      h('strong', { textContent: t('New skill slot!') }),
-      h('span', { textContent: t('Boss beaten: you can now hold {n} skills.', { n: slots }) }),
+      { class: 'pf-panel' },
+      h(
+        'div',
+        { class: 'bs-slot-callout', role: 'status' },
+        h('span', { class: 'bs-socket-ring' }),
+        h(
+          'div',
+          {},
+          h('strong', { class: 'pf-heading', textContent: t('New skill slot!') }),
+          h('span', { textContent: t('You now have {n} skill slots.', { n: boostSlots(s) }) }),
+        ),
+      ),
+      primary(t('OK'), ok),
     ),
+    'slot',
   )
 }
 
@@ -965,7 +983,7 @@ function showSwap(id: BoostId) {
       h('p', {
         class: 'pf-lede',
         textContent: t(
-          'Your skill slots are full ({n}/{max}). Pick one to drop for it. Each boss you beat adds a slot.',
+          'Your skill slots are full ({n}/{max}). Pick one to drop for it. Hit the socket after a boss for another slot.',
           { n: owned.length, max: boostSlots(s) },
         ),
       }),
@@ -1123,6 +1141,18 @@ function showPick() {
   )
   if (!token) rerollBtn.append(' ', coinAmount(cost))
   rerollBtn.disabled = !token && !canPay(cost)
+  // Or pay with a spare skill point (one must stay to pick with).
+  const pointBtn = button(
+    t('Reroll (use 1 skill point)'),
+    () => {
+      if (!settled() || !rerollWithPoint(s)) return
+      checkpoint()
+      showPick()
+    },
+    'bs-reroll',
+  )
+  pointBtn.disabled = !canRerollWithPoint(s)
+  if (pointBtn.disabled) pointBtn.title = t('Needs 2 skill points: one stays to pick with.')
   // "Later": the point (and these offers) wait for when the player opens the screen again.
   const later = () => {
     closePicks(s)
@@ -1141,10 +1171,9 @@ function showPick() {
         wallet(),
         closeButton(later),
       ),
-      slotCallout(s),
       slotStrip(s),
       h('div', { class: 'bs-cards' }, ...cards),
-      h('div', { class: 'bs-pick-actions' }, rerollBtn, button(t('Later'), later)),
+      h('div', { class: 'bs-pick-actions' }, rerollBtn, pointBtn, button(t('Later'), later)),
     ),
     `pick-${s.level}-${s.pendingPicks}-${s.rerollsUsed}-${s.holdsUsed ?? 0}`,
   )
@@ -1298,6 +1327,11 @@ startRenderLoop((dt, time) => {
       checkpoint()
     }
   }
+  // The bonus round's clock runs in real time while the board is in view (aiming counts).
+  if (s && !paused && !panel && !juice.bossDying && !juice.bossArriving && tickBonus(s, dt)) {
+    acc = 0
+    checkpoint()
+  }
   if (s) {
     for (const e of drainEvents(s)) {
       juice.handle(e)
@@ -1316,6 +1350,7 @@ startRenderLoop((dt, time) => {
           title: t('☠ Boss in {n} turns', { n: e.turns }),
           text: t('No new rows while it lives. Clear the bottom rows and save a helper for the fight.'),
         })
+      if (e.type === 'bonusMiss') toast(t('Slot missed'))
       if (e.type === 'storm') {
         notices.push({ id: `storm:${e.kind}`, title: t(STORM_TEXT[e.kind]), text: t(STORM_EXPLAIN[e.kind]) })
         queueEventCard(`storm:${e.kind}`, t(STORM_TEXT[e.kind]), t(STORM_EXPLAIN[e.kind]))
@@ -1346,7 +1381,9 @@ startRenderLoop((dt, time) => {
       drawerPoints = s.pendingPicks
       drawerBtn.replaceChildren(
         t('Skills & helpers'),
-        ...(drawerPoints > 0 ? [h('span', { class: 'bs-points', textContent: `+${drawerPoints}` })] : []),
+        ...(drawerPoints > 0
+          ? [h('span', { class: 'bs-points bs-pulse', textContent: `+${drawerPoints}` })]
+          : []),
       )
     }
     // A new skill point: celebrate once the shot is over (after a boss's death has played out). The
@@ -1356,8 +1393,15 @@ startRenderLoop((dt, time) => {
       pointsSeen = s.pendingPicks
       juice.startLevelUp()
     }
+    // The first time points wait in a run, say so once.
+    if (!pointToastShown && s.pendingPicks > 0 && s.phase === 'aim' && !panel && !juice.bossDying) {
+      pointToastShown = true
+      toast(t('Skill point ready!'))
+    }
     // A run saved on the pick screen comes back to it.
     if (s.phase === 'pick' && !panel && !juice.bossDying) showPick()
+    // The bonus round's socket was hit: the news waits for nothing.
+    if (s.bonus?.won && !panel) showSlotWon(s)
     if (s.phase === 'grow' && panel !== 'grow') showGrow()
     // A new kind of event explains itself once, when the player is next aiming.
     if (

@@ -143,9 +143,9 @@ describe('boss', () => {
     expect(s.boss).toBeNull()
     expect(bossParts(s)).toHaveLength(0)
     expect(s.coins).toBeGreaterThan(coins)
-    // One free reward pick; the boss's damage XP can level you up for more.
-    expect(s.freePicks).toBe(1)
-    expect(s.pendingPicks).toBeGreaterThanOrEqual(1)
+    // No free pick any more: its XP can still level you up, and its bonus round is due.
+    expect(s.freePicks ?? 0).toBe(0)
+    expect(s.bonusDue).toBe(true)
     expect(drainEvents(s).find((e) => e.type === 'bossDown')).toBeTruthy()
   })
 

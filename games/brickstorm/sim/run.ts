@@ -20,7 +20,8 @@ import {
   TICK,
 } from './config'
 import { random } from '@forge/core/rng'
-import { levelPower, runMods, type Mods } from './boosts'
+import { boostSlots, levelPower, orbPicks, runMods, slotsWon, type Mods } from './boosts'
+import { BONUS_TIME, clearBonus, placeBonus } from './bonus'
 import { comboPower, damageBrick, explode, oncePerBoss, zap } from './damage'
 import { baseRows, dims } from './dims'
 export { comboMultiplier } from './damage'
@@ -90,6 +91,7 @@ export function createRun(seed: number, hero: HeroId = DEFAULT_HERO): RunState {
     growPending: false,
     freezeNext: false,
     surgeNext: false,
+    extraSlots: 0,
     hero: def.id,
     hp: def.hp,
     maxHp: def.hp,
@@ -121,7 +123,12 @@ export function fire(s: RunState, angle: number): void {
   const a = Math.max(AIM_MIN, Math.min(Math.PI - AIM_MIN, angle))
   const speed = BALL_SPEED * mods.speedMult
   const [vx, vy] = antiStall(Math.cos(a) * speed, -Math.sin(a) * speed)
-  let n = s.doubleVolleys > 0 ? s.ballCount * 2 : s.ballCount
+  let n = s.ballCount
+  // Double Down is used up as the volley leaves, so one taken mid-volley still doubles 3 more.
+  if (s.doubleVolleys > 0) {
+    n *= 2
+    s.doubleVolleys--
+  }
   if (s.surgeNext) n = Math.ceil(n * 1.5)
   s.surgeNext = false
   n += s.rainNext ?? 0
@@ -177,9 +184,14 @@ export function bombBlast(s: RunState, mods = runMods(s)): number {
   return BOMB_BALL_HITS * mods.damageMult * levelPower(s.level) * (s.overcharged ? 2 : 1)
 }
 
+/** The volley is playing: not paused on a skill orb's pick screen or a won bonus round. */
+function live(s: RunState): boolean {
+  return s.phase === 'volley' && !s.bonus?.won
+}
+
 /** Advances the volley by one fixed tick. */
 export function step(s: RunState): void {
-  if (s.phase !== 'volley') return
+  if (!live(s)) return
   const mods = runMods(s)
   s.volleyTime += TICK
   s.sinceHit += TICK
@@ -196,6 +208,7 @@ export function step(s: RunState): void {
 
   for (const ball of s.balls) {
     if (ball.status === 'flying') moveBall(s, ball, mods)
+    if (!live(s)) return // a skill orb or the socket paused it
   }
 
   if (s.balls.every((b) => b.status === 'landed')) endTurn(s)
@@ -228,6 +241,7 @@ function moveBall(s: RunState, ball: Ball, mods: Mods): void {
     if (popped) return
 
     collectPickups(s, ball, mods)
+    if (!live(s)) return
 
     if (ball.y >= d.floorY - r && ball.vy > 0) {
       ball.y = d.floorY - r
@@ -361,6 +375,7 @@ function collectPickups(s: RunState, ball: Ball, mods: Mods): void {
     }
     s.pickups.splice(i, 1)
     applyPickup(s, p, mods)
+    if (!live(s)) break
   }
   ball.lasers = over
 }
@@ -373,7 +388,17 @@ export function applyPickup(s: RunState, p: Pickup, mods = runMods(s)): void {
   else if (p.kind === 'coin') s.coins += Math.round(COIN_PICKUP * mods.coinMult)
   else if (p.kind === 'fire') s.fireCharges += 3
   else if (p.kind === 'heart') heal(s, s.maxHp * HEART_HEAL, 'heart')
+  else if (p.kind === 'skill') orbPicks(s)
+  else if (p.kind === 'socket') winSlot(s)
   else laserRow(s, p.row)
+}
+
+/** The bonus round's socket was hit: a new skill slot, and the game pauses for the news (see endBonus). */
+function winSlot(s: RunState): void {
+  if (!s.bonus || s.bonus.won) return
+  s.extraSlots = slotsWon(s) + 1
+  s.bonus.won = true
+  s.events.push({ type: 'slot', slots: boostSlots(s) })
 }
 
 /** A ball over a laser pickup fires it for this many times a ball hit's damage. */
@@ -393,8 +418,8 @@ export function rowDrops(s: RunState, mods = runMods(s)): number {
   return mods.glass && s.turn % 10 === 0 ? 2 : 1
 }
 
-function endTurn(s: RunState): void {
-  bossVolleyEnd(s)
+/** The balls are home: the next launch point, the balls picked up, and lasers and mid-volley picks settle. */
+function settleVolley(s: RunState): void {
   s.launchX = s.nextLaunchX ?? s.launchX
   s.ballCount += s.pendingBalls
   s.pendingBalls = 0
@@ -405,7 +430,18 @@ function endTurn(s: RunState): void {
       s.events.push({ type: 'pickupFade', kind: p.kind, ...cellCenter(p.col, p.row) })
   s.pickups = s.pickups.filter((p) => !p.used && p.kind !== 'laser')
   s.overcharged = false
-  if (s.doubleVolleys > 0) s.doubleVolleys--
+  // Skills picked mid-volley count from now on.
+  s.volleyBoosts = null
+}
+
+function endTurn(s: RunState): void {
+  bossVolleyEnd(s)
+  settleVolley(s)
+  // A bonus round's volley: nothing falls and no new turn starts; shoot again while time lasts.
+  if (s.bonus) {
+    s.phase = 'aim'
+    return
+  }
 
   if (s.bricks.length === 0) bonus(s, { type: 'allClear', coins: s.turn })
   const { dangerRow } = dims(s)
@@ -438,6 +474,7 @@ function endTurn(s: RunState): void {
     return
   }
   // A frozen turn adds no row: nothing moved, so row 0 is still occupied.
+  if (s.bonusDue) return startBonus(s, !frozen)
   startNextTurn(s, !frozen)
   // The boss's turn can hurt too (rockets, a slam): that can end the run.
   if (s.hp <= 0) {
@@ -469,6 +506,50 @@ export function startNextTurn(s: RunState, spawn = true): void {
   if (bossSoon) s.events.push({ type: 'bossSoon', turns: bossSoon })
   if (s.bricks.some((b) => b.row === dims(s).dangerRow - 1)) s.events.push({ type: 'danger' })
   openPickOrAim(s)
+}
+
+/**
+ * After a boss: the bonus round, on the boss-sized board, before the next turn
+ * (which shrinks the arena back). With no free cell for the socket, it is skipped.
+ */
+function startBonus(s: RunState, spawn: boolean): void {
+  s.bonusDue = false
+  if (!placeBonus(s)) return startNextTurn(s, spawn)
+  s.bonus = { left: BONUS_TIME, spawn }
+  s.phase = 'aim'
+  s.events.push({ type: 'bonus' })
+}
+
+/**
+ * The bonus round's clock, in real seconds (aiming counts; a pick screen or a
+ * won round stops it). At 0 the slot is lost and the round ends. True if it ended.
+ */
+export function tickBonus(s: RunState, dt: number): boolean {
+  const b = s.bonus
+  if (!b || b.won || (s.phase !== 'aim' && s.phase !== 'volley')) return false
+  b.left = Math.max(0, b.left - dt)
+  if (b.left > 0) return false
+  s.events.push({ type: 'bonusMiss' })
+  endBonus(s)
+  return true
+}
+
+/** Ends the bonus round (won or out of time): balls come home, its blocks go, and the next turn starts. */
+export function endBonus(s: RunState): void {
+  const b = s.bonus
+  if (!b) return
+  if (s.phase === 'volley') {
+    if (s.nextLaunchX === null) s.nextLaunchX = s.launchX
+    settleVolley(s)
+  }
+  clearBonus(s)
+  s.bonus = null
+  startNextTurn(s, b.spawn)
+}
+
+/** A run loaded mid bonus round gets its full time back. */
+export function resumeBonus(s: RunState): void {
+  if (s.bonus && !s.bonus.won) s.bonus.left = BONUS_TIME
 }
 
 /** Back to aiming, or to a board growth first if one is due. Skill points are banked, not opened. */

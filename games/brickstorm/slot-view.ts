@@ -14,7 +14,7 @@ export interface SlotView {
   full: boolean
 }
 
-export function slotView(s: Pick<RunState, 'boosts' | 'bossesBeaten' | 'hero'>): SlotView {
+export function slotView(s: Pick<RunState, 'boosts' | 'bossesBeaten' | 'extraSlots' | 'hero'>): SlotView {
   const owned = slottedBoosts(s.boosts)
   const max = Math.max(boostSlots(s), owned.length)
   const sockets: Socket[] = owned.map((id) => ({

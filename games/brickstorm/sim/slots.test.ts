@@ -15,7 +15,7 @@ function picking(boosts: RunState['boosts'], choices: BoostId[], seed = 1): RunS
 }
 
 describe('boost slots', () => {
-  it('start at 3 and grow by 1 for every boss beaten', () => {
+  it('start at 3; beating a boss alone adds none (its bonus round does)', () => {
     const s = empty()
     expect(boostSlots(s)).toBe(3)
     s.turn = 30
@@ -28,6 +28,8 @@ describe('boost slots', () => {
       'laser',
     )
     expect(s.bossesBeaten).toBe(1)
+    expect(boostSlots(s)).toBe(3)
+    s.extraSlots = 1
     expect(boostSlots(s)).toBe(4)
   })
 

@@ -30,6 +30,7 @@ import {
   XP_ORB_FLY,
 } from './juice'
 import { runMods, xpToNext } from './sim/boosts'
+import { BONUS_TIME } from './sim/bonus'
 import {
   BALL_R,
   boardSize,
@@ -53,7 +54,6 @@ import { BrickTween } from './brick-tween'
 import { glyphAnchor, shapeEdgeY } from './brick-geo'
 import { arenaProgress, BOSS_DROP, bossDrop, shownBoard } from './boss-entrance'
 import { drawCrashBadges, drawHealthLoss } from './crash-badges'
-import { brickGuideIds } from './guide'
 import { drawNewTag } from './new-tag'
 import { crashForecast } from './sim/forecast'
 import { drawBeams } from './attack-fx'
@@ -343,9 +343,74 @@ export function drawPickupGlyph(
     ctx.arc(-4, -3, 2.5, 0, Math.PI * 2)
     ctx.fill()
     ctx.restore()
+  } else if (kind === 'skill') {
+    drawSkillOrb(ctx, x, y, time)
+  } else if (kind === 'socket') {
+    drawSocket(ctx, x, y, time)
   } else {
     drawCoin(ctx, x, y, PICKUP_R - 1)
   }
+}
+
+/** The bonus round's clock turns red and pulses for its last seconds. */
+const BONUS_LOW = 3
+/** Skill points' green (as on the HUD pill). */
+const SKILL_GREEN = '#4be3a0'
+
+/** A level-up's skill orb: a breathing green orb with an up arrow. */
+function drawSkillOrb(ctx: CanvasRenderingContext2D, x: number, y: number, time: number): void {
+  const glow = prefersReducedMotion() ? 0.5 : 0.5 + 0.5 * Math.sin(time * 5)
+  ctx.save()
+  ctx.fillStyle = `rgb(75 227 160 / ${0.2 + 0.25 * glow})`
+  ctx.beginPath()
+  ctx.arc(x, y, PICKUP_R + 4 + 2 * glow, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillStyle = SKILL_GREEN
+  ctx.strokeStyle = theme.night
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.arc(x, y, PICKUP_R - 1, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.stroke()
+  ctx.strokeStyle = theme.night
+  ctx.lineWidth = 3
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.beginPath()
+  ctx.moveTo(x, y + 6)
+  ctx.lineTo(x, y - 5)
+  ctx.moveTo(x - 5, y)
+  ctx.lineTo(x, y - 5)
+  ctx.lineTo(x + 5, y)
+  ctx.stroke()
+  ctx.restore()
+}
+
+/** A bonus round's socket: a spinning gold ring around an empty slot. */
+function drawSocket(ctx: CanvasRenderingContext2D, x: number, y: number, time: number): void {
+  const still = prefersReducedMotion()
+  const glow = still ? 0.5 : 0.5 + 0.5 * Math.sin(time * 6)
+  ctx.save()
+  ctx.fillStyle = `rgb(255 209 102 / ${0.2 + 0.3 * glow})`
+  ctx.beginPath()
+  ctx.arc(x, y, PICKUP_R + 7 + 3 * glow, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = theme.yolk
+  ctx.lineWidth = 4
+  ctx.setLineDash([7, 5])
+  ctx.lineDashOffset = still ? 0 : -time * 20
+  ctx.beginPath()
+  ctx.arc(x, y, PICKUP_R + 2, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.setLineDash([])
+  ctx.fillStyle = theme.night
+  ctx.strokeStyle = theme.yolk
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.roundRect(x - 7, y - 7, 14, 14, 4)
+  ctx.fill()
+  ctx.stroke()
+  ctx.restore()
 }
 
 /** A heart shape `r` wide-ish, centred on (x, y); fill or stroke it after. */
@@ -516,7 +581,7 @@ export class BoardRenderer {
   private d: Dims = boardSize(COLS, ROWS)
   private glide = new BossGlide()
   private lastTime = 0
-  /** Guide entries ("brick:slime", "shape:orb"…) the player hasn't read: those bricks and pickups wear "NEW". */
+  /** Guide entries ("pickup:laser"…) the player hasn't read: those pickups wear "NEW". */
   unseen: ReadonlySet<string> = new Set()
   /** How far bricks, balls and the hero are shifted right while the board eases between sizes (usually 0). */
   private shift = 0
@@ -591,6 +656,7 @@ export class BoardRenderer {
     this.drawBossDread(ctx, juice, time)
     if (s) {
       this.drawHud(ctx, s, juice, time)
+      if (s.bonus) this.drawBonusBar(ctx, s.bonus.left, time)
       this.drawCombo(ctx, s)
       this.drawLevelPop(ctx, juice)
     }
@@ -739,11 +805,9 @@ export class BoardRenderer {
         // Sliding in from above: fade in as it arrives.
         ctx.globalAlpha = Math.max(0, Math.min(1, 1 + dy / CELL + 0.4))
       }
+      // A bonus round's ghost block: see-through, so the socket it guards reads as the goal.
+      if (b.ghost) ctx.globalAlpha *= 0.5
       this.drawBrick(ctx, s, b, time)
-      if (this.unseen.size && brickGuideIds(b).some((id) => this.unseen.has(id))) {
-        const r = brickRect(b)
-        drawNewTag(ctx, r.x + r.w / 2, r.y + 2, t('NEW'), time, prefersReducedMotion())
-      }
       ctx.restore()
     }
   }
@@ -901,12 +965,50 @@ export class BoardRenderer {
     }
   }
 
+  /**
+   * The bonus round's clock: a bar across the top of the board that drains in
+   * real time, green to gold to a pulsing red in its last seconds.
+   */
+  private drawBonusBar(ctx: CanvasRenderingContext2D, left: number, time: number): void {
+    const share = Math.max(0, Math.min(1, left / BONUS_TIME))
+    const x = 12
+    const w = this.d.boardW - 24
+    const y = TOP + 6
+    const h = 14
+    const low = left <= BONUS_LOW
+    const pulse = low && !prefersReducedMotion() ? 0.5 + 0.5 * Math.sin(time * 14) : 0
+    ctx.save()
+    ctx.fillStyle = 'rgb(0 0 0 / 0.5)'
+    ctx.beginPath()
+    ctx.roundRect(x, y, w, h, h / 2)
+    ctx.fill()
+    ctx.fillStyle = low ? theme.coral : share > 0.5 ? SKILL_GREEN : theme.yolk
+    ctx.globalAlpha = 1 - 0.35 * pulse
+    if (share > 0) {
+      ctx.beginPath()
+      ctx.roundRect(x, y, Math.max(h, w * share), h, h / 2)
+      ctx.fill()
+    }
+    ctx.globalAlpha = 1
+    ctx.font = `900 11px ${FONT}`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.lineWidth = 3
+    ctx.strokeStyle = theme.night
+    ctx.fillStyle = theme.chalk
+    const text = t('Hit the socket! {n}s', { n: Math.ceil(left) })
+    ctx.strokeText(text, x + w / 2, y + h / 2 + 1)
+    ctx.fillText(text, x + w / 2, y + h / 2 + 1)
+    ctx.restore()
+  }
+
   /** The "+2 ⬆" skill points pill (board units): tapped to open the pick screen; null when none wait. */
   pointsChip: Rect | null = null
 
   /**
    * Right of the XP bar: "120/200" XP, and a pulsing "+N ⬆" pill when skill
-   * points wait (its rect is kept for taps). Returns where the bar must end.
+   * points wait, bigger and glowing with "Tap to pick" while it can be tapped
+   * (its rect is kept for taps). Returns where the bar must end.
    */
   private drawLevelExtras(ctx: CanvasRenderingContext2D, s: RunState, cy: number, time: number): number {
     let right = this.d.boardW - 12
@@ -914,30 +1016,32 @@ export class BoardRenderer {
     ctx.save()
     ctx.textBaseline = 'middle'
     if (s.pendingPicks > 0) {
-      ctx.font = `900 12px ${FONT}`
-      const text = `+${s.pendingPicks} ⬆`
-      const w = ctx.measureText(text).width + 16
-      const x = right - w
       const ready = s.phase === 'aim'
+      ctx.font = `900 ${ready ? 13 : 12}px ${FONT}`
+      const text = ready ? `+${s.pendingPicks} ${t('Tap to pick')}` : `+${s.pendingPicks} ⬆`
+      const w = ctx.measureText(text).width + 18
+      const x = right - w
+      const hh = ready ? 11 : 9
       const pulse = prefersReducedMotion() || !ready ? 0 : 0.5 + 0.5 * Math.sin(time * 6)
-      // A soft halo (no shadowBlur) that breathes while it can be tapped.
-      ctx.fillStyle = `rgb(75 227 160 / ${0.18 + 0.22 * pulse})`
+      // A soft halo (no shadowBlur) that breathes and swells while it can be tapped.
+      const halo = 3 + 3 * pulse
+      ctx.fillStyle = `rgb(75 227 160 / ${0.2 + 0.3 * pulse})`
       ctx.beginPath()
-      ctx.roundRect(x - 3, cy - 12, w + 6, 24, 12)
+      ctx.roundRect(x - halo, cy - hh - halo, w + 2 * halo, 2 * (hh + halo), hh + halo)
       ctx.fill()
       ctx.globalAlpha = ready ? 1 : 0.55
-      ctx.fillStyle = '#4be3a0'
+      ctx.fillStyle = SKILL_GREEN
       ctx.strokeStyle = theme.night
       ctx.lineWidth = 2
       ctx.beginPath()
-      ctx.roundRect(x, cy - 9, w, 18, 9)
+      ctx.roundRect(x, cy - hh, w, 2 * hh, hh)
       ctx.fill()
       ctx.stroke()
       ctx.fillStyle = theme.night
       ctx.textAlign = 'center'
       ctx.fillText(text, x + w / 2, cy + 1)
       this.pointsChip = { x: x - 6, y: cy - 16, w: w + 12, h: 32 }
-      right = x - 8
+      right = x - 10
     }
     ctx.globalAlpha = 1
     ctx.font = `700 10px ${FONT}`

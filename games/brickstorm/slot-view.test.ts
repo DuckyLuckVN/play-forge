@@ -28,9 +28,9 @@ describe('skill slot sockets', () => {
     expect(v.sockets[2]).toEqual({ kind: 'empty', next: true })
   })
 
-  it('a beaten boss adds a socket; all filled reads as full', () => {
+  it('a won bonus round adds a socket', () => {
     const s = createRun(1)
-    s.bossesBeaten = 1
+    s.extraSlots = 1
     expect(slotView(s).max).toBe(BASE_SLOTS + 1)
   })
 })

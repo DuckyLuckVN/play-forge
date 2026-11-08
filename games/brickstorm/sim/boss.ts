@@ -3,7 +3,7 @@
 // share one hp pool. While it lives no rows spawn, but it still drops a row
 // each turn like any brick. Later bosses are bigger and have more skills.
 import { random, randomInt } from '@forge/core/rng'
-import { levelPower, modsOf, runMods, xpToNext } from './boosts'
+import { levelPower, modsOf, runMods, slotsWon, xpToNext } from './boosts'
 import { BOSS_HEAL, heal } from './health'
 import { heroOf } from './heroes'
 import { bossParts, crushUnderBoss, moveBoss } from './boss-kit'
@@ -316,11 +316,12 @@ export function damageBoss(
   s.boss = null
   const coins = Math.round(COINS_PER_TURN * s.turn * Math.min(MAX_COIN_MULT, runMods(s).coinMult))
   s.coins += coins
-  s.pendingPicks++
-  s.freePicks = (s.freePicks ?? 0) + 1
   // No XP per hit on a boss: it all comes now, more the later the boss.
   gainXp(s, bossXp(s.turn, s.level))
+  // A slot is no longer a given: it is won in the bonus round after this volley.
+  s.extraSlots = slotsWon(s)
   s.bossesBeaten = (s.bossesBeaten ?? 0) + 1
+  s.bonusDue = true
   for (const skill of skillsOf(boss)) skill.defeated?.(s, boss, { x, y })
   s.events.push({ type: 'bossDown', x, y, coins, ghost })
   heal(s, s.maxHp * (heroOf(s).bossHeal ?? BOSS_HEAL), 'boss')

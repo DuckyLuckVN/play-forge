@@ -22,7 +22,7 @@ import { BOSS_SKILLS, ROCKET_HIT, SKILL_IDS } from './boss-skills'
 import { CELL } from './config'
 import { damageBrick } from './damage'
 import { cellCenter } from './rows'
-import { canRecall, drainEvents, fire, recall, startNextTurn, step } from './run'
+import { canRecall, drainEvents, endBonus, fire, recall, startNextTurn, step } from './run'
 import { useHelper } from './meta'
 import { ballAt, brick, empty, runVolley } from './testing'
 import type { BossSkillId, RunState } from './types'
@@ -544,6 +544,8 @@ describe('boss skills: all', () => {
         for (let k = 0; k < 120 * 60 && phase() === 'volley'; k++) {
           step(s)
           if (s.volleyTime > 15 && canRecall(s)) recall(s)
+          // The bonus round's socket was hit: the player reads the news and carries on.
+          if (s.bonus?.won) endBonus(s)
         }
       }
       expect(['aim', 'over', 'pick', 'grow']).toContain(s.phase)

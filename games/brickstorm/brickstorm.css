@@ -1369,7 +1369,18 @@
   white-space: nowrap;
   flex: none;
 }
-/* On the Skills button: a glowing pulse so waiting points aren't missed. */
+/* On the Skills button: a corner badge, so it never wraps the label (a taller button would shrink the board). */
+.bs-drawer-btn {
+  position: relative;
+  overflow: visible;
+}
+.bs-drawer-btn .bs-points {
+  position: absolute;
+  top: -8px;
+  right: -6px;
+  margin: 0;
+}
+/* A glowing pulse so waiting points aren't missed. */
 .bs-points.bs-pulse {
   animation: bs-points-pulse 1.2s ease-in-out infinite;
 }

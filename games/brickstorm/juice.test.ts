@@ -16,6 +16,7 @@ import {
   orbAlpha,
   orbPoint,
   pitched,
+  PILL_LIFE,
   ROCKET_FLY,
 } from './juice'
 import { CELL } from './sim/config'
@@ -84,6 +85,19 @@ describe('Juice', () => {
     j.handle({ type: 'kill', id: 1, x: 10, y: 20, maxHp: 5, kind: 'normal', coins: 1 })
     expect(particles.burst).toHaveBeenCalled()
     expect(shake.add).toHaveBeenCalledWith(0.08)
+  })
+
+  it('warns of a boss with a small pill under the HUD, like tougher bricks (no big banner)', () => {
+    const j = juice()
+    j.handle({ type: 'bossSoon', turns: 3 })
+    expect(j.banner).toBeNull()
+    expect(j.pills.map((p) => p.text)).toEqual(['☠ Boss in 3 turns'])
+    j.handle({ type: 'tougher' })
+    expect(j.pills.map((p) => p.text)).toEqual(['☠ Boss in 3 turns', '▲ Tougher bricks'])
+    j.update(PILL_LIFE + 0.1)
+    expect(j.pills).toEqual([])
+    j.handle({ type: 'bossSoon', turns: 1 })
+    expect(j.pills[0].text).toBe('☠ Boss next turn!')
   })
 
   it('fades the banner and flash over time', () => {

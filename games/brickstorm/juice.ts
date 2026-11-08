@@ -161,8 +161,15 @@ const HEAT_AT = [0.1, 0.25, 0.5] as const
 const TALLY_HOLD = 1.2
 /** Seconds between XP ticks (at most 8 a second). */
 const XP_TICK_GAP = 0.125
-/** Seconds the "bricks are tougher" notice shows. */
-export const TOUGHER_LIFE = 2.2
+/** Seconds a pill notice under the HUD ("▲ Tougher bricks", "☠ Boss in 3 turns") shows. */
+export const PILL_LIFE = 2.2
+
+/** A small notice under the HUD; several stack. */
+export interface TopPill {
+  text: string
+  color: string
+  age: number
+}
 /** Seconds the new column or row glows after the board grows. */
 export const GROW_FX_LIFE = 1.4
 
@@ -313,8 +320,8 @@ export class Juice {
   /** 0..1 flare on the boss while one of its skills goes off. */
   bossCast = 0
   private bossHp: number | null = null
-  /** Seconds since bricks got tougher (a new hp stretch), for the "▲" notice; null when not showing. */
-  tougherAge: number | null = null
+  /** Small notices under the HUD (tougher bricks, the boss countdown), newest last. */
+  pills: TopPill[] = []
   /** The board's newest column or row, lit up for a moment after it grows. */
   growFx: { axis: 'col' | 'row'; age: number } | null = null
   /** XP as drawn, in levels (1.5 = halfway through the second level); eases toward the real value. */
@@ -499,17 +506,17 @@ export class Juice {
         this.turn = e.turn
         return
       case 'tougher':
-        this.tougherAge = 0
+        this.pills.push({ text: t('▲ Tougher bricks'), color: 'rgb(255 107 107 / 0.92)', age: 0 })
         return
       case 'bossSoon': {
-        // A countdown that gets louder and shakier as the boss gets closer.
+        // A pill under the HUD (like tougher bricks), redder and louder as the boss gets closer.
         const urgency = BOSS_WARN_TURNS - e.turns // 0, 1, 2
-        this.show(
-          e.turns === 1 ? t('BOSS NEXT TURN!') : t('BOSS IN {n} TURNS', { n: e.turns }),
-          0.15 + 0.15 * urgency,
-        )
-        this.banner!.big = e.turns === 1
-        this.shake.add(0.1 + 0.1 * urgency)
+        this.pills.push({
+          text: e.turns === 1 ? t('☠ Boss next turn!') : t('☠ Boss in {n} turns', { n: e.turns }),
+          color: e.turns === 1 ? 'rgb(255 77 109 / 0.95)' : 'rgb(180 140 255 / 0.92)',
+          age: 0,
+        })
+        this.shake.add(0.05 * urgency)
         return playSound(pitched(BRICK_SOUNDS.danger, 0.85 + 0.15 * urgency))
       }
       case 'boss':
@@ -1238,8 +1245,8 @@ export class Juice {
     this.updateDefeat(dt)
     this.bossHit = Math.max(0, this.bossHit - dt * 6)
     this.bossCast = Math.max(0, this.bossCast - dt * 2)
-    if (this.tougherAge !== null)
-      this.tougherAge = this.tougherAge + dt > TOUGHER_LIFE ? null : this.tougherAge + dt
+    for (const p of this.pills) p.age += dt
+    this.pills = this.pills.filter((p) => p.age < PILL_LIFE)
     if (this.growFx) {
       this.growFx.age += dt
       if (this.growFx.age > GROW_FX_LIFE) this.growFx = null

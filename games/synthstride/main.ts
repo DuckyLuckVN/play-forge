@@ -1,5 +1,6 @@
 import {
   bestScores,
+  bindGestures,
   bindInput,
   createGameApp,
   playerColor,
@@ -37,7 +38,6 @@ import { summaryRows } from './stats'
 const best = bestScores('synthstride')
 let newBest = false
 
-const SWIPE = 24
 /** Beats are scheduled this far ahead on the local clock… */
 const LOOKAHEAD_MS = 120
 /** …and this much after the host's tick, to sit with what you see. */
@@ -45,8 +45,8 @@ const BUFFER_MS = 20
 
 /**
  * Touch / mouse: tap a tile to step toward it (on press, for timing); swipe
- * from off the board; tap the ring for Overdrive. A press on the board never
- * also counts as a swipe, so you can't double-step.
+ * from off the board for one step; tap the ring for Overdrive. A press on the
+ * board never also counts as a swipe, so you can't double-step.
  */
 function bindPointer(
   view: StrideView,
@@ -54,44 +54,25 @@ function bindPointer(
   step: (dir: Step) => void,
   overdrive: () => void,
 ): () => void {
-  const el = view.surface
-  let start: { x: number; y: number } | null = null
-  const down = (e: PointerEvent) => {
-    start = null
-    const { x, y } = view.point(e.clientX, e.clientY)
-    if (skillRingHit(x, y, WIDTH, HEIGHT)) {
-      overdrive()
-      return
-    }
-    const me = target()
-    const tile = me ? tileAtPoint(x, y, me.n) : null
-    if (me && tile !== null) {
-      const dir = stepToward(me.pos, tile, me.n)
-      if (dir) step(dir)
-      return
-    }
-    start = { x: e.clientX, y: e.clientY }
-  }
-  const move = (e: PointerEvent) => {
-    if (!start) return
-    const dx = e.clientX - start.x
-    const dy = e.clientY - start.y
-    if (Math.max(Math.abs(dx), Math.abs(dy)) < SWIPE) return
-    step(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up')
-    start = { x: e.clientX, y: e.clientY }
-  }
-  const end = () => (start = null)
-  el.style.touchAction = 'none'
-  el.addEventListener('pointerdown', down)
-  el.addEventListener('pointermove', move)
-  el.addEventListener('pointerup', end)
-  el.addEventListener('pointercancel', end)
-  return () => {
-    el.removeEventListener('pointerdown', down)
-    el.removeEventListener('pointermove', move)
-    el.removeEventListener('pointerup', end)
-    el.removeEventListener('pointercancel', end)
-  }
+  return bindGestures(
+    {
+      onPress: (pt) => {
+        const { x, y } = view.point(pt.x, pt.y)
+        if (skillRingHit(x, y, WIDTH, HEIGHT)) {
+          overdrive()
+          return true
+        }
+        const me = target()
+        const tile = me ? tileAtPoint(x, y, me.n) : null
+        if (!me || tile === null) return false
+        const dir = stepToward(me.pos, tile, me.n)
+        if (dir) step(dir)
+        return true
+      },
+      onSwipe: step,
+    },
+    { target: view.surface },
+  )
 }
 
 function mount(session: Session<StrideState, StrideInput>, stage: HTMLElement): () => void {

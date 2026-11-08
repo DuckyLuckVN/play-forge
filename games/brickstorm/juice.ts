@@ -388,6 +388,25 @@ export class Juice {
         return playSound(BRICK_SOUNDS.fire)
       case 'launch':
         return this.play('launch', BRICK_SOUNDS.launch)
+      case 'orbHop':
+        // A skill orb moved: a puff where it was, a sparkle where it lands.
+        if (e.from)
+          this.particles.burst(e.from.x, e.from.y, {
+            count: 8,
+            color: ['#4be3a0', theme.chalk],
+            speed: 90,
+            life: 0.3,
+          })
+        this.particles.burst(e.x, e.y, {
+          count: 14,
+          color: ['#4be3a0', '#ffffff', theme.yolk],
+          speed: 160,
+          life: 0.45,
+        })
+        return this.play('orbHop', BRICK_SOUNDS.pickupBall, 0.4)
+      case 'xpFly':
+        if (this.xpOrbs.length < MAX_XP_ORBS) this.xpOrbs.push({ x0: e.x, y0: e.y, age: 0 })
+        return
       case 'hit': {
         this.play('hit', hitSound(e.combo))
         // Every hit feeds the XP bar; an orb shows it (capped so big volleys stay readable).
@@ -1086,8 +1105,9 @@ export class Juice {
     } else this.xpTally = { amount: points, age: 0 }
   }
 
-  /** The level-up celebration: a skill point is waiting for the player to spend. */
+  /** The level-up (or free skill) celebration; nothing when neither happened (e.g. an orb collected). */
   startLevelUp(): void {
+    if (!this.leveled && !this.freePick) return
     this.show(this.leveled || !this.freePick ? t('LEVEL UP!') : t('FREE SKILL!'), 0.6)
     this.banner!.big = true
     this.leveled = this.freePick = false

@@ -248,8 +248,12 @@ export type SimEvent =
   | { type: 'hit'; x: number; y: number; combo: number; power: number; crit: boolean }
   | { type: 'kill'; id: number; x: number; y: number; maxHp: number; kind: BrickKind; coins: number }
   | { type: 'pickup'; kind: PickupKind; x: number; y: number }
-  /** A ball touched a skill orb with a point to spend: the pick screen opens when the turn ends. */
+  /** XP earned off a ball hit (e.g. a laser's beam): an orb flies from (x, y) to the bar. */
+  | { type: 'xpFly'; x: number; y: number }
+  /** A ball collected a skill orb (a skill point): the pick screen opens when the turn ends. */
   | { type: 'orbPick'; x: number; y: number }
+  /** A skill orb appeared at (x, y): new from a level-up, or jumped there `from` its last cell. */
+  | { type: 'orbHop'; x: number; y: number; from: { x: number; y: number } | null }
   | { type: 'wall' }
   | { type: 'land' }
   | { type: 'fever' }
@@ -376,7 +380,7 @@ export interface RunState {
   xp: number
   level: number
   pendingPicks: number
-  /** Skill orbs from level-ups still to drop in with the next rows. Missing in older saves. */
+  /** Skill orbs from level-ups still to appear at the next turn's start. Missing in older saves. */
   orbsDue?: number
   /** A ball touched a skill orb this volley: the pick screen opens when the turn ends. */
   pickAfterVolley?: boolean

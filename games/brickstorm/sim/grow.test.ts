@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { BOARD_W, CELL, COLS, DANGER_ROW, ROWS } from './config'
 import { dims } from './dims'
-import { openPicks, xpToNext } from './boosts'
+import { xpToNext } from './boosts'
 import { growBoard } from './meta'
 import { spawnRow } from './rows'
 import { fire } from './run'
@@ -96,7 +96,7 @@ describe('board growth', () => {
     expect(maxX).toBeLessThanOrEqual(dims(s).boardW)
   })
 
-  it('a level-up at turn 50: the grow choice comes first, the point waits', () => {
+  it('a level-up at turn 50: the grow choice comes first, the orb waits on the board', () => {
     const s = empty()
     s.turn = 49
     s.xp = xpToNext(0) - 1
@@ -108,7 +108,7 @@ describe('board growth', () => {
     expect(s.phase).toBe('grow')
     growBoard(s, 'col')
     expect(s.phase).toBe('aim')
-    expect(s.pendingPicks).toBe(1)
-    expect(openPicks(s)).toBe(true)
+    expect(s.pendingPicks).toBe(0)
+    expect(s.pickups.filter((p) => p.kind === 'skill')).toHaveLength(1)
   })
 })

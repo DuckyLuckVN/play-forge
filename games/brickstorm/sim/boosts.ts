@@ -18,7 +18,7 @@ export type Rarity = 'common' | 'rare' | 'epic'
 
 export const BOOSTS: Record<BoostId, { name: string; text: string; rarity: Rarity; max: number }> = {
   damage: { name: 'Heavy Hitter', text: '+20% ball damage', rarity: 'rare', max: 99 },
-  balls: { name: 'Reinforcements', text: '+2 balls', rarity: 'common', max: 99 },
+  balls: { name: 'Reinforcements', text: '+1 ball', rarity: 'common', max: 99 },
   coins: { name: 'Gold Rush', text: '+30% coins', rarity: 'common', max: 99 },
   speed: { name: 'Tailwind', text: '+15% ball speed', rarity: 'common', max: 5 },
   pierce: { name: 'Piercing', text: '33% of balls pass through their first brick', rarity: 'rare', max: 3 },
@@ -165,7 +165,7 @@ export const BASE_SLOTS = 3
 const OWNED_LEAN = 0.3
 /** Per card, the chance it is one of the hero's favourite skills (when any is still open). */
 export const AFFINITY_CHANCE = 0.2
-/** Boosts that pay out once when picked (+2 balls, Double Down), so they take no slot. */
+/** Boosts that pay out once when picked (+1 ball, Double Down), so they take no slot. */
 const INSTANT: readonly BoostId[] = ['balls', 'double']
 
 type SlotState = Pick<RunState, 'bossesBeaten' | 'extraSlots'> & { hero?: HeroId }
@@ -180,7 +180,7 @@ export function boostSlots(s: SlotState): number {
 }
 
 /** The boosts that fill slots, in the order they were first picked. */
-/** A bonus skill (+2 balls, Double Down): it pays out when picked and takes no slot. */
+/** A bonus skill (+1 ball, Double Down): it pays out when picked and takes no slot. */
 export function isInstant(id: BoostId): boolean {
   return INSTANT.includes(id)
 }
@@ -341,7 +341,7 @@ export function pickBoost(s: RunState, id: BoostId, replace?: BoostId): void {
   if (swap && (!replace || !slottedBoosts(s.boosts).includes(replace))) return
   if (swap) delete s.boosts[replace!]
   s.boosts[id] = (s.boosts[id] ?? 0) + 1
-  if (id === 'balls') s.ballCount += 2
+  if (id === 'balls') s.ballCount += 1
   if (id === 'double') s.doubleVolleys += 3
   finishPick(s)
 }

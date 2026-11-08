@@ -234,6 +234,9 @@ let xpSeen = 0
 /** The level-up celebration for the current pick has started. */
 /** Skill points the player has been told about (a level-up celebration each time it grows). */
 let pointsSeen = 0
+let levelSeen = 0
+/** `save.seen` key: the boss's "coming in 3 turns" hint was shown (once per save). */
+const BOSS_HINT_SEEN = 'notice:boss:soon'
 /** Points shown on the Skills button. */
 let drawerPoints = 0
 /** How many of the current run's coins are already in the wallet. */
@@ -870,6 +873,7 @@ function beginRun(s: RunState) {
   overShown = false
   pointToastShown = false
   pointsSeen = s.pendingPicks
+  levelSeen = s.level
   juice.turn = s.turn
   juice.setXp(s.level, s.xp / xpToNext(s.level), true)
   juice.setCoins(walletTotal(save, s, banked), true)
@@ -1343,13 +1347,16 @@ startRenderLoop((dt, time) => {
           title: t('⚡ Storm next turn'),
           text: t('A special wave arrives next turn.'),
         })
-      // The boss explains itself once, at the first warning; the countdown banner covers the rest.
-      if (e.type === 'bossSoon' && e.turns === BOSS_WARN_TURNS)
+      // The boss explains itself once per save, at its first warning; the countdown banner covers the rest.
+      if (e.type === 'bossSoon' && e.turns === BOSS_WARN_TURNS && !save.seen.includes(BOSS_HINT_SEEN)) {
+        save = { ...save, seen: [...save.seen, BOSS_HINT_SEEN] }
+        persist()
         notices.push({
           id: 'boss:soon',
           title: t('☠ Boss in {n} turns', { n: e.turns }),
           text: t('No new rows while it lives. Clear the bottom rows and save a helper for the fight.'),
         })
+      }
       if (e.type === 'bonusMiss') toast(t('Slot missed'))
       if (e.type === 'storm') {
         notices.push({ id: `storm:${e.kind}`, title: t(STORM_TEXT[e.kind]), text: t(STORM_EXPLAIN[e.kind]) })
@@ -1386,11 +1393,14 @@ startRenderLoop((dt, time) => {
           : []),
       )
     }
-    // A new skill point: celebrate once the shot is over (after a boss's death has played out). The
-    // pick screen waits until the player opens it (the "+N" pill or the Skills button).
+    // A level-up (its orb drops next turn) or a free skill: celebrate once the shot is over (after a
+    // boss's death has played out). Collected orbs have their own pop; their pick screen opens itself.
     if (s.pendingPicks < pointsSeen) pointsSeen = s.pendingPicks
-    else if (s.pendingPicks > pointsSeen && s.phase !== 'volley' && !juice.bossDying && !juice.bossArriving) {
+    if (s.level < levelSeen) levelSeen = s.level
+    const gained = s.pendingPicks > pointsSeen || s.level > levelSeen
+    if (gained && s.phase !== 'volley' && !juice.bossDying && !juice.bossArriving) {
       pointsSeen = s.pendingPicks
+      levelSeen = s.level
       juice.startLevelUp()
     }
     // The first time points wait in a run, say so once.

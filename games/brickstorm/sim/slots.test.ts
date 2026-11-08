@@ -39,7 +39,7 @@ describe('boost slots', () => {
     expect(boostSlots(s)).toBe(3)
   })
 
-  it('count only lasting boosts: instant ones (+2 balls, Double Down) take no slot', () => {
+  it('count only lasting boosts: instant ones (+1 ball, Double Down) take no slot', () => {
     expect(slottedBoosts({ damage: 2, crit: 1, balls: 4, double: 1 })).toEqual(['damage', 'crit'])
   })
 

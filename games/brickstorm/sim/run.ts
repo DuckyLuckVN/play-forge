@@ -46,6 +46,7 @@ import { HEART_HEAL, heal, heroFreezes, heroHitMult, heroTurnStart, resolveBreac
 import { DEFAULT_HERO, HEROES, heroOf, type HeroId } from './heroes'
 import { faceOf, facesOf } from './faces'
 import { tickBurn, touchHazard } from './hazards'
+import { scatterOrbs } from './orbs'
 import { isSpiked } from './spikes'
 import { isStormTurn, stormWave } from './storm'
 import type { Ball, Brick, Pickup, RunState, SimEvent } from './types'
@@ -384,7 +385,8 @@ export function applyPickup(s: RunState, p: Pickup, mods = runMods(s)): void {
   else if (p.kind === 'fire') s.fireCharges += 3
   else if (p.kind === 'heart') heal(s, s.maxHp * HEART_HEAL, 'heart')
   else if (p.kind === 'skill') {
-    if (s.phase === 'volley' && s.pendingPicks > 0) s.events.push({ type: 'orbPick', x, y })
+    s.pendingPicks++
+    if (s.phase === 'volley') s.events.push({ type: 'orbPick', x, y })
     orbPicks(s)
   } else if (p.kind === 'socket') winSlot(s)
   else laserRow(s, p.row)
@@ -404,7 +406,12 @@ const LASER_POWER = 2
 /** A laser across a row: every brick in it takes `damage` (the turn's worth unless told). */
 export function laserRow(s: RunState, row: number, damage = s.turn): void {
   s.events.push({ type: 'laser', y: cellCenter(0, row).y })
-  for (const b of oncePerBoss(s.bricks.filter((b) => b.row === row))) damageBrick(s, b, damage, 'laser')
+  for (const b of oncePerBoss(s.bricks.filter((b) => b.row === row))) {
+    // Its XP flies to the bar like a ball hit's (a boss, ghost or ice wall pays none per hit).
+    if (b.kind !== 'boss' && !b.ghost && b.role !== 'ice')
+      s.events.push({ type: 'xpFly', ...cellCenter(b.col, b.row) })
+    damageBrick(s, b, damage, 'laser')
+  }
 }
 
 /** Rows the bricks fall when this turn ends: none when frozen, two on a Glass Cannon tenth turn. */
@@ -453,7 +460,8 @@ function endTurn(s: RunState): void {
   const drops = rowDrops(s, mods)
   s.freezeNext = false
   for (const b of s.bricks) b.row += drops
-  for (const p of s.pickups) p.row += drops
+  // Skill orbs don't fall: they jump to a new cell when the next turn starts.
+  for (const p of s.pickups) if (p.kind !== 'skill') p.row += drops
   if (!frozen) bossDrop(s)
   s.pickups = s.pickups.filter((p) => p.row < dangerRow)
 
@@ -495,6 +503,7 @@ export function startNextTurn(s: RunState, spawn = true): void {
       if (isStormTurn(s.turn)) stormWave(s)
     }
   }
+  scatterOrbs(s)
   if (s.turn % GROW_EVERY === 0) s.growPending = true
   s.events.push({ type: 'turn', turn: s.turn })
   if (hpStepStart(s.turn) === s.turn) s.events.push({ type: 'tougher' })

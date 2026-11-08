@@ -1,4 +1,4 @@
-// Level-ups bank skill points; the player opens the pick screen when they want
+// Collected skill orbs bank skill points; the player opens the pick screen when they want
 // (between shots), and closing it keeps the point and the same offers.
 import { describe, expect, it } from 'vitest'
 import { closePicks, openPicks, pickBoost } from './boosts'
@@ -14,12 +14,13 @@ function withPoints(n: number) {
 }
 
 describe('skill points', () => {
-  it('a level-up banks a point and play goes on (no pick screen)', () => {
+  it('a level-up drops an orb instead of a point (the point comes when a ball collects it)', () => {
     const s = empty()
     s.phase = 'aim'
     gainXp(s, 1e4)
     openPickOrAim(s)
-    expect(s.pendingPicks).toBeGreaterThan(0)
+    expect(s.pendingPicks).toBe(0)
+    expect(s.orbsDue).toBeGreaterThan(0)
     expect(s.phase).toBe('aim')
   })
 

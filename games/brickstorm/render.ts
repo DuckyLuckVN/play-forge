@@ -357,15 +357,35 @@ const BONUS_LOW = 3
 /** Skill points' green (as on the HUD pill). */
 const SKILL_GREEN = '#4be3a0'
 
-/** A level-up's skill orb: a breathing green orb with an up arrow. */
+/** The tag over a skill item, in place of NEW: what it gives. */
+const ITEM_TAG: Partial<Record<PickupKind, () => string>> = {
+  skill: () => t('SKILL'),
+  socket: () => t('SLOT'),
+}
+
+/** A level-up's skill orb: a breathing, shiny green orb with an up arrow and sparks circling it. */
 function drawSkillOrb(ctx: CanvasRenderingContext2D, x: number, y: number, time: number): void {
-  const glow = prefersReducedMotion() ? 0.5 : 0.5 + 0.5 * Math.sin(time * 5)
+  const still = prefersReducedMotion()
+  const glow = still ? 0.5 : 0.5 + 0.5 * Math.sin(time * 5)
   ctx.save()
   ctx.fillStyle = `rgb(75 227 160 / ${0.2 + 0.25 * glow})`
   ctx.beginPath()
-  ctx.arc(x, y, PICKUP_R + 4 + 2 * glow, 0, Math.PI * 2)
+  ctx.arc(x, y, PICKUP_R + 4 + 3 * glow, 0, Math.PI * 2)
   ctx.fill()
-  ctx.fillStyle = SKILL_GREEN
+  // Three sparks orbiting, so it reads as special even among other pickups.
+  const spin = still ? 0 : time * 2.5
+  for (let i = 0; i < 3; i++) {
+    const a = spin + (i * Math.PI * 2) / 3
+    ctx.fillStyle = i === 0 ? theme.yolk : '#ffffff'
+    ctx.beginPath()
+    ctx.arc(x + Math.cos(a) * (PICKUP_R + 5), y + Math.sin(a) * (PICKUP_R + 5), 1.8, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  const body = ctx.createRadialGradient(x - 4, y - 4, 1, x, y, PICKUP_R)
+  body.addColorStop(0, '#b8ffdc')
+  body.addColorStop(0.55, SKILL_GREEN)
+  body.addColorStop(1, '#22a874')
+  ctx.fillStyle = body
   ctx.strokeStyle = theme.night
   ctx.lineWidth = 2
   ctx.beginPath()
@@ -852,8 +872,9 @@ export class BoardRenderer {
         ctx.fill()
       }
       drawPickupGlyph(ctx, p.kind, x, y + Math.sin(time * 4 + p.id) * 3, time)
-      if (this.unseen.has(`pickup:${p.kind}`))
-        drawNewTag(ctx, x, y - PICKUP_R - 4, t('NEW'), time, prefersReducedMotion())
+      // A skill item always says what it gives; other pickups say NEW until read about.
+      const tag = ITEM_TAG[p.kind]?.() ?? (this.unseen.has(`pickup:${p.kind}`) ? t('NEW') : null)
+      if (tag) drawNewTag(ctx, x, y - PICKUP_R - 4, tag, time, prefersReducedMotion())
     }
   }
 

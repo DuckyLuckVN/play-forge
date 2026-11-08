@@ -54,6 +54,13 @@ export { createCanvas2D, type Canvas2D } from './render2d/canvas'
 export { audioMenu } from './ui/audio-menu'
 export { langMenu } from './ui/lang-menu'
 export { h, icon, iconButton, setLabel, toast } from './ui/dom'
+export {
+  fullscreenButton,
+  isFullscreen,
+  isFullscreenSupported,
+  onFullscreenChange,
+  toggleFullscreen,
+} from './ui/fullscreen'
 export { popover, type Popover, type PopoverOptions } from './ui/popover'
 export { icons } from './ui/icons'
 export { applyTheme, FONT, PLAYER_COLORS, playerColor, theme } from './ui/theme'

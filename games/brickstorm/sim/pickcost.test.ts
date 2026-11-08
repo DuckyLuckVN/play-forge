@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { holdBoost, holdCost, openPicks, pickBoost, pickCost, reroll, rollChoices, skipPick } from './boosts'
-import { spawnBoss } from './boss'
-import { damageBrick } from './damage'
-import { openPickOrAim } from './run'
 import { empty } from './testing'
 import type { BoostId, RunState } from './types'
 
@@ -50,14 +47,11 @@ describe('pick prices', () => {
     expect(up3).toBeGreaterThan(up1)
   })
 
-  it('a boss reward pick is free', () => {
+  it('a free pick (Lucky Start) costs nothing, even late', () => {
     const s = empty()
-    s.turn = 30
-    s.ballCount = 10
     s.level = 9
-    spawnBoss(s, [], 'block')
-    damageBrick(s, s.bricks[0], 1e9, 'blast')
-    openPickOrAim(s)
+    s.pendingPicks = 1
+    s.freePicks = 1
     expect(openPicks(s)).toBe(true)
     expect(pickCost(s, s.choices[0])).toBe(0)
     pickBoost(s, s.choices[0])

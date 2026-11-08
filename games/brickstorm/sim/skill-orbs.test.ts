@@ -63,6 +63,48 @@ describe('skill orbs', () => {
     expect(rows.size).toBeGreaterThan(1)
   })
 
+  it('lands next to a brick when one has a free neighbour', () => {
+    for (let seed = 1; seed <= 30; seed++) {
+      const s = empty(seed)
+      s.bricks.push({ id: s.nextId++, col: 3, row: 5, hp: 9, maxHp: 9, kind: 'normal' } as never)
+      s.orbsDue = 1
+      scatterOrbs(s)
+      const orb = s.pickups.find((p) => p.kind === 'skill')!
+      expect(Math.max(Math.abs(orb.col - 3), Math.abs(orb.row - 5))).toBe(1)
+    }
+  })
+
+  it('jumps stay near the bricks too', () => {
+    const s = empty(7)
+    s.bricks.push({ id: s.nextId++, col: 1, row: 2, hp: 9, maxHp: 9, kind: 'normal' } as never)
+    s.pickups.push({ id: s.nextId++, col: 6, row: 9, kind: 'skill' })
+    scatterOrbs(s)
+    const orb = s.pickups.find((p) => p.kind === 'skill')!
+    expect(Math.max(Math.abs(orb.col - 1), Math.abs(orb.row - 2))).toBe(1)
+  })
+
+  it('on real rows, every orb touches a brick', () => {
+    for (let seed = 1; seed <= 40; seed++) {
+      const s = empty(seed)
+      s.turn = 6
+      spawnRow(s)
+      for (const b of s.bricks) b.row += 3
+      s.orbsDue = 2
+      scatterOrbs(s)
+      for (const orb of s.pickups.filter((p) => p.kind === 'skill'))
+        expect(
+          s.bricks.some((b) => Math.max(Math.abs(b.col - orb.col), Math.abs(b.row - orb.row)) === 1),
+        ).toBe(true)
+    }
+  })
+
+  it('with no bricks at all, any free cell will do', () => {
+    const s = empty(2)
+    s.orbsDue = 1
+    scatterOrbs(s)
+    expect(s.pickups.filter((p) => p.kind === 'skill')).toHaveLength(1)
+  })
+
   it('an orb never shares a cell with a brick or another pickup', () => {
     for (let seed = 1; seed <= 50; seed++) {
       const s = empty(seed)

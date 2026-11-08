@@ -383,7 +383,7 @@ export interface RunState {
    * the new skill counts from the next volley. Cleared when the volley ends.
    */
   volleyBoosts?: Partial<Record<BoostId, number>> | null
-  /** Of the pending picks, how many are free (boss rewards, Lucky Start). Missing in older saves. */
+  /** Of the pending picks, how many are free (Lucky Start). Missing in older saves. */
   freePicks?: number
   choices: BoostId[]
   /** A boost the player paid to see again at the next level-up. */

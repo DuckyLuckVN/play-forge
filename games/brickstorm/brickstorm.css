@@ -728,7 +728,7 @@
   color: #ffc83d;
 }
 
-/* "New boost slot!" after a boss. */
+/* "New skill slot!" after a bonus round's socket is hit. */
 .bs-slot-callout {
   display: flex;
   gap: 12px;
@@ -1360,4 +1360,20 @@
   vertical-align: middle;
   white-space: nowrap;
   flex: none;
+}
+/* On the Skills button: a glowing pulse so waiting points aren't missed. */
+.bs-points.bs-pulse {
+  animation: bs-points-pulse 1.2s ease-in-out infinite;
+}
+@keyframes bs-points-pulse {
+  50% {
+    transform: scale(1.15);
+    box-shadow: 0 0 10px rgb(75 227 160 / 0.8);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bs-points.bs-pulse {
+    animation: none;
+    box-shadow: 0 0 6px rgb(75 227 160 / 0.7);
+  }
 }

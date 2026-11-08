@@ -259,8 +259,8 @@ const HOLD_SHARE = 0.75
 const HOLD_MIN = 5
 
 /**
- * What taking `id` now costs: free for the run's first level-up and for boss
- * and mystery rewards; otherwise by rarity and strength, rising each level, and
+ * What taking `id` now costs: free for the run's first level-up and for free
+ * picks (Lucky Start); otherwise by rarity and strength, rising each level, and
  * more for an upgrade of a boost you own.
  */
 export function pickCost(s: RunState, id: BoostId): number {

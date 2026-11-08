@@ -62,7 +62,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'brick:boss',
     name: 'Boss',
-    text: 'Every 30 turns, announced 3 turns ahead; the arena grows wider for the fight and the bricks fall every other turn. One big health bar, 2–4 special powers (more for each boss), and no new rows until it falls. Beat it for coins, a free skill and an extra skill slot.',
+    text: 'Every 30 turns, announced 3 turns ahead; the arena grows wider for the fight and the bricks fall every other turn. One big health bar, 2–4 special powers (more for each boss), and no new rows until it falls. Beat it for coins, then hit the socket in the 10-second bonus round for an extra skill slot.',
   },
   {
     id: 'shape:triangle',
@@ -86,6 +86,16 @@ export const GUIDE: GuideEntry[] = [
     id: 'pickup:laser',
     name: 'Laser',
     text: 'Fires a beam across its row every time a ball passes it, until the volley ends.',
+  },
+  {
+    id: 'pickup:skill',
+    name: 'Skill orb',
+    text: 'Drops in after each level-up. Touch it to pick a skill right away; the skill works from your next shot.',
+  },
+  {
+    id: 'pickup:socket',
+    name: 'Skill socket',
+    text: 'After a boss: hit it before the timer runs out to unlock a new skill slot.',
   },
   {
     id: 'ball:fire',

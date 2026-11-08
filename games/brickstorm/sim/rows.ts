@@ -256,7 +256,6 @@ export function spawnRow(state: RunState): void {
     // Jackpot row: all gold, plus a ball.
     for (let i = 0; i < JACKPOT_GOLD; i++) add('gold')
     state.pickups.push({ id: state.nextId++, col: take(), row: 0, kind: 'ball' })
-    dropOrbs(state, free, take)
     state.events.push({ type: 'jackpot' })
     return
   }
@@ -287,8 +286,6 @@ export function spawnRow(state: RunState): void {
     }
     add(kind, order[i], boost)
   }
-  // Level-ups' skill orbs come before the row's other pickups.
-  dropOrbs(state, free, take)
   const pickup = (kind: PickupKind, p: number) => {
     if (free.length && random(rng) < p) state.pickups.push({ id: state.nextId++, col: take(), row: 0, kind })
   }
@@ -299,14 +296,6 @@ export function spawnRow(state: RunState): void {
     pickup('laser', 0.05)
   }
   if (turn >= HEART_FROM) pickup('heart', heartChance(state))
-}
-
-/** The skill orbs due (one per level-up), in the row's free columns; any that don't fit wait for the next row. */
-function dropOrbs(state: RunState, free: number[], take: () => number): void {
-  while ((state.orbsDue ?? 0) > 0 && free.length) {
-    state.pickups.push({ id: state.nextId++, col: take(), row: 0, kind: 'skill' })
-    state.orbsDue = (state.orbsDue ?? 0) - 1
-  }
 }
 
 /** First turn a heart pickup may appear. */

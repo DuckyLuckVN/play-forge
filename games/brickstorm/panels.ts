@@ -76,7 +76,7 @@ function infoButton(label: string, onInfo: () => void): HTMLButtonElement {
 
 /**
  * Owned skills as tiles, then an empty socket for each free slot. Bonus
- * skills (+2 balls, Double Down) take no slot, so they aren't listed; a
+ * skills (+1 ball, Double Down) take no slot, so they aren't listed; a
  * running Double Down shows as an active effect. Tapping a skill (or its ⓘ)
  * shows what it does.
  */

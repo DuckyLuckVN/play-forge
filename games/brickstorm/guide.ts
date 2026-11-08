@@ -90,7 +90,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'pickup:skill',
     name: 'Skill orb',
-    text: 'Drops in after each level-up. Touch it to pick a skill right away; the skill works from your next shot.',
+    text: 'Appears after each level-up and jumps to a new spot every turn. Hit it with a ball to earn a skill point; the skill picker opens when the turn ends.',
   },
   {
     id: 'pickup:socket',

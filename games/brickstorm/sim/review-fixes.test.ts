@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { bankRun, DEFAULT_SAVE } from '../save'
-import { openPicks, xpToNext } from './boosts'
+import { xpToNext } from './boosts'
 import { DANGER_ROW } from './config'
 import { revive, useHelper } from './meta'
 import { createRun, drainEvents, fire, step } from './run'
@@ -44,7 +44,7 @@ describe('review fixes', () => {
     expect(s.events).toHaveLength(1)
   })
 
-  it('a helper that levels you up banks the point, at combo 1×', () => {
+  it('a helper that levels you up queues its skill orb, at combo 1×', () => {
     const s = empty()
     s.xp = xpToNext(0) - 1
     s.combo = 120
@@ -52,9 +52,8 @@ describe('review fixes', () => {
     useHelper(s, 'rowBomb')
     expect(s.combo).toBe(0)
     expect(s.phase).toBe('aim')
-    expect(s.pendingPicks).toBe(1)
-    expect(openPicks(s)).toBe(true)
-    expect(s.choices).toHaveLength(3)
+    expect(s.pendingPicks).toBe(0)
+    expect(s.orbsDue).toBe(1)
   })
 
   it('revive keeps the same turn and spawns no new row', () => {

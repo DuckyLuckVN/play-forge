@@ -310,59 +310,67 @@
   }
 }
 
-/* First-seen hint card over the middle of the board. */
+/* First-seen hint over the middle of the board: a slim, quiet card (tap to close). */
 .bs-notice {
   position: absolute;
   top: 52%;
   left: 50%;
   z-index: 5;
-  width: min(380px, calc(var(--bs-board-w, 100%) - 24px));
+  width: min(320px, calc(var(--bs-board-w, 100%) - 24px));
   display: grid;
-  grid-template-columns: 48px 1fr;
+  grid-template-columns: 32px 1fr;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px 14px;
+  gap: 10px;
+  padding: 8px 12px 10px;
   overflow: hidden;
-  border: 2px solid var(--pf-yolk);
-  border-radius: 16px;
-  background: rgb(16 19 44 / 0.94);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 12px;
+  background: rgb(16 19 44 / 0.88);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.35);
   color: var(--pf-chalk);
   font: inherit;
   text-align: left;
   cursor: pointer;
   transform: translateX(-50%);
-  animation: bs-notice-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: bs-notice-in 0.25s ease-out;
 }
 .bs-notice[hidden] {
   display: none;
 }
+/* The picture is drawn at 48px (shared with the guide); here it sits smaller. */
+.bs-notice > canvas {
+  width: 32px !important;
+  height: 32px !important;
+}
 .bs-notice > span {
   display: grid;
-  gap: 2px;
+  gap: 1px;
 }
 .bs-notice strong {
+  font-size: 14px;
   color: var(--pf-yolk);
 }
 .bs-notice > span > span {
-  font-size: 14px;
+  font-size: 12.5px;
+  line-height: 1.35;
   color: var(--pf-haze);
 }
-/* Time left, as a bar shrinking along the bottom edge. */
+/* Time left, as a thin bar shrinking along the bottom edge. */
 .bs-notice-time {
   position: absolute;
   left: 0;
   bottom: 0;
-  height: 3px;
+  height: 2px;
   width: 100%;
   background: var(--pf-yolk);
+  opacity: 0.6;
   transform-origin: left;
   transform: scaleX(var(--left, 1));
 }
 @keyframes bs-notice-in {
   from {
     opacity: 0;
-    transform: translate(-50%, -16px) scale(0.92);
+    transform: translate(-50%, -8px);
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -901,7 +909,7 @@
   font-size: 14px;
 }
 
-/* Bonus cards (+2 balls, Double Down): same layout as a skill card, told apart
+/* Bonus cards (+1 ball, Double Down): same layout as a skill card, told apart
    by a two-tone ribbon border and a BONUS ribbon across the top-right corner
    (bonuses can't be held, so the lock never sits there). */
 .bs-card.bonus.pf-btn {

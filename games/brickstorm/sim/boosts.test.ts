@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BOOSTS, modsOf, openPicks, pickBoost, reroll, rollChoices, xpToNext, xpTotal } from './boosts'
+import { BOOSTS, modsOf, pickBoost, reroll, rollChoices, xpToNext, xpTotal } from './boosts'
 import { drainEvents, fire, step } from './run'
 import { brick, empty, runVolley } from './testing'
 import type { BoostId } from './types'
@@ -94,7 +94,7 @@ describe('picking', () => {
   it('applies the pick and returns to aiming', () => {
     const s = picking(['balls', 'damage', 'coins'])
     pickBoost(s, 'balls')
-    expect(s.ballCount).toBe(3)
+    expect(s.ballCount).toBe(2)
     expect(s.boosts.balls).toBe(1)
     expect(s.phase).toBe('aim')
   })
@@ -122,18 +122,17 @@ describe('picking', () => {
 })
 
 describe('xp in a run', () => {
-  it('levels up from kills and banks a skill point (opened when the player wants)', () => {
+  it('levels up from kills and drops a skill orb (its point comes when collected)', () => {
     const s = empty()
     s.xp = xpToNext(0) - 1
     brick(s, 3, 5, 1)
     fire(s, Math.PI / 2)
     runVolley(s)
     expect(s.level).toBe(1)
-    expect(s.pendingPicks).toBe(1)
+    expect(s.pendingPicks).toBe(0)
     expect(drainEvents(s).filter((e) => e.type === 'levelUp')).toHaveLength(1)
     expect(s.phase).toBe('aim')
-    expect(openPicks(s)).toBe(true)
-    expect(s.choices).toHaveLength(3)
+    expect(s.pickups.filter((p) => p.kind === 'skill')).toHaveLength(1)
   })
 
   it('doubles the volley for 3 turns', () => {

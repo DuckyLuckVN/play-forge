@@ -121,7 +121,7 @@ describe('holding a boost', () => {
     expect(s.choices[0]).toBe('twin')
   })
 
-  it('a bonus (+2 balls, Double Down) cannot be held', () => {
+  it('a bonus (+1 ball, Double Down) cannot be held', () => {
     const s = picking(4, {}, ['balls', 'double', 'twin'])
     holdBoost(s, 'balls')
     holdBoost(s, 'double')

@@ -324,6 +324,8 @@ export const VI: Dictionary = {
   'Helpers like Push Back can save a run.': 'Trợ thủ như Đẩy Lùi có thể cứu lượt chơi.',
   'Empty skill slot': 'Ô kỹ năng trống',
   NEW: 'MỚI',
+  SKILL: 'KỸ NĂNG',
+  SLOT: 'Ô',
   'New blocks!': 'Khối mới!',
   'Hold any block or item to see what it does.': 'Giữ một khối hoặc vật phẩm bất kỳ để xem nó làm gì.',
   'Skill slots {n}/{max}': 'Ô kỹ năng {n}/{max}',
@@ -340,8 +342,9 @@ export const VI: Dictionary = {
   'Reroll (use 1 skill point)': 'Đổi lại (dùng 1 điểm kỹ năng)',
   'Needs 2 skill points: one stays to pick with.': 'Cần 2 điểm kỹ năng: giữ lại một điểm để chọn.',
   'Skill orb': 'Quả cầu kỹ năng',
-  'Drops in after each level-up. Touch it to pick a skill right away; the skill works from your next shot.':
-    'Xuất hiện sau mỗi lần lên cấp. Chạm vào để chọn kỹ năng ngay; kỹ năng có hiệu lực từ cú bắn sau.',
+  'Appears after each level-up and jumps to a new spot every turn. Hit it with a ball to earn a skill point; the skill picker opens when the turn ends.':
+    'Xuất hiện sau mỗi lần lên cấp và đổi chỗ mỗi lượt. Cho bóng chạm vào để nhận điểm kỹ năng; bảng chọn kỹ năng mở khi hết lượt.',
+  'Skill pick after this turn!': 'Chọn kỹ năng sau lượt này!',
   'Skill socket': 'Ổ cắm kỹ năng',
   'After a boss: hit it before the timer runs out to unlock a new skill slot.':
     'Sau trận trùm: bắn trúng nó trước khi hết giờ để mở thêm một ô kỹ năng.',
@@ -372,7 +375,7 @@ export const VI: Dictionary = {
   'Heavy Hitter': 'Đòn Nặng',
   '+20% ball damage': '+20% sát thương bóng',
   Reinforcements: 'Tiếp Viện',
-  '+2 balls': '+2 bóng',
+  '+1 ball': '+1 bóng',
   'Gold Rush': 'Cơn Sốt Vàng',
   '+30% coins': '+30% xu',
   Tailwind: 'Gió Xuôi',

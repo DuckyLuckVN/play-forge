@@ -67,15 +67,10 @@ export function gainXp(s: RunState, amount: number): void {
   while (s.xp >= xpToNext(s.level)) {
     s.xp -= xpToNext(s.level)
     s.level++
-    gainPoint(s)
+    // The skill point comes with its orb, once a ball collects it (see scatterOrbs).
+    s.orbsDue = (s.orbsDue ?? 0) + 1
     s.events.push({ type: 'levelUp' })
   }
-}
-
-/** A skill point, and its orb to drop in with the next row. */
-function gainPoint(s: RunState): void {
-  s.pendingPicks++
-  s.orbsDue = (s.orbsDue ?? 0) + 1
 }
 
 export function killBrick(s: RunState, brick: Brick, depth: number): void {
@@ -140,7 +135,8 @@ function onDeath(s: RunState, brick: Brick, depth: number): void {
     case 'mystery': {
       const reward = MYSTERY_REWARDS[randomInt(s.rng, MYSTERY_REWARDS.length)]
       if (reward === 'balls') s.pendingBalls += 3
-      else if (reward === 'pick') gainPoint(s)
+      else if (reward === 'pick')
+        s.pendingPicks++ // the ball already touched it: no orb
       else if (reward === 'coins') s.coins += 50
       else s.fireCharges += 3
       s.events.push({ type: 'mystery', x, y, reward })

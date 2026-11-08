@@ -18,7 +18,7 @@ export type Rarity = 'common' | 'rare' | 'epic'
 
 export const BOOSTS: Record<BoostId, { name: string; text: string; rarity: Rarity; max: number }> = {
   damage: { name: 'Heavy Hitter', text: '+20% ball damage', rarity: 'rare', max: 99 },
-  balls: { name: 'Reinforcements', text: '+2 balls', rarity: 'common', max: 99 },
+  balls: { name: 'Reinforcements', text: '+1 ball', rarity: 'common', max: 99 },
   coins: { name: 'Gold Rush', text: '+30% coins', rarity: 'common', max: 99 },
   speed: { name: 'Tailwind', text: '+15% ball speed', rarity: 'common', max: 5 },
   pierce: { name: 'Piercing', text: '33% of balls pass through their first brick', rarity: 'rare', max: 3 },
@@ -103,8 +103,8 @@ function rollTier(s: RunState): Rarity {
 export type Mods = ReturnType<typeof modsOf>
 
 /** The run's stats: its skills (as the current volley has them) and its hero. */
-export function runMods(s: Pick<RunState, 'boosts' | 'volleyBoosts'> & { hero?: HeroId }): Mods {
-  return modsOf(s.volleyBoosts ?? s.boosts, s.hero)
+export function runMods(s: Pick<RunState, 'boosts'> & { hero?: HeroId }): Mods {
+  return modsOf(s.boosts, s.hero)
 }
 
 /**
@@ -165,7 +165,7 @@ export const BASE_SLOTS = 3
 const OWNED_LEAN = 0.3
 /** Per card, the chance it is one of the hero's favourite skills (when any is still open). */
 export const AFFINITY_CHANCE = 0.2
-/** Boosts that pay out once when picked (+2 balls, Double Down), so they take no slot. */
+/** Boosts that pay out once when picked (+1 ball, Double Down), so they take no slot. */
 const INSTANT: readonly BoostId[] = ['balls', 'double']
 
 type SlotState = Pick<RunState, 'bossesBeaten' | 'extraSlots'> & { hero?: HeroId }
@@ -180,7 +180,7 @@ export function boostSlots(s: SlotState): number {
 }
 
 /** The boosts that fill slots, in the order they were first picked. */
-/** A bonus skill (+2 balls, Double Down): it pays out when picked and takes no slot. */
+/** A bonus skill (+1 ball, Double Down): it pays out when picked and takes no slot. */
 export function isInstant(id: BoostId): boolean {
   return INSTANT.includes(id)
 }
@@ -305,23 +305,24 @@ export function openPicks(s: RunState): boolean {
 }
 
 /**
- * A ball touched a skill orb: with a point to spend, the volley pauses on the
- * pick screen (from aiming, e.g. the Vacuum helper, it simply opens).
+ * A skill orb was collected: mid-volley the pick screen waits for the turn's end
+ * (the volley keeps flying); while aiming (the Vacuum helper) it opens now.
  */
-export function orbPicks(s: RunState): boolean {
-  if (s.phase === 'aim') return openPicks(s)
-  if (s.phase !== 'volley' || s.pendingPicks <= 0) return false
-  s.phase = 'pick'
-  s.midVolley = true
-  if (!s.choices.length) s.choices = rollChoices(s)
-  return true
+export function orbPicks(s: RunState): void {
+  if (s.phase === 'aim') openPicks(s)
+  else if (s.phase === 'volley') s.pickAfterVolley = true
 }
 
-/** "Later": back to aiming (or the paused volley), keeping the points and the offers. */
+/** The turn is over and aiming: opens the pick screen a skill orb asked for, if a point is left. */
+export function openOrbPick(s: RunState): void {
+  if (!s.pickAfterVolley || s.phase !== 'aim') return
+  s.pickAfterVolley = false
+  openPicks(s)
+}
+
+/** "Later": back to aiming, keeping the points and the offers. */
 export function closePicks(s: RunState): void {
-  if (s.phase !== 'pick') return
-  s.phase = s.midVolley ? 'volley' : 'aim'
-  s.midVolley = false
+  if (s.phase === 'pick') s.phase = 'aim'
 }
 
 /** Passes on this pick: no boost, on to what's next. */
@@ -338,11 +339,9 @@ export function pickBoost(s: RunState, id: BoostId, replace?: BoostId): void {
   if (s.phase !== 'pick' || !s.choices.includes(id)) return
   const swap = needsReplace(s, id)
   if (swap && (!replace || !slottedBoosts(s.boosts).includes(replace))) return
-  // Mid-volley, the volley keeps flying with the skills it started with.
-  if (s.midVolley) s.volleyBoosts ??= { ...s.boosts }
   if (swap) delete s.boosts[replace!]
   s.boosts[id] = (s.boosts[id] ?? 0) + 1
-  if (id === 'balls') s.ballCount += 2
+  if (id === 'balls') s.ballCount += 1
   if (id === 'double') s.doubleVolleys += 3
   finishPick(s)
 }
@@ -357,9 +356,6 @@ function finishPick(s: RunState): void {
   if (s.pendingPicks > 0) {
     // More points: the screen stays open with fresh offers.
     s.choices = rollChoices(s)
-  } else if (s.midVolley) {
-    s.choices = []
-    closePicks(s)
   } else {
     s.choices = []
     // A board growth due this turn comes right after the pick.

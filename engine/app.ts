@@ -23,6 +23,7 @@ import { RoomSocial } from './social/room-social'
 import { audioMenu } from './ui/audio-menu'
 import { langMenu } from './ui/lang-menu'
 import { h, icon, iconButton, toast } from './ui/dom'
+import { fullscreenButton } from './ui/fullscreen'
 import { icons } from './ui/icons'
 import { optionPickers } from './ui/options'
 import { popover } from './ui/popover'
@@ -219,7 +220,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     home,
     h('h1', { class: 'pf-bar-title', textContent: opts.title }),
     scoresEl,
-    h('div', { class: 'pf-bar-actions' }, fan.root, pauseBtn, more.root),
+    h('div', { class: 'pf-bar-actions' }, fan.root, pauseBtn, fullscreenButton(), more.root),
   )
   const stage = h('main', { class: 'pf-stage' })
   const overlay = h('div', { class: 'pf-overlay' })

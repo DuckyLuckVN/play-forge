@@ -26,7 +26,7 @@ import {
   LEVEL_POP_LIFE,
   orbAlpha,
   orbPoint,
-  TOUGHER_LIFE,
+  PILL_LIFE,
   XP_ORB_FLY,
 } from './juice'
 import { runMods, xpToNext } from './sim/boosts'
@@ -681,7 +681,7 @@ export class BoardRenderer {
       this.drawLevelPop(ctx, juice)
     }
     this.drawCoinFlyers(ctx, juice)
-    this.drawTougher(ctx, juice)
+    this.drawPills(ctx, juice)
     this.drawBanner(ctx, juice)
     if (juice.flash > 0) {
       ctx.fillStyle = `rgb(255 255 255 / ${juice.flash * 0.45})`
@@ -1678,26 +1678,25 @@ export class BoardRenderer {
     ctx.restore()
   }
 
-  /** "▲ Tougher bricks" under the HUD on the turn a new hp stretch starts. */
-  private drawTougher(ctx: CanvasRenderingContext2D, juice: Juice): void {
-    const age = juice.tougherAge
-    if (age === null) return
-    const text = t('▲ Tougher bricks')
-    ctx.save()
-    ctx.globalAlpha = Math.min(1, age / 0.2, (TOUGHER_LIFE - age) / 0.5)
-    ctx.font = `700 14px ${FONT}`
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    const w = Math.min(ctx.measureText(text).width + 24, this.d.boardW - 24)
-    const x = this.d.boardW / 2
-    const y = TOP + 16 + Math.min(0, (age - 0.25) * 40)
-    ctx.fillStyle = 'rgb(255 107 107 / 0.92)'
-    ctx.beginPath()
-    ctx.roundRect(x - w / 2, y - 12, w, 24, 12)
-    ctx.fill()
-    ctx.fillStyle = theme.chalk
-    fillFitText(ctx, text, x, y + 1, w - 16)
-    ctx.restore()
+  /** Pill notices under the HUD ("▲ Tougher bricks", "☠ Boss in 3 turns"), stacked. */
+  private drawPills(ctx: CanvasRenderingContext2D, juice: Juice): void {
+    juice.pills.forEach(({ text, color, age }, i) => {
+      ctx.save()
+      ctx.globalAlpha = Math.min(1, age / 0.2, (PILL_LIFE - age) / 0.5)
+      ctx.font = `700 14px ${FONT}`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      const w = Math.min(ctx.measureText(text).width + 24, this.d.boardW - 24)
+      const x = this.d.boardW / 2
+      const y = TOP + 16 + i * 28 + Math.min(0, (age - 0.25) * 40)
+      ctx.fillStyle = color
+      ctx.beginPath()
+      ctx.roundRect(x - w / 2, y - 12, w, 24, 12)
+      ctx.fill()
+      ctx.fillStyle = theme.chalk
+      fillFitText(ctx, text, x, y + 1, w - 16)
+      ctx.restore()
+    })
   }
 
   private drawBanner(ctx: CanvasRenderingContext2D, juice: Juice): void {

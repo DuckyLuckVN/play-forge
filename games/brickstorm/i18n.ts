@@ -666,7 +666,7 @@ export const VI: Dictionary = {
   'THORNS!': 'GAI ĐỘC!',
   'Heh.': 'Hừm.',
   '⚡ Storm next turn': '⚡ Bão ở lượt tới',
-  'BOSS IN {n} TURNS': 'TRÙM ĐẾN SAU {n} LƯỢT',
+  '☠ Boss in {n} turns': '☠ Trùm đến sau {n} lượt',
   'ARMOR −1': 'GIÁP −1',
   'STICKY!': 'DÍNH!',
   'BOOM!': 'BÙM!',
@@ -677,8 +677,7 @@ export const VI: Dictionary = {
   'BURNT OUT': 'CHÁY RỤI',
   'BURNING!': 'BỐC CHÁY!',
   DOUSED: 'TẮT LỬA',
-  'BOSS NEXT TURN!': 'TRÙM ĐẾN LƯỢT TỚI!',
-  '☠ Boss in {n} turns': '☠ Trùm đến sau {n} lượt',
+  '☠ Boss next turn!': '☠ Trùm đến lượt tới!',
   'No new rows while it lives. Clear the bottom rows and save a helper for the fight.':
     'Không có hàng mới khi trùm còn sống. Dọn các hàng dưới và để dành một trợ thủ cho trận đánh.',
   'A special wave arrives next turn.': 'Lượt tới có một đợt gạch đặc biệt.',

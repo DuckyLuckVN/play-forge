@@ -10,6 +10,7 @@ import {
   covers,
   createState,
   displayScore,
+  isPickup,
   step,
   TICK_RATE,
   type DriftInput,
@@ -71,10 +72,12 @@ function makeBot(skill: Skill, seed: number) {
     const pending = s.objects.filter((o) => !o.done && arrival(o) > -1)
     const next = pending.length ? pending.reduce((a, b) => (b.z < a.z ? b : a)).row : null
     const inRow = pending.filter((o) => o.row === next)
-    const hazards = inRow.filter((o) => o.kind !== 'wisp')
+    const hazards = inRow.filter((o) => !isPickup(o))
     const bad = new Set(hazards.flatMap((o) => blocked(o, s.lanes)))
     const free = all.filter((l) => !bad.has(l))
     const wisps = inRow.filter((o) => o.kind === 'wisp').map((o) => o.lane)
+    // Players chase a heart pickup (always in a free lane).
+    const heart = inRow.find((o) => o.kind === 'heart')?.lane
     const falling = s.fallers.filter((f) => s.tick - (f.slamAt - f.tele) >= skill.react).map((f) => f.lane)
 
     // Phantom: a panic button when a hit is coming, or spent once it sat full a while.
@@ -89,7 +92,12 @@ function makeBot(skill: Skill, seed: number) {
     else if (next !== null) {
       const r = rowPlan(next)
       const t = arrival(inRow[0])
-      const want = wisps.length && !hazards.length ? nearest(wisps) : nearest(free.length ? free : all)
+      const want =
+        heart !== undefined
+          ? heart
+          : wisps.length && !hazards.length
+            ? nearest(wisps)
+            : nearest(free.length ? free : all)
       const travel = Math.abs(want - p.target) * LANE_TICKS
       if (!r.blunder && t <= r.lead + Math.max(0, travel - LANE_TICKS)) goal = want
       if (charged && bad.has(p.target) && hazards.length && t < 8 && (r.blunder || goal === p.target))

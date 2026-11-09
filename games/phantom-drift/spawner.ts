@@ -17,6 +17,27 @@ export interface RowPlan {
   wisps: number[]
   /** Fallers to drop on the player when this (empty) slot arrives. */
   drop?: number
+  /** A heart pickup's lane (see {@link placeHeart}). */
+  heart?: number
+}
+
+/**
+ * Maybe put a heart pickup on `row`: a free lane (never a hazard lane), not
+ * on a wisp, and never in `avoid` (where the player is or is heading), so
+ * grabbing it always takes a lane change. Never on faller rows. Rolls the
+ * rng once, plus once more on success. Returns the lane, or undefined.
+ */
+export function placeHeart(
+  rng: RngState,
+  row: RowPlan,
+  lanes: number,
+  avoid: readonly number[],
+  chance: number,
+): number | undefined {
+  if (random(rng) >= chance || row.drop) return undefined
+  const options = freeLanes(row, lanes).filter((l) => !avoid.includes(l) && !row.wisps.includes(l))
+  if (!options.length) return undefined
+  return (row.heart = options[randomInt(rng, options.length)])
 }
 
 /** Pattern weights by tier; 0 = locked. */

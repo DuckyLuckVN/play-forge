@@ -36,5 +36,8 @@ describe('eventSound', () => {
     expect(eventSound({ type: 'warn', lane: 1, ticks: 30 }, s)).toEqual(warnBeeps(0.5))
     expect(eventSound({ type: 'move' }, s)).not.toBeNull()
     expect(eventSound({ type: 'over' }, s)).toBeNull()
+    // A heart pickup: the heal chime and more.
+    const heart = tones(eventSound({ type: 'heart', lane: 0 }, s))
+    expect(heart.length).toBeGreaterThan(tones(eventSound({ type: 'heal' }, s)).length)
   })
 })

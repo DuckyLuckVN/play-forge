@@ -28,13 +28,13 @@ export const SWING = {
   armFollow: -0.45,
   armThrough: 0.15,
   /** Arm out to the side (rad, sign applied by the rig) so the arc reads from behind. */
-  outBack: 1.1,
+  outBack: 1.4,
   outAcross: -0.55,
   /** Wrist: cocked back, then snapped through (rad added to the racket's rest tilt). */
   wristBack: 0.55,
   wristSnap: -0.6,
   /** Torso twist (rad): shoulders turn back, then unwind through the hit. */
-  twistBack: 0.55,
+  twistBack: 0.8,
   twistThrough: -0.75,
 } as const
 
@@ -82,6 +82,19 @@ export function swingCurve(s: number, o: SwingPose): SwingPose {
   const b = S.strike + 0.1
   o.streak = s > a && s < b ? Math.sin((Math.PI * (s - a)) / (b - a)) : 0
   return o
+}
+
+/**
+ * Leap age to set when a pending smash is first seen `lead` s before contact: the rise then tops out
+ * exactly at the hit. Negative = still waiting (the rig crouches meanwhile; smashJump is grounded).
+ */
+export function leapStartAge(lead: number): number {
+  return SMASH.rise - lead
+}
+
+/** Leap age at the smash hit event: keep a leap already under way, otherwise start one now. */
+export function leapAtHit(age: number): number {
+  return age >= 0 && age < SMASH.land ? age : 0
 }
 
 /** Height share (0..1) + squash (+ squash, − stretch) of a jump. */

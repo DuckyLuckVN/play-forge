@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { celebrateSpin, hop, lookAround, SMASH, SWING, smashJump, swingCurve, type SwingPose } from './moves'
+import {
+  celebrateSpin,
+  hop,
+  leapAtHit,
+  leapStartAge,
+  lookAround,
+  SMASH,
+  SWING,
+  smashJump,
+  swingCurve,
+  type SwingPose,
+} from './moves'
 
 const pose = (): SwingPose => ({ weight: 0, arm: 0, out: 0, wrist: 0, twist: 0, streak: 0 })
 
@@ -53,6 +64,28 @@ describe('smashJump', () => {
 
   it('rises faster than it falls (snappy leap, floaty hang)', () => {
     expect(SMASH.rise).toBeLessThan(SMASH.land - SMASH.hang)
+  })
+})
+
+describe('smash leap timing', () => {
+  it('a pending smash schedules the leap so the rise tops out at the hit', () => {
+    for (const lead of [0.05, 0.1, 0.2, 0.3]) {
+      const age = leapStartAge(lead)
+      // After `lead` seconds (the contact), the leap is at the top of its rise.
+      expect(age + lead).toBeCloseTo(SMASH.rise, 9)
+    }
+    // Far ahead: waits (crouching) with a negative age, grounded until it starts.
+    const out = { height: 0, squash: 0 }
+    expect(smashJump(leapStartAge(0.3), out).height).toBe(0)
+  })
+
+  it('the hit keeps a leap already under way, else starts one', () => {
+    expect(leapAtHit(SMASH.rise)).toBe(SMASH.rise)
+    expect(leapAtHit(0.02)).toBe(0.02)
+    expect(leapAtHit(Infinity)).toBe(0)
+    expect(leapAtHit(SMASH.end + 1)).toBe(0)
+    // Hit came sooner than scheduled (still waiting): leap now.
+    expect(leapAtHit(-0.1)).toBe(0)
   })
 })
 

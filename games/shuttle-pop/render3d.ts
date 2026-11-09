@@ -33,11 +33,12 @@ import type { Smoothed } from '@forge/net/smoothing'
 import { playSound } from '@forge/audio/sound'
 import { createScene3D, Particles3D, QualityGovernor, type Scene3D } from '@forge/render3d'
 import { createChibi, restPose, type Chibi, type ChibiPose } from './actors'
+import { TICK_RATE } from './court'
 import { DustPuffs } from './dust'
 import { Hud, matchPoint, newEvents, type PopKind } from './hud'
 import { t } from './i18n'
 import { damp, Gait, GaitEvent } from './locomotion'
-import { lookAround, SMASH, smashJump, SWING, type Hop } from './moves'
+import { leapAtHit, leapStartAge, lookAround, SMASH, smashJump, SWING, type Hop } from './moves'
 import { COURT, predictLanding, type Vec3 } from './physics'
 import { SpringPunch } from './punch'
 import { Park } from './scenery'
@@ -172,8 +173,10 @@ interface PlayerView {
   swingAge: number
   /** Last swingAt seen in the state (NaN = none yet). */
   swingAt: number
-  /** Seconds since the last smash leap started (Infinity = grounded). */
+  /** Seconds since the last smash leap started (Infinity = grounded, < 0 = scheduled, crouching). */
   jumpAge: number
+  /** Contact tick of the pending smash the leap was scheduled for (NaN = none). */
+  leapTick: number
   /** Run cycle, facing, lean, foot plants. */
   gait: Gait
   /** True until the first frame after a reset (stand facing the net, no turn-in). */
@@ -196,6 +199,7 @@ function makePlayer(preset: number): PlayerView {
     swingAge: Infinity,
     swingAt: NaN,
     jumpAge: Infinity,
+    leapTick: NaN,
     gait: new Gait(),
     fresh: true,
     squash: new SpringPunch(MOTION.squash.k, MOTION.squash.zeta, MOTION.step),
@@ -451,6 +455,7 @@ export class Court3D {
       p.swingAge = Infinity
       p.swingAt = NaN
       p.jumpAge = Infinity
+      p.leapTick = NaN
       p.fresh = true
       p.squash.reset()
       p.lean.reset()
@@ -517,6 +522,15 @@ export class Court3D {
         view.swingAt = cp.swingAt
       }
       view.swingAge += dt
+      // A pending smash of mine: schedule the leap so its rise tops out at the contact tick (render
+      // time sits between the prev and curr ticks). Once per pending shot.
+      const pend = curr.shuttle.pending
+      const loading = pend !== null && pend.kind === 'smash' && pend.side === cp.side
+      if (loading && pend.atTick !== view.leapTick) {
+        view.leapTick = pend.atTick
+        const now = prev.tick + (curr.tick - prev.tick) * a
+        view.jumpAge = leapStartAge((pend.atTick - now) / TICK_RATE)
+      }
       const landed = view.jumpAge < SMASH.land && view.jumpAge + dt >= SMASH.land
       view.jumpAge += dt
       // Celebrate / slump through the point pause and on the results screen.
@@ -525,7 +539,8 @@ export class Court3D {
 
       // Gait from the interpolated sim velocity (render space), facing the net when swinging / posing.
       const netYaw = z < 0 ? 0 : Math.PI
-      if (placed || view.fresh) {
+      // Only a real placement (into the serve) resets; a big jump from a packet gap mid-rally doesn't.
+      if ((placed && curr.phase === 'serve') || view.fresh) {
         view.gait.reset(netYaw)
         view.fresh = false
       }
@@ -550,10 +565,8 @@ export class Court3D {
       // Ready stance while the shuttle comes my way; crouch while my smash is about to connect.
       const hitter = curr.shuttle.lastHitter
       const incoming = curr.phase === 'rally' && hitter !== -1 && hitter !== cp.side
-      const pend = curr.shuttle.pending
-      const loading = pend !== null && pend.kind === 'smash' && pend.side === cp.side
       pose.ready = damp(pose.ready, incoming ? 1 : 0, MOTION.readyRate, dt)
-      pose.crouch = damp(pose.crouch, loading ? 1 : 0, MOTION.crouchRate, dt)
+      pose.crouch = damp(pose.crouch, loading && view.jumpAge < 0 ? 1 : 0, MOTION.crouchRate, dt)
       pose.happy = damp(pose.happy, mood === 'happy' ? 1 : 0, MOTION.moodRate, dt)
       pose.sad = damp(pose.sad, mood === 'sad' ? 1 : 0, MOTION.moodRate, dt)
       pose.cheer = damp(pose.cheer, mood === 'happy' && curr.phase === 'over' ? 1 : 0, MOTION.moodRate, dt)
@@ -690,7 +703,8 @@ export class Court3D {
       this.players[j].squash.kick(MOTION.kickPerfect)
     }
     if (smash) {
-      this.players[j].jumpAge = 0
+      // Keep a leap scheduled from the pending smash; a same-tick hit leaps now.
+      this.players[j].jumpAge = leapAtHit(this.players[j].jumpAge)
       this.fx.burst(p.x, p.y, p.z, SMASH_BURST)
       this.punch.kick(mine ? PUNCH.kickMine : PUNCH.kickTheirs)
     }

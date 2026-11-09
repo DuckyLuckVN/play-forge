@@ -87,6 +87,8 @@ export class DustPuffs {
   readonly mesh: InstancedMesh
   readonly pool: PuffPool
   private dummy = new Object3D()
+  /** A puff may be alive (spawned since the pool was last seen empty). */
+  private active = false
 
   constructor(capacity: number, color: string, opacity: number) {
     this.pool = new PuffPool(capacity)
@@ -104,14 +106,17 @@ export class DustPuffs {
 
   spawn(x: number, z: number, vx: number, vz: number, life: number, size: number) {
     this.pool.spawn(x, z, vx, vz, life, size)
+    this.active = true
   }
 
   reset() {
     this.pool.reset()
     this.mesh.visible = false
+    this.active = false
   }
 
   update(dt: number) {
+    if (!this.active) return
     const p = this.pool
     p.update(dt)
     const d = this.dummy
@@ -126,5 +131,6 @@ export class DustPuffs {
     }
     this.mesh.instanceMatrix.needsUpdate = true
     this.mesh.visible = any
+    this.active = any
   }
 }

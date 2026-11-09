@@ -151,7 +151,7 @@ const BREATHE = 0.015
 const RACKET_TILT = 1.1
 const ARM_OUT = 0.25
 /** Swing streak: arc radius / thickness (m), peak opacity, outward tilt (rad). */
-const STREAK = { r: 0.46, tube: 0.04, opacity: 0.8, tilt: 0.55, turn: -0.9 }
+const STREAK = { r: 0.64, tube: 0.045, opacity: 0.8, tilt: 0.55, turn: -0.9, x: -0.32 }
 
 // Scratch for setPose (shared: setPose never re-enters).
 const stride: Stride = { freq: 0, amp: 0, bob: 0 }
@@ -299,7 +299,7 @@ export function createChibi(preset: number): Chibi {
     blending: AdditiveBlending,
     depthWrite: false,
   })
-  const streak = at(new Mesh(P.streak, streakMat), -SHOULDER_X, SHOULDER_Y, 0)
+  const streak = at(new Mesh(P.streak, streakMat), STREAK.x, SHOULDER_Y, 0)
   streak.rotation.set(0, STREAK.turn, -STREAK.tilt)
   streak.visible = false
   rig.add(streak)
@@ -402,17 +402,19 @@ export function createChibi(preset: number): Chibi {
     const happy = p.happy
     const sad = p.sad
     const calm = (1 - p.run) * (1 - happy)
+    // Ready stance only while (nearly) planted: running keeps its full stride and arm swing.
+    const ready = p.ready * (1 - Math.min(1, p.run * 2))
 
     // Whole rig: bob (2 per stride, lowest at the plants), jump, hops, a ready split-step bounce.
     let y = (stride.bob * (1 - Math.cos(2 * TAU * p.stride))) / 2
     y += p.jump * JUMP_H + hopO.height * (HOP_H + p.cheer * HOP_H_WIN) * happy
-    y += p.ready * 0.025 * (1 - Math.cos(t * 9)) * 0.5
+    y += ready * 0.025 * (1 - Math.cos(t * 9)) * 0.5
     rig.position.y = y
-    rig.rotation.x = LEAN_FWD * p.fwd + p.lean + 0.12 * p.ready + 0.1 * p.crouch + 0.08 * sad
+    rig.rotation.x = LEAN_FWD * p.fwd + p.lean + 0.12 * ready + 0.1 * p.crouch + 0.08 * sad
     rig.rotation.z = -LEAN_SIDE * p.side
 
     // Squash / stretch about the feet (rig origin): springs, crouch, landings, breathing.
-    let sq = p.squash + hopO.squash * happy + SQUASH_CROUCH * p.crouch + SQUASH_READY * p.ready + 0.05 * sad
+    let sq = p.squash + hopO.squash * happy + SQUASH_CROUCH * p.crouch + SQUASH_READY * ready + 0.05 * sad
     sq -= Math.sin(t * (sad ? 1.6 : 3)) * BREATHE * calm
     rig.scale.set(1 + sq * 0.5, 1 - sq, 1 + sq * 0.5)
 
@@ -421,7 +423,7 @@ export function createChibi(preset: number): Chibi {
     const along = Math.abs(p.fwd) / mag
     const across = Math.abs(p.side) / mag
     const tuck = p.jump * 0.7 + hopO.height * happy * 0.4
-    const splay = 0.16 * p.ready + 0.2 * p.crouch
+    const splay = 0.16 * ready + 0.2 * p.crouch
     const shuffle = cycle * stride.amp * 0.45 * across
     legs[0].rotation.x = cycle * stride.amp * along - tuck
     legs[1].rotation.x = -cycle * stride.amp * along - tuck * 0.5
@@ -431,8 +433,8 @@ export function createChibi(preset: number): Chibi {
     // Arms: counter-swing with the legs; ready raises the racket; cheer / slump blend over the top.
     const armSwing = cycle * ARM_RUN * runShare
     const wave = Math.sin(t * 9) * 0.25
-    let right = mix(ARM_IDLE - armSwing, ARM_READY, p.ready)
-    let left = mix(ARM_IDLE + armSwing, ARM_READY_OFF, p.ready)
+    let right = mix(ARM_IDLE - armSwing, ARM_READY, ready)
+    let left = mix(ARM_IDLE + armSwing, ARM_READY_OFF, ready)
     right = mix(mix(right, ARM_CHEER + wave, happy), ARM_SAD, sad)
     left = mix(mix(left, ARM_CHEER - wave, happy), ARM_SAD, sad)
 
@@ -452,8 +454,8 @@ export function createChibi(preset: number): Chibi {
     shadow.scale.setScalar(1 - Math.min(0.4, y * 0.6))
 
     // Face: idle glance, happy squint + big smile, sad droop + frown.
-    head.rotation.x = 0.35 * sad - 0.06 * p.ready
-    head.rotation.y = p.look * calm
+    head.rotation.x = 0.35 * sad - 0.06 * ready
+    head.rotation.y = p.look * calm * (1 - p.ready)
     head.rotation.z = happy * Math.sin(t * 9) * 0.08
     const squint = mix(1.1, 0.45, happy)
     eyes[0].scale.y = squint

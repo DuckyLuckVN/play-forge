@@ -13,6 +13,15 @@ describe('puffScale', () => {
 })
 
 describe('PuffPool', () => {
+  it('reports when nothing is alive (renderer can skip work)', () => {
+    const p = new PuffPool(2)
+    expect(p.live()).toBe(0)
+    p.spawn(0, 0, 0, 0, 0.1, 1)
+    expect(p.live()).toBe(1)
+    p.update(0.2)
+    expect(p.live()).toBe(0)
+  })
+
   it('never holds more than its capacity: the oldest puff is recycled', () => {
     const p = new PuffPool(4)
     for (let i = 0; i < 10; i++) {

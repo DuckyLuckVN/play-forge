@@ -29,8 +29,11 @@ export const GAIT = {
   /** Start / stop hysteresis on the raw speed share. */
   startAt: 0.35,
   stopAt: 0.12,
-  /** Sharp turn: angle (cos) between the velocity and its damped trail, min speed share, cooldown (s). */
-  kickCos: Math.cos((65 * Math.PI) / 180),
+  /**
+   * Sharp turn: angle (cos) between the velocity and its damped trail, min speed share, cooldown (s).
+   * The sim eases velocity (full speed in 6 ticks), so a 90° cut peaks at ~50° here.
+   */
+  kickCos: Math.cos((40 * Math.PI) / 180),
   kickFrom: 0.4,
   kickCool: 0.4,
   /** Damped velocity trail rate (1/s) the sharp turn is measured against. */

@@ -122,11 +122,45 @@ describe('Gait', () => {
     expect(Math.abs(g.yaw)).toBeLessThan(0.1)
   })
 
-  it('flags a sharp direction change (dust kick) once, not every frame', () => {
+  /** Velocity eased like sim stepPlayer (full speed in 6 ticks), rendered at 60 fps. Counts kicks. */
+  function kicksFor(path: [number, number, number][]) {
     const g = new Gait()
-    for (let i = 0; i < 60; i++) g.update(MOVE_SPEED, 0, 0, false, 1 / 60)
+    const maxDv = MOVE_SPEED / 6
+    let vx = 0
+    let vz = 0
     let kicks = 0
-    for (let i = 0; i < 20; i++) if (g.update(0, MOVE_SPEED, 0, false, 1 / 60) & GaitEvent.Kick) kicks++
-    expect(kicks).toBe(1)
+    for (const [wx, wz, frames] of path)
+      for (let i = 0; i < frames; i++) {
+        let dx = wx * MOVE_SPEED - vx
+        let dz = wz * MOVE_SPEED - vz
+        const d = Math.hypot(dx, dz)
+        if (d > maxDv) {
+          dx *= maxDv / d
+          dz *= maxDv / d
+        }
+        vx += dx
+        vz += dz
+        if (g.update(vx, vz, 0, false, 1 / 60) & GaitEvent.Kick) kicks++
+      }
+    return kicks
+  }
+
+  it('flags a 90° cut (accel-limited sim velocity) once, not every frame', () => {
+    expect(
+      kicksFor([
+        [1, 0, 60],
+        [0, 1, 30],
+      ]),
+    ).toBe(1)
+  })
+
+  it('no kick on a straight run or a gentle diagonal drift', () => {
+    expect(kicksFor([[1, 0, 120]])).toBe(0)
+    expect(
+      kicksFor([
+        [1, 0, 60],
+        [Math.SQRT1_2 * 0.97, 0.25, 60],
+      ]),
+    ).toBe(0)
   })
 })

@@ -4,10 +4,8 @@ import {
   comboMultiplier,
   createState,
   DEATH_TICKS,
-  HEART_REGEN_TICKS,
   heartChance,
   MAX_HEARTS,
-  regenProgress,
   INVULN_TICKS,
   laneCount,
   multiplier,
@@ -196,13 +194,13 @@ describe('Phantom Drift sim', () => {
     expect(multiplier(40)).toBe(5)
   })
 
-  it('heals one heart after a long time without a hit', () => {
+  it('lost hearts never come back on their own, however long it stays calm', () => {
     const s = quiet()
     place(s, { kind: 'shard', lane: 1, z: 4 })
     run(s, 10)
     expect(s.player.hearts).toBe(2)
-    expect(events(s, HEART_REGEN_TICKS)).toContain('heal')
-    expect(s.player.hearts).toBe(3)
+    run(s, 5 * 60 * 60)
+    expect(s.player.hearts).toBe(2)
   })
 
   it('dies on the last heart, plays out a dying phase, then ends', () => {
@@ -338,7 +336,7 @@ describe('Phantom Drift perks', () => {
     expect(BASE_PERKS).toEqual({
       comboStep: 5,
       phantomTicks: PHANTOM_TICKS,
-      regenTicks: HEART_REGEN_TICKS,
+      heartChanceMult: 1,
       nearWindow: 9,
       wispPoints: 10,
       phantomCost: PHANTOM_COST,
@@ -365,14 +363,6 @@ describe('Phantom Drift perks', () => {
     s.player.charge = PHANTOM_COST
     step(s, send('phase'))
     expect(s.player.phantomUntil - s.tick).toBe(149)
-  })
-
-  it('regen ticks: hearts regrow sooner', () => {
-    const s = with_({ regenTicks: 36 * 60 })
-    place(s, { kind: 'shard', lane: 1, z: 4 })
-    run(s, 10)
-    expect(s.player.hearts).toBe(2)
-    expect(events(s, 36 * 60)).toContain('heal')
   })
 
   it('near window: a 10-tick dodge is a near miss only with the wider window', () => {
@@ -409,18 +399,17 @@ describe('Phantom Drift perks', () => {
 
 describe('Phantom Drift heart pickups', () => {
   /** A spawning state with the player hurt (or not). */
-  function live(seed: number, hearts: number): DriftState {
-    const s = createState(me, seed)
+  function live(seed: number, hearts: number, perks: Partial<Perks> = {}): DriftState {
+    const s = createState(me, seed, { ...BASE_PERKS, ...perks })
     s.player.hearts = hearts
     return s
   }
-  /** Steps with no input, keeping the player's hearts pinned (no hits, no regen). */
+  /** Steps with no input, keeping the player's hearts pinned (no hits). */
   function hearts(s: DriftState, ticks: number, pin = s.player.hearts) {
     const seen: Obj[] = []
     let most = 0
     for (let i = 0; i < ticks; i++) {
       s.player.invulnUntil = Infinity
-      s.player.calmSince = s.tick
       const before = new Set(s.objects.map((o) => o.id))
       const lane = s.player.target
       const x = s.player.x
@@ -457,26 +446,36 @@ describe('Phantom Drift heart pickups', () => {
       total += r.seen.length
       expect(r.most).toBeLessThanOrEqual(1)
     }
-    // Rare: about one a minute of being hurt, early on.
+    // Rare: about one every two minutes of being hurt, early on.
     const every = (40 * seconds) / total
-    expect(every).toBeGreaterThan(45)
-    expect(every).toBeLessThan(110)
+    expect(every).toBeGreaterThan(90)
+    expect(every).toBeLessThan(200)
+  })
+
+  it("the chance multiplier (Bloom's perk) scales how often they come", () => {
+    const count = (heartChanceMult: number) => {
+      let n = 0
+      for (let seed = 1; seed <= 40; seed++)
+        n += hearts(live(seed, 1, { heartChanceMult }), 60 * 60).seen.length
+      return n
+    }
+    expect(count(0)).toBe(0)
+    const ratio = count(1.35) / count(1)
+    expect(ratio).toBeGreaterThan(1.15)
+    expect(ratio).toBeLessThan(1.6)
   })
 
   it('gets rarer as the rift speeds up', () => {
     expect(heartChance(9)).toBeLessThan(heartChance(0) / 3)
   })
 
-  it('grabbing one gives a heart (capped), restarts the regen wait, and counts', () => {
+  it('grabbing one gives a heart (capped) and counts', () => {
     const s = quiet()
     s.player.hearts = 1
-    s.tick = 500
-    s.player.calmSince = 0
     place(s, { kind: 'heart', lane: 1, z: 5 })
     const seen = events(s, 20)
     expect(seen).toContain('heart')
     expect(s.player.hearts).toBe(2)
-    expect(s.player.calmSince).toBeGreaterThanOrEqual(500)
     expect(s.stats.hearts).toBe(1)
     expect(s.objects.find((o) => o.kind === 'heart')).toBeUndefined()
 
@@ -505,17 +504,5 @@ describe('Phantom Drift heart pickups', () => {
     const a = play()
     expect(a.hearts.length).toBeGreaterThan(0)
     expect(play()).toEqual(a)
-  })
-
-  it('regen progress: 0 when full, fills over the regen wait', () => {
-    const s = quiet()
-    expect(regenProgress(s)).toBe(0)
-    s.player.hearts = 2
-    s.player.calmSince = 100
-    s.tick = 100 + s.perks.regenTicks / 2
-    expect(regenProgress(s)).toBeCloseTo(0.5)
-    s.perks.regenTicks = 36 * 60
-    s.tick = 100 + 36 * 60
-    expect(regenProgress(s)).toBe(1)
   })
 })

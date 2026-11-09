@@ -197,7 +197,6 @@ export function eventSound(e: DriftEvent, s: DriftState): Sound | null {
     case 'phantom':
     case 'phantomEnd':
     case 'charged':
-    case 'heal':
       return DRIFT_SOUNDS[e.type]
     default:
       return null

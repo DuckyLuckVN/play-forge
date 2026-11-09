@@ -157,9 +157,6 @@ export class DriftRenderer {
         this.shake.add(0.1)
         break
       }
-      case 'heal':
-        this.fx.burst(px, py - 30, { count: 20, color: [C.heart, '#fff'], speed: 140, life: 0.6, size: 4 })
-        break
       case 'multiplier':
         this.hud.multiplier()
         this.hud.text(px, py - 120, `×${e.mult}`, C.gold, 34)

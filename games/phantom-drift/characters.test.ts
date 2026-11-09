@@ -45,7 +45,7 @@ describe('Phantom Drift characters', () => {
     }
     expect(changed('ember')).toEqual(['comboStep'])
     expect(changed('frost')).toEqual(['phantomTicks'])
-    expect(changed('bloom')).toEqual(['regenTicks'])
+    expect(changed('bloom')).toEqual(['heartChanceMult'])
     expect(changed('shade')).toEqual(['nearWindow'])
     expect(changed('gold').sort()).toEqual(['phantomCost', 'wispPoints'])
   })

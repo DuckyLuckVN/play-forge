@@ -9,7 +9,7 @@ import { clamp, ease, lerp, prefersReducedMotion, progress } from '@forge/fx/twe
 import { FONT } from '@forge/ui/theme'
 import type { Moment } from './moments'
 import { C } from './palette'
-import { MAX_HEARTS, MAX_TIER, comboMultiplier, regenProgress, speedAt, type DriftState } from './sim'
+import { MAX_HEARTS, MAX_TIER, comboMultiplier, speedAt, type DriftState } from './sim'
 import { distanceText, kmh } from './stats'
 
 const METER_R = 32
@@ -409,7 +409,7 @@ export class DriftHud {
         shape: 'square',
       })
     }
-    // A pickup's slot pops when its flying heart lands; a regrown one right away.
+    // A pickup's slot pops when its flying heart lands (right away if none is flying).
     const flying = this.flights.length > 0
     const lands = flying ? this.flights.at(-1)!.at + SPARK_TIME : this.time
     for (let i = was; i < now; i++) {
@@ -423,12 +423,11 @@ export class DriftHud {
     this.fx.burst(x, y, { count: 16, color: ['#fff', C.heart, C.gold], speed: 130, life: 0.5, size: 3 })
   }
 
-  /** The hearts row above the ring: glossy hearts, the next one regrowing, pops and cracks. */
+  /** The hearts row above the ring: glossy hearts, dim empty slots, pops and cracks. */
   private hearts(ctx: CanvasRenderingContext2D, w: number, h: number, s: DriftState) {
     const p = s.player
     const shake = this.reduced ? 0 : 1 - progress(this.time, this.rowShakeAt, SHAKE_TIME)
     const dx = shake > 0 ? Math.sin(this.time * 70) * 5 * shake : 0
-    const regen = s.diedAt === null ? regenProgress(s) : 0
     for (let i = 0; i < MAX_HEARTS; i++) {
       const [sx, y] = heartSlot(w, h, i)
       const x = sx + dx
@@ -452,29 +451,8 @@ export class DriftHud {
         continue
       }
       this.heart(ctx, x, y, 'empty', HEART_SCALE)
-      if (i === p.hearts && regen > 0) this.regrowing(ctx, x, y, regen)
       if (fx?.kind === 'lose') this.cracking(ctx, x, y, progress(this.time, fx.at, LOSE_TIME))
     }
-  }
-
-  /** The next heart filling bottom-up as it regrows. */
-  private regrowing(ctx: CanvasRenderingContext2D, x: number, y: number, amount: number) {
-    const top = y + (HEART_BOTTOM - (HEART_BOTTOM - HEART_TOP) * amount) * HEART_SCALE
-    ctx.save()
-    ctx.beginPath()
-    ctx.rect(x - 20, top, 40, y + HEART_BOTTOM * HEART_SCALE - top + 2)
-    ctx.clip()
-    // Almost there: it starts to glow.
-    const ready = amount > 0.85 && !this.reduced ? 0.2 * (0.5 + 0.5 * Math.sin(this.time * 10)) : 0
-    this.heart(ctx, x, y, 'full', HEART_SCALE, 0.7 + ready)
-    // A bright waterline at the fill level, inside the heart.
-    ctx.translate(x, y)
-    ctx.scale(HEART_SCALE, HEART_SCALE)
-    traceHeart(ctx)
-    ctx.clip()
-    ctx.fillStyle = 'rgb(255 230 236 / 0.9)'
-    ctx.fillRect(-15, (top - y) / HEART_SCALE, 30, 1.4)
-    ctx.restore()
   }
 
   /** A lost heart splits in two and falls away (just fades in reduced motion). */

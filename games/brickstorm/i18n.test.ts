@@ -7,6 +7,8 @@ import { CATALOG } from './shop'
 import { BOOSTS } from './sim/boosts'
 import { HERO_IDS, HEROES, heroPerks } from './sim/heroes'
 import { ATTACK_TEXT, STORM_EXPLAIN, STORM_TEXT } from './juice'
+import { IMPACT_STYLE } from './cosmetics'
+import { SKILL_INFO } from './boss-skill-ui'
 
 // Every `t('…')` call in the game's source, plus the data tables shown on screen.
 const sources = import.meta.glob<string>(['./*.ts', '!./*.test.ts'], {
@@ -30,6 +32,7 @@ const tables = [
   ...Object.values(STORM_TEXT),
   ...Object.values(STORM_EXPLAIN),
   ...Object.values(ATTACK_TEXT),
+  ...Object.values(IMPACT_STYLE).map((s) => s.text ?? ''),
 ].filter(Boolean)
 
 describe('Vietnamese', () => {
@@ -53,6 +56,10 @@ describe('Vietnamese', () => {
     expect(t(HEROES.pirate.name)).toBe('Thuyền trưởng Kẹp')
     expect(t(HEROES.vampire.name)).toBe('Bá tước Vỗ Cánh')
     expect(t(HEROES.monk.name)).toBe('Sư phụ Ộp')
+  })
+
+  it('keeps the "Name:" prefix on boss skills (the boss shouts the name)', () => {
+    for (const { text } of Object.values(SKILL_INFO)) expect(VI[text], text).toMatch(/^[^:]+:/)
   })
 
   it('has no stale entries', () => {

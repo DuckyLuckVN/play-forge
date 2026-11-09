@@ -1,3 +1,4 @@
+import { formatNumber } from '@forge/core/i18n'
 import { celebrate } from '@forge/fx/confetti'
 import { Particles } from '@forge/fx/particles'
 import { Shake } from '@forge/fx/shake'
@@ -651,7 +652,7 @@ export class FuseRenderer {
     ctx.fillText(t('Score'), l.bx + 4, y + 26)
     ctx.fillStyle = theme.chalk
     ctx.font = `700 40px ${FONT}`
-    ctx.fillText(Math.round(this.scoreShown).toLocaleString(), l.bx + 2, y + 66)
+    ctx.fillText(formatNumber(Math.round(this.scoreShown)), l.bx + 2, y + 66)
     if (b.best) {
       ctx.fillStyle = theme.haze
       ctx.font = `600 15px ${FONT}`
@@ -768,7 +769,7 @@ export class FuseRenderer {
       ctx.fillText(lead + clip(ctx, o.name, colW - 30), x + mini / 2, y + mini + 22)
       ctx.fillStyle = theme.chalk
       ctx.font = `700 15px ${FONT}`
-      ctx.fillText(o.score.toLocaleString(), x + mini / 2, y + mini + 40)
+      ctx.fillText(formatNumber(o.score), x + mini / 2, y + mini + 40)
     })
     ctx.restore()
   }

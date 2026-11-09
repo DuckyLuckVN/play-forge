@@ -88,15 +88,11 @@ let openDialog: HTMLElement | null = null
 
 /** Start-screen row: a "Calibrate timing" button carrying the saved offset as a highlighted chip. */
 export function calibrationRow(t: T): HTMLElement {
-  const value = h('span', {
-    style:
-      'display:inline-block;margin-left:8px;padding:1px 9px;border-radius:999px;font-weight:700;font-variant-numeric:tabular-nums',
-  })
+  const value = h('span', { class: 'ss-offset' })
   const show = (pulse = false) => {
     const ms = loadOffset()
     value.textContent = `${ms} ms`
-    value.style.background = ms > 0 ? 'var(--pf-yolk)' : 'rgb(255 255 255 / 0.14)'
-    value.style.color = ms > 0 ? 'var(--pf-ink)' : 'inherit'
+    value.classList.toggle('set', ms > 0)
     if (pulse && !matchMedia?.('(prefers-reduced-motion: reduce)').matches)
       value.animate(
         [
@@ -111,14 +107,12 @@ export function calibrationRow(t: T): HTMLElement {
   button.onclick = () => openCalibration(t, () => show(true), button)
   return h(
     'div',
-    { class: 'pf-option', style: 'gap:8px' },
+    { class: 'pf-option ss-cal-row' },
     h('span', { class: 'pf-option-label', textContent: t('Timing offset') }),
     button,
   )
 }
 
-const link =
-  'background:none;border:0;padding:4px 8px;color:inherit;opacity:.75;font:inherit;text-decoration:underline;cursor:pointer'
 const MEASURED = BEATS - COUNT_IN
 
 /**
@@ -129,26 +123,14 @@ const MEASURED = BEATS - COUNT_IN
 function openCalibration(t: T, saved: () => void, opener: HTMLElement) {
   if (openDialog) return
   const gap = 60_000 / BPM
-  const body = h('div', { style: 'display:grid;gap:14px;justify-items:center;margin-top:8px' })
+  const body = h('div', { class: 'ss-cal-body' })
   const heading = h('h2', { class: 'pf-heading', textContent: t('Calibrate timing') })
   heading.id = 'pf-calibrate-title'
-  const panel = h(
-    'div',
-    { class: 'pf-panel', style: 'width:min(340px,100%);text-align:center', tabIndex: -1 },
-    heading,
-    body,
-  )
+  const panel = h('div', { class: 'pf-panel ss-cal-panel', tabIndex: -1 }, heading, body)
   panel.setAttribute('role', 'dialog')
   panel.setAttribute('aria-modal', 'true')
   panel.setAttribute('aria-labelledby', heading.id)
-  const backdrop = h(
-    'div',
-    {
-      style:
-        'position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:rgb(5 3 15 / .8);padding:16px',
-    },
-    panel,
-  )
+  const backdrop = h('div', { class: 'ss-cal ss-cal-backdrop' }, panel)
   document.body.append(backdrop)
   openDialog = backdrop
 
@@ -183,15 +165,15 @@ function openCalibration(t: T, saved: () => void, opener: HTMLElement) {
     onTap?.()
   }
   const quiet = (label: string, onClick: () => void) => {
-    const b = h('button', { type: 'button', style: link, textContent: label })
+    const b = h('button', { type: 'button', class: 'ss-cal-link', textContent: label })
     b.onclick = onClick
     return b
   }
   const links = (...items: HTMLElement[]) =>
     h(
       'div',
-      { style: 'display:flex;gap:4px;justify-content:center;align-items:center' },
-      ...items.flatMap((el, i) => (i ? [h('span', { textContent: '·', style: 'opacity:.5' }), el] : [el])),
+      { class: 'ss-cal-links' },
+      ...items.flatMap((el, i) => (i ? [h('span', { textContent: '·' }), el] : [el])),
     )
 
   const listen = () => {
@@ -200,35 +182,19 @@ function openCalibration(t: T, saved: () => void, opener: HTMLElement) {
     // Focus off every button, so Space / Enter only count as taps.
     panel.focus()
     // The target: a circle, and a ring that shrinks onto it, landing exactly on each click.
-    const label = h('span', { style: 'font-size:30px;font-weight:800;line-height:1' })
-    const circle = h(
-      'div',
-      {
-        style:
-          'position:absolute;inset:24px;border-radius:50%;display:grid;place-items:center;background:rgb(95 243 255 / .18);border:3px solid #5ff3ff',
-      },
-      label,
-    )
-    const ring = h('div', {
-      style:
-        'position:absolute;inset:24px;border-radius:50%;border:3px solid #fff;opacity:0;pointer-events:none',
-    })
-    const big = h('div', { style: 'position:relative;width:132px;height:132px' }, circle, ring)
-    const dots = Array.from({ length: MEASURED }, () =>
-      h('span', {
-        style:
-          'width:16px;height:16px;border-radius:50%;background:rgb(255 255 255 / .15);transition:background 120ms',
-      }),
-    )
+    const label = h('span', { class: 'ss-cal-count' })
+    const circle = h('div', { class: 'ss-cal-circle' }, label)
+    const ring = h('div', { class: 'ss-cal-ring' })
+    const big = h('div', { class: 'ss-cal-target' }, circle, ring)
+    const dots = Array.from({ length: MEASURED }, () => h('span', { class: 'ss-cal-dot' }))
     const tapped = new Set<number>()
     body.replaceChildren(
       big,
       h('p', {
         class: 'pf-lede',
-        style: 'margin:0',
         textContent: t('Tap Space, Enter or the screen when the ring meets the circle.'),
       }),
-      h('div', { style: 'display:flex;gap:10px' }, ...dots),
+      h('div', { class: 'ss-cal-dots' }, ...dots),
       links(quiet(t('Cancel'), close)),
     )
     const begin = performance.now() + 700
@@ -242,7 +208,10 @@ function openCalibration(t: T, saved: () => void, opener: HTMLElement) {
       taps.push(now)
       const i = Math.max(0, Math.min(MEASURED - 1, Math.round((now - measured[0]) / gap)))
       tapped.add(i)
-      dots[i].style.background = Math.abs(tapOffset(now, measured)) <= 40 ? '#7dffb0' : '#ffd84d'
+      const onTime = Math.abs(tapOffset(now, measured)) <= 40
+      dots[i].classList.remove('missed')
+      dots[i].classList.toggle('hit', onTime)
+      dots[i].classList.toggle('off', !onTime)
     }
     clicks.forEach((at, i) => {
       // The ring starts closing one beat ahead…
@@ -269,7 +238,7 @@ function openCalibration(t: T, saved: () => void, opener: HTMLElement) {
             duration: 220,
           })
           const k = i - COUNT_IN
-          if (k >= 0 && !tapped.has(k)) dots[k].style.background = 'rgb(255 255 255 / .45)'
+          if (k >= 0 && !tapped.has(k)) dots[k].classList.add('missed')
         }, at - performance.now()),
       )
     })
@@ -304,10 +273,9 @@ function openCalibration(t: T, saved: () => void, opener: HTMLElement) {
       ms === null
         ? h('p', {
             class: 'pf-lede',
-            style: 'margin:0',
             textContent: t('Not enough taps. Tap once on every click.'),
           })
-        : h('div', { style: 'font-size:52px;font-weight:800;line-height:1', textContent: `${ms} ms` }),
+        : h('div', { class: 'ss-cal-result', textContent: `${ms} ms` }),
       main,
       ms === null
         ? links(quiet(t('Cancel'), close))

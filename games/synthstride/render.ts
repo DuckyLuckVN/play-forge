@@ -1,3 +1,4 @@
+import { formatNumber } from '@forge/core/i18n'
 // Synthstride renderer (canvas 2D). The board breathes with the beat; warned
 // tiles fill up and tick down with the music; a beat timeline under the board
 // shows what lands on the next beats, so the rhythm itself is the warning.
@@ -957,7 +958,7 @@ export class StrideRenderer {
       ctx.textBaseline = 'top'
       const name = this.view.nameOf(d.id)
       const short = name.length > 7 ? `${name.slice(0, 6)}…` : name
-      const tail = out ? this.labels.out : Math.floor(d.score).toLocaleString()
+      const tail = out ? this.labels.out : formatNumber(Math.floor(d.score))
       ctx.fillStyle = this.view.colorOf(d.slot)
       ctx.fillText(`${short} · ${tail}`, x0 + MINI / 2, y0 + MINI + 5)
       ctx.restore()

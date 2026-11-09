@@ -1,22 +1,15 @@
-// Screen-space HUD shared by both renderers: hearts and multiplier up top;
-// a bottom-centre cluster under the ghost (score + distance | Phantom skill
-// ring with its key hint | speed); floating "+50"s, sparks, banners and edge
-// flashes. Works at any size (CSS pixels).
+import { formatNumber } from '@forge/core/i18n'
+// Screen-space HUD shared by both renderers: the multiplier up top; a
+// bottom-centre cluster under the ghost (score + distance with the hearts
+// under them | Phantom skill ring with its key hint | speed); floating
+// "+50"s, sparks, banners and edge flashes. Works at any size (CSS pixels).
 
 import { Particles } from '@forge/fx/particles'
-import { clamp, ease, lerp, progress } from '@forge/fx/tween'
+import { clamp, ease, lerp, prefersReducedMotion, progress } from '@forge/fx/tween'
 import { FONT } from '@forge/ui/theme'
 import type { Moment } from './moments'
 import { C } from './palette'
-import {
-  MAX_HEARTS,
-  MAX_TIER,
-  multiplier,
-  PHANTOM_COST,
-  PHANTOM_TICKS,
-  speedAt,
-  type DriftState,
-} from './sim'
+import { MAX_HEARTS, MAX_TIER, comboMultiplier, speedAt, type DriftState } from './sim'
 import { distanceText, kmh } from './stats'
 
 const METER_R = 32
@@ -26,10 +19,41 @@ const KEY_H = 24
 /** Gap between the ring and the text on each side. */
 const SIDE_GAP = 20
 const SPARK_TIME = 0.45
+/** Heart row: spacing, drawing scale, half width, and how far below the ring's centre. */
+const HEART_GAP = 33
+const HEART_SCALE = 1.35
+const HEART_HALF_W = 14
+const HEART_DROP = 44
+/** Heart path bounds (local units, before HEART_SCALE). */
+const HEART_TOP = -10
+const HEART_BOTTOM = 9
+const GAIN_TIME = 0.45
+const LOSE_TIME = 0.5
+const SHAKE_TIME = 0.35
 const BANNER_TIME = 1.4
 
 /** Centre of the Phantom ring for a view of `w` × `h`. */
 export const meterAt = (w: number, h: number): [number, number] => [w / 2, h - 12 - KEY_H - 8 - METER_R]
+
+/**
+ * Centre of heart slot `i` of `count`: a row under the score and distance,
+ * right-aligned with them beside the Phantom ring. Above the ring would sit
+ * on the ghost (on phones it stands right on the ring).
+ */
+export function heartSlot(w: number, h: number, i: number, count = MAX_HEARTS): [number, number] {
+  const [mx, my] = meterAt(w, h)
+  const right = mx - METER_R - SIDE_GAP - HEART_HALF_W
+  return [right - (count - 1 - i) * HEART_GAP, my + HEART_DROP]
+}
+
+/** The heart outline around (0, 0), about 22 × 19 units (also the 3D model's curves). */
+export function traceHeart(ctx: CanvasRenderingContext2D): void {
+  ctx.beginPath()
+  ctx.moveTo(0, 9)
+  ctx.bezierCurveTo(-14, -1, -8, -12, 0, -5)
+  ctx.bezierCurveTo(8, -12, 14, -1, 0, 9)
+  ctx.closePath()
+}
 
 /** Touch-only devices get a swipe-up hint; anything with a keyboard/mouse gets the key. */
 export function prefersTouchHint(): boolean {
@@ -57,20 +81,26 @@ export class DriftHud {
   private sparks: { x: number; y: number; at: number }[] = []
   private banners: (Moment & { at: number })[] = []
   private touch = prefersTouchHint()
+  private reduced = prefersReducedMotion()
+  /** Hearts drawn last frame (-1 = not yet), to animate gains and losses. */
+  private heartsShown = -1
+  private lastTick = -1
+  /** Per slot: when it last popped in or cracked. */
+  private slotFx: ({ kind: 'gain' | 'lose'; at: number } | null)[] = Array(MAX_HEARTS).fill(null)
+  private rowShakeAt = -10
+  /** Hearts picked up on the track, flying into their slot. */
+  private flights: { x: number; y: number; at: number }[] = []
+  /** Built once (in the heart's local units), reused by every heart. */
+  private gloss: CanvasGradient | null = null
 
   /** Floating text at a screen position. */
   text(x: number, y: number, text: string, color: string, size = 22): void {
     this.fx.text(x, y, text, { color, size, rise: 46 })
   }
 
-  heal(): void {
-    this.fx.burst(MARGIN + 8, MARGIN + 12, {
-      count: 16,
-      color: [C.heart, '#fff'],
-      speed: 120,
-      life: 0.6,
-      size: 5,
-    })
+  /** A heart picked up at a screen point flies into its slot (which pops when it lands). */
+  heartPickup(x: number, y: number): void {
+    this.flights.push({ x, y, at: this.time })
   }
 
   /** A wisp's spark flies from a screen point into the Phantom ring. */
@@ -107,11 +137,8 @@ export class DriftHud {
     this.fx.update(dt)
     const p = s.player
     this.edges(ctx, w, h, p.hearts)
-
-    for (let i = 0; i < MAX_HEARTS; i++) {
-      const beat = p.hearts === 1 && i === 0 ? 1 + 0.15 * Math.max(0, Math.sin(this.time * 7)) : 1
-      this.heart(ctx, MARGIN + 8 + i * 30, MARGIN + 12, i < p.hearts, beat)
-    }
+    this.trackHearts(w, h, s)
+    this.hearts(ctx, w, h, s)
 
     // Bottom-centre cluster under the ghost: score + distance on the left,
     // the Phantom ring in the middle, speed on the right, mirrored.
@@ -124,7 +151,7 @@ export class DriftHud {
       mx - METER_R - SIDE_GAP,
       my,
       'right',
-      score.toLocaleString(),
+      formatNumber(score),
       distanceText(s.diedDist ?? s.dist),
       this.scorePop,
       '#fff',
@@ -142,7 +169,7 @@ export class DriftHud {
       speedColor,
     )
 
-    const mult = multiplier(p.combo)
+    const mult = comboMultiplier(s)
     if (mult > 1) {
       const mp = 1 - ease.outCubic(progress(this.time, this.multPop, 0.4))
       ctx.font = `700 ${Math.round((22 + mult * 2) * (1 + mp * 0.8))}px ${FONT}`
@@ -152,6 +179,7 @@ export class DriftHud {
 
     this.meter(ctx, w, h, s)
     this.drawSparks(ctx, w, h)
+    this.drawFlights(ctx, w, h)
     this.drawBanners(ctx, w, h)
     this.fx.draw(ctx)
   }
@@ -238,7 +266,7 @@ export class DriftHud {
     const p = s.player
     const [cx, cy] = meterAt(w, h)
     const phantom = s.tick < p.phantomUntil
-    const fill = Math.min(1, p.charge / PHANTOM_COST)
+    const fill = Math.min(1, p.charge / s.perks.phantomCost)
     const ready = fill >= 1
     ctx.fillStyle = 'rgb(8 6 24 / 0.5)'
     ctx.beginPath()
@@ -251,7 +279,7 @@ export class DriftHud {
     ctx.stroke()
     ctx.strokeStyle = ready || phantom ? C.phantom : C.wisp
     ctx.beginPath()
-    const amount = phantom ? (p.phantomUntil - s.tick) / PHANTOM_TICKS : fill
+    const amount = phantom ? (p.phantomUntil - s.tick) / s.perks.phantomTicks : fill
     ctx.arc(cx, cy, METER_R, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * amount)
     ctx.stroke()
     if (ready) {
@@ -354,15 +382,186 @@ export class DriftHud {
     ctx.fill()
   }
 
-  private heart(ctx: CanvasRenderingContext2D, x: number, y: number, full: boolean, scale = 1) {
+  /** Notice hearts gained or lost since last frame and start their animations. */
+  private trackHearts(w: number, h: number, s: DriftState) {
+    const now = s.player.hearts
+    const newRun = s.tick < this.lastTick
+    this.lastTick = s.tick
+    if (this.heartsShown < 0 || newRun) {
+      this.heartsShown = now
+      this.slotFx.fill(null)
+      this.flights = []
+      return
+    }
+    const was = this.heartsShown
+    this.heartsShown = now
+    for (let i = now; i < was; i++) {
+      this.slotFx[i] = { kind: 'lose', at: this.time }
+      this.rowShakeAt = this.time
+      const [x, y] = heartSlot(w, h, i)
+      this.fx.burst(x, y, {
+        count: 16,
+        color: [C.heart, '#ff1f4f', '#ffd0da'],
+        speed: 160,
+        life: 0.6,
+        size: 4,
+        gravity: 320,
+        shape: 'square',
+      })
+    }
+    // A pickup's slot pops when its flying heart lands (right away if none is flying).
+    const flying = this.flights.length > 0
+    const lands = flying ? this.flights.at(-1)!.at + SPARK_TIME : this.time
+    for (let i = was; i < now; i++) {
+      this.slotFx[i] = { kind: 'gain', at: lands }
+      if (!flying) this.sparkle(...heartSlot(w, h, i))
+    }
+  }
+
+  private sparkle(x: number, y: number) {
+    if (this.reduced) return
+    this.fx.burst(x, y, { count: 16, color: ['#fff', C.heart, C.gold], speed: 130, life: 0.5, size: 3 })
+  }
+
+  /** The hearts row above the ring: glossy hearts, dim empty slots, pops and cracks. */
+  private hearts(ctx: CanvasRenderingContext2D, w: number, h: number, s: DriftState) {
+    const p = s.player
+    const shake = this.reduced ? 0 : 1 - progress(this.time, this.rowShakeAt, SHAKE_TIME)
+    const dx = shake > 0 ? Math.sin(this.time * 70) * 5 * shake : 0
+    for (let i = 0; i < MAX_HEARTS; i++) {
+      const [sx, y] = heartSlot(w, h, i)
+      const x = sx + dx
+      const fx = this.slotFx[i]
+      if (i < p.hearts) {
+        let scale = HEART_SCALE
+        // Last heart: a heartbeat (kept in reduced motion: it's the warning).
+        if (p.hearts === 1 && i === 0) scale *= 1 + 0.15 * Math.max(0, Math.sin(this.time * 7))
+        if (fx?.kind === 'gain') {
+          const t = (this.time - fx.at) / GAIN_TIME
+          if (t < 0) {
+            this.heart(ctx, x, y, 'empty', HEART_SCALE)
+            continue
+          }
+          if (t < 1) {
+            if (!this.reduced) scale *= ease.outBack(t)
+            this.gainRing(ctx, x, y, t)
+          }
+        }
+        this.heart(ctx, x, y, 'full', scale)
+        continue
+      }
+      this.heart(ctx, x, y, 'empty', HEART_SCALE)
+      if (fx?.kind === 'lose') this.cracking(ctx, x, y, progress(this.time, fx.at, LOSE_TIME))
+    }
+  }
+
+  /** A lost heart splits in two and falls away (just fades in reduced motion). */
+  private cracking(ctx: CanvasRenderingContext2D, x: number, y: number, t: number) {
+    if (t >= 1) return
+    if (this.reduced) {
+      this.heart(ctx, x, y, 'full', HEART_SCALE, 1 - t)
+      return
+    }
+    for (const side of [-1, 1]) {
+      ctx.save()
+      ctx.translate(x + side * t * 10, y + t * t * 18)
+      ctx.rotate(side * t * 0.7)
+      ctx.beginPath()
+      ctx.rect(side < 0 ? -20 : 0, -20, 20, 40)
+      ctx.clip()
+      this.heart(ctx, 0, 0, 'full', HEART_SCALE, 1 - t)
+      ctx.restore()
+    }
+    if (t < 0.35) {
+      // The crack: a bright zigzag down the middle.
+      ctx.save()
+      ctx.translate(x, y)
+      ctx.scale(HEART_SCALE, HEART_SCALE)
+      ctx.globalAlpha = 1 - t / 0.35
+      ctx.strokeStyle = '#fff'
+      ctx.lineWidth = 1.6
+      ctx.lineJoin = 'round'
+      ctx.beginPath()
+      ctx.moveTo(0, -6)
+      ctx.lineTo(-2, -1)
+      ctx.lineTo(2, 3)
+      ctx.lineTo(0, 9)
+      ctx.stroke()
+      ctx.restore()
+    }
+  }
+
+  /** A ring of light and sparkles as a heart pops in. */
+  private gainRing(ctx: CanvasRenderingContext2D, x: number, y: number, t: number) {
+    ctx.save()
+    ctx.globalAlpha = 1 - t
+    ctx.strokeStyle = '#ffd0da'
+    ctx.lineWidth = 3 * (1 - t) + 1
+    ctx.beginPath()
+    ctx.arc(x, y, 10 + t * 18, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.restore()
+  }
+
+  /** Picked-up hearts arcing from the track into their slot. */
+  private drawFlights(ctx: CanvasRenderingContext2D, w: number, h: number) {
+    if (!this.flights.length) return
+    const slot = clamp(this.heartsShown - 1, 0, MAX_HEARTS - 1)
+    const [tx, ty] = heartSlot(w, h, slot)
+    const landed = this.flights.filter((f) => this.time - f.at >= SPARK_TIME).length
+    for (let i = 0; i < landed; i++) this.sparkle(tx, ty)
+    this.flights = this.flights.filter((f) => this.time - f.at < SPARK_TIME)
+    for (const f of this.flights) {
+      const t = ease.inCubic(progress(this.time, f.at, SPARK_TIME))
+      const x = lerp(f.x, tx, t)
+      const y = lerp(f.y, ty, t) - Math.sin(t * Math.PI) * 90
+      this.heart(ctx, x, y, 'full', HEART_SCALE * (1.6 - 0.6 * t))
+    }
+  }
+
+  /** A glossy heart (gradient, dark edge, shine) or an empty slot (dim outline). */
+  private heart(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    look: 'full' | 'empty',
+    scale = 1,
+    alpha = 1,
+  ) {
     ctx.save()
     ctx.translate(x, y)
     ctx.scale(scale, scale)
-    ctx.fillStyle = full ? C.heart : 'rgb(255 255 255 / 0.15)'
+    ctx.globalAlpha *= alpha
+    traceHeart(ctx)
+    ctx.lineJoin = 'round'
+    if (look === 'empty') {
+      ctx.fillStyle = 'rgb(10 6 30 / 0.45)'
+      ctx.fill()
+      ctx.lineWidth = 1.4
+      ctx.strokeStyle = 'rgb(255 255 255 / 0.4)'
+      ctx.stroke()
+      ctx.restore()
+      return
+    }
+    if (!this.gloss) {
+      this.gloss = ctx.createLinearGradient(0, HEART_TOP, 0, HEART_BOTTOM)
+      this.gloss.addColorStop(0, '#ffa3b5')
+      this.gloss.addColorStop(0.45, C.heart)
+      this.gloss.addColorStop(1, '#c8173f')
+    }
+    ctx.shadowColor = 'rgb(0 0 0 / 0.45)'
+    ctx.shadowBlur = 4
+    ctx.shadowOffsetY = 2
+    ctx.fillStyle = this.gloss
+    ctx.fill()
+    ctx.shadowColor = 'transparent'
+    ctx.lineWidth = 1.5
+    ctx.strokeStyle = '#6e0a26'
+    ctx.stroke()
+    // Shine on the left lobe.
+    ctx.fillStyle = 'rgb(255 255 255 / 0.75)'
     ctx.beginPath()
-    ctx.moveTo(0, 9)
-    ctx.bezierCurveTo(-14, -1, -8, -12, 0, -5)
-    ctx.bezierCurveTo(8, -12, 14, -1, 0, 9)
+    ctx.ellipse(-4.6, -4.4, 2.6, 1.5, -0.7, 0, Math.PI * 2)
     ctx.fill()
     ctx.restore()
   }

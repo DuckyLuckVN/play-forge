@@ -17,7 +17,7 @@ import {
   Float32BufferAttribute,
   Group,
   IcosahedronGeometry,
-  LatheGeometry,
+  LinearFilter,
   LineBasicMaterial,
   LineSegments,
   Mesh,
@@ -30,10 +30,13 @@ import {
   SphereGeometry,
   Sprite,
   SpriteMaterial,
+  SRGBColorSpace,
   Vector2,
   Vector3,
+  DynamicDrawUsage,
 } from 'three'
 import { glowTexture } from '@forge/render3d'
+import { drawGhost2D, type GhostLook, type GhostPose } from './ghost2d'
 import { C } from './palette'
 import { LANE_W } from './world'
 
@@ -105,6 +108,27 @@ function sawGeometry() {
   return geo
 }
 const SAW = sawGeometry()
+
+/** The HUD's heart, extruded and bevelled (same curves, y up). */
+function heartGeometry() {
+  const k = 0.05
+  const shape = new Shape()
+  shape.moveTo(0, -9 * k)
+  shape.bezierCurveTo(-14 * k, 1 * k, -8 * k, 12 * k, 0, 5 * k)
+  shape.bezierCurveTo(8 * k, 12 * k, 14 * k, 1 * k, 0, -9 * k)
+  const geo = new ExtrudeGeometry(shape, {
+    depth: 0.18,
+    bevelEnabled: true,
+    bevelSize: 0.07,
+    bevelThickness: 0.08,
+    bevelSegments: 4,
+    curveSegments: 18,
+  })
+  geo.center()
+  return geo
+}
+const HEART = heartGeometry()
+const HEART_SHINE = new SphereGeometry(0.09, 10, 8)
 const HUB = new CylinderGeometry(0.2, 0.2, 0.3, 16).rotateX(Math.PI / 2)
 
 // ---------- Factories ----------
@@ -187,6 +211,44 @@ export function makeWisp(): Group {
   trail.name = 'trail'
   trail.scale.set(0.9, 0.9, 1)
   g.add(ball, halo, trail, groundGlow(C.wisp, 1.6, 0.45))
+  return g
+}
+
+/**
+ * Heart pickup: the HUD's glossy heart in 3D, with a dark outline shell, a
+ * shine, a soft pink glow and orbiting sparkles so it never reads as a hazard.
+ */
+export function makeHeart(): Group {
+  const g = new Group()
+  const body = new Group()
+  body.name = 'body'
+  body.position.y = 1.1
+  const mat = new MeshStandardMaterial({
+    color: C.heart,
+    emissive: C.heart,
+    emissiveIntensity: 0.55,
+    roughness: 0.18,
+    metalness: 0.1,
+  })
+  const outline = new Mesh(HEART, OUTLINE)
+  outline.scale.setScalar(1.12)
+  const shine = new Mesh(HEART_SHINE, new MeshBasicMaterial({ color: '#ffffff' }))
+  shine.scale.set(1.4, 0.8, 0.6)
+  shine.position.set(-0.22, 0.2, 0.2)
+  shine.rotation.z = 0.7
+  body.add(new Mesh(HEART, mat), outline, shine)
+  body.scale.setScalar(1.25)
+  const halo = glowSprite('#ff8fa6', 0.75)
+  halo.scale.setScalar(2.4)
+  halo.name = 'halo'
+  halo.position.y = 1.1
+  for (let i = 0; i < 2; i++) {
+    const orb = glowSprite('#ffffff', 0.9)
+    orb.scale.setScalar(0.3)
+    orb.name = `orb${i}`
+    g.add(orb)
+  }
+  g.add(body, halo, groundGlow(C.heart, 1.8, 0.5))
   return g
 }
 
@@ -430,82 +492,66 @@ export function makeCrack(): Mesh {
 }
 
 // ---------- The ghost ----------
+//
+// The ghost is the picker's 2D drawing ({@link drawGhost2D}) on a card that
+// always faces the camera: one look everywhere, kept in sync for free. The
+// canvas is redrawn each frame (pose, blink, peek, tint) and re-uploaded.
 
-/** Body with a glowing rim (fresnel) and a skirt that ripples. */
-export function ghostMaterial(): ShaderMaterial {
-  return new ShaderMaterial({
-    transparent: true,
-    uniforms: {
-      time: { value: 0 },
-      core: { value: new Color('#6f97b0') },
-      rim: { value: new Color(C.wisp) },
-      opacity: { value: 1 },
-    },
-    vertexShader: /* glsl */ `
-      uniform float time; varying vec3 vNormal; varying vec3 vView;
-      void main() {
-        vec3 p = position;
-        float skirt = 1.0 - smoothstep(0.0, 0.45, p.y);
-        float a = atan(p.z, p.x);
-        p.y += sin(a * 6.0 + time * 9.0) * 0.07 * skirt;
-        p.xz *= 1.0 + sin(a * 3.0 - time * 5.0) * 0.04 * skirt;
-        vec4 mv = modelViewMatrix * vec4(p, 1.0);
-        vNormal = normalize(normalMatrix * normal);
-        vView = normalize(-mv.xyz);
-        gl_Position = projectionMatrix * mv;
-      }`,
-    fragmentShader: /* glsl */ `
-      uniform vec3 core; uniform vec3 rim; uniform float opacity;
-      varying vec3 vNormal; varying vec3 vView;
-      void main() {
-        float f = pow(1.0 - abs(dot(normalize(vNormal), vView)), 2.2);
-        vec3 col = mix(core, rim * 1.1, f * 0.85);
-        gl_FragColor = vec4(col, opacity * (0.82 + f * 0.18));
-      }`,
-  })
+/** Canvas pixels across the ghost card (square). */
+const GHOST_PX = 384
+/** Design units (ghost2d) across the card: the ghost plus room to lean, glow and wear a halo. */
+const GHOST_SPAN = 104
+/** World units per design unit: the size the old 3D ghost had on screen. */
+const GHOST_UNIT = 0.025
+/** World size of the card. */
+export const GHOST_SIZE = GHOST_SPAN * GHOST_UNIT
+/** The card's centre (the drawing's pivot) above the ghost's base (its skirt hem). */
+export const GHOST_PIVOT = 38 * GHOST_UNIT
+/** Head centre above the base (where its light hangs). */
+export const GHOST_HEAD = 44 * GHOST_UNIT
+const PX_PER_UNIT = GHOST_PX / GHOST_SPAN
+/**
+ * The card's colour multiplier: the frame is tone-mapped and bloomed after
+ * drawing, which would wash the picker's colours out to near white.
+ */
+export const GHOST_BRIGHTNESS = 0.75
+
+export interface GhostModel {
+  sprite: Sprite
+  material: SpriteMaterial
+  texture: CanvasTexture
+  ctx: CanvasRenderingContext2D | null
 }
 
-const GHOST_BODY = (() => {
-  // Profile from the crown down to the skirt (x = radius, y = height).
-  const pts: Vector2[] = []
-  for (let i = 0; i <= 10; i++) {
-    const a = (i / 10) * (Math.PI / 2)
-    pts.push(new Vector2(Math.sin(a) * 0.62, 1.05 + Math.cos(a) * 0.62))
-  }
-  pts.push(new Vector2(0.66, 0.6), new Vector2(0.7, 0.25), new Vector2(0.76, 0.02))
-  return new LatheGeometry(pts, 40)
-})()
-const EYE = new SphereGeometry(0.09, 12, 10)
-
-export function makeGhost(): { root: Group; body: Mesh; mat: ShaderMaterial; eyes: Group } {
-  const root = new Group()
-  const mat = ghostMaterial()
-  const body = new Mesh(GHOST_BODY, mat)
-  const eyes = new Group()
-  const eyeMat = new MeshBasicMaterial({ color: '#1b1240' })
-  for (const side of [-1, 1]) {
-    const eye = new Mesh(EYE, eyeMat)
-    eye.scale.set(1, 1.5, 0.6)
-    eye.position.set(side * 0.2, 1.08, 0.56)
-    eyes.add(eye)
-  }
-  // Blush: tiny pink glows under the eyes.
-  for (const side of [-1, 1]) {
-    const blush = glowSprite('#ff8fc8', 0.5)
-    blush.scale.setScalar(0.28)
-    blush.position.set(side * 0.34, 0.9, 0.55)
-    eyes.add(blush)
-  }
-  body.add(eyes)
-  root.add(body)
-  return { root, body, mat, eyes }
+/** Built once; `canvas` is injectable for tests. */
+export function makeGhost(canvas: HTMLCanvasElement = document.createElement('canvas')): GhostModel {
+  canvas.width = canvas.height = GHOST_PX
+  const texture = new CanvasTexture(canvas)
+  texture.colorSpace = SRGBColorSpace
+  // Redrawn every frame: skip rebuilding mipmaps each time.
+  texture.generateMipmaps = false
+  texture.minFilter = LinearFilter
+  const material = new SpriteMaterial({ map: texture, transparent: true, depthWrite: false })
+  material.color.setScalar(GHOST_BRIGHTNESS)
+  const sprite = new Sprite(material)
+  sprite.scale.set(GHOST_SIZE, GHOST_SIZE, 1)
+  return { sprite, material, texture, ctx: canvas.getContext('2d') }
 }
 
-/** Faint copies trailing a slide. */
-export function makeAfterimage(): Mesh {
-  const m = new Mesh(
-    GHOST_BODY,
-    new MeshBasicMaterial({
+/** Redraw the card: the same drawing as the picker, in `pose`. */
+export function paintGhost(g: GhostModel, look: GhostLook, pose: GhostPose, tint?: string): void {
+  const { ctx } = g
+  if (!ctx) return
+  ctx.clearRect(0, 0, GHOST_PX, GHOST_PX)
+  drawGhost2D(ctx, GHOST_PX / 2, GHOST_PX / 2 + 38 * PX_PER_UNIT, look, pose, PX_PER_UNIT, tint)
+  g.texture.needsUpdate = true
+}
+
+/** Faint copies trailing a slide: the ghost's own card, tinted and additive. */
+export function makeAfterimage(texture: CanvasTexture): Sprite {
+  return new Sprite(
+    new SpriteMaterial({
+      map: texture,
       color: C.wisp,
       transparent: true,
       opacity: 0.2,
@@ -513,5 +559,47 @@ export function makeAfterimage(): Mesh {
       depthWrite: false,
     }),
   )
-  return m
+}
+
+/** A glowing ribbon behind the ghost: one buffer, rewritten in place each frame. */
+export interface Ribbon {
+  mesh: Mesh
+  material: MeshBasicMaterial
+  /** Points along the ribbon (head first). */
+  points: number
+  position: Float32BufferAttribute
+}
+
+export function makeRibbon(points = 16): Ribbon {
+  const geo = new BufferGeometry()
+  const position = new Float32BufferAttribute(new Float32Array(points * 2 * 3), 3)
+  const color = new Float32BufferAttribute(new Float32Array(points * 2 * 3), 3)
+  position.setUsage(DynamicDrawUsage)
+  geo.setAttribute('position', position)
+  geo.setAttribute('color', color)
+  const index: number[] = []
+  for (let i = 0; i < points - 1; i++) {
+    const a = i * 2
+    index.push(a, a + 1, a + 2, a + 1, a + 3, a + 2)
+  }
+  geo.setIndex(index)
+  // Fades along its length: bright at the ghost, black (= invisible, additive) at the end.
+  for (let i = 0; i < points; i++) {
+    const v = (1 - i / (points - 1)) ** 1.5
+    color.setXYZ(i * 2, v, v, v)
+    color.setXYZ(i * 2 + 1, v, v, v)
+  }
+  const material = new MeshBasicMaterial({
+    color: C.wisp,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.6,
+    blending: AdditiveBlending,
+    depthWrite: false,
+    side: DoubleSide,
+  })
+  const mesh = new Mesh(geo, material)
+  // Its points move every frame; the bounds would always be stale.
+  mesh.frustumCulled = false
+  return { mesh, material, points, position }
 }

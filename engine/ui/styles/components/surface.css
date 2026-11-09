@@ -1,0 +1,39 @@
+@layer pf.components {
+  /* ---------- Card: the one raised surface ----------
+     Felt face, rim border, a 6px raised edge. Games extend it with their own
+     class for layout; shape and depth come from here. */
+
+  .pf-card {
+    background: var(--pf-felt);
+    border: 2px solid var(--pf-rim);
+    border-radius: var(--pf-radius-lg);
+    box-shadow: var(--pf-lift-lg);
+    padding: var(--pf-space-5);
+    color: var(--pf-chalk);
+  }
+  /* Sunken: a well on a card or panel (items, stats); no raised edge. */
+  .pf-card.sunken {
+    background: var(--pf-pit);
+    box-shadow: none;
+  }
+  /* Small: hints and notices; tighter corners and a shallower edge. */
+  .pf-card.sm {
+    border-radius: var(--pf-radius);
+    box-shadow: var(--pf-lift-md);
+    padding: var(--pf-space-4) var(--pf-space-5);
+  }
+  /* Raised: clickable; lifts on hover, presses down when tapped. */
+  .pf-card.raised {
+    cursor: pointer;
+    transition:
+      transform 120ms,
+      box-shadow 120ms;
+  }
+  .pf-card.raised:hover {
+    transform: translateY(-2px);
+  }
+  .pf-card.raised:active {
+    transform: translateY(2px);
+    box-shadow: var(--pf-lift-sm);
+  }
+}

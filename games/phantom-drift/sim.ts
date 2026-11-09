@@ -5,7 +5,7 @@ import { randomInt, type RngState } from '@forge/core/rng'
 import { clamp01, lerp } from '@forge/fx/tween'
 import type { GameDefinition, InputEvent, PlayerInfo } from '@forge/net/session'
 import { ramp, tierAt, withinWindow } from '@forge/reflex'
-import { pickRow, type HazardPlan } from './spawner'
+import { pickRow, placeHeart, type HazardPlan } from './spawner'
 
 export type DriftInput = 'left' | 'right' | 'phase'
 const INPUTS: readonly DriftInput[] = ['left', 'right', 'phase']
@@ -26,7 +26,6 @@ const PICK_DX = 0.6
 export const TIER_TICKS = 20 * TICK_RATE
 export const MAX_TIER = 9
 export const INVULN_TICKS = 90
-export const HEART_REGEN_TICKS = 45 * TICK_RATE
 export const MAX_HEARTS = 3
 export const PHANTOM_COST = 10
 export const PHANTOM_TICKS = 2 * TICK_RATE
@@ -39,11 +38,14 @@ const DEATH_BRAKE = 0.94
 const SLAM_TICKS = 6
 
 const DISTANCE_POINTS = 0.2
-const WISP_POINTS = 10
+export const WISP_POINTS = 10
 const NEAR_POINTS = 50
 
 /** Rift speed in depth units per second. */
 export const speedAt = (tier: number) => ramp(tier, MAX_TIER, 45, 108)
+/** A speed as 0 (first tier) … 1 (top tier), for effects. */
+export const speedLevel = (speed: number) =>
+  Math.min(1, Math.max(0, (speed - speedAt(0)) / (speedAt(MAX_TIER) - speedAt(0))))
 export const laneCount = (tier: number) => (tier >= 5 ? 5 : tier >= 3 ? 4 : 3)
 /** Ticks between rows; keeps shrinking slowly past the cap, never below 0.6 s. */
 export function rowIntervalTicks(rawTier: number): number {
@@ -53,10 +55,50 @@ export function rowIntervalTicks(rawTier: number): number {
 }
 /** Faller warning time: 0.8 s → 0.35 s. */
 export const fallerTelegraph = (tier: number) => Math.round(ramp(tier, MAX_TIER, 0.8, 0.35) * TICK_RATE)
-/** Combo multiplier x1..x5: +1 for every 5 combo. */
-export const multiplier = (combo: number) => 1 + Math.min(4, Math.floor(combo / 5))
+/**
+ * Chance per row that a heart pickup comes down while hurt: the only way lost
+ * hearts come back (no regen). Rows that can't take one (faller rows, no free
+ * lane) skip, so early on that's about one every couple of minutes of being
+ * hurt; rarer as the rift speeds up, so long runs stay hard. Tuned with
+ * balance.test.ts: mean survival a bit under the old 45 s regen game (~5–8%
+ * for practiced players), and ~5–9% over no healing at all.
+ */
+export const HEART_CHANCE_EARLY = 0.015
+export const HEART_CHANCE_LATE = 0.003
+export const heartChance = (tier: number) => ramp(tier, MAX_TIER, HEART_CHANCE_EARLY, HEART_CHANCE_LATE)
+/** Combo multiplier x1..x5: +1 for every `step` combo (5 unless a perk says otherwise). */
+export const multiplier = (combo: number, step = 5) => 1 + Math.min(4, Math.floor(combo / step))
 
-export type ObjKind = 'shard' | 'wisp' | 'wall' | 'sweeper'
+/**
+ * The tuning a character can bend. Lives in the state so the sim stays pure
+ * and deterministic: the same seed and perks always play out the same.
+ */
+export interface Perks {
+  /** Dodges/wisps per multiplier step. */
+  comboStep: number
+  phantomTicks: number
+  /** Scales the per-row heart pickup chance (the only way hearts come back). */
+  heartChanceMult: number
+  /** Near-miss window in ticks. */
+  nearWindow: number
+  wispPoints: number
+  /** Wisps needed to fill the Phantom ring. */
+  phantomCost: number
+}
+
+/** The plain ghost: no perk. */
+export const BASE_PERKS: Readonly<Perks> = Object.freeze({
+  comboStep: 5,
+  phantomTicks: PHANTOM_TICKS,
+  heartChanceMult: 1,
+  nearWindow: NEAR_WINDOW,
+  wispPoints: WISP_POINTS,
+  phantomCost: PHANTOM_COST,
+})
+
+export type ObjKind = 'shard' | 'wisp' | 'heart' | 'wall' | 'sweeper'
+/** Things to grab (the rest hurt). */
+export const isPickup = (o: Pick<Obj, 'kind'>) => o.kind === 'wisp' || o.kind === 'heart'
 export interface Obj {
   id: number
   kind: ObjKind
@@ -93,8 +135,6 @@ export interface Player {
   phantomUntil: number
   charge: number
   combo: number
-  /** Last hit or heal; hearts regrow after a calm stretch. */
-  calmSince: number
 }
 
 export type DriftEvent =
@@ -109,7 +149,8 @@ export type DriftEvent =
   /** A faller starts warning over `lane`; it slams in `ticks`. */
   | { type: 'warn'; lane: number; ticks: number }
   | { type: 'multiplier'; mult: number }
-  | { type: 'heal' }
+  /** A heart pickup was grabbed in `lane` (+1 heart). */
+  | { type: 'heart'; lane: number }
   | { type: 'tier'; tier: number }
   | { type: 'lanes'; lanes: number }
   /** Last heart gone: the dying phase starts. */
@@ -122,6 +163,8 @@ export interface RunStats {
   nearMisses: number
   bestCombo: number
   phantoms: number
+  /** Heart pickups grabbed. */
+  hearts: number
   /** Depth units per second. */
   topSpeed: number
 }
@@ -150,10 +193,16 @@ export interface DriftState {
   diedDist: number | null
   over: boolean
   stats: RunStats
+  /** The character's tuning (see {@link Perks}). */
+  perks: Perks
   events: DriftEvent[]
 }
 
-export function createState(players: PlayerInfo[], seed: number): DriftState {
+export function createState(
+  players: PlayerInfo[],
+  seed: number,
+  perks: Readonly<Perks> = BASE_PERKS,
+): DriftState {
   return {
     tick: 0,
     rng: { seed },
@@ -173,7 +222,6 @@ export function createState(players: PlayerInfo[], seed: number): DriftState {
       phantomUntil: 0,
       charge: 0,
       combo: 0,
-      calmSince: 0,
     },
     objects: [],
     fallers: [],
@@ -184,7 +232,8 @@ export function createState(players: PlayerInfo[], seed: number): DriftState {
     diedAt: null,
     diedDist: null,
     over: false,
-    stats: { wisps: 0, nearMisses: 0, bestCombo: 0, phantoms: 0, topSpeed: speedAt(0) },
+    stats: { wisps: 0, nearMisses: 0, bestCombo: 0, phantoms: 0, hearts: 0, topSpeed: speedAt(0) },
+    perks: { ...perks },
     events: [],
   }
 }
@@ -204,9 +253,9 @@ function touches(x: number, lanes: number[], reach: number): boolean {
 function applyInput(s: DriftState, input: DriftInput) {
   const p = s.player
   if (input === 'phase') {
-    if (p.charge >= PHANTOM_COST && !phantom(s)) {
+    if (p.charge >= s.perks.phantomCost && !phantom(s)) {
       p.charge = 0
-      p.phantomUntil = s.tick + PHANTOM_TICKS
+      p.phantomUntil = s.tick + s.perks.phantomTicks
       s.stats.phantoms++
       s.events.push({ type: 'phantom' })
     }
@@ -226,24 +275,26 @@ function hit(s: DriftState) {
   p.hearts--
   p.combo = 0
   p.invulnUntil = s.tick + INVULN_TICKS
-  p.calmSince = s.tick
   s.events.push({ type: 'hit' })
 }
 
+/** The multiplier right now, with the character's combo step. */
+export const comboMultiplier = (s: DriftState) => multiplier(s.player.combo, s.perks.comboStep)
+
 function reward(s: DriftState, base: number): number {
-  const before = multiplier(s.player.combo)
+  const before = comboMultiplier(s)
   const points = base * before
   s.score += points
   s.player.combo++
   s.stats.bestCombo = Math.max(s.stats.bestCombo, s.player.combo)
-  const after = multiplier(s.player.combo)
+  const after = comboMultiplier(s)
   if (after > before) s.events.push({ type: 'multiplier', mult: after })
   return points
 }
 
 function nearMiss(s: DriftState, lanes: number[], arrivedAt: number) {
   const p = s.player
-  if (!lanes.includes(p.leftLane) || !withinWindow(p.leftAt, arrivedAt, NEAR_WINDOW)) return
+  if (!lanes.includes(p.leftLane) || !withinWindow(p.leftAt, arrivedAt, s.perks.nearWindow)) return
   const points = reward(s, NEAR_POINTS)
   s.stats.nearMisses++
   s.events.push({ type: 'nearMiss', lane: p.leftLane, points })
@@ -256,6 +307,18 @@ function spawnRow(s: DriftState) {
     s.objects.push({ id: s.nextId++, row: id, z: SPAWN_Z, ...o })
   for (const h of row.hazards) add(fromPlan(h))
   for (const lane of row.wisps) add({ kind: 'wisp', lane })
+  // Hurt and no heart already coming: maybe one, a lane change away.
+  const p = s.player
+  if (p.hearts < MAX_HEARTS && !s.objects.some((o) => o.kind === 'heart')) {
+    const lane = placeHeart(
+      s.rng,
+      row,
+      s.lanes,
+      [p.target, Math.round(p.x)],
+      heartChance(s.tier) * s.perks.heartChanceMult,
+    )
+    if (lane !== undefined) add({ kind: 'heart', lane })
+  }
   if (row.drop) s.drops.push({ at: s.tick + Math.ceil((SPAWN_Z / s.speed) * TICK_RATE), count: row.drop })
 }
 
@@ -293,12 +356,22 @@ function updateObjects(s: DriftState) {
     if (o.kind === 'wisp') {
       if (overlapping && Math.abs(p.x - o.lane) < PICK_DX) {
         o.done = true
-        const points = reward(s, WISP_POINTS)
+        const points = reward(s, s.perks.wispPoints)
         s.stats.wisps++
         const was = p.charge
-        p.charge = Math.min(PHANTOM_COST, p.charge + 1)
+        const cost = s.perks.phantomCost
+        p.charge = Math.min(cost, p.charge + 1)
         s.events.push({ type: 'wisp', lane: o.lane, points })
-        if (was < PHANTOM_COST && p.charge === PHANTOM_COST) s.events.push({ type: 'charged' })
+        if (was < cost && p.charge === cost) s.events.push({ type: 'charged' })
+      }
+      continue
+    }
+    if (o.kind === 'heart') {
+      if (overlapping && Math.abs(p.x - o.lane) < PICK_DX) {
+        o.done = true
+        p.hearts = Math.min(MAX_HEARTS, p.hearts + 1)
+        s.stats.hearts++
+        s.events.push({ type: 'heart', lane: o.lane })
       }
       continue
     }
@@ -314,7 +387,7 @@ function updateObjects(s: DriftState) {
       nearMiss(s, lanes, o.arrivedAt ?? s.tick)
     }
   }
-  s.objects = s.objects.filter((o) => o.z > -20 && !(o.kind === 'wisp' && o.done))
+  s.objects = s.objects.filter((o) => o.z > -20 && !(isPickup(o) && o.done))
 }
 
 function updateFallers(s: DriftState) {
@@ -386,14 +459,7 @@ export function step(s: DriftState, inputs: InputEvent<DriftInput>[]): DriftStat
   updateFallers(s)
 
   if (s.tick === p.phantomUntil - 1) s.events.push({ type: 'phantomEnd' })
-  s.score += (s.speed / TICK_RATE) * DISTANCE_POINTS * multiplier(p.combo)
-
-  if (p.hearts >= MAX_HEARTS) p.calmSince = s.tick
-  else if (s.tick - p.calmSince >= HEART_REGEN_TICKS) {
-    p.hearts++
-    p.calmSince = s.tick
-    s.events.push({ type: 'heal' })
-  }
+  s.score += (s.speed / TICK_RATE) * DISTANCE_POINTS * comboMultiplier(s)
 
   if (p.hearts <= 0) {
     s.diedAt = s.tick

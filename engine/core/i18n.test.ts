@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectLang, format, translator } from './i18n'
+import { detectLang, format, formatNumber, translator } from './i18n'
 
 describe('i18n', () => {
   it('fills {name} placeholders', () => {
@@ -25,5 +25,13 @@ describe('i18n', () => {
     const t = translator({ Shop: 'Cửa hàng' }, 'en')
     expect(t('Shop')).toBe('Shop')
     expect(t('Turn {n}', { n: 4 })).toBe('Turn 4')
+  })
+})
+
+describe('formatNumber', () => {
+  it('groups digits the way each language writes them', () => {
+    expect(formatNumber(1000, 'en')).toBe('1,000')
+    expect(formatNumber(1234567, 'vi')).toBe('1.234.567')
+    expect(formatNumber(42, 'vi')).toBe('42')
   })
 })

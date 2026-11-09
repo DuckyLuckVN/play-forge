@@ -7,14 +7,17 @@ import { clamp01, damp, ease, lerp, prefersReducedMotion, progress } from '@forg
 import type { Smoothed } from '@forge/net/smoothing'
 import { createCanvas2D, type Canvas2D } from '@forge/render2d/canvas'
 import { telegraph } from '@forge/reflex'
-import { DriftHud } from './hud'
+import { DEFAULT_CHARACTER } from './characters'
+import { drawGhost2D, type GhostLook } from './ghost2d'
+import { Blinker, ghostRig, runPose, runPoseOut, type RunInput } from './ghost-motion'
+import { DriftHud, traceHeart } from './hud'
 import { riftHue } from './ambience'
 import { C } from './palette'
 import type { DriftView } from './view'
 import {
   DEATH_TICKS,
-  PHANTOM_COST,
   SPAWN_Z,
+  speedLevel,
   type DriftEvent,
   type DriftState,
   type Faller,
@@ -41,11 +44,16 @@ export class DriftRenderer {
   private flash = { at: -10, color: '#fff' }
   private trail: { x: number; t: number }[] = []
   private reduced = prefersReducedMotion()
+  private rig = ghostRig()
+  private pose = runPoseOut()
+  private runIn: RunInput = { time: 0, dt: 0, slide: 0, speed: 0, eyes: 1, glow: 0, reduced: false }
+  private blink = new Blinker(11)
 
   constructor(
     private view: Canvas2D,
     private smooth: Smoothed<DriftState>,
     private hud: DriftHud,
+    private character: GhostLook = DEFAULT_CHARACTER,
   ) {}
 
   /** Screen position for a lane (may be fractional) at depth z. */
@@ -136,9 +144,19 @@ export class DriftRenderer {
       case 'charged':
         this.fx.burst(px, py - 20, { count: 20, color: [C.phantom, C.wisp], speed: 140, life: 0.6, size: 4 })
         break
-      case 'heal':
-        this.hud.heal()
+      case 'heart': {
+        const [x, y] = this.at(e.lane, 0)
+        this.fx.burst(x, y - 30, {
+          count: 40,
+          color: [C.heart, '#fff', '#ffb3c7'],
+          speed: 240,
+          life: 0.7,
+          size: 6,
+        })
+        this.hud.heartPickup(x, y - 30)
+        this.shake.add(0.1)
         break
+      }
       case 'multiplier':
         this.hud.multiplier()
         this.hud.text(px, py - 120, `×${e.mult}`, C.gold, 34)
@@ -176,7 +194,7 @@ export class DriftRenderer {
     for (const o of objs) if (o.z >= 0) this.drawObj(o, prevObjs.get(o.id), a)
     for (const f of curr.fallers) this.drawFaller(f, curr.tick + a)
     const x = prev ? lerp(prev.player.x, curr.player.x, a) : curr.player.x
-    if (curr.diedAt === null) this.drawGhost(x, curr, phantom)
+    if (curr.diedAt === null) this.drawGhost(x, curr, phantom, dt)
     for (const o of objs) if (o.z < 0) this.drawObj(o, prevObjs.get(o.id), a)
     ctx.restore()
 
@@ -271,6 +289,7 @@ export class DriftRenderer {
     ctx.globalAlpha = fadeIn
     if (o.kind === 'shard') this.drawShard(lane, z, o.done)
     else if (o.kind === 'wisp') this.drawWisp(lane, z, o.id)
+    else if (o.kind === 'heart') this.drawHeart(lane, z, o.id)
     else if (o.kind === 'wall') this.drawWall(o.gap!, z)
     else this.drawSweeper(lane, z, o.to!)
     ctx.globalAlpha = 1
@@ -328,6 +347,37 @@ export class DriftRenderer {
     ctx.beginPath()
     ctx.arc(x - r * 0.3, cy - r * 0.3, r * 0.35, 0, Math.PI * 2)
     ctx.fill()
+  }
+
+  /** Heart pickup: a glossy, beating heart in a pink glow (same look as the HUD's). */
+  private drawHeart(lane: number, z: number, id: number) {
+    const { ctx } = this.view
+    const [x, y, s] = this.at(lane, z)
+    const bob = this.reduced ? 0 : Math.sin(this.time * 3 + id) * 5 * s
+    const k = (this.laneW() / 50) * s * (1 + 0.1 * Math.max(0, Math.sin(this.time * 7)))
+    const cy = y - 26 * s + bob
+    const r = 26 * k
+    const halo = ctx.createRadialGradient(x, cy, 0, x, cy, r * 1.4)
+    halo.addColorStop(0, 'rgb(255 143 166 / 0.55)')
+    halo.addColorStop(1, 'rgb(255 143 166 / 0)')
+    ctx.fillStyle = halo
+    ctx.beginPath()
+    ctx.arc(x, cy, r * 1.4, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.save()
+    ctx.translate(x, cy)
+    ctx.scale(k, k)
+    traceHeart(ctx)
+    ctx.fillStyle = C.heart
+    ctx.fill()
+    ctx.lineWidth = 1.5
+    ctx.strokeStyle = '#6e0a26'
+    ctx.stroke()
+    ctx.fillStyle = 'rgb(255 255 255 / 0.8)'
+    ctx.beginPath()
+    ctx.ellipse(-4.6, -4.4, 2.6, 1.5, -0.7, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
   }
 
   private drawWall(gap: number, z: number) {
@@ -415,60 +465,49 @@ export class DriftRenderer {
     ctx.fillRect(x - w / 2 + jitter + 6, top + 6, w - 12, 6)
   }
 
-  private drawGhost(lx: number, s: DriftState, phantom: boolean) {
+  private drawGhost(lx: number, s: DriftState, phantom: boolean, dt: number) {
     const { ctx } = this.view
     const [x, y] = this.at(lx, 0)
     const invuln = s.tick < s.player.invulnUntil
-    const blink = invuln && !phantom && Math.floor(this.time * 14) % 2 === 0
+    const flicker = invuln && !phantom && Math.floor(this.time * 14) % 2 === 0
+    // Running away from the camera: its back, the face peeking round on a turn.
+    const input = this.runIn
+    input.time = this.time
+    input.dt = dt
+    input.slide = s.player.target - lx
+    input.speed = speedLevel(s.speed)
+    input.eyes = this.reduced ? 1 : this.blink.update(dt)
+    input.glow = phantom ? 30 : 16
+    input.reduced = this.reduced
+    const pose = runPose(this.rig, input, this.pose)
+    const look = this.character
+    const tint = phantom ? C.phantom : undefined
     // Afterimages trail the slide.
     this.trail.push({ x, t: this.time })
     this.trail = this.trail.filter((p) => this.time - p.t < 0.15)
-    const color = phantom ? C.phantom : C.ghost
     for (const p of this.trail) {
       ctx.globalAlpha = 0.25 * (1 - (this.time - p.t) / 0.15)
-      this.ghostShape(p.x, y, color)
+      drawGhost2D(
+        ctx,
+        p.x,
+        y + pose.lift * 40,
+        look,
+        { ...pose, glow: 0 },
+        1,
+        phantom ? C.phantom : look.colors.trail,
+      )
     }
-    ctx.globalAlpha = blink ? 0.25 : phantom ? 0.55 + 0.2 * Math.sin(this.time * 20) : 1
-    if (!this.reduced) {
-      ctx.shadowColor = color
-      ctx.shadowBlur = phantom ? 30 : 16
-    }
-    this.ghostShape(x, y, color)
-    ctx.shadowBlur = 0
-    // Eyes look the way it slides.
-    const look = Math.max(-1, Math.min(1, (s.player.target - lx) * 2))
-    ctx.fillStyle = '#1b1240'
-    for (const side of [-1, 1]) {
-      ctx.beginPath()
-      ctx.ellipse(x + side * 9 + look * 3, y - 42, 4, 6, 0, 0, Math.PI * 2)
-      ctx.fill()
-    }
+    ctx.globalAlpha = flicker ? 0.25 : phantom ? 0.55 + 0.2 * Math.sin(this.time * 20) : 1
+    drawGhost2D(ctx, x, y + pose.lift * 40, look, pose, 1, tint)
     ctx.globalAlpha = 1
     // A full meter makes the ghost sparkle: ready to go Phantom.
-    if (s.player.charge >= PHANTOM_COST && !phantom && Math.random() < 0.4)
+    if (s.player.charge >= s.perks.phantomCost && !phantom && Math.random() < 0.4)
       this.fx.burst(x + (Math.random() - 0.5) * 40, y - 40, {
         count: 1,
         color: C.phantom,
         speed: 30,
         life: 0.5,
       })
-  }
-
-  private ghostShape(x: number, y: number, color: string) {
-    const { ctx } = this.view
-    const w = 22
-    const top = y - 66
-    const bottom = y - 10
-    ctx.fillStyle = color
-    ctx.beginPath()
-    ctx.arc(x, top + w, w, Math.PI, 0)
-    ctx.lineTo(x + w, bottom)
-    for (let i = 4; i >= 0; i--) {
-      const wx = x - w + (i / 4) * 2 * w
-      ctx.lineTo(wx, bottom + (i % 2 ? 8 : 0) + Math.sin(this.time * 10 + i) * 2)
-    }
-    ctx.closePath()
-    ctx.fill()
   }
 
   private drawFlash(phantom: boolean) {
@@ -498,10 +537,14 @@ export class DriftRenderer {
 }
 
 /** The 2D renderer as a {@link DriftView}: used when WebGL2 is unavailable. */
-export function createView2D(stage: HTMLElement, smooth: Smoothed<DriftState>): DriftView {
+export function createView2D(
+  stage: HTMLElement,
+  smooth: Smoothed<DriftState>,
+  character: GhostLook = DEFAULT_CHARACTER,
+): DriftView {
   const view = createCanvas2D(stage, WIDTH, HEIGHT, { maxDpr: 2 })
   const hud = new DriftHud()
-  const renderer = new DriftRenderer(view, smooth, hud)
+  const renderer = new DriftRenderer(view, smooth, hud, character)
   return {
     banner: (m) => hud.banner(m),
     surface: view.canvas,

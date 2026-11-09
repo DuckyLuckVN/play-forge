@@ -1,8 +1,7 @@
-import { getLang, LANGS, setLang, translator } from '../core/i18n'
+import { getLang, LANGS, setLang } from '../core/i18n'
+import { t } from './i18n'
 import { h, setLabel } from './dom'
 import { popover } from './popover'
-
-const t = translator({ Language: 'Ngôn ngữ', 'Language: {name}': 'Ngôn ngữ: {name}' })
 
 /**
  * Header button showing the current language ("EN"), with a popover to pick

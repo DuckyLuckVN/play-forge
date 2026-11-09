@@ -188,13 +188,15 @@ export function eventSound(e: DriftEvent, s: DriftState): Sound | null {
       return MORE_SOUNDS.slam
     case 'lanes':
       return MORE_SOUNDS.rumble
+    case 'heart':
+      // The heal chime with the charged sparkle on top: a bigger "got it!".
+      return [...DRIFT_SOUNDS.heal, ...DRIFT_SOUNDS.charged.map((t) => ({ ...t, at: (t.at ?? 0) + 0.1 }))]
     case 'tier':
       return [...DRIFT_SOUNDS.tier, ...MORE_SOUNDS.riser]
     case 'move':
     case 'phantom':
     case 'phantomEnd':
     case 'charged':
-    case 'heal':
       return DRIFT_SOUNDS[e.type]
     default:
       return null

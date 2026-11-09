@@ -1,6 +1,7 @@
 import type { Direction } from '@forge/core/input'
 import { randomInt, type RngState } from '@forge/core/rng'
 import type { GameDefinition, InputEvent, PlayerInfo } from '@forge/net/session'
+import { t } from './i18n'
 
 export type Point = [x: number, y: number]
 
@@ -178,13 +179,13 @@ export const snakeGame: GameDefinition<SnakeState, Direction> = {
   options: [
     {
       id: 'speed',
-      label: 'Speed',
+      label: t('Speed'),
       default: 'normal',
       choices: [
-        { value: 'slow', label: 'Slow' },
-        { value: 'normal', label: 'Normal' },
-        { value: 'fast', label: 'Fast' },
-        { value: 'turbo', label: 'Turbo' },
+        { value: 'slow', label: t('Slow') },
+        { value: 'normal', label: t('Normal') },
+        { value: 'fast', label: t('Fast') },
+        { value: 'turbo', label: t('Turbo') },
       ],
     },
   ],

@@ -1,0 +1,77 @@
+/* Design tokens. Every shared and game style reads these; no raw values in
+   components or game CSS. See docs/styling.md.
+
+   Colours: theme.ts is the source of truth (canvas renderers import it, and
+   applyTheme() writes it onto <html> at runtime, which beats these). The
+   values here are the same defaults, so pages are coloured before any script
+   runs; tokens.test.ts keeps the two in sync. */
+@layer pf.tokens {
+  :root {
+    color-scheme: dark;
+
+    /* ---- Colour (mirrors theme.ts) ---- */
+    --pf-night: #161a3a; /* page background */
+    --pf-felt: #222859; /* panels, cards, table surfaces */
+    --pf-rim: #343b7a; /* borders, raised edges */
+    --pf-pit: #10132c; /* sunken areas: inputs, boards */
+    --pf-chalk: #f4f1ff; /* primary text */
+    --pf-haze: #a3a8d6; /* secondary text */
+    --pf-yolk: #ffc83d; /* primary action */
+    --pf-yolk-edge: #c98f00;
+    --pf-ink: #2b1d00; /* text on yolk */
+    --pf-coral: #ff6b6b; /* danger, errors */
+    --pf-coral-edge: #c0392b; /* raised edge of a coral button */
+    --pf-coral-ink: #2a0505; /* text on coral */
+    --pf-mint: #4be3a0; /* good news: live, free, new, synergy */
+    --pf-sky: #5ab8ff; /* common rarity, info */
+    --pf-violet: #b48cff; /* rare rarity */
+    --pf-pink: #ff6fb5; /* bonus, celebration */
+
+    /* ---- Type ---- */
+    --pf-font: 'Fredoka', ui-rounded, system-ui, sans-serif;
+    --pf-fs-xs: 12px;
+    --pf-fs-sm: 13px;
+    --pf-fs-md: 14px;
+    --pf-fs-base: 16px;
+    --pf-fs-lg: 20px;
+    --pf-fs-xl: 24px;
+    --pf-fs-2xl: 28px;
+    --pf-fw-semi: 600;
+    --pf-fw-bold: 700;
+
+    /* ---- Spacing (gaps, padding) ---- */
+    --pf-space-1: 2px;
+    --pf-space-2: 4px;
+    --pf-space-3: 6px;
+    --pf-space-4: 8px;
+    --pf-space-5: 12px;
+    --pf-space-6: 16px;
+    --pf-space-7: 20px;
+
+    /* ---- Shape: corner radius scale, kept small for a crisper look ---- */
+    --pf-radius-lg: 14px; /* cards, panels */
+    --pf-radius-md: 10px; /* boards, tiles, popovers */
+    --pf-radius: 8px; /* buttons, inputs, toasts */
+    --pf-radius-sm: 6px; /* tags, small chips */
+    --pf-radius-pill: 999px;
+
+    /* ---- Depth: the toy-like raised edge under chunky things ---- */
+    --pf-edge: 4px; /* depth of chunky buttons and tokens */
+    --pf-lift-sm: 0 3px 0 var(--pf-rim);
+    --pf-lift-md: 0 4px 0 var(--pf-rim);
+    --pf-lift-lg: 0 6px 0 var(--pf-rim);
+    --pf-drop: 0 20px 40px rgb(0 0 0 / 0.4); /* soft shadow under modals */
+
+    /* ---- Stacking (keep this order) ---- */
+    --pf-z-raised: 2; /* sticky heads, in-board hints */
+    --pf-z-notice: 5; /* first-seen hints over a board */
+    --pf-z-overlay: 10; /* modal overlay */
+    --pf-z-countdown: 11;
+    --pf-z-bar: 15; /* top bar: above the overlay */
+    --pf-z-toast: 20;
+    --pf-z-popover: 25;
+    --pf-z-fab: 40; /* phones: floating controls button */
+    --pf-z-sheet: 50; /* phones: popovers as bottom sheets */
+    --pf-z-fx: 60; /* floating reactions */
+  }
+}

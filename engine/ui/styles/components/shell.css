@@ -1,0 +1,89 @@
+@layer pf.components {
+  /* ---------- Game shell: top bar + stage ---------- */
+
+  .pf-shell {
+    /* Absolute, not fixed: fixed would create a stacking context and trap the
+     bar's z-index underneath the overlay. */
+    position: absolute;
+    inset: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+    overflow: hidden;
+    /* viewport-fit=cover: keep clear of the notch / home bar (0 elsewhere). */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+      env(safe-area-inset-left);
+  }
+
+  .pf-bar {
+    /* Above the overlay, so home / sound / leave always work. */
+    position: relative;
+    z-index: var(--pf-z-bar);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    min-height: 60px;
+  }
+  .pf-bar-title {
+    font-size: 22px;
+    font-weight: 650;
+    margin: 0 6px 0 2px;
+    white-space: nowrap;
+  }
+  .pf-bar-scores {
+    display: flex;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .pf-bar-actions {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+  }
+
+  .pf-stage {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 16px 16px;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  @media (max-width: 520px) {
+    .pf-bar {
+      padding: 8px 12px;
+      gap: 6px;
+    }
+    .pf-bar-title {
+      display: none;
+    }
+    /* Compact bar buttons so a full bar (Brickstorm: 7) fits a 360px phone.
+     Popover and floating buttons keep their own sizes. */
+    .pf-bar .pf-btn.icon:not(.pf-popover .pf-btn, .pf-fab) {
+      width: 40px;
+      height: 40px;
+      padding: 6px;
+    }
+  }
+
+  /* Phones (portrait, or landscape where height is short) and fullscreen: give
+   the stage almost every pixel. */
+  @media (max-width: 600px), (pointer: coarse) and (max-height: 500px) {
+    .pf-stage {
+      padding: 0 4px 4px;
+    }
+  }
+  :fullscreen .pf-stage {
+    padding: 0 4px 4px;
+  }
+  :fullscreen .pf-bar {
+    min-height: 0;
+    padding-block: 4px;
+  }
+}

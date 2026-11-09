@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  BASE_PERKS,
+  comboMultiplier,
   createState,
   DEATH_TICKS,
-  HEART_REGEN_TICKS,
+  heartChance,
+  MAX_HEARTS,
   INVULN_TICKS,
   laneCount,
   multiplier,
@@ -16,6 +19,7 @@ import {
   type DriftInput,
   type DriftState,
   type Obj,
+  type Perks,
 } from './sim'
 
 const me = [{ id: 'p0', name: 'P0', slot: 0, ready: true, connected: true }]
@@ -190,13 +194,13 @@ describe('Phantom Drift sim', () => {
     expect(multiplier(40)).toBe(5)
   })
 
-  it('heals one heart after a long time without a hit', () => {
+  it('lost hearts never come back on their own, however long it stays calm', () => {
     const s = quiet()
     place(s, { kind: 'shard', lane: 1, z: 4 })
     run(s, 10)
     expect(s.player.hearts).toBe(2)
-    expect(events(s, HEART_REGEN_TICKS)).toContain('heal')
-    expect(s.player.hearts).toBe(3)
+    run(s, 5 * 60 * 60)
+    expect(s.player.hearts).toBe(2)
   })
 
   it('dies on the last heart, plays out a dying phase, then ends', () => {
@@ -311,5 +315,194 @@ describe('Phantom Drift run stats', () => {
     const s = quiet()
     run(s, TIER_TICKS * 2 + 1)
     expect(s.stats.topSpeed).toBe(speedAt(2))
+  })
+})
+
+describe('Phantom Drift perks', () => {
+  const with_ = (perks: Partial<Perks>) => {
+    const s = createState(me, 1, { ...BASE_PERKS, ...perks })
+    s.spawnIn = Infinity
+    return s
+  }
+  /** A close dodge: the shard arrives 10 ticks after the ghost leaves its lane. */
+  const closeDodge = (s: DriftState) => {
+    place(s, { kind: 'shard', lane: 1, z: 13 })
+    step(s, send('left'))
+    return events(s, 30)
+  }
+
+  it('the default is the plain ghost', () => {
+    expect(createState(me, 1).perks).toEqual(BASE_PERKS)
+    expect(BASE_PERKS).toEqual({
+      comboStep: 5,
+      phantomTicks: PHANTOM_TICKS,
+      heartChanceMult: 1,
+      nearWindow: 9,
+      wispPoints: 10,
+      phantomCost: PHANTOM_COST,
+    })
+  })
+
+  it('combo step: the multiplier climbs every 4 instead of 5', () => {
+    const s = with_({ comboStep: 4 })
+    s.player.combo = 3
+    place(s, { kind: 'wisp', lane: 1, z: 5 })
+    const seen = events(s, 20)
+    expect(seen).toContain('multiplier')
+    expect(comboMultiplier(s)).toBe(2)
+    const plain = quiet()
+    plain.player.combo = 3
+    place(plain, { kind: 'wisp', lane: 1, z: 5 })
+    expect(events(plain, 20)).not.toContain('multiplier')
+    expect(multiplier(16, 4)).toBe(5)
+    expect(multiplier(40, 4)).toBe(5)
+  })
+
+  it('phantom ticks: Phantom lasts longer', () => {
+    const s = with_({ phantomTicks: 150 })
+    s.player.charge = PHANTOM_COST
+    step(s, send('phase'))
+    expect(s.player.phantomUntil - s.tick).toBe(149)
+  })
+
+  it('near window: a 10-tick dodge is a near miss only with the wider window', () => {
+    expect(closeDodge(quiet())).not.toContain('nearMiss')
+    const seen = closeDodge(with_({ nearWindow: 11 }))
+    expect(seen).toContain('nearMiss')
+    expect(seen).not.toContain('hit')
+  })
+
+  it('Phantom cost: a bigger ring to fill', () => {
+    const s = with_({ wispPoints: 12, phantomCost: 12 })
+    s.player.charge = 10
+    step(s, send('phase'))
+    expect(s.player.phantomUntil).toBe(0)
+    s.player.charge = 11
+    place(s, { kind: 'wisp', lane: 1, z: 5 })
+    expect(events(s, 20)).toContain('charged')
+    expect(s.player.charge).toBe(12)
+    step(s, send('phase'))
+    expect(s.player.phantomUntil).toBeGreaterThan(s.tick)
+  })
+
+  it('wisp points: a wisp scores 12 instead of 10', () => {
+    const s = with_({ wispPoints: 12 })
+    const got: number[] = []
+    place(s, { kind: 'wisp', lane: 1, z: 5 })
+    for (let i = 0; i < 20; i++) {
+      step(s, [])
+      for (const e of s.events) if (e.type === 'wisp') got.push(e.points)
+    }
+    expect(got).toEqual([12])
+  })
+})
+
+describe('Phantom Drift heart pickups', () => {
+  /** A spawning state with the player hurt (or not). */
+  function live(seed: number, hearts: number, perks: Partial<Perks> = {}): DriftState {
+    const s = createState(me, seed, { ...BASE_PERKS, ...perks })
+    s.player.hearts = hearts
+    return s
+  }
+  /** Steps with no input, keeping the player's hearts pinned (no hits). */
+  function hearts(s: DriftState, ticks: number, pin = s.player.hearts) {
+    const seen: Obj[] = []
+    let most = 0
+    for (let i = 0; i < ticks; i++) {
+      s.player.invulnUntil = Infinity
+      const before = new Set(s.objects.map((o) => o.id))
+      const lane = s.player.target
+      const x = s.player.x
+      step(s, [])
+      for (const o of s.objects)
+        if (o.kind === 'heart' && !before.has(o.id)) {
+          seen.push(o)
+          expect(o.lane).not.toBe(lane)
+          expect(o.lane).not.toBe(Math.round(x))
+          // Never in a hazard lane of its own row.
+          const row = s.objects.filter((h) => h.row === o.row && h.kind !== 'wisp' && h.kind !== 'heart')
+          for (const h of row) {
+            if (h.kind === 'wall') expect(o.lane).toBe(h.gap)
+            else if (h.kind === 'sweeper')
+              expect(o.lane < Math.min(h.from!, h.to!) || o.lane > Math.max(h.from!, h.to!)).toBe(true)
+            else expect(o.lane).not.toBe(h.lane)
+          }
+        }
+      most = Math.max(most, s.objects.filter((o) => o.kind === 'heart').length)
+      s.player.hearts = pin
+    }
+    return { seen, most }
+  }
+
+  it('never spawns while hearts are full', () => {
+    for (let seed = 1; seed <= 10; seed++) expect(hearts(live(seed, MAX_HEARTS), 120 * 60).seen).toEqual([])
+  })
+
+  it('spawns while hurt, rarely, one at a time, a lane change away and clear of hazards', () => {
+    let total = 0
+    const seconds = 60
+    for (let seed = 1; seed <= 40; seed++) {
+      const r = hearts(live(seed, 1), seconds * 60)
+      total += r.seen.length
+      expect(r.most).toBeLessThanOrEqual(1)
+    }
+    // Rare: about one every two minutes of being hurt, early on.
+    const every = (40 * seconds) / total
+    expect(every).toBeGreaterThan(90)
+    expect(every).toBeLessThan(200)
+  })
+
+  it("the chance multiplier (Bloom's perk) scales how often they come", () => {
+    const count = (heartChanceMult: number) => {
+      let n = 0
+      for (let seed = 1; seed <= 40; seed++)
+        n += hearts(live(seed, 1, { heartChanceMult }), 60 * 60).seen.length
+      return n
+    }
+    expect(count(0)).toBe(0)
+    const ratio = count(1.35) / count(1)
+    expect(ratio).toBeGreaterThan(1.15)
+    expect(ratio).toBeLessThan(1.6)
+  })
+
+  it('gets rarer as the rift speeds up', () => {
+    expect(heartChance(9)).toBeLessThan(heartChance(0) / 3)
+  })
+
+  it('grabbing one gives a heart (capped) and counts', () => {
+    const s = quiet()
+    s.player.hearts = 1
+    place(s, { kind: 'heart', lane: 1, z: 5 })
+    const seen = events(s, 20)
+    expect(seen).toContain('heart')
+    expect(s.player.hearts).toBe(2)
+    expect(s.stats.hearts).toBe(1)
+    expect(s.objects.find((o) => o.kind === 'heart')).toBeUndefined()
+
+    s.player.hearts = MAX_HEARTS
+    place(s, { kind: 'heart', lane: 1, z: 5 })
+    run(s, 20)
+    expect(s.player.hearts).toBe(MAX_HEARTS)
+  })
+
+  it('a heart in another lane is missed, and never hurts', () => {
+    const s = quiet()
+    s.player.hearts = 2
+    place(s, { kind: 'heart', lane: 0, z: 5 })
+    const seen = events(s, 30)
+    expect(seen).not.toContain('heart')
+    expect(seen).not.toContain('hit')
+    expect(s.player.hearts).toBe(2)
+  })
+
+  it('runs with hearts on the track are deterministic per seed', () => {
+    const play = () => {
+      const s = live(7, 1)
+      const r = hearts(s, 240 * 60)
+      return { score: s.score, tick: s.tick, hearts: r.seen.map((o) => [o.id, o.lane]) }
+    }
+    const a = play()
+    expect(a.hearts.length).toBeGreaterThan(0)
+    expect(play()).toEqual(a)
   })
 })

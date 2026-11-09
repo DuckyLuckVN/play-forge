@@ -40,58 +40,96 @@ const isUi = (t: EventTarget | null) =>
   t instanceof Element && !!t.closest('input, textarea, select, button, a, .pf-overlay')
 
 /**
- * WASD / arrows move; Space, J or a left click on `target` swings. Returns the cleanup.
+ * Held keys → inputs, DOM-free. `move` goes out when the held direction changes; `resync()` re-sends
+ * it, because the session drops inputs during the countdown and while paused (a key held through
+ * "Go!" or let go during a pause would otherwise be lost).
+ */
+export class HeldKeys {
+  private held = new Set<string>()
+  private dir = { x: 0, z: 0 }
+
+  constructor(
+    private send: (i: SpInput) => void,
+    private nowTick: () => number,
+  ) {}
+
+  /** True when the key is a direction (the caller then stops its default). */
+  press(code: string): boolean {
+    if (!DIRS[code]) return false
+    this.held.add(code)
+    this.update()
+    return true
+  }
+
+  release(code: string): void {
+    if (this.held.delete(code)) this.update()
+  }
+
+  /** Let go of everything (window blur: no keyup will come). */
+  clear(): void {
+    this.held.clear()
+    this.update()
+  }
+
+  swing(): void {
+    this.send({ t: 'swing', x: this.dir.x, z: this.dir.z, tick: this.nowTick() })
+  }
+
+  /** Send the held direction again (stop when nothing is held). */
+  resync(): void {
+    this.send({ t: 'move', x: this.dir.x, z: this.dir.z })
+  }
+
+  private update() {
+    const next = heldDir(this.held)
+    if (next.x === this.dir.x && next.z === this.dir.z) return
+    this.dir = next
+    this.resync()
+  }
+}
+
+export interface InputBinding {
+  /** Re-send the held direction (call when play starts or resumes). */
+  resync(): void
+  stop(): void
+}
+
+/**
+ * WASD / arrows move; Space, J or a left click on `target` swings.
  * `nowTick` = the state tick on screen (sent with the swing).
  */
 export function bindInput(
   target: HTMLElement,
   send: (i: SpInput) => void,
   nowTick: () => number,
-): () => void {
-  const held = new Set<string>()
-  let dir = { x: 0, z: 0 }
-
-  const update = () => {
-    const next = heldDir(held)
-    if (next.x === dir.x && next.z === dir.z) return
-    dir = next
-    send({ t: 'move', x: dir.x, z: dir.z })
-  }
-  const swing = () => send({ t: 'swing', x: dir.x, z: dir.z, tick: nowTick() })
-
+): InputBinding {
+  const keys = new HeldKeys(send, nowTick)
   const onDown = (e: KeyboardEvent) => {
     if (isUi(e.target)) return
-    if (DIRS[e.code]) {
+    if (SWING_KEYS.has(e.code)) {
       e.preventDefault()
-      held.add(e.code)
-      update()
-    } else if (SWING_KEYS.has(e.code)) {
-      e.preventDefault()
-      if (!e.repeat) swing()
-    }
+      if (!e.repeat) keys.swing()
+    } else if (keys.press(e.code)) e.preventDefault()
   }
-  const onUp = (e: KeyboardEvent) => {
-    if (held.delete(e.code)) update()
-  }
-  // Keys let go while the window is unfocused never send keyup: stop instead of running on.
-  const onBlur = () => {
-    held.clear()
-    update()
-  }
+  const onUp = (e: KeyboardEvent) => keys.release(e.code)
+  const onBlur = () => keys.clear()
   const onPointer = (e: PointerEvent) => {
-    if (e.pointerType !== 'mouse' || e.button !== 0) return
+    if (e.pointerType !== 'mouse' || e.button !== 0 || isUi(e.target)) return
     e.preventDefault()
-    swing()
+    keys.swing()
   }
 
   window.addEventListener('keydown', onDown)
   window.addEventListener('keyup', onUp)
   window.addEventListener('blur', onBlur)
   target.addEventListener('pointerdown', onPointer)
-  return () => {
-    window.removeEventListener('keydown', onDown)
-    window.removeEventListener('keyup', onUp)
-    window.removeEventListener('blur', onBlur)
-    target.removeEventListener('pointerdown', onPointer)
+  return {
+    resync: () => keys.resync(),
+    stop() {
+      window.removeEventListener('keydown', onDown)
+      window.removeEventListener('keyup', onUp)
+      window.removeEventListener('blur', onBlur)
+      target.removeEventListener('pointerdown', onPointer)
+    },
   }
 }

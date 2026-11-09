@@ -26,7 +26,7 @@ import type { Smoothed } from '@forge/net/smoothing'
 import { createScene3D, type Scene3D } from '@forge/render3d'
 import { COURT, predictLanding, type Vec3 } from './physics'
 import type { SpState } from './sim'
-import { CAMERA, lerpV, viewOf } from './world'
+import { CAMERA, cameraPose, dampFocus, lerpV, viewOf, type CameraPose } from './world'
 
 const PALETTE = {
   sky: '#bfe6ff',
@@ -113,6 +113,9 @@ export class Court3D {
   private time = 0
   private localPressAt = -Infinity
   private camX = 0
+  /** Damped shuttle height the camera frames. */
+  private focus = 1
+  private pose: CameraPose = { x: 0, y: 0, z: 0, lookX: 0, lookY: 0, lookZ: 0 }
   private tmp: Vec3 = { x: 0, y: 0, z: 0 }
 
   constructor() {
@@ -219,7 +222,7 @@ export class Court3D {
   /** Compile every shader up front, so the first match starts without a hitch. */
   async warm(): Promise<void> {
     this.ring.visible = true
-    this.placeCamera(0)
+    this.placeCamera(0, 1)
     await this.view.renderer.compileAsync(this.view.scene, this.view.camera)
     this.view.render(0)
     this.ring.visible = false
@@ -328,7 +331,7 @@ export class Court3D {
     this.updateRing(curr, flip)
     this.ring.visible = this.ring.visible && curr.phase === 'rally'
 
-    this.placeCamera(localX * CAMERA.followX, dt)
+    this.placeCamera(localX * CAMERA.followX, pos.y, dt)
     this.view.render(dt)
   }
 
@@ -359,10 +362,13 @@ export class Court3D {
     this.ringMat.opacity = mine ? 0.95 : 0.45
   }
 
-  private placeCamera(targetX: number, dt = 1) {
+  /** Damped: x slides with the local player, the look-at rises with the shuttle (see world.ts). */
+  private placeCamera(targetX: number, shuttleY: number, dt = 1) {
     this.camX += (targetX - this.camX) * (1 - Math.exp(-6 * dt))
+    this.focus = dampFocus(this.focus, shuttleY, dt)
+    const p = cameraPose(this.camX, this.focus, this.pose)
     const cam = this.view.camera
-    cam.position.set(this.camX, CAMERA.height, -(COURT.halfLen + CAMERA.back))
-    cam.lookAt(this.camX * 0.5, 0, CAMERA.lookZ)
+    cam.position.set(p.x, p.y, p.z)
+    cam.lookAt(p.lookX, p.lookY, p.lookZ)
   }
 }

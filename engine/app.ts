@@ -27,6 +27,7 @@ import { langMenu } from './ui/lang-menu'
 import { h, icon, iconButton, toast } from './ui/dom'
 import { fullscreenButton } from './ui/fullscreen'
 import { t } from './ui/i18n'
+import { scoreLabel } from './ui/scoreline'
 import { icons } from './ui/icons'
 import { optionPickers } from './ui/options'
 import { popover } from './ui/popover'
@@ -35,6 +36,8 @@ import { applyTheme, playerColor } from './ui/theme'
 export interface Scoreline {
   id: string
   score: number
+  /** Chip name for a seat that isn't in the lobby (e.g. the computer). Lobby players keep their own name. */
+  name?: string
   /** Knocked out / no longer in play. */
   out?: boolean
 }
@@ -472,10 +475,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     const playing = s && (s.phase === 'playing' || s.phase === 'countdown')
     const lines = playing && s.state && opts.scores ? opts.scores(s.state) : []
     const key = JSON.stringify(lines.map((l) => [l.id, !!l.out]))
-    const label = (line: Scoreline) => {
-      const p = s!.lobby.players.find((q) => q.id === line.id)
-      return `${p?.name ?? t('Gone')} ${line.score}`
-    }
+    const label = (line: Scoreline) => scoreLabel(line, s!.lobby.players)
     if (key === scoresKey) {
       for (const line of lines) {
         const text = chipText.get(line.id)

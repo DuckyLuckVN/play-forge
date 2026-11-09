@@ -28,14 +28,25 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
   court.surface.setAttribute('role', 'img')
   court.surface.setAttribute('aria-label', t('Badminton court'))
 
+  // sendInput drops inputs during the countdown and while paused.
+  const live = () => session.phase === 'playing' && !session.lobby.paused
   const send = (input: SpInput) => {
-    // Animate our own swing this frame (sendInput drops it while paused, so skip that too).
-    if (input.t === 'swing' && session.phase === 'playing' && !session.lobby.paused) onSwing?.()
+    // Animate our own swing this frame (not when the session would drop it).
+    if (input.t === 'swing' && live()) onSwing?.()
     session.sendInput(input)
   }
-  const stopInput = bindInput(court.surface, send, () => smooth.curr?.tick ?? 0)
+  const input = bindInput(court.surface, send, () => smooth.curr?.tick ?? 0)
+  // Play starting or resuming: re-send the held keys (a key held through "Go!" moves you, one let
+  // go during a pause stops you).
+  let wasLive = live()
+  const offLobby = session.on('lobby', () => {
+    const now = live()
+    if (now && !wasLive) input.resync()
+    wasLive = now
+  })
   return () => {
-    stopInput()
+    offLobby()
+    input.stop()
     detach()
     smooth.dispose()
   }
@@ -51,22 +62,24 @@ function scoreText(s: SpState, selfId: string): string {
 createGameApp<SpState, SpInput>({
   def: shuttlePopGame,
   title: 'Shuttle Pop',
-  tagline: t('Chibi badminton. Time your swing for a Perfect, smash the high ones.'),
+  // Same line as the launcher card.
+  tagline: t(
+    'Chibi badminton. Time your swing for a Perfect, smash on high balls. Play the computer or a friend online.',
+  ),
   controls: t(
     'Move with WASD or the arrow keys. Swing with Space, J or a click. Hold forward as you swing to smash or drive, back to clear, nothing to drop; left or right aims.',
   ),
   preload,
   mount,
-  // The shell names chips from the lobby, so only human seats (the full scoreboard is in the HUD).
-  scores: (s) =>
-    s.players.filter((p) => p.kind === 'human').map((p) => ({ id: p.id, score: s.score[p.side] })),
+  // Both seats; `name` labels the computer's chip (lobby players keep their lobby name).
+  scores: (s) => s.players.map((p) => ({ id: p.id, score: s.score[p.side], name: p.name })),
   outcome(s, selfId) {
     const score = scoreText(s, selfId)
     const me = s.players.find((p) => p.id === selfId)
     const won = s.players[s.winner === 1 ? 1 : 0]
     if (!me) return { headline: t('{name} wins!', { name: won.name }), result: 'done' }
     if (won === me) {
-      // The match ended before anyone reached the target: the other side left.
+      // Over without a winning score: removePlayer ended it because the other side left.
       if (winner(s.score) === null) return { headline: t('Your opponent left. You win!'), result: 'win' }
       return { headline: t('You win {score}!', { score }), result: 'win' }
     }

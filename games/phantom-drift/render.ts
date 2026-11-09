@@ -430,6 +430,8 @@ export class DriftRenderer {
       sx: b.sx,
       sy: b.sy,
       glow: this.reduced ? 0 : phantom ? 30 : 16,
+      // Running away from the camera: we see its back, not its face.
+      back: true,
     }
     const look = this.character
     const tint = phantom ? C.phantom : undefined

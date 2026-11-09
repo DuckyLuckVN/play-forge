@@ -19,6 +19,8 @@ export interface GhostPose {
   sy: number
   /** Glow blur in px (0 = none, e.g. reduced motion or cheap previews). */
   glow: number
+  /** Seen from behind (running away from the camera): no face. Missing = front. */
+  back?: boolean
 }
 
 export const RESTING: GhostPose = { time: 0, tilt: 0, eyes: 1, look: 0, sx: 1, sy: 1, glow: 0 }
@@ -101,22 +103,24 @@ export function drawGhost2D(
   ctx.shadowBlur = 0
 
   if (look.accessory === 'hood') hood(ctx, colors.accent, rim)
-  // Eyes: blink (height) and glance (shift).
-  ctx.fillStyle = colors.eye
-  for (const side of [-1, 1]) {
-    ctx.beginPath()
-    ctx.ellipse(side * 9 + pose.look * 3, HEAD_Y + 2, 4, Math.max(0.6, 6 * pose.eyes), 0, 0, Math.PI * 2)
-    ctx.fill()
+  if (!pose.back) {
+    // Eyes: blink (height) and glance (shift).
+    ctx.fillStyle = colors.eye
+    for (const side of [-1, 1]) {
+      ctx.beginPath()
+      ctx.ellipse(side * 9 + pose.look * 3, HEAD_Y + 2, 4, Math.max(0.6, 6 * pose.eyes), 0, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    // Blush.
+    ctx.globalAlpha *= 0.55
+    ctx.fillStyle = colors.blush
+    for (const side of [-1, 1]) {
+      ctx.beginPath()
+      ctx.ellipse(side * 15, HEAD_Y + 11, 4.5, 2.5, 0, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.globalAlpha /= 0.55
   }
-  // Blush.
-  ctx.globalAlpha *= 0.55
-  ctx.fillStyle = colors.blush
-  for (const side of [-1, 1]) {
-    ctx.beginPath()
-    ctx.ellipse(side * 15, HEAD_Y + 11, 4.5, 2.5, 0, 0, Math.PI * 2)
-    ctx.fill()
-  }
-  ctx.globalAlpha /= 0.55
   if (look.accessory === 'horns') horns(ctx, colors.accent)
   else if (look.accessory === 'crown') crown(ctx, colors.accent, colors.rim)
   else if (look.accessory === 'flower') flower(ctx, colors.blush, colors.accent, pose.time)

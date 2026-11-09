@@ -72,3 +72,8 @@ export class Blinker {
     return 1
   }
 }
+
+/** Forward tip (radians) for a rift speed of 0…1: a slight lean when slow, a real dash at top speed. */
+export function forwardPitch(speed: number): number {
+  return 0.08 + 0.32 * Math.min(1, Math.max(0, speed))
+}

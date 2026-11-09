@@ -642,7 +642,13 @@ export function makeGhost(): GhostModel {
   const halo = new Group()
   halo.add(new Mesh(HALO, paint.glowAccent))
   halo.position.set(0, 1.95, 0)
-  body.add(horns, crown, flower, hood, halo)
+  // Face and accessories turn forward (-z): the ghost looks where it's going, its
+  // back to the camera, instead of looking back at the player.
+  const head = new Group()
+  head.rotation.y = Math.PI
+  body.remove(face)
+  head.add(face, horns, crown, flower, hood, halo)
+  body.add(head)
 
   root.add(body)
   return {

@@ -49,7 +49,7 @@ import {
   showAllAccessories,
 } from './actors'
 import { DEFAULT_CHARACTER, type Character } from './characters'
-import { bob, Blinker, spring, springTo } from './ghost-motion'
+import { bob, Blinker, forwardPitch, spring, springTo } from './ghost-motion'
 import { DriftHud } from './hud'
 import type { Moment } from './moments'
 import { ambienceAt, riftHue } from './ambience'
@@ -626,8 +626,11 @@ export class Drift3D implements DriftView {
     root.scale.set(GHOST_SCALE * b.sx, GHOST_SCALE * b.sy, GHOST_SCALE * b.sx)
     root.position.set(gx, GHOST_Y + b.y, 0)
     const lean = springTo(this.lean, clamp(slide * 0.12, -0.35, 0.35), dt).value
-    root.rotation.set(-(0.05 + 0.1 * speed), clamp(lean * 1.5, -0.45, 0.45), -lean)
-    g.face.position.x = clamp(slide * 0.06, -0.08, 0.08)
+    // Facing forward (-z): tip the top forward with speed, turn the head toward the
+    // slide (negative yaw turns a forward face to +x), bank into it.
+    root.rotation.set(-forwardPitch(speed), -clamp(lean * 1.5, -0.45, 0.45), -lean)
+    // The face sits in a head turned around, so its x runs the other way.
+    g.face.position.x = -clamp(slide * 0.06, -0.08, 0.08)
     const open = motion ? this.blink.update(dt) : 1
     for (const eye of g.eyes) eye.scale.y = 1.5 * open
     // Wispy arms swing as it floats and fling out behind a slide.

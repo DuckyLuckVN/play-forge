@@ -335,8 +335,13 @@ describe('swing timing', () => {
     expect(swingAfter(3).find((e) => e.k === 'hit')).toMatchObject({ side: 1, grade: 'perfect' })
     expect(swingAfter(6).find((e) => e.k === 'hit')).toMatchObject({ side: 1, grade: 'perfect' })
   })
+  it('7-12 ticks late is good, not perfect', () => {
+    for (const after of [7, 8, 12]) {
+      expect(swingAfter(after).find((e) => e.k === 'hit')).toMatchObject({ side: 1, grade: 'good' })
+    }
+  })
   it('later than pastGrace is a whiff, not a free perfect', () => {
-    for (const after of [7, 8, 10, 14]) {
+    for (const after of [13, 14, 20, 30]) {
       const evs = swingAfter(after)
       expect(evs.some((e) => e.k === 'hit')).toBe(false)
       expect(evs.some((e) => e.k === 'whiff' && e.side === 1)).toBe(true)
@@ -410,11 +415,11 @@ describe('bookkeeping', () => {
     const ids = s.events.map((e) => e.id)
     expect(new Set(ids).size).toBe(ids.length)
   })
-  it('history keeps the last 8 ticks', () => {
+  it('history keeps the last 24 ticks', () => {
     const s = duel()
-    run(s, 20)
-    expect(s.history).toHaveLength(8)
-    expect(s.history[7].tick).toBe(s.tick)
+    run(s, 40)
+    expect(s.history).toHaveLength(24)
+    expect(s.history[23].tick).toBe(s.tick)
   })
   it('netView strips history and rng', () => {
     const s = duel()

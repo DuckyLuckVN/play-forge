@@ -27,7 +27,9 @@ describe('gradeOf', () => {
     expect(gradeOf(18)).toBe('late')
     expect(gradeOf(19)).toBeNull()
     expect(gradeOf(-6)).toBe('perfect')
-    expect(gradeOf(-7)).toBeNull()
+    expect(gradeOf(-7)).toBe('good')
+    expect(gradeOf(-12)).toBe('good')
+    expect(gradeOf(-13)).toBeNull()
   })
 })
 

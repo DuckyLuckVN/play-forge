@@ -36,7 +36,8 @@ export const SERVE_TIMEOUT = 300
 /** A scheduled hit whiffs if the swinger is further than REACH.radius + this from the shuttle. */
 const PENDING_SLACK = 0.3
 const EVENT_TICKS = 60
-const HISTORY_TICKS = 8
+/** Covers Task 11 rewind (≤7) + WINDOW.pastGrace (12) + margin. */
+const HISTORY_TICKS = 24
 export const PRESETS = 4
 
 /** Serve stance: view-relative offsets from the centre line / behind the short line. */

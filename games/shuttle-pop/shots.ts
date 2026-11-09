@@ -6,7 +6,7 @@ export type ShotKind = 'smash' | 'drive' | 'clear' | 'drop' | 'serveShort' | 'se
 
 export const REACH = { radius: 1.1, minY: 0.2, maxY: 2.9, smashY: 2.0 }
 /** Ticks. dt is contact tick minus swing tick (negative = swung after the ideal moment). */
-export const WINDOW = { perfect: 6, good: 12, late: 18, pastGrace: 6 }
+export const WINDOW = { perfect: 6, good: 12, late: 18, pastGrace: 12 }
 
 interface ShotSpec {
   elevation: number
@@ -72,7 +72,7 @@ export function findContact(
   return bestD === Infinity ? null : { dt: bestDt, pos: { x: bx, y: by, z: bz } }
 }
 
-/** |dt| <= 6 perfect, <= 12 good, <= 18 late, else null (whiff). dt < -pastGrace is a whiff. */
+/** |dt| <= 6 perfect, <= 12 good, <= 18 late, else null (whiff). dt < -pastGrace (12) is a whiff. */
 export function gradeOf(dtTicks: number): Grade | null {
   if (dtTicks < -WINDOW.pastGrace) return null
   const a = Math.abs(dtTicks)

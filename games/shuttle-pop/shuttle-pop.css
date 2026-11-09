@@ -1,3 +1,25 @@
+/* Shuttle Pop's own palette (pinks, golds, pop colours), named once here; everything else uses
+   the shared tokens (docs/styling.md). */
+:root {
+  --sp-white: #fff;
+  --sp-berry: #ff8fab;
+  --sp-pink: #ff6b8b;
+  --sp-pink-deep: #e63e6d;
+  --sp-pink-dark: #b42a55;
+  --sp-pink-light: #ff9db5;
+  --sp-blush: #ffe3ec;
+  --sp-blush-deep: #ffb3c7;
+  --sp-gold: #ffd166;
+  --sp-amber: #f4a52c;
+  --sp-orange: #ff9f1c;
+  --sp-cream: #fff6c9;
+  --sp-cocoa: #3b2400;
+  --sp-rust: #7a3d00;
+  --sp-mint: #9ff0c8;
+  --sp-peach: #ffd9a8;
+  --sp-rose: #ffb3c1;
+}
+
 /* Shuttle Pop: the no-WebGL note (the court itself is a three.js canvas). */
 .sp-nogl {
   max-width: 32ch;
@@ -26,7 +48,7 @@
   gap: 8px;
 }
 .sp-char {
-  --sp-tint: #ff8fab;
+  --sp-tint: var(--sp-berry);
   display: grid;
   justify-items: center;
   gap: 2px;
@@ -103,7 +125,7 @@
   padding: 4px 14px;
   border-radius: 999px;
   background: rgb(36 26 48 / 0.72);
-  color: #fff;
+  color: var(--sp-white);
   font-weight: 700;
   font-size: 16px;
   letter-spacing: 0.02em;
@@ -120,15 +142,15 @@
 .sp-match {
   font-size: 17px;
   text-transform: uppercase;
-  background: linear-gradient(180deg, #ff6b8b, #e63e6d);
+  background: linear-gradient(180deg, var(--sp-pink), var(--sp-pink-deep));
 }
 .sp-match[data-who='mine'] {
-  background: linear-gradient(180deg, #ffd166, #f4a52c);
-  color: #3b2400;
+  background: linear-gradient(180deg, var(--sp-gold), var(--sp-amber));
+  color: var(--sp-cocoa);
 }
 .sp-match[data-who='both'] {
-  background: linear-gradient(90deg, #ffd166, #ff6b8b);
-  color: #3b2400;
+  background: linear-gradient(90deg, var(--sp-gold), var(--sp-pink));
+  color: var(--sp-cocoa);
 }
 .sp-match:not([hidden]) {
   animation:
@@ -161,7 +183,7 @@
   font-weight: 800;
   line-height: 1;
   white-space: nowrap;
-  color: #fff;
+  color: var(--sp-white);
   -webkit-text-stroke: 1px rgb(40 24 56 / 0.55);
   text-shadow:
     0 2px 0 rgb(40 24 56 / 0.55),
@@ -174,12 +196,12 @@
 }
 .sp-pop-perfect {
   font-size: 40px;
-  color: #ffd166;
-  background: linear-gradient(180deg, #fff6c9 10%, #ffd166 55%, #ff9f1c);
+  color: var(--sp-gold);
+  background: linear-gradient(180deg, var(--sp-cream) 10%, var(--sp-gold) 55%, var(--sp-orange));
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  -webkit-text-stroke: 1.5px #7a3d00;
+  -webkit-text-stroke: 1.5px var(--sp-rust);
   filter: drop-shadow(0 0 10px rgb(255 209 102 / 0.75)) drop-shadow(0 3px 0 rgb(122 61 0 / 0.5));
   text-shadow: none;
 }
@@ -187,14 +209,14 @@
   animation-duration: 1000ms;
 }
 .sp-pop-good {
-  color: #9ff0c8;
+  color: var(--sp-mint);
 }
 .sp-pop-late {
-  color: #ffd9a8;
+  color: var(--sp-peach);
   font-size: 26px;
 }
 .sp-pop-miss {
-  color: #ffb3c1;
+  color: var(--sp-rose);
   font-size: 24px;
 }
 .sp-pop.smash {
@@ -308,7 +330,7 @@
   width: 46px;
   height: 46px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #fff, #ffe3ec 55%, #ffb3c7);
+  background: radial-gradient(circle at 35% 30%, var(--sp-white), var(--sp-blush) 55%, var(--sp-blush-deep));
   box-shadow:
     0 3px 8px rgb(0 0 0 / 0.25),
     inset 0 -3px 0 rgb(230 62 109 / 0.25);
@@ -324,11 +346,16 @@
   display: grid;
   place-items: center;
   pointer-events: auto;
-  color: #fff;
-  background: radial-gradient(circle at 35% 28%, #ff9db5, #ff6b8b 55%, #e63e6d);
+  color: var(--sp-white);
+  background: radial-gradient(
+    circle at 35% 28%,
+    var(--sp-pink-light),
+    var(--sp-pink) 55%,
+    var(--sp-pink-deep)
+  );
   border: 3px solid rgb(255 255 255 / 0.85);
   box-shadow:
-    0 6px 0 #b42a55,
+    0 6px 0 var(--sp-pink-dark),
     0 10px 18px rgb(0 0 0 / 0.25);
   opacity: 0.9;
   transition:
@@ -342,7 +369,7 @@
 .sp-swing.down {
   transform: translateY(5px) scale(0.94);
   box-shadow:
-    0 1px 0 #b42a55,
+    0 1px 0 var(--sp-pink-dark),
     0 0 22px rgb(255 209 102 / 0.75);
 }
 @media (prefers-reduced-motion: reduce) {

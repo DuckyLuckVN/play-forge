@@ -17,6 +17,33 @@ export function newEvents(events: readonly SpEvent[], lastSeen: number, out: SpE
   return out
 }
 
+/**
+ * What a view must do with its event/shot trackers before reading a new state:
+ * 'seed' — skip the events already there (first state after attach, or a new match started while
+ * hidden: ids restarted below what we saw); 'reset' — a rematch seen live (ticks went back), replay
+ * from id 0; 'keep' — normal play.
+ */
+export function trackerAction(
+  seeded: boolean,
+  nextEventId: number,
+  lastEventId: number,
+  tick: number,
+  lastTick: number,
+): 'seed' | 'reset' | 'keep' {
+  if (!seeded || nextEventId <= lastEventId) return 'seed'
+  return tick < lastTick ? 'reset' : 'keep'
+}
+
+/** The newest hit/serve event id in `events` (0 = none). */
+export function newestShotId(events: readonly SpEvent[]): number {
+  let newest = 0
+  for (let i = 0; i < events.length; i++) {
+    const e = events[i]
+    if ((e.k === 'hit' || e.k === 'serve') && e.id > newest) newest = e.id
+  }
+  return newest
+}
+
 /** `side` wins the match with the next point. */
 export function matchPoint(score: readonly [number, number], side: 0 | 1): boolean {
   if (winner([score[0], score[1]]) !== null) return false

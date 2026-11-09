@@ -431,6 +431,17 @@ function recordHistory(state: SpState) {
   if (state.history.length > HISTORY_TICKS) state.history.splice(0, state.history.length - HISTORY_TICKS)
 }
 
+/** Would a swing by `p` resolve now: a rally swing or the server's serve, off cooldown. */
+export function canSwing(state: SpState, p: SpPlayer): boolean {
+  const live = state.phase === 'rally' || (state.phase === 'serve' && p.side === state.server)
+  return live && state.tick - p.swingAt >= SWING_COOLDOWN
+}
+
+/** A seat's name for display: the computer's is translated now (a language switch updates it). */
+export function shownName(p: SpPlayer): string {
+  return p.kind === 'ai' ? t('Computer') : p.name
+}
+
 /**
  * The computer never wears a human's look: an AI seat on a taken preset moves to the next free one.
  * (Two humans may match; the view tints the far one.)
@@ -466,8 +477,7 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
       if (finite(input.preset)) seedPreset(state, p.id, input.preset)
     } else if (input.t === 'swing') {
       // Only swings that resolve (any rally swing, the server's serve) start the cooldown.
-      const live = state.phase === 'rally' || (state.phase === 'serve' && p.side === state.server)
-      if (!live || state.tick - p.swingAt < SWING_COOLDOWN || swings.some((w) => w.p === p)) continue
+      if (!canSwing(state, p) || swings.some((w) => w.p === p)) continue
       p.swingAt = state.tick
       // Humans stamp the tick on their screen (clamped rewind); the computer is judged now.
       const rewind = p.kind === 'human' && input.tick !== undefined ? rewindTicks(state.tick, input.tick) : 0

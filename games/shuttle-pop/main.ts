@@ -10,7 +10,15 @@ import { GuestPredictor } from './predict'
 import { Court3D } from './render3d'
 import { scoreText, summaryRows } from './results'
 import { winner } from './rules'
-import { createState, seedPreset, shuttlePopGame, type SpInput, type SpState } from './sim'
+import {
+  canSwing,
+  createState,
+  seedPreset,
+  shownName,
+  shuttlePopGame,
+  type SpInput,
+  type SpState,
+} from './sim'
 import { swingTick } from './world'
 
 /** Built and warmed while the menu shows, then reused by every match. */
@@ -41,9 +49,15 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
   court.surface.setAttribute('role', 'img')
   court.surface.setAttribute('aria-label', t('Badminton court'))
 
+  // The last state's view of our seat: serving / rallying and off cooldown (else the sim ignores it).
+  const swingCounts = () => {
+    const s = smooth.curr
+    const me = s?.players.find((p) => p.id === session.selfId)
+    return !!s && !!me && canSwing(s, me)
+  }
   const send = (input: SpInput) => {
-    // Animate our own swing this frame (not when the session would drop it).
-    if (input.t === 'swing' && live()) onSwing?.()
+    // Animate our own swing this frame (not when the session or the sim would drop it).
+    if (input.t === 'swing' && live() && swingCounts()) onSwing?.()
     // The prediction moves with exactly the moves the host gets.
     if (input.t === 'move' && live()) predictor?.setMove(input.x, input.z)
     session.sendInput(input)
@@ -153,19 +167,19 @@ createGameApp<SpState, SpInput>({
   preload,
   mount,
   menuExtras: pickerStrip,
-  // Both seats; `name` labels the computer's chip (lobby players keep their lobby name).
+  // Both seats; `name` labels the computer's chip, translated at display time (lobby players keep their lobby name).
   // The computer's chip gets its own colour slot and the robot avatar (it isn't in the lobby).
   scores: (s) =>
     s.players.map((p) =>
       p.kind === 'ai'
-        ? { id: p.id, score: s.score[p.side], name: p.name, slot: 1, avatar: 'robot' }
+        ? { id: p.id, score: s.score[p.side], name: shownName(p), slot: 1, avatar: 'robot' }
         : { id: p.id, score: s.score[p.side], name: p.name },
     ),
   outcome(s, selfId) {
     const score = scoreText(s, selfId)
     const me = s.players.find((p) => p.id === selfId)
     const won = s.players[s.winner === 1 ? 1 : 0]
-    if (!me) return { headline: t('{name} wins!', { name: won.name }), result: 'done' }
+    if (!me) return { headline: t('{name} wins!', { name: shownName(won) }), result: 'done' }
     if (won === me) {
       // Over without a winning score: removePlayer ended it because the other side left.
       if (winner(s.score) === null) return { headline: t('Your opponent left. You win!'), result: 'win' }
@@ -173,7 +187,7 @@ createGameApp<SpState, SpInput>({
     }
     if (won.kind === 'ai')
       return { headline: t('The computer wins {score}. Rematch?', { score }), result: 'lose' }
-    return { headline: t('{name} wins {score}.', { name: won.name, score }), result: 'lose' }
+    return { headline: t('{name} wins {score}.', { name: shownName(won), score }), result: 'lose' }
   },
   summary: summaryRows,
 })

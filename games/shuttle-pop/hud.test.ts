@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchPoint, newEvents } from './hud'
+import { matchPoint, newEvents, newestShotId, trackerAction } from './hud'
 import type { SpEvent } from './sim'
 
 const ev = (id: number): SpEvent => ({ id, tick: id, k: 'net' })
@@ -50,5 +50,29 @@ describe('matchPoint', () => {
 
   it('no match point once the match is won', () => {
     expect(matchPoint([11, 5], 0)).toBe(false)
+  })
+})
+
+describe('trackerAction (event replay on attach / rematch)', () => {
+  it('first state after attach → seed (old events are not replayed)', () => {
+    expect(trackerAction(false, 40, 0, 900, -1)).toBe('seed')
+  })
+  it('a new match started while hidden (event ids restarted) → seed', () => {
+    expect(trackerAction(true, 5, 30, 1200, 1000)).toBe('seed')
+  })
+  it('a rematch seen live (ticks went back) → reset', () => {
+    expect(trackerAction(true, 3, 2, 10, 900)).toBe('reset')
+  })
+  it('normal play → keep', () => {
+    expect(trackerAction(true, 41, 40, 901, 900)).toBe('keep')
+  })
+})
+
+describe('newestShotId', () => {
+  it('the newest hit/serve id, 0 when none', () => {
+    const hit = (id: number): SpEvent => ({ id, tick: id, k: 'hit', side: 0, grade: 'good', shot: 'drop' })
+    const serve = (id: number): SpEvent => ({ id, tick: id, k: 'serve', side: 0 })
+    expect(newestShotId([serve(2), hit(4), ev(7)])).toBe(4)
+    expect(newestShotId([ev(1)])).toBe(0)
   })
 })

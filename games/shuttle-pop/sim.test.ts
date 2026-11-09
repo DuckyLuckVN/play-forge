@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { InputEvent, PlayerInfo } from '@forge/net/session'
 import { COURT, predictLanding } from './physics'
 import {
+  canSwing,
   MAX_REWIND,
   MOVE_SPEED,
   NET_MARGIN,
@@ -10,6 +11,7 @@ import {
   SERVE_TIMEOUT,
   seedPreset,
   separateAi,
+  shownName,
   setupBots,
   SWING_COOLDOWN,
   shuttlePopGame as game,
@@ -572,6 +574,37 @@ describe('serve timeout', () => {
     game.tick(s, [])
     expect(s.phase).toBe('rally')
     expect(s.events.some((e) => e.k === 'serve' && e.side === 1)).toBe(true)
+  })
+})
+
+describe('canSwing (local swing anim gate)', () => {
+  it('serve: only the server; rally: both; between points: nobody', () => {
+    const s = duel()
+    s.tick = 100
+    expect(canSwing(s, s.players[0])).toBe(true)
+    expect(canSwing(s, s.players[1])).toBe(false)
+    s.phase = 'rally'
+    expect(canSwing(s, s.players[1])).toBe(true)
+    s.phase = 'point'
+    expect(canSwing(s, s.players[0])).toBe(false)
+  })
+  it('not while the last swing is cooling down', () => {
+    const s = duel()
+    s.phase = 'rally'
+    s.tick = 100
+    s.players[0].swingAt = 100 - SWING_COOLDOWN + 1
+    expect(canSwing(s, s.players[0])).toBe(false)
+    s.players[0].swingAt = 100 - SWING_COOLDOWN
+    expect(canSwing(s, s.players[0])).toBe(true)
+  })
+})
+
+describe('shownName', () => {
+  it("names the computer in the page's language at display time, humans by their lobby name", () => {
+    const s = game.setup(players(1), 1, {})
+    s.players[1].name = 'Máy' // baked in another language at setup
+    expect(shownName(s.players[1])).toBe('Computer')
+    expect(shownName(s.players[0])).toBe('P0')
   })
 })
 

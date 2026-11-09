@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { lockLandscape, needsRotate, watchPortrait, type PortraitWindow } from './landscape'
+import { lockLandscape, needsRotate, unlockLandscape, watchPortrait, type PortraitWindow } from './landscape'
 
 describe('needsRotate', () => {
   it('asks a touch phone held upright to rotate', () => {
@@ -104,5 +104,41 @@ describe('lockLandscape', () => {
     ).not.toThrow()
     expect(() => lockLandscape({})).not.toThrow()
     expect(() => lockLandscape(undefined)).not.toThrow()
+  })
+})
+
+describe('lock bookkeeping + unlockLandscape', () => {
+  it('reports a granted lock, so the cleanup knows to release it', async () => {
+    const onLocked = vi.fn()
+    lockLandscape({ lock: () => Promise.resolve() }, onLocked)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(onLocked).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not report a refused lock', async () => {
+    const onLocked = vi.fn()
+    lockLandscape({ lock: () => Promise.reject(new Error('NotSupportedError')) }, onLocked)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(onLocked).not.toHaveBeenCalled()
+  })
+
+  it('releases the lock', () => {
+    const unlock = vi.fn()
+    unlockLandscape({ unlock })
+    expect(unlock).toHaveBeenCalledTimes(1)
+  })
+
+  it('swallows an unlock that throws, or none at all', () => {
+    expect(() =>
+      unlockLandscape({
+        unlock: () => {
+          throw new Error('nope')
+        },
+      }),
+    ).not.toThrow()
+    expect(() => unlockLandscape({})).not.toThrow()
+    expect(() => unlockLandscape(undefined)).not.toThrow()
   })
 })

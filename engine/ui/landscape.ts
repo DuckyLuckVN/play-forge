@@ -43,17 +43,33 @@ export function watchPortrait(
   }
 }
 
-/** The part of `screen.orientation` used here (`lock` is missing on iOS Safari). */
+/** The part of `screen.orientation` used here (`lock`/`unlock` are missing on iOS Safari). */
 export interface OrientationLock {
   lock?: (orientation: 'landscape') => Promise<void>
+  unlock?: () => void
 }
 
-/** Best-effort landscape lock; refusals (not fullscreen, unsupported) are ignored. */
-export function lockLandscape(orientation: OrientationLock | undefined): void {
+/**
+ * Best-effort landscape lock; refusals (not fullscreen, unsupported) are ignored. `onLocked` runs
+ * once the browser grants it (so the caller knows there is a lock of its own to release).
+ */
+export function lockLandscape(orientation: OrientationLock | undefined, onLocked?: () => void): void {
   try {
-    orientation?.lock?.('landscape')?.catch(() => {})
+    orientation
+      ?.lock?.('landscape')
+      ?.then(() => onLocked?.())
+      .catch(() => {})
   } catch {
     // Older browsers throw instead of rejecting.
+  }
+}
+
+/** Best-effort release of a lock; missing or throwing `unlock` is ignored. */
+export function unlockLandscape(orientation: OrientationLock | undefined): void {
+  try {
+    orientation?.unlock?.()
+  } catch {
+    // Nothing to release, or the browser refuses: either way the page is free to rotate.
   }
 }
 
@@ -64,7 +80,8 @@ const PHONE_SVG =
 /**
  * Shows the rotate card over `stage` while a touch phone is upright and tries the landscape lock
  * when fullscreen starts. `onChange(portrait)` runs at once and on every flip (pause the game,
- * let go of held controls). Returns the cleanup, which removes the card and every listener.
+ * let go of held controls). Returns the cleanup, which removes the card and every listener and
+ * releases a landscape lock this guard got.
  */
 export function landscapeGuard(stage: HTMLElement, onChange: (portrait: boolean) => void): () => void {
   const card = h(
@@ -83,8 +100,17 @@ export function landscapeGuard(stage: HTMLElement, onChange: (portrait: boolean)
     card.hidden = !portrait
     onChange(portrait)
   })
+  const orientation = screen.orientation as OrientationLock | undefined
+  // Only a lock this guard got is released on cleanup (the next page may rotate freely).
+  let locked = false
+  let stopped = false
+  const onLocked = () => {
+    // Granted after cleanup (the game was left mid-request): release it at once.
+    if (stopped) unlockLandscape(orientation)
+    else locked = true
+  }
   const lockIfFull = () => {
-    if (isFullscreen()) lockLandscape(screen.orientation as OrientationLock | undefined)
+    if (isFullscreen()) lockLandscape(orientation, onLocked)
   }
   lockIfFull()
   const stopFull = onFullscreenChange(lockIfFull)
@@ -92,5 +118,7 @@ export function landscapeGuard(stage: HTMLElement, onChange: (portrait: boolean)
     stopWatch()
     stopFull()
     card.remove()
+    stopped = true
+    if (locked) unlockLandscape(orientation)
   }
 }

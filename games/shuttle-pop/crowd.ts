@@ -71,6 +71,8 @@ export class Crowd {
   private hair: InstancedMesh
   private eyes: InstancedMesh
   private limbs: InstancedMesh
+  /** Every mesh whose matrices the wave rewrites (flagged for upload once per frame). */
+  private readonly meshes: readonly InstancedMesh[]
   private base: Matrix4[]
   private phase: number[]
   private level = 0
@@ -93,6 +95,7 @@ export class Crowd {
     this.hair = instanced(new SphereGeometry(0.375, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.42), lambert(), n)
     this.eyes = instanced(new SphereGeometry(0.055, 6, 4), new MeshBasicMaterial({ color: CROWD.eye }), n * 2)
     this.limbs = instanced(new CapsuleGeometry(0.065, 0.16, 2, 6), skin, n * LIMBS)
+    this.meshes = [this.body, this.head, this.hair, this.eyes, this.limbs]
     const r = rng(11)
     const tint = new Color()
     this.base = FANS.map((f, i) => {
@@ -110,7 +113,7 @@ export class Crowd {
       )
     })
     this.phase = FANS.map(() => r() * Math.PI * 2)
-    for (const m of [this.body, this.head, this.hair, this.eyes, this.limbs]) {
+    for (const m of this.meshes) {
       // Hops move instances past the first bounds; the crowd is always on screen anyway.
       m.frustumCulled = false
       this.root.add(m)
@@ -158,8 +161,7 @@ export class Crowd {
         )
       }
     }
-    for (const m of [this.body, this.head, this.hair, this.eyes, this.limbs])
-      m.instanceMatrix.needsUpdate = true
+    for (const m of this.meshes) m.instanceMatrix.needsUpdate = true
   }
 
   /** Part at (x, y, z) in fan space, tilted rx (about x) and rz (about z), scaled. */

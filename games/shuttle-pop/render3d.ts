@@ -37,7 +37,7 @@ import { createScene3D, Particles3D, QualityGovernor, type Scene3D } from '@forg
 import { createChibi, restPose, type Chibi, type ChibiPose } from './actors'
 import { TICK_RATE } from './court'
 import { DustPuffs } from './dust'
-import { Hud, matchPoint, newEvents, type PopKind } from './hud'
+import { Hud, matchPoint, newEvents, newestShotId, trackerAction, type PopKind } from './hud'
 import { t } from './i18n'
 import { damp, Gait, GaitEvent } from './locomotion'
 import { leapAtHit, leapStartAge, lookAround, SMASH, smashJump, SWING, type Hop } from './moves'
@@ -46,7 +46,7 @@ import type { GuestPredictor } from './predict'
 import { SpringPunch } from './punch'
 import { SURROUND } from './props'
 import { Park } from './scenery'
-import type { SpEvent, SpState } from './sim'
+import { shownName, type SpEvent, type SpState } from './sim'
 import { eventSound, SHUTTLE_SOUNDS } from './sounds'
 import { ShuttleTrail, type TrailLook } from './trail'
 import {
@@ -231,6 +231,8 @@ export class Court3D {
   private lastTick = -1
   /** Newest event id already turned into a pose (smash leap, point mood). */
   private lastEventId = 0
+  /** False until the first state after attach seeds the trackers (no replay of old events). */
+  private seeded = false
   /** Side that won the latest point (−1 = none yet). */
   private pointSide = -1
   private localIdx = 0
@@ -437,6 +439,7 @@ export class Court3D {
     this.predictor = predictor
     this.live = live
     this.reset()
+    this.seeded = false
     stage.appendChild(this.view.root)
     this.settle = QUALITY_SETTLE
     this.quality.restart()
@@ -489,7 +492,15 @@ export class Court3D {
     this.time += dt
     const curr = this.smooth?.curr
     if (!curr) return this.view.render(dt)
-    if (curr.tick < this.lastTick) this.reset()
+    const track = trackerAction(this.seeded, curr.nextEventId, this.lastEventId, curr.tick, this.lastTick)
+    if (track === 'reset') this.reset()
+    else if (track === 'seed') {
+      // Joined mid-match (or a rematch began while hidden): what already happened isn't replayed.
+      this.reset()
+      this.seeded = true
+      this.lastEventId = curr.nextEventId - 1
+      this.lastShotId = newestShotId(curr.events)
+    }
     this.lastTick = curr.tick
     // Slow frames: drop the players' real shadows, between rallies so they don't vanish mid-shot.
     // Blob shadows stay either way.
@@ -773,7 +784,7 @@ export class Court3D {
     else if (!this.spectating && s.server === this.side) this.hud.setServe(t('Your serve'))
     else {
       const server = s.players[0].side === s.server ? s.players[0] : s.players[1]
-      this.hud.setServe(t('{name} serves', { name: server.name }))
+      this.hud.setServe(t('{name} serves', { name: shownName(server) }))
     }
     const mine = live && matchPoint(s.score, this.side)
     const theirs = live && matchPoint(s.score, this.side === 0 ? 1 : 0)

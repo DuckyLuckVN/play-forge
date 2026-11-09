@@ -408,6 +408,25 @@ function recordHistory(state: SpState) {
   if (state.history.length > HISTORY_TICKS) state.history.splice(0, state.history.length - HISTORY_TICKS)
 }
 
+/**
+ * The computer never wears a human's look: an AI seat on a taken preset moves to the next free one.
+ * (Two humans may match; the view tints the far one.)
+ */
+export function separateAi(state: SpState): void {
+  const taken = (n: number) => state.players.some((h) => h.kind === 'human' && h.preset === n)
+  for (const q of state.players)
+    if (q.kind === 'ai')
+      for (let i = 0; i < PRESETS && taken(q.preset); i++) q.preset = (q.preset + 1) % PRESETS
+}
+
+/** Puts player `id` in look `preset` (clamped to 0..PRESETS−1), then separates the computer. */
+export function seedPreset(state: SpState, id: string, preset: number): void {
+  const p = state.players.find((q) => q.id === id)
+  if (!p) return
+  p.preset = Math.min(PRESETS - 1, Math.max(0, Math.trunc(preset)))
+  separateAi(state)
+}
+
 export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
   if (state.phase === 'over') return state
   state.tick++
@@ -421,12 +440,7 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
     if (!p || !input) continue
     if (input.t === 'move') p.move = clampDir(input.x, input.z)
     else if (input.t === 'pick') {
-      if (finite(input.preset)) {
-        p.preset = Math.min(PRESETS - 1, Math.max(0, Math.trunc(input.preset)))
-        // The computer never wears the player's look (two humans may match; the view tints the far one).
-        for (const q of state.players)
-          if (q.kind === 'ai' && q.preset === p.preset) q.preset = (p.preset + 1) % PRESETS
-      }
+      if (finite(input.preset)) seedPreset(state, p.id, input.preset)
     } else if (input.t === 'swing') {
       // Only swings that resolve (any rally swing, the server's serve) start the cooldown.
       const live = state.phase === 'rally' || (state.phase === 'serve' && p.side === state.server)

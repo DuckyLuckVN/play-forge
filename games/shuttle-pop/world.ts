@@ -60,3 +60,22 @@ export function cameraPose(camX: number, focusY: number, out: CameraPose): Camer
 export function dampFocus(focus: number, shuttleY: number, dt: number): number {
   return focus + (shuttleY - focus) * (1 - Math.exp(-CAMERA.focusRate * dt))
 }
+
+/**
+ * A player's mood: during the point pause the side that won it (`pointSide`, −1 = none) celebrates
+ * and the other slumps; at 'over' the match `winner` does. Idle otherwise.
+ */
+export function moodOf(
+  phase: 'serve' | 'rally' | 'point' | 'over',
+  winner: number,
+  pointSide: number,
+  side: 0 | 1,
+): 'idle' | 'happy' | 'sad' {
+  const won = phase === 'over' ? winner : phase === 'point' ? pointSide : -1
+  return won === -1 ? 'idle' : won === side ? 'happy' : 'sad'
+}
+
+/** Same preset on both sides: the far player (`i` ≠ the near `localIdx`) is drawn as the tinted twin. */
+export function isTwinAlt(preset0: number, preset1: number, i: number, localIdx: number): boolean {
+  return preset0 === preset1 && i !== localIdx
+}

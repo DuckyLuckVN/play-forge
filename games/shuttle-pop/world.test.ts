@@ -2,7 +2,7 @@ import { Frustum, Matrix4, PerspectiveCamera, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
 import { COURT, stepShuttle, type Flight, type Vec3 } from './physics'
 import { launchFor, shotTarget } from './shots'
-import { CAMERA, cameraPose, dampFocus, lerpV, viewOf } from './world'
+import { CAMERA, cameraPose, dampFocus, isTwinAlt, lerpV, moodOf, viewOf } from './world'
 
 describe('view mapping', () => {
   it('keeps side 0 as is', () => {
@@ -104,5 +104,24 @@ describe('camera framing', () => {
       }
     }
     expect(cameraPose(0, 1, pose).lookY).toBe(0)
+  })
+})
+
+describe('poses', () => {
+  it('moodOf: idle in play, winner of the point happy / loser sad, match winner at over', () => {
+    expect(moodOf('rally', -1, 1, 0)).toBe('idle')
+    expect(moodOf('serve', -1, 1, 1)).toBe('idle')
+    expect(moodOf('point', -1, 1, 1)).toBe('happy')
+    expect(moodOf('point', -1, 1, 0)).toBe('sad')
+    expect(moodOf('point', -1, -1, 0)).toBe('idle')
+    expect(moodOf('over', 0, 1, 0)).toBe('happy')
+    expect(moodOf('over', 0, 1, 1)).toBe('sad')
+  })
+
+  it('isTwinAlt: only the far player, only on the same preset', () => {
+    expect(isTwinAlt(2, 2, 1, 0)).toBe(true)
+    expect(isTwinAlt(2, 2, 0, 0)).toBe(false)
+    expect(isTwinAlt(2, 2, 0, 1)).toBe(true)
+    expect(isTwinAlt(1, 2, 1, 0)).toBe(false)
   })
 })

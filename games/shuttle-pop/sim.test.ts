@@ -6,6 +6,8 @@ import {
   NET_MARGIN,
   POINT_TICKS,
   SERVE_TIMEOUT,
+  seedPreset,
+  separateAi,
   SWING_COOLDOWN,
   shuttlePopGame as game,
   toWorld,
@@ -151,6 +153,26 @@ describe('pick', () => {
     expect(s.players[1].preset).toBe(2)
     game.tick(s, [ev('p0', { t: 'pick', preset: 3 })])
     expect(s.players[1].preset).toBe(2)
+  })
+
+  it('separateAi moves a clashing computer to the next free preset', () => {
+    const s = game.setup(players(1), 1, {})
+    s.players[0].preset = 3
+    s.players[1].preset = 3
+    separateAi(s)
+    expect(s.players[1].preset).toBe(0)
+    separateAi(s)
+    expect(s.players[1].preset).toBe(0)
+  })
+
+  it('seedPreset gives a fresh match the stored look, before any input', () => {
+    const s = game.setup(players(1), 1, {})
+    seedPreset(s, 'p0', 1)
+    expect(s.players.map((p) => p.preset)).toEqual([1, 2])
+    seedPreset(s, 'p0', 99)
+    expect(s.players[0].preset).toBe(3)
+    seedPreset(s, 'nobody', 0)
+    expect(s.players[0].preset).toBe(3)
   })
 
   it('two humans may pick the same preset', () => {

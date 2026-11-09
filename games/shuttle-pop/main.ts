@@ -6,10 +6,12 @@ import { bindInput } from './input'
 import { loadPreset, pickerStrip } from './picker'
 import { Court3D } from './render3d'
 import { winner } from './rules'
-import { shuttlePopGame, type SpInput, type SpState } from './sim'
+import { createState, seedPreset, shuttlePopGame, type SpInput, type SpState } from './sim'
 
 /** Built and warmed while the menu shows, then reused by every match. */
 let court: Court3D | null = null
+/** This page's player id while it hosts (setup runs on the host only, after mount). */
+let hostId: string | null = null
 async function preload(): Promise<void> {
   if (!webglAvailable()) return
   const view = new Court3D()
@@ -23,6 +25,7 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
     stage.append(note)
     return () => note.remove()
   }
+  hostId = session.isHost ? session.selfId : null
   const smooth = smoothState(session)
   let onSwing: (() => void) | null = null
   const detach = court.attach(stage, smooth, session.selfId, (cb) => (onSwing = cb))
@@ -37,13 +40,9 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
     session.sendInput(input)
   }
   const input = bindInput(court.surface, send, () => smooth.curr?.tick ?? 0)
-  // Our character: sent once play starts (inputs are dropped before), again only if the state
-  // doesn't wear it yet (a rematch starts from the default looks).
-  const pick = () => {
-    const preset = loadPreset()
-    if (session.state?.players.find((p) => p.id === session.selfId)?.preset !== preset)
-      session.sendInput({ t: 'pick', preset })
-  }
+  // Our character on every play start (inputs are dropped before). The host's look is already seeded
+  // in setup; a guest's shows from "Go!". Idempotent, so resumes may resend it.
+  const pick = () => session.sendInput({ t: 'pick', preset: loadPreset() })
   // Play starting or resuming: re-send the held keys (a key held through "Go!" moves you, one let
   // go during a pause stops you) and our character.
   let wasLive = live()
@@ -57,6 +56,7 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
     wasLive = now
   })
   return () => {
+    hostId = null
     offLobby()
     input.stop()
     detach()
@@ -72,7 +72,15 @@ function scoreText(s: SpState, selfId: string): string {
 }
 
 createGameApp<SpState, SpInput>({
-  def: shuttlePopGame,
+  // The host's stored look is in the state from the countdown on (no pop at "Go!").
+  def: {
+    ...shuttlePopGame,
+    setup(players, seed, options) {
+      const state = createState(players, seed, options)
+      if (hostId) seedPreset(state, hostId, loadPreset())
+      return state
+    },
+  },
   title: 'Shuttle Pop',
   // Same line as the launcher card.
   tagline: t(

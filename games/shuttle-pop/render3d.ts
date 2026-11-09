@@ -1,4 +1,5 @@
-// Shuttle Pop in 3D: court, net, chibi players (actors.ts), shuttle, landing ring. Reads interpolated sim state only; gameplay lives in sim.ts.
+// Shuttle Pop in 3D: court, net, chibi players (actors.ts), shuttle, landing ring.
+// Reads interpolated sim state only; gameplay lives in sim.ts.
 //
 // Built once per page: `warm()` (menu preload) compiles every shader, each match `attach`es it to the
 // stage and gets a cleanup that parks it offscreen again. The render loop allocates nothing.
@@ -25,7 +26,7 @@ import { createChibi, type Chibi, type ChibiPose } from './actors'
 import { MOVE_SPEED } from './court'
 import { COURT, predictLanding, type Vec3 } from './physics'
 import type { SpState } from './sim'
-import { CAMERA, cameraPose, dampFocus, lerpV, viewOf, type CameraPose } from './world'
+import { CAMERA, cameraPose, dampFocus, isTwinAlt, lerpV, moodOf, viewOf, type CameraPose } from './world'
 
 const PALETTE = {
   sky: '#bfe6ff',
@@ -295,8 +296,6 @@ export class Court3D {
     }
     const flip = this.flip
     this.scanEvents(curr)
-    // Same look on both sides: the far one (not the local / side-0 player) is the tinted twin.
-    const twins = curr.players[0].preset === curr.players[1].preset
 
     let localX = 0
     for (let i = 0; i < 2; i++) {
@@ -312,7 +311,7 @@ export class Court3D {
       // Everyone faces the net.
       root.rotation.y = z < 0 ? 0 : Math.PI
       if (i === this.localIdx) localX = x
-      const alt = twins && i !== this.localIdx
+      const alt = isTwinAlt(curr.players[0].preset, curr.players[1].preset, i, this.localIdx)
       if (cp.preset !== view.preset || alt !== view.alt) {
         view.preset = cp.preset
         view.alt = alt
@@ -332,8 +331,7 @@ export class Court3D {
       pose.swing = view.swingAge < SWING_TIME ? view.swingAge / SWING_TIME : 0
       pose.jump = view.jumpAge < JUMP_TIME ? Math.sin((Math.PI * view.jumpAge) / JUMP_TIME) : 0
       // Celebrate / slump through the point pause and on the results screen.
-      const won = curr.phase === 'over' ? curr.winner : curr.phase === 'point' ? this.pointSide : -1
-      pose.mood = won === -1 ? 'idle' : won === cp.side ? 'happy' : 'sad'
+      pose.mood = moodOf(curr.phase, curr.winner, this.pointSide, cp.side)
       view.chibi.setPose(pose, this.time)
     }
 

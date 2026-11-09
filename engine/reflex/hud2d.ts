@@ -1,3 +1,4 @@
+import { formatNumber } from '../core/i18n'
 // Screen-space HUD for 2D reaction games (e.g. Synthstride): hearts and
 // combo multiplier up top; a bottom-centre cluster (score | skill ring with its
 // key hint | a second readout); floating text, banners and red edge flashes.
@@ -154,7 +155,7 @@ export class ReflexHud {
       mx - METER_R - SIDE_GAP,
       my,
       'right',
-      score.toLocaleString(),
+      formatNumber(score),
       f.scoreLabel,
       this.scorePop,
       '#fff',

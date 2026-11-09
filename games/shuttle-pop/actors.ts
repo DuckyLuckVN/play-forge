@@ -1,6 +1,7 @@
 // Shuttle Pop chibis: big round head (~55% of the height), tiny body, stubby limbs, a racket in the
 // right hand, a hat per preset. Built from three.js primitives; every geometry and material is shared
-// by all instances (materials are cached per colour). Poses are procedural and allocate nothing.
+// by all instances (materials are cached per colour). Poses are procedural and allocate nothing: the
+// gait / swing / leap curves are pure (locomotion.ts, moves.ts), this file only applies them to the rig.
 //
 // Model space: feet at y = 0, facing +z, right hand on −x. Total height ≈ 1.3 m.
 
@@ -17,10 +18,13 @@ import {
   MeshStandardMaterial,
   SphereGeometry,
   TorusGeometry,
+  AdditiveBlending,
   type BufferGeometry,
   type Material,
   type Object3D,
 } from 'three'
+import { strideParams, type Stride } from './locomotion'
+import { celebrateSpin, hop, swingCurve, type Hop, type SwingPose } from './moves'
 
 export type Hat = 'cap' | 'headband' | 'bow' | 'beanie'
 
@@ -43,16 +47,54 @@ export const PRESETS: readonly Preset[] = [
   { id: 3, name: 'Mint', body: 0x9be7a8, accent: 0x2f9e7e, hat: 'beanie' },
 ]
 
-export type Mood = 'idle' | 'happy' | 'sad'
-
+/**
+ * Everything the rig needs for one frame. Continuous values only (the renderer damps every weight), so
+ * moving between states blends instead of popping.
+ */
 export interface ChibiPose {
-  /** 0..1, share of top running speed. */
+  /** Damped speed share 0..1 (stride size, bob, arm swing). */
   run: number
+  /** Stride phase in cycles (left foot plants at 0, right at 0.5). */
+  stride: number
+  /** Velocity share in the body frame: + forward / − backpedal, + toward local +x. Lean + leg direction. */
+  fwd: number
+  side: number
   /** Swing progress 0..1 (0 = not swinging). */
   swing: number
-  /** Jump envelope 0..1 (height share). */
+  /** Jump height share 0..1. */
   jump: number
-  mood: Mood
+  /** + squash / − stretch (start / turn springs, landings, the Perfect accent). */
+  squash: number
+  /** Extra forward lean (rad): the stop overshoot. */
+  lean: number
+  /** Weights 0..1: ready stance (shuttle incoming), smash crouch, point won, point lost, match won. */
+  ready: number
+  crouch: number
+  happy: number
+  sad: number
+  cheer: number
+  /** Head yaw (rad): the idle glance. */
+  look: number
+}
+
+/** A pose at rest (fresh object). */
+export function restPose(): ChibiPose {
+  return {
+    run: 0,
+    stride: 0,
+    fwd: 0,
+    side: 0,
+    swing: 0,
+    jump: 0,
+    squash: 0,
+    lean: 0,
+    ready: 0,
+    crouch: 0,
+    happy: 0,
+    sad: 0,
+    cheer: 0,
+    look: 0,
+  }
 }
 
 export interface Chibi {
@@ -84,16 +126,38 @@ const HAND_Y = -0.22
 const ALT_SHADE = 0.32
 const ALT_SHADE_COLOR = new Color(0x4a3f5c)
 
-// Pose tuning.
-const RUN_FREQ = 14
-const RUN_LEG = 0.8
-const RUN_BOB = 0.06
-const JUMP_H = 0.45
+// Pose tuning. Arm angles about x (0 = hanging; negative swings forward, past −π reaches behind the head).
+const TAU = Math.PI * 2
+const JUMP_H = 0.55
+/** Point-won hop height (m); the match winner hops this much higher. */
+const HOP_H = 0.13
+const HOP_H_WIN = 0.12
 const ARM_IDLE = -0.25
-/** Arm angles about x (0 = hanging; negative swings forward, past −π reaches behind the head). */
-const ARM_WINDUP = -3.5
-const ARM_FOLLOW = -0.7
+/** Arm counter-swing (rad) at full run. */
+const ARM_RUN = 0.6
 const ARM_CHEER = -2.9
+/** Ready stance: racket up in front, off hand out for balance. */
+const ARM_READY = -1.35
+const ARM_READY_OFF = -0.8
+const ARM_SAD = 0.12
+/** Lean (rad) per unit forward / side velocity share. */
+const LEAN_FWD = 0.3
+const LEAN_SIDE = 0.22
+/** Squash per unit of crouch / ready / sad. */
+const SQUASH_CROUCH = 0.16
+const SQUASH_READY = 0.06
+const BREATHE = 0.015
+/** Racket rest tilt (rad) and the shoulder pivot's outward tilt. */
+const RACKET_TILT = 1.1
+const ARM_OUT = 0.25
+/** Swing streak: arc radius / thickness (m), peak opacity, outward tilt (rad). */
+const STREAK = { r: 0.46, tube: 0.04, opacity: 0.8, tilt: 0.55, turn: -0.9 }
+
+// Scratch for setPose (shared: setPose never re-enters).
+const stride: Stride = { freq: 0, amp: 0, bob: 0 }
+const hopO: Hop = { height: 0, squash: 0 }
+const sw: SwingPose = { weight: 0, arm: 0, out: 0, wrist: 0, twist: 0, streak: 0 }
+const mix = (a: number, b: number, u: number) => a + (b - a) * u
 
 interface Parts {
   head: BufferGeometry
@@ -110,6 +174,7 @@ interface Parts {
   shadow: BufferGeometry
   handle: BufferGeometry
   frame: BufferGeometry
+  streak: BufferGeometry
   capDome: BufferGeometry
   capBrim: BufferGeometry
   band: BufferGeometry
@@ -139,6 +204,9 @@ function sharedParts(): Parts {
     shadow: new CircleGeometry(0.3, 18),
     handle: new CylinderGeometry(0.022, 0.022, 0.26, 6),
     frame: new TorusGeometry(0.16, 0.025, 6, 18),
+    // The racket's path from behind the head (φ ≈ 190°) over the top to in front (φ ≈ 15°), in the
+    // shoulder's y-z plane (φ from +z toward +y).
+    streak: new TorusGeometry(STREAK.r, STREAK.tube, 4, 20, 3.05).rotateZ(0.25).rotateY(-Math.PI / 2),
     capDome: new SphereGeometry(HEAD_R * 1.08, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.38),
     capBrim: new CylinderGeometry(0.2, 0.2, 0.03, 16),
     band: new TorusGeometry(Math.sqrt(HEAD_R * HEAD_R - 0.14 * 0.14) + 0.01, 0.04, 6, 24),
@@ -173,12 +241,6 @@ function basic(key: string, make: () => Material): Material {
 const at = (mesh: Mesh, x: number, y: number, z: number) => {
   mesh.position.set(x, y, z)
   return mesh
-}
-
-/** Eased 0..1 progress of `s` through [a, b]. */
-function seg(s: number, a: number, b: number): number {
-  const k = Math.min(1, Math.max(0, (s - a) / (b - a)))
-  return k * k * (3 - 2 * k)
 }
 
 export function createChibi(preset: number): Chibi {
@@ -218,17 +280,29 @@ export function createChibi(preset: number): Chibi {
   const arms = [-1, 1].map((s) => {
     const arm = new Group()
     arm.position.set(s * SHOULDER_X, SHOULDER_Y, 0)
-    arm.rotation.z = s * 0.25
+    arm.rotation.z = s * ARM_OUT
     arm.add(at(new Mesh(P.limb, skin), 0, -0.1, 0), at(new Mesh(P.hand, skin), 0, HAND_Y, 0))
     rig.add(arm)
     return arm
   })
   const racket = new Group()
   racket.position.set(0, HAND_Y, 0)
-  racket.rotation.x = 1.1
+  racket.rotation.x = RACKET_TILT
   const frame = at(new Mesh(P.frame, skin), 0, 0.42, 0)
   racket.add(at(new Mesh(P.handle, flat(COLORS.handle)), 0, 0.13, 0), frame)
   arms[0].add(racket)
+  // Swing streak: a faint additive arc shown only around the strike. Own material (opacity per chibi).
+  const streakMat = new MeshBasicMaterial({
+    color: COLORS.white,
+    transparent: true,
+    opacity: 0,
+    blending: AdditiveBlending,
+    depthWrite: false,
+  })
+  const streak = at(new Mesh(P.streak, streakMat), -SHOULDER_X, SHOULDER_Y, 0)
+  streak.rotation.set(0, STREAK.turn, -STREAK.tilt)
+  streak.visible = false
+  rig.add(streak)
 
   // Head: skin ball, hair cap tipped back, face on +z.
   const head = new Group()
@@ -321,54 +395,76 @@ export function createChibi(preset: number): Chibi {
   }
 
   function setPose(p: ChibiPose, t: number) {
-    const run = p.run
-    const cycle = Math.sin(t * RUN_FREQ)
-    const happy = p.mood === 'happy'
-    const sad = p.mood === 'sad'
+    strideParams(p.run, stride)
+    const cycle = Math.sin(TAU * p.stride)
+    const runShare = Math.min(1, p.run * 1.6)
+    hop(t, hopO)
+    const happy = p.happy
+    const sad = p.sad
+    const calm = (1 - p.run) * (1 - happy)
 
-    // Whole rig: run bob + lean, jump, celebration hop, slump.
-    let y = Math.abs(cycle) * RUN_BOB * run + p.jump * JUMP_H
-    if (happy) y += Math.abs(Math.sin(t * 9)) * 0.12
+    // Whole rig: bob (2 per stride, lowest at the plants), jump, hops, a ready split-step bounce.
+    let y = (stride.bob * (1 - Math.cos(2 * TAU * p.stride))) / 2
+    y += p.jump * JUMP_H + hopO.height * (HOP_H + p.cheer * HOP_H_WIN) * happy
+    y += p.ready * 0.025 * (1 - Math.cos(t * 9)) * 0.5
     rig.position.y = y
-    rig.rotation.x = 0.12 * run + (sad ? 0.08 : 0)
-    const breathe = 1 + Math.sin(t * 3) * 0.015
-    rig.scale.set(1, sad ? 0.94 : breathe, 1)
+    rig.rotation.x = LEAN_FWD * p.fwd + p.lean + 0.12 * p.ready + 0.1 * p.crouch + 0.08 * sad
+    rig.rotation.z = -LEAN_SIDE * p.side
 
-    // Legs: run scissor, tucked in a jump.
-    const tuck = p.jump * 0.7
-    legs[0].rotation.x = cycle * RUN_LEG * run - tuck
-    legs[1].rotation.x = -cycle * RUN_LEG * run - tuck * 0.5
+    // Squash / stretch about the feet (rig origin): springs, crouch, landings, breathing.
+    let sq = p.squash + hopO.squash * happy + SQUASH_CROUCH * p.crouch + SQUASH_READY * p.ready + 0.05 * sad
+    sq -= Math.sin(t * (sad ? 1.6 : 3)) * BREATHE * calm
+    rig.scale.set(1 + sq * 0.5, 1 - sq, 1 + sq * 0.5)
 
-    // Swing (right arm): wind up overhead, strike forward, recover. Torso twists with it.
-    const s = p.swing
-    let right = ARM_IDLE + cycle * 0.5 * run
-    let twist = 0
-    if (s > 0) {
-      const up = seg(s, 0, 0.3)
-      const strike = seg(s, 0.3, 0.6)
-      const back = seg(s, 0.6, 1)
-      right = ARM_IDLE + (ARM_WINDUP - ARM_IDLE) * up
-      right += (ARM_FOLLOW - ARM_WINDUP) * strike
-      right += (ARM_IDLE - ARM_FOLLOW) * back
-      twist = 0.45 * up - 0.9 * strike + 0.45 * back
-    } else if (happy) right = ARM_CHEER + Math.sin(t * 9) * 0.25
-    arms[0].rotation.x = right
-    rig.rotation.y = twist
-    arms[1].rotation.x = happy ? ARM_CHEER - Math.sin(t * 9) * 0.25 : sad ? 0.1 : ARM_IDLE - cycle * 0.5 * run
+    // Legs: scissor along the move, open/close on a side shuffle, wide in a ready / crouch, tucked mid-air.
+    const mag = Math.abs(p.fwd) + Math.abs(p.side) + 1e-6
+    const along = Math.abs(p.fwd) / mag
+    const across = Math.abs(p.side) / mag
+    const tuck = p.jump * 0.7 + hopO.height * happy * 0.4
+    const splay = 0.16 * p.ready + 0.2 * p.crouch
+    const shuffle = cycle * stride.amp * 0.45 * across
+    legs[0].rotation.x = cycle * stride.amp * along - tuck
+    legs[1].rotation.x = -cycle * stride.amp * along - tuck * 0.5
+    legs[0].rotation.z = -splay - shuffle
+    legs[1].rotation.z = splay - shuffle
 
-    // Face: happy squint + big smile, sad droop + frown.
-    head.rotation.x = sad ? 0.35 : 0
-    head.rotation.z = happy ? Math.sin(t * 9) * 0.08 : 0
-    const squint = happy ? 0.45 : 1.1
+    // Arms: counter-swing with the legs; ready raises the racket; cheer / slump blend over the top.
+    const armSwing = cycle * ARM_RUN * runShare
+    const wave = Math.sin(t * 9) * 0.25
+    let right = mix(ARM_IDLE - armSwing, ARM_READY, p.ready)
+    let left = mix(ARM_IDLE + armSwing, ARM_READY_OFF, p.ready)
+    right = mix(mix(right, ARM_CHEER + wave, happy), ARM_SAD, sad)
+    left = mix(mix(left, ARM_CHEER - wave, happy), ARM_SAD, sad)
+
+    // Swing (right arm): wind-up, strike, follow-through, blended over the base pose. Torso twists.
+    swingCurve(p.swing, sw)
+    const w = p.swing > 0 ? sw.weight : 0
+    arms[0].rotation.x = mix(right, sw.arm, w)
+    arms[0].rotation.z = -ARM_OUT - sw.out * w
+    racket.rotation.x = RACKET_TILT + sw.wrist * w
+    arms[1].rotation.x = left
+    rig.rotation.y = sw.twist * w + celebrateSpin(t) * p.cheer
+    const glow = sw.streak * w
+    streak.visible = glow > 0.02
+    streakMat.opacity = STREAK.opacity * glow
+
+    // Ground shadow shrinks as the rig leaves the ground.
+    shadow.scale.setScalar(1 - Math.min(0.4, y * 0.6))
+
+    // Face: idle glance, happy squint + big smile, sad droop + frown.
+    head.rotation.x = 0.35 * sad - 0.06 * p.ready
+    head.rotation.y = p.look * calm
+    head.rotation.z = happy * Math.sin(t * 9) * 0.08
+    const squint = mix(1.1, 0.45, happy)
     eyes[0].scale.y = squint
     eyes[1].scale.y = squint
-    mouth.rotation.z = sad ? 0 : Math.PI
-    mouth.position.y = sad ? -0.13 : -0.11
-    const grin = happy ? 1.4 : sad ? 0.8 : 0.9
+    mouth.rotation.z = sad > 0.5 ? 0 : Math.PI
+    mouth.position.y = sad > 0.5 ? -0.13 : -0.11
+    const grin = 0.9 + 0.5 * happy - 0.1 * sad
     mouth.scale.set(grin, grin, 1)
   }
 
   setPreset(preset)
-  setPose({ run: 0, swing: 0, jump: 0, mood: 'idle' }, 0)
+  setPose(restPose(), 0)
   return { root, setPose, setPreset }
 }

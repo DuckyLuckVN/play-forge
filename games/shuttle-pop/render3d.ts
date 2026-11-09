@@ -7,6 +7,8 @@
 // only and stop (between rallies) once the quality governor sees slow frames.
 // Juice: timing pops + badges (hud.ts), Perfect sparkles, a shuttle trail (hot after a smash), a sprung
 // camera punch on smashes and the sounds (sounds.ts), all driven by new sim events.
+// Motion: one Gait per player (locomotion.ts) fed by the interpolated sim velocity, so the remote / bot
+// player animates exactly like the local one; swing / leap curves are moves.ts; dust puffs are dust.ts.
 
 import {
   BackSide,
@@ -30,10 +32,12 @@ import { startRenderLoop } from '@forge/core/loop'
 import type { Smoothed } from '@forge/net/smoothing'
 import { playSound } from '@forge/audio/sound'
 import { createScene3D, Particles3D, QualityGovernor, type Scene3D } from '@forge/render3d'
-import { createChibi, type Chibi, type ChibiPose } from './actors'
-import { MOVE_SPEED } from './court'
+import { createChibi, restPose, type Chibi, type ChibiPose } from './actors'
+import { DustPuffs } from './dust'
 import { Hud, matchPoint, newEvents, type PopKind } from './hud'
 import { t } from './i18n'
+import { damp, Gait, GaitEvent } from './locomotion'
+import { lookAround, SMASH, smashJump, SWING, type Hop } from './moves'
 import { COURT, predictLanding, type Vec3 } from './physics'
 import { SpringPunch } from './punch'
 import { Park } from './scenery'
@@ -78,11 +82,38 @@ const SHUTTLE_RIM = 1.35
 const PLAYER_SNAP = 1.5
 /** Shuttle moves ≤ 0.75 m a tick in flight; more is a reset into the server's hand. */
 const SHUTTLE_SNAP = 2
-const SWING_TIME = 0.32
-/** Smash leap length (s). */
-const JUMP_TIME = 0.5
-/** Run blend damping (1/s). */
-const RUN_DAMP = 10
+/**
+ * Motion feel. Weight damping rates (1/s) for the ready stance, the smash crouch and moods; squash and
+ * lean springs (stiffness, damping ratio, sub-step) and their kicks (velocity): + squash / − stretch,
+ * + lean forward. Kicks are small on purpose: a lively bounce, not a wobble.
+ */
+const MOTION = {
+  readyRate: 6,
+  crouchRate: 18,
+  moodRate: 8,
+  squash: { k: 260, zeta: 0.35 },
+  lean: { k: 160, zeta: 0.3 },
+  step: 1 / 240,
+  kickStart: 1.4,
+  kickTurn: 1.1,
+  kickPerfect: -2.2,
+  kickStop: 1.8,
+}
+/**
+ * Dust puffs: pool size, colour / opacity, and per kind the puff size (m), life (s) and how fast it is
+ * thrown (share of the run velocity, or m/s for the landing ring). Footsteps only above `stepFrom`.
+ */
+const DUST = {
+  capacity: 14,
+  color: '#f4ecd6',
+  opacity: 0.6,
+  stepFrom: 0.5,
+  step: { size: 0.16, life: 0.32, throw: -0.12 },
+  burst: { size: 0.26, life: 0.42, throw: -0.35 },
+  land: { size: 0.3, life: 0.45, speed: 1.6, count: 4 },
+  /** Foot offset from the root (m, before CHIBI_SCALE). */
+  foot: 0.1,
+}
 /** A local swing press already animated; ignore the matching swingAt change for this long. */
 const LOCAL_SWING_GRACE = 0.4
 /** Chibis are ~1.3 m in model space; drawn a bit larger so they read from the far camera. */
@@ -143,6 +174,14 @@ interface PlayerView {
   swingAt: number
   /** Seconds since the last smash leap started (Infinity = grounded). */
   jumpAge: number
+  /** Run cycle, facing, lean, foot plants. */
+  gait: Gait
+  /** True until the first frame after a reset (stand facing the net, no turn-in). */
+  fresh: boolean
+  squash: SpringPunch
+  lean: SpringPunch
+  /** Idle glance offset, so the two players don't look around in sync. */
+  seed: number
   /** Reused every frame. */
   pose: ChibiPose
 }
@@ -157,7 +196,12 @@ function makePlayer(preset: number): PlayerView {
     swingAge: Infinity,
     swingAt: NaN,
     jumpAge: Infinity,
-    pose: { run: 0, swing: 0, jump: 0, mood: 'idle' },
+    gait: new Gait(),
+    fresh: true,
+    squash: new SpringPunch(MOTION.squash.k, MOTION.squash.zeta, MOTION.step),
+    lean: new SpringPunch(MOTION.lean.k, MOTION.lean.zeta, MOTION.step),
+    seed: preset * 2.7,
+    pose: restPose(),
   }
 }
 
@@ -220,6 +264,9 @@ export class Court3D {
   /** When each player's latest pop showed (for stacking). */
   private lastPop: [number, number] = [-Infinity, -Infinity]
   private punch = new SpringPunch(PUNCH.k, PUNCH.zeta, PUNCH.step)
+  private dust = new DustPuffs(DUST.capacity, DUST.color, DUST.opacity)
+  /** Smash leap sample (reused). */
+  private leap: Hop = { height: 0, squash: 0 }
 
   constructor() {
     this.parking = document.createElement('div')
@@ -261,7 +308,7 @@ export class Court3D {
     this.ring.position.y = 0.03
     scene.add(this.shuttle, this.shadow, this.ring)
 
-    scene.add(this.trail.mesh, this.fx.points)
+    scene.add(this.trail.mesh, this.fx.points, this.dust.mesh)
     this.view.onResize((_w, h) => this.fx.setScale(h * this.view.renderer.getPixelRatio()))
     this.view.root.appendChild(this.hud.root)
   }
@@ -339,6 +386,7 @@ export class Court3D {
   async warm(): Promise<void> {
     this.ring.visible = true
     this.trail.mesh.visible = true
+    this.dust.mesh.visible = true
     // Every hat + the twin outline, so no material compiles mid-match.
     for (const p of this.players) p.chibi.root.traverse((o) => (o.visible = true))
     this.placeCamera(0, 1)
@@ -347,6 +395,7 @@ export class Court3D {
     this.view.render(0)
     this.ring.visible = false
     this.trail.mesh.visible = false
+    this.dust.mesh.visible = false
     for (let i = 0; i < 2; i++) this.players[i].chibi.setPreset(i)
   }
 
@@ -396,12 +445,16 @@ export class Court3D {
     this.trail.reset()
     this.trail.setLook(TRAIL.plain)
     this.punch.reset()
+    this.dust.reset()
     this.lastPop[0] = this.lastPop[1] = -Infinity
     for (const p of this.players) {
       p.swingAge = Infinity
       p.swingAt = NaN
       p.jumpAge = Infinity
-      p.pose.run = 0
+      p.fresh = true
+      p.squash.reset()
+      p.lean.reset()
+      Object.assign(p.pose, restPose())
     }
   }
 
@@ -447,8 +500,6 @@ export class Court3D {
       const z = (pp.z + (cp.z - pp.z) * t) * flip
       const root = view.chibi.root
       root.position.set(x, 0, z)
-      // Everyone faces the net.
-      root.rotation.y = z < 0 ? 0 : Math.PI
       if (i === this.localIdx) localX = x
       const alt = isTwinAlt(curr.players[0].preset, curr.players[1].preset, i, this.localIdx)
       if (cp.preset !== view.preset || alt !== view.alt) {
@@ -466,16 +517,50 @@ export class Court3D {
         view.swingAt = cp.swingAt
       }
       view.swingAge += dt
+      const landed = view.jumpAge < SMASH.land && view.jumpAge + dt >= SMASH.land
       view.jumpAge += dt
-      const pose = view.pose
-      const speed = Math.min(1, Math.hypot(cp.vx, cp.vz) / MOVE_SPEED)
-      pose.run += (speed - pose.run) * (1 - Math.exp(-RUN_DAMP * dt))
-      pose.swing = view.swingAge < SWING_TIME ? view.swingAge / SWING_TIME : 0
-      pose.jump = view.jumpAge < JUMP_TIME ? Math.sin((Math.PI * view.jumpAge) / JUMP_TIME) : 0
       // Celebrate / slump through the point pause and on the results screen.
-      pose.mood = moodOf(curr.phase, curr.winner, this.pointSide, cp.side)
+      const mood = moodOf(curr.phase, curr.winner, this.pointSide, cp.side)
+      const swinging = view.swingAge < SWING.time
+
+      // Gait from the interpolated sim velocity (render space), facing the net when swinging / posing.
+      const netYaw = z < 0 ? 0 : Math.PI
+      if (placed || view.fresh) {
+        view.gait.reset(netYaw)
+        view.fresh = false
+      }
+      const vx = (pp.vx + (cp.vx - pp.vx) * t) * flip
+      const vz = (pp.vz + (cp.vz - pp.vz) * t) * flip
+      const g = view.gait
+      const flags = g.update(vx, vz, netYaw, swinging || mood !== 'idle', dt)
+      root.rotation.y = g.yaw
+      this.onGait(view, flags, x, z, vx, vz)
+      if (landed) this.landPuff(x, z)
+
+      const pose = view.pose
+      pose.run = g.speed
+      pose.stride = g.phase
+      pose.fwd = g.fwd
+      pose.side = g.side
+      pose.swing = swinging ? view.swingAge / SWING.time : 0
+      smashJump(view.jumpAge, this.leap)
+      pose.jump = this.leap.height
+      pose.squash = view.squash.update(dt) + this.leap.squash
+      pose.lean = view.lean.update(dt)
+      // Ready stance while the shuttle comes my way; crouch while my smash is about to connect.
+      const hitter = curr.shuttle.lastHitter
+      const incoming = curr.phase === 'rally' && hitter !== -1 && hitter !== cp.side
+      const pend = curr.shuttle.pending
+      const loading = pend !== null && pend.kind === 'smash' && pend.side === cp.side
+      pose.ready = damp(pose.ready, incoming ? 1 : 0, MOTION.readyRate, dt)
+      pose.crouch = damp(pose.crouch, loading ? 1 : 0, MOTION.crouchRate, dt)
+      pose.happy = damp(pose.happy, mood === 'happy' ? 1 : 0, MOTION.moodRate, dt)
+      pose.sad = damp(pose.sad, mood === 'sad' ? 1 : 0, MOTION.moodRate, dt)
+      pose.cheer = damp(pose.cheer, mood === 'happy' && curr.phase === 'over' ? 1 : 0, MOTION.moodRate, dt)
+      pose.look = lookAround(this.time, view.seed)
       view.chibi.setPose(pose, this.time)
     }
+    this.dust.update(dt)
 
     // Shuttle (+ its shadow for depth).
     const ps = prev.shuttle.pos
@@ -512,6 +597,48 @@ export class Court3D {
     this.shadows = on
     this.view.renderer.shadowMap.autoUpdate = on
     this.catcher.visible = on
+  }
+
+  /** Gait signals → springs and dust: squash on a start or sharp turn, lean overshoot on a stop, foot puffs. */
+  private onGait(view: PlayerView, flags: number, x: number, z: number, vx: number, vz: number) {
+    if (flags === 0) return
+    const B = DUST.burst
+    if (flags & (GaitEvent.Start | GaitEvent.Kick)) {
+      view.squash.kick(flags & GaitEvent.Start ? MOTION.kickStart : MOTION.kickTurn)
+      // Kicked back from both feet.
+      this.footPuff(view, 1, x, z, vx * B.throw, vz * B.throw, B.size, B.life)
+      this.footPuff(view, -1, x, z, vx * B.throw, vz * B.throw, B.size, B.life)
+    }
+    if (flags & GaitEvent.Stop) view.lean.kick(MOTION.kickStop)
+    if (view.gait.speed < DUST.stepFrom) return
+    const S = DUST.step
+    if (flags & GaitEvent.StepL) this.footPuff(view, 1, x, z, vx * S.throw, vz * S.throw, S.size, S.life)
+    if (flags & GaitEvent.StepR) this.footPuff(view, -1, x, z, vx * S.throw, vz * S.throw, S.size, S.life)
+  }
+
+  /** A puff under one foot (`s` = +1 left / −1 right, local x), thrown at (vx, vz). */
+  private footPuff(
+    view: PlayerView,
+    s: number,
+    x: number,
+    z: number,
+    vx: number,
+    vz: number,
+    size: number,
+    life: number,
+  ) {
+    const yaw = view.gait.yaw
+    const off = s * DUST.foot * CHIBI_SCALE
+    this.dust.spawn(x + Math.cos(yaw) * off, z - Math.sin(yaw) * off, vx, vz, life, size)
+  }
+
+  /** Smash landing: a little ring of dust. */
+  private landPuff(x: number, z: number) {
+    const L = DUST.land
+    for (let k = 0; k < L.count; k++) {
+      const a = (k / L.count) * Math.PI * 2 + 0.4
+      this.dust.spawn(x, z, Math.cos(a) * L.speed, Math.sin(a) * L.speed, L.life, L.size)
+    }
   }
 
   /** Dev only, once: draw calls in one full frame (shadow pass + scene + post passes). */
@@ -557,7 +684,11 @@ export class Court3D {
     this.popAt(j, grade, smash)
     this.trail.setLook(smash ? TRAIL.smash : grade === 'perfect' ? TRAIL.perfect : TRAIL.plain)
     const p = this.shuttle.position
-    if (grade === 'perfect') this.fx.burst(p.x, p.y, p.z, SPARKLE)
+    if (grade === 'perfect') {
+      this.fx.burst(p.x, p.y, p.z, SPARKLE)
+      // A snappy stretch-then-squash on the hitter.
+      this.players[j].squash.kick(MOTION.kickPerfect)
+    }
     if (smash) {
       this.players[j].jumpAge = 0
       this.fx.burst(p.x, p.y, p.z, SMASH_BURST)

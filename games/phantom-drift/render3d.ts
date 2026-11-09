@@ -466,9 +466,6 @@ export class Drift3D implements DriftView {
         this.fovKick = Math.max(this.fovKick, 4)
         break
       }
-      case 'heal':
-        this.fx.burst(gx, 1.2, 0, { count: 24, color: [C.heart, '#ffffff'], speed: 4, life: 0.7, size: 0.3 })
-        break
       case 'tier':
         this.streakBoost = 1
         this.hud.tier()

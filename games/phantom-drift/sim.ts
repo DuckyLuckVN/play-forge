@@ -26,7 +26,6 @@ const PICK_DX = 0.6
 export const TIER_TICKS = 20 * TICK_RATE
 export const MAX_TIER = 9
 export const INVULN_TICKS = 90
-export const HEART_REGEN_TICKS = 45 * TICK_RATE
 export const MAX_HEARTS = 3
 export const PHANTOM_COST = 10
 export const PHANTOM_TICKS = 2 * TICK_RATE
@@ -57,13 +56,15 @@ export function rowIntervalTicks(rawTier: number): number {
 /** Faller warning time: 0.8 s → 0.35 s. */
 export const fallerTelegraph = (tier: number) => Math.round(ramp(tier, MAX_TIER, 0.8, 0.35) * TICK_RATE)
 /**
- * Chance per row that a heart pickup comes down while hurt. Rows that can't
- * take one (faller rows, no free lane) skip, so early on that's about one a
- * minute of being hurt; rarer as the rift speeds up, so long runs stay hard.
- * Tuned with balance.test.ts: mean survival stays within ~15% of no pickups.
+ * Chance per row that a heart pickup comes down while hurt: the only way lost
+ * hearts come back (no regen). Rows that can't take one (faller rows, no free
+ * lane) skip, so early on that's about one every couple of minutes of being
+ * hurt; rarer as the rift speeds up, so long runs stay hard. Tuned with
+ * balance.test.ts: mean survival a bit under the old 45 s regen game (~5–8%
+ * for practiced players), and ~5–9% over no healing at all.
  */
-export const HEART_CHANCE_EARLY = 0.025
-export const HEART_CHANCE_LATE = 0.005
+export const HEART_CHANCE_EARLY = 0.015
+export const HEART_CHANCE_LATE = 0.003
 export const heartChance = (tier: number) => ramp(tier, MAX_TIER, HEART_CHANCE_EARLY, HEART_CHANCE_LATE)
 /** Combo multiplier x1..x5: +1 for every `step` combo (5 unless a perk says otherwise). */
 export const multiplier = (combo: number, step = 5) => 1 + Math.min(4, Math.floor(combo / step))
@@ -76,8 +77,8 @@ export interface Perks {
   /** Dodges/wisps per multiplier step. */
   comboStep: number
   phantomTicks: number
-  /** Calm ticks before a lost heart grows back. */
-  regenTicks: number
+  /** Scales the per-row heart pickup chance (the only way hearts come back). */
+  heartChanceMult: number
   /** Near-miss window in ticks. */
   nearWindow: number
   wispPoints: number
@@ -89,7 +90,7 @@ export interface Perks {
 export const BASE_PERKS: Readonly<Perks> = Object.freeze({
   comboStep: 5,
   phantomTicks: PHANTOM_TICKS,
-  regenTicks: HEART_REGEN_TICKS,
+  heartChanceMult: 1,
   nearWindow: NEAR_WINDOW,
   wispPoints: WISP_POINTS,
   phantomCost: PHANTOM_COST,
@@ -134,8 +135,6 @@ export interface Player {
   phantomUntil: number
   charge: number
   combo: number
-  /** Last hit or heal; hearts regrow after a calm stretch. */
-  calmSince: number
 }
 
 export type DriftEvent =
@@ -150,8 +149,6 @@ export type DriftEvent =
   /** A faller starts warning over `lane`; it slams in `ticks`. */
   | { type: 'warn'; lane: number; ticks: number }
   | { type: 'multiplier'; mult: number }
-  /** A heart regrew after a calm stretch. */
-  | { type: 'heal' }
   /** A heart pickup was grabbed in `lane` (+1 heart). */
   | { type: 'heart'; lane: number }
   | { type: 'tier'; tier: number }
@@ -225,7 +222,6 @@ export function createState(
       phantomUntil: 0,
       charge: 0,
       combo: 0,
-      calmSince: 0,
     },
     objects: [],
     fallers: [],
@@ -279,7 +275,6 @@ function hit(s: DriftState) {
   p.hearts--
   p.combo = 0
   p.invulnUntil = s.tick + INVULN_TICKS
-  p.calmSince = s.tick
   s.events.push({ type: 'hit' })
 }
 
@@ -315,7 +310,13 @@ function spawnRow(s: DriftState) {
   // Hurt and no heart already coming: maybe one, a lane change away.
   const p = s.player
   if (p.hearts < MAX_HEARTS && !s.objects.some((o) => o.kind === 'heart')) {
-    const lane = placeHeart(s.rng, row, s.lanes, [p.target, Math.round(p.x)], heartChance(s.tier))
+    const lane = placeHeart(
+      s.rng,
+      row,
+      s.lanes,
+      [p.target, Math.round(p.x)],
+      heartChance(s.tier) * s.perks.heartChanceMult,
+    )
     if (lane !== undefined) add({ kind: 'heart', lane })
   }
   if (row.drop) s.drops.push({ at: s.tick + Math.ceil((SPAWN_Z / s.speed) * TICK_RATE), count: row.drop })
@@ -368,9 +369,7 @@ function updateObjects(s: DriftState) {
     if (o.kind === 'heart') {
       if (overlapping && Math.abs(p.x - o.lane) < PICK_DX) {
         o.done = true
-        // Capped; the regen wait starts over from the pickup.
         p.hearts = Math.min(MAX_HEARTS, p.hearts + 1)
-        p.calmSince = s.tick
         s.stats.hearts++
         s.events.push({ type: 'heart', lane: o.lane })
       }
@@ -462,13 +461,6 @@ export function step(s: DriftState, inputs: InputEvent<DriftInput>[]): DriftStat
   if (s.tick === p.phantomUntil - 1) s.events.push({ type: 'phantomEnd' })
   s.score += (s.speed / TICK_RATE) * DISTANCE_POINTS * comboMultiplier(s)
 
-  if (p.hearts >= MAX_HEARTS) p.calmSince = s.tick
-  else if (s.tick - p.calmSince >= s.perks.regenTicks) {
-    p.hearts++
-    p.calmSince = s.tick
-    s.events.push({ type: 'heal' })
-  }
-
   if (p.hearts <= 0) {
     s.diedAt = s.tick
     s.diedDist = s.dist
@@ -487,13 +479,6 @@ export const phantomDrift: GameDefinition<DriftState, DriftInput> = {
   tick: step,
   isFinished: (s) => s.over,
   removePlayer: () => {},
-}
-
-/** How far the next heart is through regrowing: 0 (just lost) … 1 (about to return); 0 when full. */
-export function regenProgress(s: Pick<DriftState, 'tick' | 'player' | 'perks'>): number {
-  const p = s.player
-  if (p.hearts >= MAX_HEARTS) return 0
-  return clamp01((s.tick - p.calmSince) / s.perks.regenTicks)
 }
 
 /** Whole points, for display. */

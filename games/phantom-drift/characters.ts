@@ -86,7 +86,7 @@ export const CHARACTERS: readonly Character[] = [
   {
     id: 'bloom',
     name: 'Bloom',
-    perk: 'Regrowth: hearts regrow in 36 s, not 45 s',
+    perk: 'Blossom: road hearts show up 35% more often',
     colors: {
       core: '#b56a98',
       rim: '#ffa8d9',
@@ -97,7 +97,7 @@ export const CHARACTERS: readonly Character[] = [
     },
     accessory: 'flower',
     unlock: 3000,
-    perks: { regenTicks: 36 * 60 },
+    perks: { heartChanceMult: 1.35 },
   },
   {
     id: 'shade',

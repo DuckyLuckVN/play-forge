@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { createState } from './sim'
-import { eventSound, MORE_SOUNDS, multiplierSound, nearMissSound, warnBeeps, wispSound } from './sounds'
+import {
+  DRIFT_SOUNDS,
+  eventSound,
+  MORE_SOUNDS,
+  multiplierSound,
+  nearMissSound,
+  warnBeeps,
+  wispSound,
+} from './sounds'
 
 const tones = (s: unknown) => (Array.isArray(s) ? s : [s]) as { freq: number; at?: number }[]
 
@@ -38,6 +46,6 @@ describe('eventSound', () => {
     expect(eventSound({ type: 'over' }, s)).toBeNull()
     // A heart pickup: the heal chime and more.
     const heart = tones(eventSound({ type: 'heart', lane: 0 }, s))
-    expect(heart.length).toBeGreaterThan(tones(eventSound({ type: 'heal' }, s)).length)
+    expect(heart.length).toBeGreaterThan(DRIFT_SOUNDS.heal.length)
   })
 })

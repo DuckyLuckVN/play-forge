@@ -36,7 +36,7 @@ export const VI: Dictionary = {
   'Balanced: no perk, pure skill': 'Cân bằng: không đặc quyền, chỉ có kỹ năng',
   'Hot streak: combo climbs every 4, not 5': 'Chuỗi nóng: combo tăng mỗi 4 lần, thay vì 5',
   'Cool head: Phantom lasts 2.5 s, not 2 s': 'Bình tĩnh: Bóng ma kéo dài 2,5 giây, thay vì 2 giây',
-  'Regrowth: hearts regrow in 36 s, not 45 s': 'Hồi sinh: tim mọc lại sau 36 giây, thay vì 45 giây',
+  'Blossom: road hearts show up 35% more often': 'Nở rộ: tim trên đường xuất hiện nhiều hơn 35%',
   'Close call: near misses come easier': 'Suýt soát: né sát dễ hơn',
   'Gold rush: wisps worth 12, Phantom needs 12': 'Cơn sốt vàng: đốm sáng được 12 điểm, Bóng ma cần 12',
   // Character picker and unlocks

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { COURT, isIn, predictLanding, stepShuttle, type Flight } from './physics'
-import { chooseShot, findContact, gradeOf, launchFor, REACH, shotTarget, type ShotKind } from './shots'
+import { chooseShot, type Grade, findContact, gradeOf, launchFor, REACH, shotTarget, type ShotKind } from './shots'
 
 const rngOf = (...v: number[]) => {
   let i = 0
@@ -52,8 +52,7 @@ describe('launchFor', () => {
   for (const kind of ['drop', 'drive', 'clear'] as ShotKind[]) {
     it(`${kind} perfect clears the net and lands near target`, () => {
       const target = shotTarget(kind, 0, 0.5)
-      // clear max range is ~7.1 m, so it is tested from near the net
-      const origin = kind === 'clear' ? { x: 0, y: 1.2, z: -0.8 } : from
+      const origin = from
       const vel = launchFor(kind, 'perfect', origin, target, mid)
       const land = predictLanding({ pos: origin, vel })
       expect(land.netHit).toBe(false)
@@ -81,7 +80,7 @@ describe('launchFor', () => {
   it('jitter grows with worse grade and is deterministic for a given rng', () => {
     const target = shotTarget('clear', 0, 0)
     const err = (g: 'perfect' | 'late') => {
-      const v = launchFor('clear', g, from, target, rngOf(0.25, 1))
+      const v = launchFor('clear', g, from, target, rngOf(0, 0.999))
       const l = predictLanding({ pos: from, vel: v }).pos
       return Math.hypot(l.x - target.x, l.z - target.z)
     }
@@ -129,9 +128,63 @@ describe('findContact', () => {
   })
 
   it('stops after a net hit', () => {
-    const f: Flight = { pos: { x: 0, y: 1.0, z: -0.1 }, vel: { x: 0, y: 0, z: 5 } }
-    // dead shuttle sits at z=-0.1 low: player can't reach it once net-hit scan stops after contact tick check
-    const c = findContact(f, { x: 0, z: -6 }, 0, 120)
-    expect(c).toBeNull()
+    // out of reach (y < minY) at tick 0; the net hit happens on the first step, then it rises into reach
+    const f: Flight = { pos: { x: 0, y: 0.15, z: -0.05 }, vel: { x: 0, y: 6, z: 5 } }
+    const g: Flight = JSON.parse(JSON.stringify(f))
+    expect(stepShuttle(g).netHit).toBe(true)
+    expect(g.pos.y).toBeGreaterThan(REACH.minY) // would be reachable without the stop
+    expect(findContact(f, { x: 0, z: -0.05 }, 0, 60)).toBeNull()
+  })
+})
+
+describe('launchFor guarantees', () => {
+  const kinds: ShotKind[] = ['smash', 'drive', 'clear', 'drop', 'serveShort', 'serveLong']
+  const grades: Grade[] = ['perfect', 'good', 'late']
+  const zero = () => 0 // jitter radius 0
+  for (const side of [0, 1] as const) {
+    it(`side ${side}: every kind x grade from anywhere on own half clears the net and lands >= 1 m past it`, () => {
+      const dir = side === 0 ? 1 : -1
+      for (const kind of kinds)
+        for (const grade of grades)
+          for (const z of [-6.5, -5.5, -4, -2.5, -1.2, -0.5])
+            for (const x of [-2.4, 0, 2.4])
+              for (const y of [0.6, 1.5, 2.8]) {
+                const from = { x, y, z: side === 0 ? z : -z }
+                const target = shotTarget(kind, side, x / 2.4)
+                const vel = launchFor(kind, grade, from, target, zero)
+                const land = predictLanding({ pos: from, vel })
+                const tag = `${kind} ${grade} side${side} x${x} y${y} z${from.z}`
+                expect(land.netHit, tag).toBe(false)
+                expect(land.pos.y, tag).toBe(0)
+                expect(land.pos.z * dir, tag).toBeGreaterThanOrEqual(1.0)
+              }
+    })
+  }
+
+  it('perfect clear from the back court lands deep', () => {
+    for (const z of [-6.5, -5.5, -4]) {
+      const from = { x: 0, y: 1.5, z }
+      const vel = launchFor('clear', 'perfect', from, shotTarget('clear', 0, 0), zero)
+      expect(predictLanding({ pos: from, vel }).pos.z).toBeGreaterThanOrEqual(COURT.halfLen - 1.5)
+    }
+  })
+
+  it('perfect drop/drive from the back court land near target (both sides)', () => {
+    for (const side of [0, 1] as const)
+      for (const kind of ['drop', 'drive'] as ShotKind[]) {
+        const from = { x: 0, y: 1.5, z: side === 0 ? -5.5 : 5.5 }
+        const t = shotTarget(kind, side, 0)
+        const l = predictLanding({ pos: from, vel: launchFor(kind, 'perfect', from, t, zero) }).pos
+        expect(Math.hypot(l.x - t.x, l.z - t.z)).toBeLessThan(0.3)
+      }
+  })
+
+  it('late is shorter than perfect but still in play', () => {
+    const from = { x: 0, y: 1.5, z: -2 }
+    const t = shotTarget('clear', 0, 0)
+    const p = predictLanding({ pos: from, vel: launchFor('clear', 'perfect', from, t, zero) }).pos.z
+    const l = predictLanding({ pos: from, vel: launchFor('clear', 'late', from, t, zero) }).pos.z
+    expect(l).toBeLessThan(p)
+    expect(l).toBeGreaterThanOrEqual(1)
   })
 })

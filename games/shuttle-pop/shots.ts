@@ -16,19 +16,19 @@ interface ShotSpec {
 }
 
 const SHOTS: Record<ShotKind, ShotSpec> = {
-  clear: { elevation: 50, maxSpeed: 22, depth: COURT.halfLen - 0.6 },
-  drop: { elevation: 20, maxSpeed: 12, depth: 1.0 },
-  drive: { elevation: 6, maxSpeed: 20, depth: 3.5 },
-  smash: { elevation: -10, maxSpeed: 30, depth: 4.0 },
-  serveShort: { elevation: 25, maxSpeed: 10, depth: COURT.shortLine + 0.4 },
-  serveLong: { elevation: 55, maxSpeed: 20, depth: COURT.halfLen - 0.5 },
+  clear: { elevation: 40, maxSpeed: 100, depth: COURT.halfLen - 0.6 },
+  drop: { elevation: 20, maxSpeed: 45, depth: 1.0 },
+  drive: { elevation: 6, maxSpeed: 28, depth: 3.5 },
+  smash: { elevation: -10, maxSpeed: 34, depth: 4.0 },
+  serveShort: { elevation: 25, maxSpeed: 45, depth: COURT.shortLine + 0.4 },
+  serveLong: { elevation: 55, maxSpeed: 38, depth: COURT.halfLen - 0.5 },
 }
 
 const JITTER: Record<Grade, number> = { perfect: 0.2, good: 0.6, late: 1.2 }
 const SPEED_FACTOR: Record<Grade, number> = { perfect: 1.0, good: 0.85, late: 0.7 }
 
 const NET_LIFT_STEP = 3
-const NET_LIFT_MAX = 30
+const NET_LIFT_MAX = 75
 
 const scratch: Flight = { pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 } }
 
@@ -99,7 +99,18 @@ export function shotTarget(kind: ShotKind, hitterSide: 0 | 1, heldX: number): { 
   return { x: -dir * heldX * (COURT.halfWidth - 0.4), z: dir * SHOTS[kind].depth }
 }
 
-/** Launch velocity toward `target` (jittered by grade); lifts elevation until the shot clears the net. */
+/** Every shot lands at least this far past the net (before jitter) and never hits the net. */
+export const MIN_DEPTH = 1.0
+const AIM_MARGIN = 0.05
+
+const scaled = (v: Vec3, k: number): Vec3 => ({ x: v.x * k, y: v.y * k, z: v.z * k })
+
+/**
+ * Launch velocity toward `target` (jittered by grade). maxSpeed is a cap: the speed is solved to hit
+ * the aim, then scaled by the grade factor (worse grade = shorter, floatier). Guarantee: clears the
+ * net and lands >= MIN_DEPTH past it; if the grade scale breaks that, elevation is lifted (+3 deg
+ * steps, up to +75), then the scale is dropped.
+ */
 export function launchFor(
   kind: ShotKind,
   grade: Grade,
@@ -108,14 +119,23 @@ export function launchFor(
   rng: () => number,
 ): Vec3 {
   const spec = SHOTS[kind]
+  const dir = target.z >= 0 ? 1 : -1
   const ang = rng() * Math.PI * 2
   const r = JITTER[grade] * Math.sqrt(rng())
   const aim = { x: target.x + Math.cos(ang) * r, z: target.z + Math.sin(ang) * r }
-  const maxSpeed = spec.maxSpeed * SPEED_FACTOR[grade]
-  let vel = solveLaunch(from, aim, spec.elevation, maxSpeed)
-  for (let lift = NET_LIFT_STEP; lift <= NET_LIFT_MAX; lift += NET_LIFT_STEP) {
-    if (!predictLanding({ pos: from, vel }).netHit) break
-    vel = solveLaunch(from, aim, spec.elevation + lift, maxSpeed)
+  if (aim.z * dir < MIN_DEPTH + AIM_MARGIN) aim.z = dir * (MIN_DEPTH + AIM_MARGIN)
+  const ok = (v: Vec3): boolean => {
+    const p = predictLanding({ pos: from, vel: v })
+    return !p.netHit && p.pos.y <= 0 && p.pos.z * dir >= MIN_DEPTH
   }
-  return vel
+  const k = SPEED_FACTOR[grade]
+  let last = solveLaunch(from, aim, spec.elevation, spec.maxSpeed)
+  for (const factor of k === 1 ? [1] : [k, 1]) {
+    for (let lift = 0; lift <= NET_LIFT_MAX && spec.elevation + lift <= 80; lift += NET_LIFT_STEP) {
+      const v = scaled(solveLaunch(from, aim, spec.elevation + lift, spec.maxSpeed), factor)
+      last = v
+      if (ok(v)) return v
+    }
+  }
+  return last
 }

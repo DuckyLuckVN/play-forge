@@ -3,10 +3,13 @@
 
 import { Particles } from '@forge/fx/particles'
 import { Shake } from '@forge/fx/shake'
-import { clamp01, damp, ease, lerp, prefersReducedMotion, progress } from '@forge/fx/tween'
+import { clamp, clamp01, damp, ease, lerp, prefersReducedMotion, progress } from '@forge/fx/tween'
 import type { Smoothed } from '@forge/net/smoothing'
 import { createCanvas2D, type Canvas2D } from '@forge/render2d/canvas'
 import { telegraph } from '@forge/reflex'
+import { DEFAULT_CHARACTER } from './characters'
+import { drawGhost2D, type GhostLook, type GhostPose } from './ghost2d'
+import { bob, Blinker, spring, springTo } from './ghost-motion'
 import { DriftHud } from './hud'
 import { riftHue } from './ambience'
 import { C } from './palette'
@@ -33,11 +36,14 @@ export class DriftRenderer {
   private flash = { at: -10, color: '#fff' }
   private trail: { x: number; t: number }[] = []
   private reduced = prefersReducedMotion()
+  private lean = spring()
+  private blink = new Blinker(11)
 
   constructor(
     private view: Canvas2D,
     private smooth: Smoothed<DriftState>,
     private hud: DriftHud,
+    private character: GhostLook = DEFAULT_CHARACTER,
   ) {}
 
   /** Screen position for a lane (may be fractional) at depth z. */
@@ -168,7 +174,7 @@ export class DriftRenderer {
     for (const o of objs) if (o.z >= 0) this.drawObj(o, prevObjs.get(o.id), a)
     for (const f of curr.fallers) this.drawFaller(f, curr.tick + a)
     const x = prev ? lerp(prev.player.x, curr.player.x, a) : curr.player.x
-    if (curr.diedAt === null) this.drawGhost(x, curr, phantom)
+    if (curr.diedAt === null) this.drawGhost(x, curr, phantom, dt)
     for (const o of objs) if (o.z < 0) this.drawObj(o, prevObjs.get(o.id), a)
     ctx.restore()
 
@@ -407,34 +413,43 @@ export class DriftRenderer {
     ctx.fillRect(x - w / 2 + jitter + 6, top + 6, w - 12, 6)
   }
 
-  private drawGhost(lx: number, s: DriftState, phantom: boolean) {
+  private drawGhost(lx: number, s: DriftState, phantom: boolean, dt: number) {
     const { ctx } = this.view
     const [x, y] = this.at(lx, 0)
     const invuln = s.tick < s.player.invulnUntil
-    const blink = invuln && !phantom && Math.floor(this.time * 14) % 2 === 0
+    const flicker = invuln && !phantom && Math.floor(this.time * 14) % 2 === 0
+    const slide = s.player.target - lx
+    const motion = this.reduced ? 0 : 1
+    springTo(this.lean, clamp(slide * 0.35, -0.3, 0.3) * motion, dt)
+    const b = bob(this.time, motion)
+    const pose: GhostPose = {
+      time: this.reduced ? 0 : this.time,
+      tilt: this.lean.value,
+      eyes: this.reduced ? 1 : this.blink.update(dt),
+      look: clamp(slide * 2, -1, 1),
+      sx: b.sx,
+      sy: b.sy,
+      glow: this.reduced ? 0 : phantom ? 30 : 16,
+    }
+    const look = this.character
+    const tint = phantom ? C.phantom : undefined
     // Afterimages trail the slide.
     this.trail.push({ x, t: this.time })
     this.trail = this.trail.filter((p) => this.time - p.t < 0.15)
-    const color = phantom ? C.phantom : C.ghost
     for (const p of this.trail) {
       ctx.globalAlpha = 0.25 * (1 - (this.time - p.t) / 0.15)
-      this.ghostShape(p.x, y, color)
+      drawGhost2D(
+        ctx,
+        p.x,
+        y + b.y * 40,
+        look,
+        { ...pose, glow: 0 },
+        1,
+        phantom ? C.phantom : look.colors.trail,
+      )
     }
-    ctx.globalAlpha = blink ? 0.25 : phantom ? 0.55 + 0.2 * Math.sin(this.time * 20) : 1
-    if (!this.reduced) {
-      ctx.shadowColor = color
-      ctx.shadowBlur = phantom ? 30 : 16
-    }
-    this.ghostShape(x, y, color)
-    ctx.shadowBlur = 0
-    // Eyes look the way it slides.
-    const look = Math.max(-1, Math.min(1, (s.player.target - lx) * 2))
-    ctx.fillStyle = '#1b1240'
-    for (const side of [-1, 1]) {
-      ctx.beginPath()
-      ctx.ellipse(x + side * 9 + look * 3, y - 42, 4, 6, 0, 0, Math.PI * 2)
-      ctx.fill()
-    }
+    ctx.globalAlpha = flicker ? 0.25 : phantom ? 0.55 + 0.2 * Math.sin(this.time * 20) : 1
+    drawGhost2D(ctx, x, y + b.y * 40, look, pose, 1, tint)
     ctx.globalAlpha = 1
     // A full meter makes the ghost sparkle: ready to go Phantom.
     if (s.player.charge >= s.perks.phantomCost && !phantom && Math.random() < 0.4)
@@ -444,23 +459,6 @@ export class DriftRenderer {
         speed: 30,
         life: 0.5,
       })
-  }
-
-  private ghostShape(x: number, y: number, color: string) {
-    const { ctx } = this.view
-    const w = 22
-    const top = y - 66
-    const bottom = y - 10
-    ctx.fillStyle = color
-    ctx.beginPath()
-    ctx.arc(x, top + w, w, Math.PI, 0)
-    ctx.lineTo(x + w, bottom)
-    for (let i = 4; i >= 0; i--) {
-      const wx = x - w + (i / 4) * 2 * w
-      ctx.lineTo(wx, bottom + (i % 2 ? 8 : 0) + Math.sin(this.time * 10 + i) * 2)
-    }
-    ctx.closePath()
-    ctx.fill()
   }
 
   private drawFlash(phantom: boolean) {
@@ -490,10 +488,14 @@ export class DriftRenderer {
 }
 
 /** The 2D renderer as a {@link DriftView}: used when WebGL2 is unavailable. */
-export function createView2D(stage: HTMLElement, smooth: Smoothed<DriftState>): DriftView {
+export function createView2D(
+  stage: HTMLElement,
+  smooth: Smoothed<DriftState>,
+  character: GhostLook = DEFAULT_CHARACTER,
+): DriftView {
   const view = createCanvas2D(stage, WIDTH, HEIGHT, { maxDpr: 2 })
   const hud = new DriftHud()
-  const renderer = new DriftRenderer(view, smooth, hud)
+  const renderer = new DriftRenderer(view, smooth, hud, character)
   return {
     banner: (m) => hud.banner(m),
     surface: view.canvas,

@@ -36,15 +36,20 @@ import {
   type Scene3D,
 } from '@forge/render3d'
 import {
+  applyLook,
   makeAfterimage,
   makeCrack,
   makeFaller,
   makeGhost,
+  makeRibbon,
   makeShard,
   makeSweeper,
   makeWall,
   makeWisp,
+  showAllAccessories,
 } from './actors'
+import { DEFAULT_CHARACTER, type Character } from './characters'
+import { bob, Blinker, spring, springTo } from './ghost-motion'
 import { DriftHud } from './hud'
 import type { Moment } from './moments'
 import { ambienceAt, riftHue } from './ambience'
@@ -61,7 +66,17 @@ import {
   type Obj,
 } from './sim'
 import type { DriftView } from './view'
-import { CAM_BACK, CAM_HEIGHT, cameraRig, fitView, laneX, trackHalfWidth, worldZ, Z_SCALE } from './world'
+import {
+  CAM_BACK,
+  CAM_HEIGHT,
+  cameraRig,
+  fitView,
+  LANE_W,
+  laneX,
+  trackHalfWidth,
+  worldZ,
+  Z_SCALE,
+} from './world'
 
 const AFTERIMAGES = 5
 const CRACKS = 4
@@ -69,8 +84,10 @@ const CRACK_LIFE = 2.2
 /** Fraction of the dying phase spent swelling before the ghost shatters. */
 const SHATTER_AT = 0.14
 const PHANTOM_COLOR = new Color(C.phantom)
-const GHOST_CORE = new Color('#6f97b0')
-const WISP_COLOR = new Color(C.wisp)
+const GHOST_SCALE = 0.8
+/** Ghost height above the track (its tail tip hangs just over it). */
+const GHOST_Y = 0.42
+const RIBBON_POINTS = 16
 
 /** Named descendants of a model, looked up once instead of every frame. */
 function part<T extends Object3D = Object3D>(g: Object3D, name: string): T {
@@ -106,6 +123,12 @@ export class Drift3D implements DriftView {
   private hemi = new HemisphereLight('#6fa8ff', '#05040e', 1.1)
   private afterimages: Mesh[] = []
   private history: number[] = []
+  private ribbon = makeRibbon(RIBBON_POINTS)
+  private ribbonX: number[] = []
+  private lean = spring()
+  private blink = new Blinker(5)
+  private character: Character = DEFAULT_CHARACTER
+  private trailColor = new Color(C.wisp)
   private cracks: Crack[] = []
   private chunks = new Chunks3D(
     new MeshStandardMaterial({
@@ -158,11 +181,11 @@ export class Drift3D implements DriftView {
     this.sunLight.position.set(3, 9, 7)
     scene.add(this.hemi, this.sunLight)
 
-    this.ghost.root.scale.setScalar(0.8)
+    this.ghost.root.scale.setScalar(GHOST_SCALE)
     // The light lives in the scene, not on the ghost: hiding a light changes
     // the light count, which recompiles every lit shader (a ~300 ms freeze
     // at the first death). It follows the ghost and dims to 0 instead.
-    scene.add(this.ghost.root, this.ghostLight)
+    scene.add(this.ghost.root, this.ghostLight, this.ribbon.mesh)
     for (let i = 0; i < AFTERIMAGES; i++) {
       const m = makeAfterimage()
       this.afterimages.push(m)
@@ -230,18 +253,22 @@ export class Drift3D implements DriftView {
     cam.position.set(0, 4, 8)
     cam.lookAt(0, 0, z)
     this.scenery.update(0, 0, 3, this.hue, 0, 0, ambienceAt(0))
+    // Every character's accessory, so switching characters never compiles.
+    showAllAccessories(this.ghost)
     await this.view.renderer.compileAsync(this.view.scene, cam)
     // Draw for real twice: uploads geometry/textures and builds post buffers.
     this.view.render(1 / 60)
     this.view.render(1 / 60)
+    this.setCharacter(this.character)
     this.objects.clear()
     this.fallers.clear()
     this.reset()
   }
 
   /** Show this view on the stage for a run. */
-  attach(stage: HTMLElement, smooth: Smoothed<DriftState>): this {
+  attach(stage: HTMLElement, smooth: Smoothed<DriftState>, character = DEFAULT_CHARACTER): this {
     this.smooth = smooth
+    this.setCharacter(character)
     this.reset()
     stage.appendChild(this.view.root)
     return this
@@ -255,6 +282,14 @@ export class Drift3D implements DriftView {
     this.parking.appendChild(this.view.root)
   }
 
+  /** Dress the ghost (colours and accessory only: nothing compiles). */
+  setCharacter(c: Character): void {
+    this.character = c
+    applyLook(this.ghost, c)
+    this.trailColor.set(c.colors.trail)
+    ;(this.ghostBits.mesh.material as MeshStandardMaterial).emissive.set(c.colors.rim)
+  }
+
   /** Forget everything from the last run. */
   private reset() {
     this.hud = new DriftHud()
@@ -266,7 +301,9 @@ export class Drift3D implements DriftView {
     this.shattered = false
     this.view.glitch = 0
     this.ghost.root.visible = true
-    this.ghost.root.scale.setScalar(0.8)
+    this.ghost.root.scale.setScalar(GHOST_SCALE)
+    this.ribbonX = []
+    this.lean.value = this.lean.velocity = 0
     for (const c of this.cracks) {
       c.age = CRACK_LIFE
       c.mesh.visible = false
@@ -479,7 +516,7 @@ export class Drift3D implements DriftView {
     const gx = laneX(prev ? lerp(prev.player.x, p.x, a) : p.x, this.lanes)
     const tx = laneX(p.target, this.lanes)
     if (dying > 0) this.drawDeath(gx, dying)
-    else this.drawGhost(curr, gx, tx, phantom)
+    else this.drawGhost(curr, gx, tx, phantom, dt, speedLevel)
     this.drawObjects(curr, prev, a)
     this.drawFallers(curr, curr.tick + a)
     this.updateCracks(dt, moved)
@@ -508,10 +545,11 @@ export class Drift3D implements DriftView {
   private drawDeath(gx: number, k: number) {
     const { root, body, mat } = this.ghost
     for (const m of this.afterimages) m.visible = false
+    this.ribbon.mesh.visible = false
     if (k < SHATTER_AT) {
       const t = k / SHATTER_AT
-      root.position.set(gx, 0.18 + t * 0.3, 0)
-      root.scale.setScalar(0.8 * (1 + 0.35 * ease.inCubic(t)))
+      root.position.set(gx, GHOST_Y + t * 0.3, 0)
+      root.scale.setScalar(GHOST_SCALE * (1 + 0.35 * ease.inCubic(t)))
       body.visible = Math.floor(this.time * 30) % 2 === 0
       this.followLight()
       mat.uniforms.core.value.set('#ffffff')
@@ -523,10 +561,11 @@ export class Drift3D implements DriftView {
       root.visible = false
       this.ghostLight.intensity = 0
       const y = root.position.y + 0.9
+      const rim = this.character.colors.rim
       this.ghostBits.burst(gx, y, 0, { count: 26, color: '#dff6ff', speed: 7, size: 0.28, life: 1.7 })
       this.fx.burst(gx, y, 0, {
         count: 90,
-        color: [C.wisp, '#ffffff', C.phantom],
+        color: [rim, '#ffffff', C.phantom],
         speed: 9,
         life: 1.1,
         size: 0.45,
@@ -538,7 +577,7 @@ export class Drift3D implements DriftView {
     if (Math.random() < 0.6 * (1 - k))
       this.fx.burst(gx + (Math.random() - 0.5) * 1.5, 0.4 + Math.random(), 0, {
         count: 1,
-        color: [C.wisp, C.phantom],
+        color: [this.character.colors.rim, C.phantom],
         speed: 1.5,
         life: 1.2,
         size: 0.3,
@@ -575,23 +614,43 @@ export class Drift3D implements DriftView {
     this.ghostLight.position.set(root.position.x, root.position.y + k, root.position.z + 0.6 * k)
   }
 
-  private drawGhost(s: DriftState, gx: number, tx: number, phantom: boolean) {
-    const { root, body, mat, eyes } = this.ghost
+  private drawGhost(s: DriftState, gx: number, tx: number, phantom: boolean, dt: number, speed: number) {
+    const g = this.ghost
+    const { root, body, mat } = g
+    const motion = prefersReducedMotion() ? 0 : 1
     root.visible = true
-    root.scale.setScalar(0.8)
-    const bob = Math.sin(this.time * 3) * 0.1
-    root.position.set(gx, 0.18 + bob, 0)
     const slide = tx - gx
-    root.rotation.z = clamp(-slide * 0.12, -0.35, 0.35)
-    root.rotation.y = clamp(slide * 0.18, -0.4, 0.4)
-    eyes.position.x = clamp(slide * 0.06, -0.08, 0.08)
+    // Float: bob with squash and stretch; lean into a slide on a spring
+    // (overshoots a touch, then settles); tip forward more the faster it goes.
+    const b = bob(this.time, motion)
+    root.scale.set(GHOST_SCALE * b.sx, GHOST_SCALE * b.sy, GHOST_SCALE * b.sx)
+    root.position.set(gx, GHOST_Y + b.y, 0)
+    const lean = springTo(this.lean, clamp(slide * 0.12, -0.35, 0.35), dt).value
+    root.rotation.set(-(0.05 + 0.1 * speed), clamp(lean * 1.5, -0.45, 0.45), -lean)
+    g.face.position.x = clamp(slide * 0.06, -0.08, 0.08)
+    const open = motion ? this.blink.update(dt) : 1
+    for (const eye of g.eyes) eye.scale.y = 1.5 * open
+    // Wispy arms swing as it floats and fling out behind a slide.
+    g.arms.forEach((arm, i) => {
+      const side = i === 0 ? -1 : 1
+      const swing = Math.sin(this.time * 5 + side * 1.3) * motion
+      arm.rotation.set(
+        0.3 * Math.sin(this.time * 4 + i * Math.PI) * motion,
+        0,
+        side * (0.5 + 0.15 * swing) + lean * 1.6,
+      )
+    })
+    g.accessories.halo.position.y = 1.95 + Math.sin(this.time * 2.5) * 0.04 * motion
 
     const invuln = s.tick < s.player.invulnUntil && !phantom
     body.visible = !(invuln && Math.floor(this.time * 14) % 2 === 0)
     mat.uniforms.time.value = this.time
+    mat.uniforms.slide.value = clamp(slide / LANE_W, -1, 1)
+    mat.uniforms.speed.value = speed
+    mat.uniforms.motion.value = motion
     mat.uniforms.opacity.value = lerp(1, 0.5 + 0.15 * Math.sin(this.time * 22), this.phantom)
-    mat.uniforms.core.value.copy(GHOST_CORE).lerp(PHANTOM_COLOR, this.phantom * 0.7)
-    mat.uniforms.rim.value.copy(WISP_COLOR).lerp(PHANTOM_COLOR, this.phantom)
+    mat.uniforms.core.value.copy(g.core).lerp(PHANTOM_COLOR, this.phantom * 0.7)
+    mat.uniforms.rim.value.copy(g.rim).lerp(PHANTOM_COLOR, this.phantom)
     this.ghostLight.color.copy(mat.uniforms.rim.value)
     this.ghostLight.intensity = 2.5 + this.phantom * 3
     this.followLight()
@@ -602,7 +661,7 @@ export class Drift3D implements DriftView {
     const strength = Math.max(this.phantom, clamp(Math.abs(slide) / 2, 0, 1))
     this.afterimages.forEach((m, i) => {
       const hx = this.history[(i + 1) * 3] ?? gx
-      m.position.set(hx, 0.18 + bob, -0.15 * (i + 1))
+      m.position.set(hx, root.position.y, -0.15 * (i + 1))
       m.rotation.copy(root.rotation)
       m.scale.copy(root.scale)
       const mm = m.material as MeshBasicMaterial
@@ -610,6 +669,7 @@ export class Drift3D implements DriftView {
       mm.color.copy(mat.uniforms.rim.value)
       m.visible = mm.opacity > 0.01
     })
+    this.drawRibbon(gx, root.position.y, strength, body.visible)
 
     // A full meter: the ghost sheds sparkles, ready to go Phantom.
     if (s.player.charge >= s.perks.phantomCost && !phantom && Math.random() < 0.5)
@@ -622,6 +682,26 @@ export class Drift3D implements DriftView {
         dir: [0, 1, 0],
         spread: 0.4,
       })
+  }
+
+  /** The glowing ribbon: where the ghost has been, streaming back from its tail. */
+  private drawRibbon(gx: number, y: number, strength: number, visible: boolean) {
+    const r = this.ribbon
+    r.mesh.visible = visible
+    this.ribbonX.unshift(gx)
+    if (this.ribbonX.length > r.points) this.ribbonX.length = r.points
+    for (let i = 0; i < r.points; i++) {
+      const k = i / (r.points - 1)
+      const x = this.ribbonX[i] ?? gx
+      const w = 0.02 + 0.13 * (1 - k)
+      const z = 0.2 + i * 0.13
+      const ry = y + 0.2 - k * 0.12
+      r.position.setXYZ(i * 2, x, ry + w, z)
+      r.position.setXYZ(i * 2 + 1, x, ry - w, z)
+    }
+    r.position.needsUpdate = true
+    r.material.color.copy(this.trailColor).lerp(PHANTOM_COLOR, this.phantom)
+    r.material.opacity = 0.25 + 0.45 * strength
   }
 
   private drawObjects(curr: DriftState, prev: DriftState | null, a: number) {

@@ -162,12 +162,20 @@
   font-size: 18px;
 }
 
-/* The app version, quiet at the bottom of the page. */
+/* The app version: a small chunky pill pinned to the bottom-left corner, styled like the cards. */
 .lc-version {
-  margin: 40px 0 0;
-  text-align: center;
+  position: fixed;
+  left: calc(16px + env(safe-area-inset-left));
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  z-index: 15;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--pf-felt);
+  border: 2px solid var(--pf-rim);
+  box-shadow: 0 3px 0 var(--pf-rim);
   font-size: 12px;
+  font-weight: 600;
   letter-spacing: 0.04em;
   color: var(--pf-haze);
-  opacity: 0.7;
+  pointer-events: none;
 }

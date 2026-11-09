@@ -304,18 +304,9 @@ export function createChibi(preset: number): Chibi {
   }
   for (const k of Object.keys(hats) as Hat[]) head.add(hats[k])
 
-  // Real shadows (when the renderer has them on) from the big shapes only: face details, hands and
-  // shoes would add shadow-pass draw calls for nothing visible.
-  const casts = new Set<BufferGeometry>([
-    P.body,
-    P.limb,
-    P.head,
-    P.hair,
-    P.frame,
-    P.capDome,
-    P.band,
-    P.beanieDome,
-  ])
+  // Real shadows (when the renderer has them on) from the three shapes that read in a long low-sun
+  // shadow: body, head and racket. Everything else would only add shadow-pass draw calls.
+  const casts = new Set<BufferGeometry>([P.body, P.head, P.frame])
   rig.traverse((o) => {
     if (o instanceof Mesh && casts.has(o.geometry)) o.castShadow = true
   })

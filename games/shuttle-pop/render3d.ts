@@ -4,9 +4,10 @@
 // Built once per page: `warm()` (menu preload) compiles every shader, each match `attach`es it to the
 // stage and gets a cleanup that parks it offscreen again. The render loop allocates nothing.
 // The park around the court (sky, lights, crowd) is scenery.ts. Real shadows come from the players
-// only and switch off (between rallies) once the quality governor sees slow frames.
+// only and stop (between rallies) once the quality governor sees slow frames.
 
 import {
+  BackSide,
   CircleGeometry,
   Color,
   CylinderGeometry,
@@ -51,6 +52,8 @@ const PALETTE = {
   net: '#ffffff',
   post: '#6b5b73',
   shuttle: '#ffffff',
+  /** Dark rim so the white shuttle reads against the pale sky (same idea as the twin outline). */
+  shuttleRim: '#3b2f4a',
   ringMine: '#ffd166',
   ringTheirs: '#ffffff',
 }
@@ -59,6 +62,8 @@ const LINE_W = 0.05
 const POST_OUT = 0.25
 const NET_DEPTH = 0.76
 const SHUTTLE_R = 0.08
+/** Rim shell radius over the shuttle's. */
+const SHUTTLE_RIM = 1.35
 /** A player jumping further than this between two ticks was placed (new serve): snap, don't glide. */
 const PLAYER_SNAP = 1.5
 /** Shuttle moves ≤ 0.75 m a tick in flight; more is a reset into the server's hand. */
@@ -77,6 +82,8 @@ const COURT_RUNOFF = { x: 0.35, z: 0.45 }
 const SURROUND = { x: 1.3, z: 1.6 }
 /** Quality level (QualityGovernor) from which players stop casting real shadows. */
 const SHADOWS_OFF_LEVEL = 1
+/** Seconds after attach the shadow governor ignores (first frames hitch: buffers, textures, GC). */
+const QUALITY_SETTLE = 2
 const SHADOW_OPACITY = 0.26
 
 interface PlayerView {
@@ -144,6 +151,8 @@ export class Court3D {
   private quality = new QualityGovernor()
   private shadows = true
   private wantShadows = true
+  /** Seconds left before the shadow governor starts judging frames. */
+  private settle = QUALITY_SETTLE
   /** Crowd: hits in the current rally, length of the last point's rally, when that point was. */
   private rally = 0
   private pointHits = 0
@@ -162,6 +171,8 @@ export class Court3D {
     this.park = new Park(scene)
 
     this.buildCourt()
+    // The engine's own governor restarts its window on every resize (buffers realloc); so does ours.
+    this.view.onResize(() => this.quality.restart())
 
     this.players = [makePlayer(0), makePlayer(1)]
     for (const p of this.players) scene.add(p.chibi.root)
@@ -170,6 +181,11 @@ export class Court3D {
       new SphereGeometry(SHUTTLE_R, 14, 10),
       new MeshBasicMaterial({ color: PALETTE.shuttle }),
     )
+    const rim = new Mesh(
+      new SphereGeometry(SHUTTLE_R * SHUTTLE_RIM, 12, 8),
+      new MeshBasicMaterial({ color: PALETTE.shuttleRim, side: BackSide }),
+    )
+    this.shuttle.add(rim)
     this.shadow = new Mesh(
       new CircleGeometry(0.12, 16),
       new MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.22, depthWrite: false }),
@@ -280,6 +296,8 @@ export class Court3D {
     this.selfId = selfId
     this.reset()
     stage.appendChild(this.view.root)
+    this.settle = QUALITY_SETTLE
+    this.quality.restart()
     onLocalSwing(() => {
       this.players[this.localIdx].swingAge = 0
       this.localPressAt = this.time
@@ -318,9 +336,10 @@ export class Court3D {
     if (!curr) return this.view.render(dt)
     if (curr.tick < this.lastTick) this.reset()
     this.lastTick = curr.tick
-    // Slow frames: drop the players' real shadows, but only between rallies (the switch recompiles
-    // the lit shaders, a hitch nobody should feel mid-rally). Blob shadows stay either way.
-    if (this.quality.sample(dt)) this.wantShadows = this.quality.level < SHADOWS_OFF_LEVEL
+    // Slow frames: drop the players' real shadows, between rallies so they don't vanish mid-shot.
+    // Blob shadows stay either way.
+    if (this.settle > 0) this.settle -= dt
+    else if (this.quality.sample(dt)) this.wantShadows = this.quality.level < SHADOWS_OFF_LEVEL
     if (this.wantShadows !== this.shadows && curr.phase !== 'rally') this.setShadows(this.wantShadows)
     const prev = this.smooth!.prev ?? curr
     const a = this.smooth!.alpha()
@@ -398,10 +417,14 @@ export class Court3D {
     else this.view.render(dt)
   }
 
+  /**
+   * Shadows off = the shadow pass stops rendering (no draw calls, no depth fill) and the catcher, its
+   * only receiver, hides. The shadow map and light stay configured, so no material's program changes:
+   * nothing recompiles, and warm() already compiled the only variant ever used.
+   */
   private setShadows(on: boolean) {
     this.shadows = on
-    this.view.renderer.shadowMap.enabled = on
-    this.park.sun.castShadow = on
+    this.view.renderer.shadowMap.autoUpdate = on
     this.catcher.visible = on
   }
 

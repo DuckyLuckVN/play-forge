@@ -1,6 +1,7 @@
 // Pure render mapping (no three.js): sim world → the local player's view.
 // The view always puts the local player at the near end (render z < 0), looking toward +z.
 import { COURT, type Vec3 } from './physics'
+import type { SpEvent } from './sim'
 
 /** Side 0 is drawn as is; side 1 is mirrored in x and z (a half turn), so either side is near. */
 export function viewOf(side: 0 | 1): { flip: 1 | -1 } {
@@ -92,7 +93,7 @@ export const CHEER = {
 } as const
 
 /** Hits in the current rally after an event of kind `k`: a serve or a point starts over. */
-export function rallyHits(hits: number, k: string): number {
+export function rallyHits(hits: number, k: SpEvent['k']): number {
   return k === 'hit' ? hits + 1 : k === 'serve' || k === 'point' ? 0 : hits
 }
 

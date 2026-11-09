@@ -42,7 +42,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 const SKY = {
   top: '#a995d4',
   mid: '#eaa9ae',
-  horizon: '#f5bf98',
+  horizon: '#eeb08c',
   sun: '#ffb877',
 }
 const PARK = {
@@ -452,8 +452,8 @@ class Crowd {
 /** Sky, lights, fog and park scenery. Add once; call `update` every frame for the crowd. */
 export class Park {
   readonly root = new Group()
-  /** The low warm sun; the only shadow caster light (players only). */
-  readonly sun: DirectionalLight
+  /** The low warm sun; the only shadow-casting light (players only; Court3D pauses its pass when slow). */
+  private sun: DirectionalLight
   private crowd = new Crowd()
 
   constructor(scene: Scene) {

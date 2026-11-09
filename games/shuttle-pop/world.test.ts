@@ -2,6 +2,7 @@ import { Frustum, Matrix4, PerspectiveCamera, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
 import { COURT, stepShuttle, type Flight, type Vec3 } from './physics'
 import { launchFor, shotTarget } from './shots'
+import type { SpEvent } from './sim'
 import {
   CAMERA,
   CHEER,
@@ -138,7 +139,7 @@ describe('poses', () => {
 })
 
 describe('crowd', () => {
-  const run = (kinds: string[]) => kinds.reduce(rallyHits, 0)
+  const run = (kinds: SpEvent['k'][]) => kinds.reduce(rallyHits, 0)
 
   it('counts hits since the last serve or point', () => {
     expect(run(['serve', 'hit', 'hit', 'land', 'net', 'whiff'])).toBe(2)

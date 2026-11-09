@@ -1,3 +1,4 @@
+import { formatNumber } from './core/i18n'
 import './ui/base.css'
 import { playMusic, type Track } from './audio/music'
 import { playSound, UI_SOUNDS } from './audio/sound'
@@ -811,7 +812,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
           { class: line.id === s.selfId ? 'self' : '' },
           h('span', { class: 'pf-rank', textContent: `#${i + 1}` }),
           h('span', { class: 'pf-rank-name', textContent: p?.name ?? '?' }),
-          h('span', { class: 'pf-rank-score', textContent: line.score.toLocaleString() }),
+          h('span', { class: 'pf-rank-score', textContent: formatNumber(line.score) }),
         )
         if (p) row.style.setProperty('--c', playerColor(p.slot))
         return row

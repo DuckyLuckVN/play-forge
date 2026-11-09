@@ -60,3 +60,12 @@ describe('Untranslated text', () => {
     expect(found).toEqual([])
   })
 })
+
+describe('numbers on screen', () => {
+  it('use formatNumber (1.000 in Vietnamese), not toLocaleString (the browser locale)', () => {
+    const offenders = Object.entries(sources)
+      .filter(([, src]) => /\.toLocaleString\(\s*\)/.test(src))
+      .map(([file]) => file)
+    expect(offenders).toEqual([])
+  })
+})

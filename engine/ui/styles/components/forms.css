@@ -26,8 +26,9 @@
     font-weight: 650;
     text-align: center;
   }
+  /* The hint is a word ("CODE", "MÃ"), not a code: wide spacing would split it into letters. */
   .pf-input.code::placeholder {
-    letter-spacing: 0.3em;
+    letter-spacing: 0.08em;
     color: var(--pf-rim);
   }
 

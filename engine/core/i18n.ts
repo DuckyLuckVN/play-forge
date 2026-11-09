@@ -55,3 +55,12 @@ export function format(text: string, params?: Params): string {
 export function translator(vi: Dictionary, lang: Lang = getLang()) {
   return (en: string, params?: Params): string => format(lang === 'vi' ? (vi[en] ?? en) : en, params)
 }
+
+const numberFormats = new Map<Lang, Intl.NumberFormat>()
+
+/** A whole number grouped as the language writes it: 1,000 in English, 1.000 in Vietnamese. */
+export function formatNumber(n: number, lang: Lang = getLang()): string {
+  let f = numberFormats.get(lang)
+  if (!f) numberFormats.set(lang, (f = new Intl.NumberFormat(lang === 'vi' ? 'vi-VN' : 'en-US')))
+  return f.format(n)
+}

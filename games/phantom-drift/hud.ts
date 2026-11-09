@@ -1,3 +1,4 @@
+import { formatNumber } from '@forge/core/i18n'
 // Screen-space HUD shared by both renderers: hearts and multiplier up top;
 // a bottom-centre cluster under the ghost (score + distance | Phantom skill
 // ring with its key hint | speed); floating "+50"s, sparks, banners and edge
@@ -116,7 +117,7 @@ export class DriftHud {
       mx - METER_R - SIDE_GAP,
       my,
       'right',
-      score.toLocaleString(),
+      formatNumber(score),
       distanceText(s.diedDist ?? s.dist),
       this.scorePop,
       '#fff',

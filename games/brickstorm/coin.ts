@@ -1,3 +1,4 @@
+import { formatNumber } from '@forge/core/i18n'
 // The coin: drawn on the board (HUD, flying coins, pickups) and as an inline
 // SVG on the page (wallet, prices, shop badge). Trusted, static markup.
 import { h } from '@forge/ui/dom'
@@ -92,7 +93,7 @@ export function formatCoins(n: number): string {
   const whole = Math.floor(n)
   // The HUD asks every frame, mostly for the same number; toLocaleString is slow.
   if (whole === lastCoins.n) return lastCoins.text
-  const text = whole < SHORT_FROM ? whole.toLocaleString() : shortCoins(whole)
+  const text = whole < SHORT_FROM ? formatNumber(whole) : shortCoins(whole)
   lastCoins.n = whole
   lastCoins.text = text
   return text

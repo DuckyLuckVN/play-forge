@@ -1,3 +1,4 @@
+import { formatNumber } from '@forge/core/i18n'
 import {
   bindGestures,
   createCanvas2D,
@@ -265,9 +266,9 @@ createGameApp<FuseState, FuseInput>({
   outcome(s, selfId) {
     const me = boardOf(s, selfId)
     if (!isRace(s)) {
-      const score = (me?.score ?? 0).toLocaleString()
+      const score = formatNumber(me?.score ?? 0)
       if (newBest) return { headline: t('New best! {score} points', { score }), result: 'win' }
-      const best = loadBest(bestKey(s.size, s.rocks)).toLocaleString()
+      const best = formatNumber(loadBest(bestKey(s.size, s.rocks)))
       return { headline: t('{score} points. Your best: {best}', { score, best }), result: 'done' }
     }
     if (!s.winner) return { headline: t("It's a tie!"), result: 'draw' }

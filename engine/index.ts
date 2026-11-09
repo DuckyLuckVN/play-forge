@@ -19,6 +19,7 @@ export { Emitter } from './core/emitter'
 export {
   detectLang,
   format,
+  formatNumber,
   getLang,
   LANGS,
   setLang,

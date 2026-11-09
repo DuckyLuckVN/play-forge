@@ -1,3 +1,4 @@
+import { formatNumber } from '@forge/core/i18n'
 // The character picker on the start screen: a card per ghost with a live
 // mini preview, its name and perk. Locked ones show the best score they need.
 import { h } from '@forge/ui/dom'
@@ -44,7 +45,7 @@ export function characterPicker(opts: PickerOptions): HTMLElement {
       h('span', { class: 'pd-char-name', textContent: t(c.name) }),
       h('span', {
         class: 'pd-char-perk',
-        textContent: open ? t(c.perk) : t('Best {n} to unlock', { n: c.unlock.toLocaleString() }),
+        textContent: open ? t(c.perk) : t('Best {n} to unlock', { n: formatNumber(c.unlock) }),
       }),
     )
     card.classList.toggle('locked', !open)

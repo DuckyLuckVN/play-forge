@@ -1,3 +1,4 @@
+import { formatNumber } from '@forge/core/i18n'
 import {
   bestScores,
   bindGestures,
@@ -260,13 +261,13 @@ createGameApp<StrideState, StrideInput>({
   outcome(s, selfId) {
     const d = dancerOf(s, selfId)
     if (!d) return { headline: t('Match over'), result: 'done' }
-    const score = displayScore(d).toLocaleString()
+    const score = formatNumber(displayScore(d))
     if (s.dancers.length === 1) {
       if (newBest) return { headline: t('New best! {score} points', { score }), result: 'win' }
       return {
         headline: t('{score} points. Your best: {best}', {
           score,
-          best: best.load(s.tempo).toLocaleString(),
+          best: formatNumber(best.load(s.tempo)),
         }),
         result: 'done',
       }

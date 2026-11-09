@@ -1,3 +1,4 @@
+import { formatNumber } from '@forge/core/i18n'
 import {
   bestScores,
   bindGestures,
@@ -185,10 +186,10 @@ createGameApp<DriftState, DriftInput>({
     }),
   scores: (s) => [{ id: s.player.id, score: displayScore(s), out: s.over }],
   outcome(s) {
-    const score = displayScore(s).toLocaleString()
+    const score = formatNumber(displayScore(s))
     if (newBest) return { headline: t('New best! {score} points', { score }), result: 'win' }
     return {
-      headline: t('{score} points. Your best: {best}', { score, best: best.load().toLocaleString() }),
+      headline: t('{score} points. Your best: {best}', { score, best: formatNumber(best.load()) }),
       result: 'done',
     }
   },

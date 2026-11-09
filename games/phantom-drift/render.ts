@@ -357,7 +357,7 @@ export class DriftRenderer {
     const { ctx } = this.view
     const [x, y, s] = this.at(lane, z)
     const bob = this.reduced ? 0 : Math.sin(this.time * 3 + id) * 5 * s
-    const k = (this.laneW() / 70) * s * (1 + 0.1 * Math.max(0, Math.sin(this.time * 7)))
+    const k = (this.laneW() / 50) * s * (1 + 0.1 * Math.max(0, Math.sin(this.time * 7)))
     const cy = y - 26 * s + bob
     const r = 26 * k
     const halo = ctx.createRadialGradient(x, cy, 0, x, cy, r * 1.4)

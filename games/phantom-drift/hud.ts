@@ -1,8 +1,8 @@
 import { formatNumber } from '@forge/core/i18n'
 // Screen-space HUD shared by both renderers: the multiplier up top; a
-// bottom-centre cluster under the ghost (hearts row over score + distance |
-// Phantom skill ring with its key hint | speed); floating "+50"s, sparks,
-// banners and edge flashes. Works at any size (CSS pixels).
+// bottom-centre cluster under the ghost (score + distance with the hearts
+// under them | Phantom skill ring with its key hint | speed); floating
+// "+50"s, sparks, banners and edge flashes. Works at any size (CSS pixels).
 
 import { Particles } from '@forge/fx/particles'
 import { clamp, ease, lerp, prefersReducedMotion, progress } from '@forge/fx/tween'
@@ -19,10 +19,11 @@ const KEY_H = 24
 /** Gap between the ring and the text on each side. */
 const SIDE_GAP = 20
 const SPARK_TIME = 0.45
-/** Heart row: spacing, drawing scale, and how far its centre sits above the ring. */
-const HEART_GAP = 34
-const HEART_SCALE = 1.2
-const HEART_LIFT = 30
+/** Heart row: spacing, drawing scale, half width, and how far below the ring's centre. */
+const HEART_GAP = 33
+const HEART_SCALE = 1.35
+const HEART_HALF_W = 14
+const HEART_DROP = 44
 /** Heart path bounds (local units, before HEART_SCALE). */
 const HEART_TOP = -10
 const HEART_BOTTOM = 9
@@ -34,10 +35,15 @@ const BANNER_TIME = 1.4
 /** Centre of the Phantom ring for a view of `w` × `h`. */
 export const meterAt = (w: number, h: number): [number, number] => [w / 2, h - 12 - KEY_H - 8 - METER_R]
 
-/** Centre of heart slot `i` of `count`: a row centred just above the Phantom ring. */
+/**
+ * Centre of heart slot `i` of `count`: a row under the score and distance,
+ * right-aligned with them beside the Phantom ring. Above the ring would sit
+ * on the ghost (on phones it stands right on the ring).
+ */
 export function heartSlot(w: number, h: number, i: number, count = MAX_HEARTS): [number, number] {
   const [mx, my] = meterAt(w, h)
-  return [mx + (i - (count - 1) / 2) * HEART_GAP, my - METER_R - HEART_LIFT]
+  const right = mx - METER_R - SIDE_GAP - HEART_HALF_W
+  return [right - (count - 1 - i) * HEART_GAP, my + HEART_DROP]
 }
 
 /** The heart outline around (0, 0), about 22 × 19 units (also the 3D model's curves). */
@@ -459,8 +465,15 @@ export class DriftHud {
     ctx.rect(x - 20, top, 40, y + HEART_BOTTOM * HEART_SCALE - top + 2)
     ctx.clip()
     // Almost there: it starts to glow.
-    const ready = amount > 0.85 && !this.reduced ? 0.15 * (0.5 + 0.5 * Math.sin(this.time * 10)) : 0
-    this.heart(ctx, x, y, 'full', HEART_SCALE, 0.55 + ready)
+    const ready = amount > 0.85 && !this.reduced ? 0.2 * (0.5 + 0.5 * Math.sin(this.time * 10)) : 0
+    this.heart(ctx, x, y, 'full', HEART_SCALE, 0.7 + ready)
+    // A bright waterline at the fill level, inside the heart.
+    ctx.translate(x, y)
+    ctx.scale(HEART_SCALE, HEART_SCALE)
+    traceHeart(ctx)
+    ctx.clip()
+    ctx.fillStyle = 'rgb(255 230 236 / 0.9)'
+    ctx.fillRect(-15, (top - y) / HEART_SCALE, 30, 1.4)
     ctx.restore()
   }
 

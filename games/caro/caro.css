@@ -7,6 +7,7 @@
   grid-template-rows: minmax(0, 1fr) auto;
   gap: 10px;
 }
+/* The toolbar is a .pf-toolbar of .pf-btn.sm buttons (engine). */
 
 .caro-board {
   min-height: 0;
@@ -27,38 +28,17 @@
   cursor: crosshair;
 }
 
-.caro-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 48px;
-}
-
-.pf-btn.caro-tool {
-  --pf-edge: 3px;
-  padding: 9px 14px 8px;
-  font-size: 15px;
-  gap: 6px;
-}
-.pf-btn.caro-tool.danger {
-  --face: var(--pf-coral);
-  --edge: #c0392b;
-  --text: #2a0505;
-}
-
 .caro-sep {
   width: 1px;
   height: 28px;
   background: var(--pf-rim);
-  margin: 0 4px 3px;
+  margin: 0 var(--pf-space-2) 3px;
 }
 
 .caro-inks {
   display: inline-flex;
-  gap: 6px;
-  padding: 0 4px 3px;
+  gap: var(--pf-space-3);
+  padding: 0 var(--pf-space-2) 3px;
 }
 .caro-ink {
   width: 28px;
@@ -78,16 +58,13 @@
   outline-offset: 2px;
 }
 
-/* Phones: icons only, so the toolbar stays on one or two short rows. */
+/* Phones: icons only, so the toolbar stays on one or two short rows
+   (an armed or active tool keeps its label). */
 @media (max-width: 560px) {
-  .caro-tool-label {
+  .caro .pf-btn.sm {
+    padding-inline: 10px;
+  }
+  .caro .pf-btn.sm:not(.danger, .primary) .pf-btn-label {
     display: none;
-  }
-  .pf-btn.caro-tool {
-    padding: 9px 11px 8px;
-  }
-  .pf-btn.caro-tool.danger .caro-tool-label,
-  .pf-btn.caro-tool.primary .caro-tool-label {
-    display: inline;
   }
 }

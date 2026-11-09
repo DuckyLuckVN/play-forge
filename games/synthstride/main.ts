@@ -11,6 +11,7 @@ import {
 import { runChange, TickClock } from '@forge/net/clock'
 import type { Session } from '@forge/net/session'
 import { skillRingHit } from '@forge/reflex/hud2d'
+import './synthstride.css'
 import { calibrationRow, loadOffset, offsetTicks } from './calibrate'
 import { stepFrom, stepToward, type Step } from './grid'
 import { t } from './i18n'

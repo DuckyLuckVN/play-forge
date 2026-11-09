@@ -64,7 +64,7 @@ const shelf = h(
     cover.innerHTML = covers[`../games/${g.id}/cover.svg`] ?? ''
     const card = h(
       'a',
-      { class: 'lc-game', href: `games/${g.id}/index.html` },
+      { class: 'pf-card lc-game', href: `games/${g.id}/index.html` },
       cover,
       h(
         'div',

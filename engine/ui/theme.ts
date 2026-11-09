@@ -3,6 +3,8 @@ import { getLang } from '../core/i18n'
 /**
  * Design tokens: the single source of truth for colours. CSS reads them as
  * custom properties (applied by `applyTheme`), canvas renderers import them.
+ * `engine/ui/styles/tokens.css` repeats them as static defaults (so pages are
+ * coloured before any script runs); tokens.test.ts keeps both in sync.
  */
 export const theme = {
   night: '#161a3a', // page background
@@ -15,6 +17,12 @@ export const theme = {
   yolkEdge: '#c98f00',
   ink: '#2b1d00', // text on yolk
   coral: '#ff6b6b', // danger, errors
+  coralEdge: '#c0392b', // raised edge of a coral button
+  coralInk: '#2a0505', // text on coral
+  mint: '#4be3a0', // good news: live, free, new, synergy
+  sky: '#5ab8ff', // common rarity, info
+  violet: '#b48cff', // rare rarity
+  pink: '#ff6fb5', // bonus, celebration
 } as const
 
 /** Player token colours, by seat. Distinct from each other and from `yolk`. */

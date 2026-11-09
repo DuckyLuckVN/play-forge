@@ -3,10 +3,10 @@ import {
   createCanvas2D,
   createGameApp,
   h,
-  icon,
   playSound,
   startRenderLoop,
   toast,
+  toolButton,
   UI_SOUNDS,
   type Session,
 } from '@forge'
@@ -24,14 +24,6 @@ const svg = (body: string) =>
 const ICONS = {
   undo: svg('<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>'),
   bomb: svg('<circle cx="11" cy="14" r="7"/><path d="m16 9 2-2"/><path d="M19 3v2M21 5h-2M17.5 3.5l1 1"/>'),
-}
-
-function button(label: string, svgIcon: string, onclick: () => void): HTMLButtonElement {
-  const b = h('button', { class: 'pf-btn fuse-tool', type: 'button', onclick })
-  b.append(icon(svgIcon), h('span', { class: 'fuse-tool-label', textContent: label }))
-  b.title = label
-  b.setAttribute('aria-label', label)
-  return b
 }
 
 const KEYS: Record<string, Dir> = {
@@ -52,7 +44,7 @@ let newBest = false
 function mount(session: Session<FuseState, FuseInput>, stage: HTMLElement): () => void {
   const selfId = session.selfId
   const host = h('div', { class: 'fuse-board' })
-  const toolbar = h('div', { class: 'fuse-toolbar' })
+  const toolbar = h('div', { class: 'pf-toolbar' })
   const root = h('div', { class: 'fuse' }, host, toolbar)
   stage.append(root)
 
@@ -228,17 +220,18 @@ function mount(session: Session<FuseState, FuseInput>, stage: HTMLElement): () =
     if (key === toolbarKey) return
     toolbarKey = key
     const items: HTMLElement[] = []
-    const blast = button(
+    const blast = toolButton(
       ui.armed ? t('Tap a tile to blast') : t('Blast ({n})', { n: b?.blasts ?? 0 }),
       ICONS.bomb,
       toggleBlast,
     )
     blast.disabled = !act || (!ui.armed && !b?.blasts)
     blast.classList.toggle('armed', ui.armed)
+    blast.classList.toggle('danger', ui.armed)
     blast.setAttribute('aria-pressed', String(ui.armed))
     items.push(blast)
     if (s && !isRace(s)) {
-      const u = button(t('Undo ({n})', { n: b?.undos ?? 0 }), ICONS.undo, undo)
+      const u = toolButton(t('Undo ({n})', { n: b?.undos ?? 0 }), ICONS.undo, undo)
       u.disabled = !act || !b?.undos || !b.prev
       items.push(u)
     }

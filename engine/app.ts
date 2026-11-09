@@ -21,6 +21,7 @@ import { ReactionLayer, reactionPicker } from './social/reaction-ui'
 import { t as ts } from './social/i18n'
 import { RoomSocial } from './social/room-social'
 import { audioMenu } from './ui/audio-menu'
+import { button } from './ui/components'
 import { langMenu } from './ui/lang-menu'
 import { h, icon, iconButton, toast } from './ui/dom'
 import { fullscreenButton } from './ui/fullscreen'
@@ -955,10 +956,6 @@ function summaryGrid(rows: SummaryRow[]): HTMLElement | null {
       ),
     ),
   )
-}
-
-function button(text: string, onclick: () => void, variant = ''): HTMLButtonElement {
-  return h('button', { class: `pf-btn ${variant}`.trim(), textContent: text, onclick, type: 'button' })
 }
 
 function listNames(players: PlayerInfo[]): string {

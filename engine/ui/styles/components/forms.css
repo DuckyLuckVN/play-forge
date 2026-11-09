@@ -1,0 +1,43 @@
+@layer pf.components {
+  /* ---------- Forms: fields, inputs, rows ---------- */
+
+  .pf-field {
+    display: grid;
+    gap: 6px;
+    font-weight: 500;
+    color: var(--pf-haze);
+  }
+  .pf-input {
+    font: 500 18px/1.2 var(--pf-font);
+    color: var(--pf-chalk);
+    background: var(--pf-pit);
+    border: 2px solid var(--pf-rim);
+    border-radius: var(--pf-radius);
+    padding: 12px 14px;
+    outline: none;
+    width: 100%;
+  }
+  .pf-input:focus {
+    border-color: var(--pf-yolk);
+  }
+  .pf-input.code {
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    font-weight: 650;
+    text-align: center;
+  }
+  .pf-input.code::placeholder {
+    letter-spacing: 0.3em;
+    color: var(--pf-rim);
+  }
+
+  .pf-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .pf-row > * {
+    flex: 1;
+    min-width: 0;
+  }
+}

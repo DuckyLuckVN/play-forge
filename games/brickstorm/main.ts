@@ -9,6 +9,7 @@ import { Particles } from '@forge/fx/particles'
 import { Shake } from '@forge/fx/shake'
 import { createCanvas2D } from '@forge/render2d/canvas'
 import { audioMenu } from '@forge/ui/audio-menu'
+import { button } from '@forge/ui/components'
 import { langMenu } from '@forge/ui/lang-menu'
 import { h, icon, toast } from '@forge/ui/dom'
 import { fullscreenButton } from '@forge/ui/fullscreen'
@@ -110,9 +111,6 @@ applyTheme()
 document.title = 'Brickstorm · Play Forge'
 
 // ---------- Shell ----------
-const button = (text: string, onclick: () => void, variant = '') =>
-  h('button', { class: `pf-btn ${variant}`.trim(), textContent: text, onclick, type: 'button' })
-
 const pauseBtn = button('', () => pause(), 'icon')
 pauseBtn.append(icon(icons.pause))
 pauseBtn.title = t('Pause')
@@ -376,7 +374,7 @@ function confirmFreshStart() {
           justReset = true
           showHome()
         },
-        'wide bs-danger-btn',
+        'wide danger',
       ),
       primary(t('Keep my progress'), showHome),
     ),

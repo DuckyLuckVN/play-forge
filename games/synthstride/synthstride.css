@@ -1,0 +1,129 @@
+/* Synthstride: the timing calibration (start-screen row and popup).
+   The neon colours are Synthstride's own (palette.ts: edge, perfect, note),
+   named once here; everything else uses the shared tokens. */
+
+.ss-cal {
+  --ss-cyan: #5ff3ff;
+  --ss-perfect: #7dffb0;
+  --ss-note: #ffd84d;
+}
+
+/* Start screen: "Calibrate timing" with the saved offset as a chip. */
+.ss-cal-row.pf-option {
+  gap: var(--pf-space-4);
+}
+.ss-offset {
+  display: inline-block;
+  margin-left: var(--pf-space-4);
+  padding: 1px 9px;
+  border-radius: var(--pf-radius-pill);
+  background: rgb(255 255 255 / 0.14);
+  color: inherit;
+  font-weight: var(--pf-fw-bold);
+  font-variant-numeric: tabular-nums;
+}
+.ss-offset.set {
+  background: var(--pf-yolk);
+  color: var(--pf-ink);
+}
+
+/* The popup: a dimmed backdrop above the start screen, a narrow panel. */
+.ss-cal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--pf-z-sheet);
+  display: grid;
+  place-items: center;
+  padding: var(--pf-space-6);
+  background: rgb(5 3 15 / 0.8);
+}
+.ss-cal-panel.pf-panel {
+  width: min(340px, 100%);
+  text-align: center;
+}
+.ss-cal-body {
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+  margin-top: var(--pf-space-4);
+}
+.ss-cal-body .pf-lede {
+  margin: 0;
+}
+
+/* The target: a circle, and a ring that shrinks onto it on each click. */
+.ss-cal-target {
+  position: relative;
+  width: 132px;
+  height: 132px;
+}
+.ss-cal-circle,
+.ss-cal-ring {
+  position: absolute;
+  inset: 24px;
+  border-radius: 50%;
+}
+.ss-cal-circle {
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--ss-cyan) 18%, transparent);
+  border: 3px solid var(--ss-cyan);
+}
+.ss-cal-ring {
+  border: 3px solid var(--pf-chalk);
+  opacity: 0;
+  pointer-events: none;
+}
+.ss-cal-count {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1;
+}
+.ss-cal-result {
+  font-size: 52px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* One dot per measured click: grey, then on time (green), off (gold) or missed. */
+.ss-cal-dots {
+  display: flex;
+  gap: 10px;
+}
+.ss-cal-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.15);
+  transition: background 120ms;
+}
+.ss-cal-dot.hit {
+  background: var(--ss-perfect);
+}
+.ss-cal-dot.off {
+  background: var(--ss-note);
+}
+.ss-cal-dot.missed {
+  background: rgb(255 255 255 / 0.45);
+}
+
+/* Quiet text links under the result (Try again · Cancel). */
+.ss-cal-links {
+  display: flex;
+  gap: var(--pf-space-2);
+  justify-content: center;
+  align-items: center;
+}
+.ss-cal-links > span {
+  opacity: 0.5;
+}
+.ss-cal-link {
+  padding: var(--pf-space-2) var(--pf-space-4);
+  border: 0;
+  background: none;
+  color: inherit;
+  opacity: 0.75;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}

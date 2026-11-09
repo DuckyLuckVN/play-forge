@@ -1,0 +1,56 @@
+@layer pf.components {
+  /* ---------- Text: headings, lede, notes ---------- */
+
+  .pf-heading {
+    margin: 0;
+    font-size: 34px;
+    font-weight: 700;
+    line-height: 1.05;
+  }
+  .pf-lede {
+    margin: -6px 0 0;
+    color: var(--pf-haze);
+    /* Keep line breaks in multi-line text (e.g. a game's controls). */
+    white-space: pre-line;
+  }
+
+  .pf-or {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--pf-haze);
+    font-size: 14px;
+  }
+  .pf-or::before,
+  .pf-or::after {
+    content: '';
+    flex: 1;
+    border-top: 2px dashed var(--pf-rim);
+  }
+
+  .pf-note {
+    margin: 0;
+    color: var(--pf-haze);
+    text-align: center;
+    font-size: 15px;
+    /* Keep line breaks in multi-line text (e.g. a game's controls). */
+    white-space: pre-line;
+  }
+  .pf-note.error {
+    color: var(--pf-coral);
+  }
+
+  .pf-headline {
+    margin: 0;
+    text-align: center;
+    font-size: 40px;
+    font-weight: 700;
+    line-height: 1.05;
+  }
+
+  @media (max-width: 520px) {
+    .pf-headline {
+      font-size: 32px;
+    }
+  }
+}

@@ -62,6 +62,22 @@ export { createOfflineTransport, randomId, type MediaChannel, type Transport } f
 export { createTrysteroTransport } from './net/trystero'
 export { createCanvas2D, type Canvas2D } from './render2d/canvas'
 export { audioMenu } from './ui/audio-menu'
+export {
+  button,
+  buttonClass,
+  card,
+  cardClass,
+  cx,
+  note,
+  noteClass,
+  panel,
+  pill,
+  pillClass,
+  toolButton,
+  type ButtonVariant,
+  type CardVariant,
+  type PillVariant,
+} from './ui/components'
 export { langMenu } from './ui/lang-menu'
 export { h, icon, iconButton, setLabel, toast } from './ui/dom'
 export {

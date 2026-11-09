@@ -1,0 +1,41 @@
+/* Document defaults. */
+@layer pf.reset {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    margin: 0;
+    min-height: 100%;
+    background: var(--pf-night);
+    color: var(--pf-chalk);
+    font: 400 16px/1.45 var(--pf-font);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--pf-yolk);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 1ms !important;
+      transition: none !important;
+    }
+  }
+}
+
+/* `[hidden]` lives in the components layer, not the reset layer: !important
+   declarations in an earlier layer beat later ones, and the top-bar groups
+   (components/mobile.css) override it with !important of their own. */
+@layer pf.components {
+  [hidden] {
+    display: none !important;
+  }
+}

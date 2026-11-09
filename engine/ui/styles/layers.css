@@ -1,0 +1,4 @@
+/* Cascade layer order for all engine CSS. Game and launcher CSS stays
+   unlayered, so it always wins over these without !important or extra
+   specificity. Imported first so the order is fixed before any rule. */
+@layer pf.reset, pf.tokens, pf.components;

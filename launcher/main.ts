@@ -116,5 +116,6 @@ document.body.append(
         h('li', {}, h('strong', { textContent: title }), h('span', { textContent: text })),
       ),
     ),
+    h('footer', { class: 'lc-version', textContent: `v${__APP_VERSION__}` }),
   ),
 )

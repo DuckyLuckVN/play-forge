@@ -83,3 +83,5 @@ Heavy setup (building a 3D scene, compiling shaders) goes in `createGameApp({ pr
 ## Deploy
 
 Every push to `main` is tested, built and published to GitHub Pages (`.github/workflows/pages.yml`).
+
+The version shown at the bottom of the launcher is `MAJOR.MINOR.<commit count>` (`scripts/version.mjs`): it goes up by itself with every commit on `main`. Bump `MAJOR.MINOR` in `package.json` for a big release. The dev server shows it with `-dev`.

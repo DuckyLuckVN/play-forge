@@ -55,7 +55,7 @@ export type Level = 'easy' | 'normal' | 'hard'
 
 export type SpInput =
   | { t: 'move'; x: number; z: number }
-  /** `tick` = the state tick the guest saw (lag rewind); the host's own swings leave it out (no rewind). */
+  /** `tick` = the history tick on the swinger's screen (world.ts swingTick); none = judged now (no rewind). */
   | { t: 'swing'; x: number; z: number; tick?: number }
   | { t: 'pick'; preset: number }
 
@@ -327,7 +327,7 @@ export function rewindTicks(hostTick: number, inputTick: number): number {
 
 /**
  * Resolve a rally swing. `rewind` = ticks the swing happened before now (a guest's lag, rewindTicks;
- * 0 for the host's own and the computer's swings). Candidates: in-reach shuttle positions on the swinger's half from `history` (the past)
+ * the host's own interpolation; 0 for the computer's swings). Candidates: in-reach shuttle positions on the swinger's half from `history` (the past)
  * and the forward scan (the future, up to WINDOW.late after the swing). The closest one wins (the past
  * only when strictly closer); dt = contact tick − swing tick, graded by gradeOf (|dt| bands, dt <
  * −pastGrace → whiff). A contact at or before now hits at once from the current position; a future one
@@ -345,6 +345,8 @@ export function resolveSwing(state: SpState, p: SpPlayer, held: { x: number; z: 
   let bestTick = 0
   let bestY = 0
   for (const h of state.history) {
+    // Every in-reach past position competes (no pastGrace pre-filter): the grade is anchored on the
+    // closest approach, so a swing well after it whiffs even if the shuttle still hovers in reach.
     if (h.tick >= state.tick || h.pos.y < REACH.minY || h.pos.y > REACH.maxY) continue
     if (!onHalf(h.pos.z, p.side, s.lastHitter)) continue
     const d = Math.hypot(h.pos.x - p.x, h.pos.z - p.z)
@@ -468,7 +470,7 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
       const live = state.phase === 'rally' || (state.phase === 'serve' && p.side === state.server)
       if (!live || state.tick - p.swingAt < SWING_COOLDOWN || swings.some((w) => w.p === p)) continue
       p.swingAt = state.tick
-      // Guests stamp the tick they saw; the host's own swings and the computer's are judged now.
+      // Humans stamp the tick on their screen (clamped rewind); the computer is judged now.
       const rewind = p.kind === 'human' && input.tick !== undefined ? rewindTicks(state.tick, input.tick) : 0
       swings.push({ p, held: clampDir(input.x, input.z), rewind })
     }

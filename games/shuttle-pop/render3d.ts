@@ -520,7 +520,8 @@ export class Court3D {
         // The host places or holds us (serve set-up, the server before the serve, countdown, over).
         const held =
           !this.live() || curr.phase === 'over' || (curr.phase === 'serve' && cp.side === curr.server)
-        pred.update(dt, cp, curr.tick, placed || held)
+        // A jump mid-rally is a packet gap, not a placement: correct()'s ≥ 1 m snap handles it.
+        pred.update(dt, cp, curr.tick, (placed && curr.phase !== 'rally') || held)
       }
       const x = (pred ? pred.x : pp.x + (cp.x - pp.x) * t) * flip
       const z = (pred ? pred.z : pp.z + (cp.z - pp.z) * t) * flip

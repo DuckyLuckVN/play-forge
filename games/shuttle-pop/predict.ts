@@ -4,7 +4,10 @@
 // It integrates the sent move with the sim's own stepPlayer at the tick rate, and reconciles with the
 // host time-aligned: the host's state for tick T is compared with the prediction from `lag` local
 // steps ago (where it stood when the host made that state), not with where it is now. `lag` (the
-// round trip in ticks) is measured from the host echoing a sent move back in the player's `move`.
+// round trip in ticks) is measured from the host echoing a sent move back in the player's `move`:
+// only a change of the host's `move` counts as an echo, and a send equal to the move already queued
+// (or, with nothing queued, the one the host has) is not queued, so value-equal echoes (a tap shorter
+// than the round trip, a resync of a stop) can't fake a zero lag.
 // The error found there is closed with `correct` (keep / blend / snap) and shifts the whole prediction.
 import { DT } from './physics'
 import { stepPlayer, type SpPlayer } from './sim'
@@ -44,6 +47,9 @@ export class GuestPredictor {
   private pendX = new Float64Array(PENDING)
   private pendZ = new Float64Array(PENDING)
   private pendN = 0
+  /** The host's `move` in the previous fresh state (an echo is a change of it). */
+  private ackX = 0
+  private ackZ = 0
   private past = { x: 0, z: 0 }
   private fixed = { x: 0, z: 0 }
 
@@ -51,6 +57,11 @@ export class GuestPredictor {
   setMove(x: number, z: number): void {
     this.p.move.x = x
     this.p.move.z = z
+    // Same as the last queued move, or (none queued) as the host's: no change to echo.
+    const last = this.pendN - 1
+    const lx = last >= 0 ? this.pendX[last] : this.ackX
+    const lz = last >= 0 ? this.pendZ[last] : this.ackZ
+    if (Math.abs(x - lx) < ECHO_EPS && Math.abs(z - lz) < ECHO_EPS) return
     if (this.pendN === PENDING) this.dropPending(1)
     this.pendAt[this.pendN] = this.steps
     this.pendX[this.pendN] = x
@@ -76,6 +87,8 @@ export class GuestPredictor {
       this.acc = 0
       this.sampleStep = -1
       this.pendN = 0
+      this.ackX = auth.move.x
+      this.ackZ = auth.move.z
       this.authTick = tick
       // The whole past is here too (a sample lined up with a step before the placement compares equal).
       for (let i = 0; i < HIST * 2; i += 2) {
@@ -125,7 +138,10 @@ export class GuestPredictor {
   }
 
   private echo(move: { x: number; z: number }) {
-    for (let j = 0; j < this.pendN; j++) {
+    const changed = Math.abs(move.x - this.ackX) >= ECHO_EPS || Math.abs(move.z - this.ackZ) >= ECHO_EPS
+    this.ackX = move.x
+    this.ackZ = move.z
+    for (let j = 0; changed && j < this.pendN; j++) {
       if (this.steps - this.pendAt[j] > HIST) continue
       if (Math.abs(move.x - this.pendX[j]) < ECHO_EPS && Math.abs(move.z - this.pendZ[j]) < ECHO_EPS) {
         // The host stepped once with this move to make this state: our step pendAt + 1 is its twin.

@@ -76,7 +76,7 @@ export class HeldKeys {
   private sentAt = -Infinity
   private cancelFlush: (() => void) | null = null
 
-  /** `nowTick` = the swing's tick (undefined = none: the host's own swings aren't rewound). */
+  /** `nowTick` = the swing's tick (undefined = none yet: judged now, no rewind). */
   constructor(
     private send: (i: SpInput) => void,
     private nowTick: () => number | undefined,
@@ -179,7 +179,7 @@ const STICK_ZONE = 0.45
 /**
  * WASD / arrows move; Space, J or a left click on `target` swings. With a `pad`, touches on the left
  * of `target` drive a floating stick and the pad's swing button swings (both at once: each finger is
- * tracked by pointer id). `nowTick` = the swing's tick (world.ts swingTick; undefined on the host).
+ * tracked by pointer id). `nowTick` = the swing's tick (world.ts swingTick; undefined before a state).
  */
 export function bindInput(
   target: HTMLElement,

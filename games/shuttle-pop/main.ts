@@ -51,10 +51,10 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
   // Touch: floating stick (left) + swing button (bottom-right), over the court.
   const pad = new TouchPad()
   court.surface.append(pad.root)
-  // A guest's swing carries the tick it saw (the host rewinds up to MAX_REWIND for the lag); the
-  // host's own swings carry none (judged now).
+  // Every human swing carries the tick on screen (the host rewinds up to MAX_REWIND): a guest's covers
+  // its lag, the host's own its interpolation (0–1 ticks), so both sides get screen-aligned timing.
   const seen = () => (smooth.curr ? swingTick(smooth.curr.tick, smooth.alpha()) : undefined)
-  const input = bindInput(court.surface, send, session.isHost ? () => undefined : seen, pad)
+  const input = bindInput(court.surface, send, seen, pad)
   // Our character on every play start (inputs are dropped before). The host's look is already seeded
   // in setup; a guest's shows from "Go!". Idempotent, so resumes may resend it.
   const pick = () => session.sendInput({ t: 'pick', preset: loadPreset() })

@@ -44,9 +44,19 @@ describe('guest prediction', () => {
 
   /**
    * A guest `lag` ticks behind (half each way): the host applies each move lag/2 ticks after it is
-   * sent and its state shows up lag/2 ticks later. Returns the max |prediction − own integration|.
+   * sent and its state shows up lag/2 ticks later. `script` = the moves sent, by step. Returns the max
+   * |prediction − own integration| before step `driftUntil`.
    */
-  function laggedRun(lag: number, hostBump = 0) {
+  function laggedRun(
+    lag: number,
+    hostBump = 0,
+    script: Record<number, { x: number; z: number }> = {
+      1: { x: 1, z: 0 },
+      80: { x: -0.6, z: 0.8 },
+      160: { x: 0, z: 0 },
+    },
+    driftUntil = 120,
+  ) {
     const pred = new GuestPredictor()
     const host = body(0, 3)
     const local = body(0, 3)
@@ -55,9 +65,8 @@ describe('guest prediction', () => {
     const states: { at: number; s: AuthPlayer; tick: number }[] = []
     let maxDrift = 0
     for (let step = 1; step <= 240; step++) {
-      // The guest steers: right, then forward-left, then still.
-      const want =
-        step === 1 ? { x: 1, z: 0 } : step === 80 ? { x: -0.6, z: 0.8 } : step === 160 ? { x: 0, z: 0 } : null
+      // The guest steers (default: right, then forward-left, then still).
+      const want = script[step]
       if (want) {
         pred.setMove(want.x, want.z)
         local.move = want
@@ -72,13 +81,33 @@ describe('guest prediction', () => {
       stepPlayer(local, DT)
       const st = states.filter((q) => q.at <= step).at(-1)
       pred.update(DT, st ? st.s : auth(0, 3), st ? st.tick : 0, false)
-      if (step < 120) maxDrift = Math.max(maxDrift, Math.hypot(pred.x - local.x, pred.z - local.z))
+      if (step < driftUntil) maxDrift = Math.max(maxDrift, Math.hypot(pred.x - local.x, pred.z - local.z))
     }
     return { pred, host, local, maxDrift }
   }
 
   it('with lag, the prediction stays ahead (no rubber band toward the old position)', () => {
     const { maxDrift } = laggedRun(6) // 100 ms round trip
+    expect(maxDrift).toBeLessThan(0.05)
+  })
+
+  it('a tap shorter than the round trip does not throw the next run back (value-equal echo)', () => {
+    // Press and let go inside one round trip: the next states still show the old (0, 0) move.
+    const script = { 1: { x: 1, z: 0 }, 3: { x: 0, z: 0 }, 60: { x: 0, z: -1 }, 140: { x: 0, z: 0 } }
+    const { maxDrift } = laggedRun(6, 0, script, 241)
+    expect(maxDrift).toBeLessThan(0.05)
+  })
+
+  it('a resync of an already-echoed move does not throw the next run back', () => {
+    // resync() at play start / resume re-sends the move the host already has (usually a stop).
+    const script = {
+      1: { x: 1, z: 0 },
+      40: { x: 0, z: 0 },
+      80: { x: 0, z: 0 },
+      100: { x: -1, z: 0 },
+      180: { x: 0, z: 0 },
+    }
+    const { maxDrift } = laggedRun(6, 0, script, 241)
     expect(maxDrift).toBeLessThan(0.05)
   })
 

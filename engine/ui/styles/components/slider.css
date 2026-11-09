@@ -1,0 +1,47 @@
+@layer pf.components {
+  /* ---------- Slider ---------- */
+
+  .pf-slider {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px 10px;
+    font-weight: 600;
+  }
+  .pf-slider .pf-range {
+    grid-column: 1 / -1;
+  }
+  .pf-range-value {
+    color: var(--pf-haze);
+    font-variant-numeric: tabular-nums;
+  }
+  .pf-slider.muted .pf-range {
+    opacity: 0.4;
+  }
+  .pf-range {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 10px;
+    border-radius: var(--pf-radius-pill);
+    background: var(--pf-pit);
+    outline-offset: 4px;
+  }
+  .pf-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--pf-yolk);
+    border: 3px solid var(--pf-felt);
+    box-shadow: 0 2px 0 var(--pf-yolk-edge);
+    cursor: pointer;
+  }
+  .pf-range::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--pf-yolk);
+    border: 3px solid var(--pf-felt);
+    cursor: pointer;
+  }
+}

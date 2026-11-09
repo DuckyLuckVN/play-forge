@@ -1,0 +1,29 @@
+@layer pf.components {
+  /* ---------- Count badge on a button (ui/badge.ts) ---------- */
+  .pf-btn.icon:has(> .pf-count) {
+    position: relative;
+  }
+  .pf-count {
+    position: absolute;
+    top: -7px;
+    right: -7px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 5px;
+    border-radius: var(--pf-radius-pill);
+    display: grid;
+    place-items: center;
+    background: var(--pf-mint);
+    color: var(--pf-night);
+    border: 2px solid var(--pf-night);
+    font: 700 12px/1 var(--pf-font);
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+  }
+  .pf-count[hidden] {
+    display: none;
+  }
+  .pf-count.pop {
+    animation: pf-pop 360ms cubic-bezier(0.3, 1.6, 0.5, 1);
+  }
+}

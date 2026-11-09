@@ -1,0 +1,51 @@
+@layer pf.components {
+  /* ---------- Overlay & panel (modal card) ---------- */
+
+  .pf-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgb(10 12 30 / 0.6);
+    z-index: var(--pf-z-overlay);
+    overflow-y: auto;
+  }
+  .pf-overlay[hidden] {
+    display: none;
+  }
+  .pf-overlay:has(.pf-panel.enter) {
+    animation: pf-fade 200ms ease-out;
+  }
+  .pf-panel.enter {
+    animation: pf-rise 320ms cubic-bezier(0.2, 1.3, 0.4, 1);
+  }
+  @keyframes pf-fade {
+    from {
+      background: rgb(10 12 30 / 0);
+    }
+  }
+  @keyframes pf-rise {
+    from {
+      opacity: 0;
+      transform: translateY(18px) scale(0.96);
+    }
+  }
+
+  .pf-panel {
+    width: min(420px, 100%);
+    background: var(--pf-felt);
+    border: 2px solid var(--pf-rim);
+    border-radius: var(--pf-radius-lg);
+    padding: 26px 24px 20px;
+    display: grid;
+    gap: 16px;
+    box-shadow:
+      0 8px 0 var(--pf-rim),
+      0 30px 80px rgb(0 0 0 / 0.35);
+  }
+  .pf-panel.wide {
+    width: min(560px, 100%);
+  }
+}

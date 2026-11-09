@@ -1,491 +1,499 @@
-/* ---------- Avatars ---------- */
+/* Social UI (avatars, reactions, voice, chat). Same layer as the shared
+   components: these rules rely on source order and specificity against them
+   (e.g. phone bottom sheets beat the popover widths set here). */
+/* Fixes the layer order even if this file loads before base.css. */
+@import '../ui/styles/layers.css';
 
-.pf-avatar {
-  display: inline-grid;
-  place-items: center;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-.pf-avatar svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-  overflow: visible;
-}
-.pf-avatar.pop {
-  animation: pf-pop 360ms cubic-bezier(0.3, 1.6, 0.5, 1);
-}
+@layer pf.components {
+  /* ---------- Avatars ---------- */
 
-/* Inside a seat token: the slot colour stays as the disc behind the face. */
-.pf-token .pf-avatar {
-  width: 84%;
-  height: 84%;
-  margin-top: 4%;
-}
-.pf-token-score {
-  position: absolute;
-  left: -6px;
-  top: -6px;
-  min-width: 26px;
-  height: 26px;
-  padding: 0 6px;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
-  background: var(--pf-chalk);
-  color: var(--pf-night);
-  border: 3px solid var(--pf-felt);
-  font-size: 14px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
+  .pf-avatar {
+    display: inline-grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  .pf-avatar svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    overflow: visible;
+  }
+  .pf-avatar.pop {
+    animation: pf-pop 360ms cubic-bezier(0.3, 1.6, 0.5, 1);
+  }
 
-/* Score chip: a small avatar on a slot-coloured disc. */
-.pf-chip .dot .pf-avatar {
-  width: 90%;
-  height: 90%;
-  margin: 5% 0 0 5%;
-}
+  /* Inside a seat token: the slot colour stays as the disc behind the face. */
+  .pf-token .pf-avatar {
+    width: 84%;
+    height: 84%;
+    margin-top: 4%;
+  }
+  .pf-token-score {
+    position: absolute;
+    left: -6px;
+    top: -6px;
+    min-width: 26px;
+    height: 26px;
+    padding: 0 6px;
+    border-radius: var(--pf-radius-pill);
+    display: grid;
+    place-items: center;
+    background: var(--pf-chalk);
+    color: var(--pf-night);
+    border: 3px solid var(--pf-felt);
+    font-size: 14px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
 
-/* Start screen: avatar button beside the name field, grid below both. */
-.pf-identity {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: end;
-  gap: 10px 14px;
-}
-.pf-avatar-picker {
-  display: contents;
-}
-.pf-avatar-btn {
-  width: 64px;
-  height: 64px;
-  padding: 4px;
-  border-radius: 50%;
-  border: 3px solid var(--pf-rim);
-  background: var(--pf-pit);
-  cursor: pointer;
-  position: relative;
-  transition:
-    border-color 150ms,
-    transform 150ms;
-}
-.pf-avatar-btn:hover,
-.pf-avatar-btn:focus-visible,
-.pf-avatar-btn[aria-expanded='true'] {
-  border-color: var(--pf-yolk);
-  outline: none;
-}
-.pf-avatar-btn:hover {
-  transform: rotate(-6deg) scale(1.05);
-}
-/* A little pencil to say "tap to change". */
-.pf-avatar-btn::after {
-  content: '';
-  position: absolute;
-  right: -4px;
-  bottom: -2px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--pf-yolk)
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232b1d00' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M4 20l4-1L19 8l-3-3L5 16z'/%3E%3C/svg%3E")
-    center / 12px no-repeat;
-  border: 2px solid var(--pf-felt);
-}
-.pf-avatar-grid {
-  grid-row: 2;
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 6px;
-  padding: 10px;
-  border-radius: var(--pf-radius);
-  background: var(--pf-pit);
-  border: 2px solid var(--pf-rim);
-  animation: pf-pop 220ms cubic-bezier(0.3, 1.4, 0.5, 1);
-}
-.pf-avatar-grid[hidden] {
-  display: none;
-}
-.pf-avatar-opt {
-  min-width: 0;
-  aspect-ratio: 1;
-  padding: 4px;
-  border-radius: var(--pf-radius);
-  border: 2px solid transparent;
-  background: none;
-  cursor: pointer;
-  transition:
-    transform 120ms,
-    background 120ms;
-}
-.pf-avatar-opt:hover,
-.pf-avatar-opt:focus-visible {
-  background: var(--pf-felt);
-  transform: scale(1.12);
-  outline: none;
-}
-.pf-avatar-opt.on {
-  border-color: var(--pf-yolk);
-  background: var(--pf-felt);
-}
+  /* Score chip: a small avatar on a slot-coloured disc. */
+  .pf-chip .dot .pf-avatar {
+    width: 90%;
+    height: 90%;
+    margin: 5% 0 0 5%;
+  }
 
-@media (max-width: 520px) {
-  .pf-avatar-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* Start screen: avatar button beside the name field, grid below both. */
+  .pf-identity {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: end;
+    gap: 10px 14px;
   }
-}
-
-/* ---------- Reactions ---------- */
-
-.pf-btn.icon.on {
-  filter: brightness(1.25);
-}
-/* The tray is a .pf-popover laid out as a tight grid of reactions. */
-.pf-popover.pf-rx-tray {
-  width: auto;
-  grid-template-columns: repeat(4, 52px);
-  gap: 4px;
-  padding: 8px;
-}
-.pf-rx-tray.nope {
-  animation: pf-rx-nope 320ms ease;
-}
-@keyframes pf-rx-nope {
-  25% {
-    transform: translateX(-6px);
+  .pf-avatar-picker {
+    display: contents;
   }
-  50% {
-    transform: translateX(6px);
-  }
-  75% {
-    transform: translateX(-3px);
-  }
-}
-.pf-rx-opt {
-  width: 52px;
-  height: 52px;
-  padding: 6px;
-  border: 0;
-  border-radius: var(--pf-radius);
-  background: none;
-  cursor: pointer;
-  transition:
-    transform 120ms,
-    background 120ms;
-}
-.pf-rx-opt:hover,
-.pf-rx-opt:focus-visible {
-  background: var(--pf-rim);
-  transform: scale(1.15) rotate(-6deg);
-  outline: none;
-}
-.pf-rx-opt:active {
-  transform: scale(0.9);
-}
-.pf-rx-art {
-  display: block;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-.pf-rx-art svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-}
-
-/* Floating reactions */
-.pf-rx-layer {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 60;
-  overflow: hidden;
-}
-.pf-rx {
-  --dir: -1;
-  position: absolute;
-  width: 60px;
-  height: 60px;
-  margin-left: -30px;
-  margin-top: calc((var(--dir) - 1) * 30px);
-  animation: pf-rx-float 1900ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
-  filter: drop-shadow(0 4px 6px rgb(0 0 0 / 0.35));
-}
-.pf-rx-who {
-  position: absolute;
-  right: -6px;
-  bottom: -4px;
-  width: 24px;
-  height: 24px;
-  padding: 1px;
-  border-radius: 50%;
-  background: var(--c);
-  border: 2px solid var(--pf-night);
-}
-@keyframes pf-rx-float {
-  0% {
-    transform: translate(0, 0) scale(0.2);
-    opacity: 0;
-  }
-  12% {
-    transform: translate(0, calc(var(--dir) * 18px)) scale(1.25);
-    opacity: 1;
-  }
-  22% {
-    transform: translate(0, calc(var(--dir) * 26px)) scale(1);
-  }
-  75% {
-    opacity: 1;
-  }
-  100% {
-    transform: translate(var(--drift, 0), calc(var(--dir) * 130px)) scale(0.85);
-    opacity: 0;
-  }
-}
-
-/* Each reaction's own little dance while it floats. */
-.pf-rx-art.shake {
-  animation: pf-rx-shake 300ms ease-in-out 3;
-}
-.pf-rx-art.flicker {
-  animation: pf-rx-flicker 260ms ease-in-out infinite alternate;
-  transform-origin: bottom center;
-}
-.pf-rx-art.pop {
-  animation: pf-rx-popin 500ms cubic-bezier(0.3, 1.8, 0.5, 1);
-}
-.pf-rx-art.wobble {
-  animation: pf-rx-wobble 700ms ease-in-out 2;
-}
-.pf-rx-art.beat {
-  animation: pf-rx-beat 450ms ease-in-out 3;
-}
-.pf-rx-art.spin {
-  animation: pf-rx-spin 900ms cubic-bezier(0.3, 1.4, 0.5, 1);
-}
-.pf-rx-art.peek {
-  animation: pf-rx-peek 1200ms ease-in-out;
-}
-@keyframes pf-rx-shake {
-  25% {
-    transform: rotate(-12deg);
-  }
-  75% {
-    transform: rotate(12deg);
-  }
-}
-@keyframes pf-rx-flicker {
-  to {
-    transform: scaleY(1.12) scaleX(0.94);
-  }
-}
-@keyframes pf-rx-popin {
-  from {
-    transform: scale(0.3) rotate(-20deg);
-  }
-}
-@keyframes pf-rx-wobble {
-  25% {
-    transform: translateX(-4px) rotate(-6deg);
-  }
-  75% {
-    transform: translateX(4px) rotate(6deg);
-  }
-}
-@keyframes pf-rx-beat {
-  30% {
-    transform: scale(1.25);
-  }
-}
-@keyframes pf-rx-spin {
-  from {
-    transform: rotate(-360deg) scale(0.4);
-  }
-}
-@keyframes pf-rx-peek {
-  30%,
-  60% {
-    transform: translateX(8px);
-  }
-  80% {
-    transform: translateX(-6px);
-  }
-}
-
-@media (max-width: 520px) {
-  .pf-rx-opt {
+  .pf-avatar-btn {
     width: 64px;
     height: 64px;
+    padding: 4px;
+    border-radius: 50%;
+    border: 3px solid var(--pf-rim);
+    background: var(--pf-pit);
+    cursor: pointer;
+    position: relative;
+    transition:
+      border-color 150ms,
+      transform 150ms;
   }
-}
+  .pf-avatar-btn:hover,
+  .pf-avatar-btn:focus-visible,
+  .pf-avatar-btn[aria-expanded='true'] {
+    border-color: var(--pf-yolk);
+    outline: none;
+  }
+  .pf-avatar-btn:hover {
+    transform: rotate(-6deg) scale(1.05);
+  }
+  /* A little pencil to say "tap to change". */
+  .pf-avatar-btn::after {
+    content: '';
+    position: absolute;
+    right: -4px;
+    bottom: -2px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--pf-yolk)
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232b1d00' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M4 20l4-1L19 8l-3-3L5 16z'/%3E%3C/svg%3E")
+      center / 12px no-repeat;
+    border: 2px solid var(--pf-felt);
+  }
+  .pf-avatar-grid {
+    grid-row: 2;
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 6px;
+    padding: 10px;
+    border-radius: var(--pf-radius);
+    background: var(--pf-pit);
+    border: 2px solid var(--pf-rim);
+    animation: pf-pop 220ms cubic-bezier(0.3, 1.4, 0.5, 1);
+  }
+  .pf-avatar-grid[hidden] {
+    display: none;
+  }
+  .pf-avatar-opt {
+    min-width: 0;
+    aspect-ratio: 1;
+    padding: 4px;
+    border-radius: var(--pf-radius);
+    border: 2px solid transparent;
+    background: none;
+    cursor: pointer;
+    transition:
+      transform 120ms,
+      background 120ms;
+  }
+  .pf-avatar-opt:hover,
+  .pf-avatar-opt:focus-visible {
+    background: var(--pf-felt);
+    transform: scale(1.12);
+    outline: none;
+  }
+  .pf-avatar-opt.on {
+    border-color: var(--pf-yolk);
+    background: var(--pf-felt);
+  }
 
-/* ---------- Voice chat ---------- */
+  @media (max-width: 520px) {
+    .pf-avatar-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
 
-.pf-voice-mic {
-  touch-action: none; /* hold-to-talk shouldn't scroll or zoom */
-  user-select: none;
-  -webkit-user-select: none;
-}
-.pf-voice-mic.joined {
-  --face: color-mix(in srgb, #4be3a0 22%, var(--pf-felt));
-  --edge: color-mix(in srgb, #4be3a0 45%, var(--pf-rim));
-}
-.pf-voice-mic.live {
-  --face: #4be3a0;
-  --edge: #22a872;
-  --text: var(--pf-night);
-}
-.pf-voice-mic.muted,
-.pf-btn.icon.muted {
-  --face: color-mix(in srgb, var(--pf-coral) 22%, var(--pf-felt));
-  --edge: color-mix(in srgb, var(--pf-coral) 50%, var(--pf-rim));
-  --text: var(--pf-coral);
-}
+  /* ---------- Reactions ---------- */
 
-.pf-popover.pf-voice-pop {
-  width: 320px;
-  max-width: calc(100vw - 24px);
-  max-height: min(70vh, 560px);
-  overflow-y: auto;
-}
-.pf-voice-body {
-  display: grid;
-  gap: 12px;
-}
-.pf-voice-body .pf-note {
-  margin: -4px 0 0;
-}
-.pf-voice-list {
-  display: grid;
-  gap: 10px;
-}
-.pf-voice-row {
-  display: grid;
-  grid-template-columns: 40px 1fr auto;
-  align-items: center;
-  gap: 10px;
-}
-.pf-voice-row .pf-btn.icon {
-  width: 40px;
-  height: 40px;
-}
-.pf-voice-who {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-.pf-voice-who .pf-slider > span:first-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.pf-voice-status {
-  color: var(--pf-haze);
-  font-size: 12px;
-}
-.pf-voice-face {
-  width: 40px;
-  height: 40px;
-  padding: 3px;
-  border-radius: 50%;
-  background: var(--c);
-}
+  .pf-btn.icon.on {
+    filter: brightness(1.25);
+  }
+  /* The tray is a .pf-popover laid out as a tight grid of reactions. */
+  .pf-popover.pf-rx-tray {
+    width: auto;
+    grid-template-columns: repeat(4, 52px);
+    gap: 4px;
+    padding: 8px;
+  }
+  .pf-rx-tray.nope {
+    animation: pf-rx-nope 320ms ease;
+  }
+  @keyframes pf-rx-nope {
+    25% {
+      transform: translateX(-6px);
+    }
+    50% {
+      transform: translateX(6px);
+    }
+    75% {
+      transform: translateX(-3px);
+    }
+  }
+  .pf-rx-opt {
+    width: 52px;
+    height: 52px;
+    padding: 6px;
+    border: 0;
+    border-radius: var(--pf-radius);
+    background: none;
+    cursor: pointer;
+    transition:
+      transform 120ms,
+      background 120ms;
+  }
+  .pf-rx-opt:hover,
+  .pf-rx-opt:focus-visible {
+    background: var(--pf-rim);
+    transform: scale(1.15) rotate(-6deg);
+    outline: none;
+  }
+  .pf-rx-opt:active {
+    transform: scale(0.9);
+  }
+  .pf-rx-art {
+    display: block;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  .pf-rx-art svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
 
-/* Speaking ring, on seats, score chips and the voice list. */
-.pf-token.speaking,
-.pf-voice-face.speaking,
-.pf-chip.speaking .dot {
-  box-shadow:
-    0 0 0 3px #4be3a0,
-    0 0 16px 4px rgb(75 227 160 / 0.6);
-  animation: pf-speak 900ms ease-in-out infinite;
-}
-@keyframes pf-speak {
-  50% {
+  /* Floating reactions */
+  .pf-rx-layer {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: var(--pf-z-fx);
+    overflow: hidden;
+  }
+  .pf-rx {
+    --dir: -1;
+    position: absolute;
+    width: 60px;
+    height: 60px;
+    margin-left: -30px;
+    margin-top: calc((var(--dir) - 1) * 30px);
+    animation: pf-rx-float 1900ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+    filter: drop-shadow(0 4px 6px rgb(0 0 0 / 0.35));
+  }
+  .pf-rx-who {
+    position: absolute;
+    right: -6px;
+    bottom: -4px;
+    width: 24px;
+    height: 24px;
+    padding: 1px;
+    border-radius: 50%;
+    background: var(--c);
+    border: 2px solid var(--pf-night);
+  }
+  @keyframes pf-rx-float {
+    0% {
+      transform: translate(0, 0) scale(0.2);
+      opacity: 0;
+    }
+    12% {
+      transform: translate(0, calc(var(--dir) * 18px)) scale(1.25);
+      opacity: 1;
+    }
+    22% {
+      transform: translate(0, calc(var(--dir) * 26px)) scale(1);
+    }
+    75% {
+      opacity: 1;
+    }
+    100% {
+      transform: translate(var(--drift, 0), calc(var(--dir) * 130px)) scale(0.85);
+      opacity: 0;
+    }
+  }
+
+  /* Each reaction's own little dance while it floats. */
+  .pf-rx-art.shake {
+    animation: pf-rx-shake 300ms ease-in-out 3;
+  }
+  .pf-rx-art.flicker {
+    animation: pf-rx-flicker 260ms ease-in-out infinite alternate;
+    transform-origin: bottom center;
+  }
+  .pf-rx-art.pop {
+    animation: pf-rx-popin 500ms cubic-bezier(0.3, 1.8, 0.5, 1);
+  }
+  .pf-rx-art.wobble {
+    animation: pf-rx-wobble 700ms ease-in-out 2;
+  }
+  .pf-rx-art.beat {
+    animation: pf-rx-beat 450ms ease-in-out 3;
+  }
+  .pf-rx-art.spin {
+    animation: pf-rx-spin 900ms cubic-bezier(0.3, 1.4, 0.5, 1);
+  }
+  .pf-rx-art.peek {
+    animation: pf-rx-peek 1200ms ease-in-out;
+  }
+  @keyframes pf-rx-shake {
+    25% {
+      transform: rotate(-12deg);
+    }
+    75% {
+      transform: rotate(12deg);
+    }
+  }
+  @keyframes pf-rx-flicker {
+    to {
+      transform: scaleY(1.12) scaleX(0.94);
+    }
+  }
+  @keyframes pf-rx-popin {
+    from {
+      transform: scale(0.3) rotate(-20deg);
+    }
+  }
+  @keyframes pf-rx-wobble {
+    25% {
+      transform: translateX(-4px) rotate(-6deg);
+    }
+    75% {
+      transform: translateX(4px) rotate(6deg);
+    }
+  }
+  @keyframes pf-rx-beat {
+    30% {
+      transform: scale(1.25);
+    }
+  }
+  @keyframes pf-rx-spin {
+    from {
+      transform: rotate(-360deg) scale(0.4);
+    }
+  }
+  @keyframes pf-rx-peek {
+    30%,
+    60% {
+      transform: translateX(8px);
+    }
+    80% {
+      transform: translateX(-6px);
+    }
+  }
+
+  @media (max-width: 520px) {
+    .pf-rx-opt {
+      width: 64px;
+      height: 64px;
+    }
+  }
+
+  /* ---------- Voice chat ---------- */
+
+  .pf-voice-mic {
+    touch-action: none; /* hold-to-talk shouldn't scroll or zoom */
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .pf-voice-mic.joined {
+    --face: color-mix(in srgb, var(--pf-mint) 22%, var(--pf-felt));
+    --edge: color-mix(in srgb, var(--pf-mint) 45%, var(--pf-rim));
+  }
+  .pf-voice-mic.live {
+    --face: var(--pf-mint);
+    --edge: #22a872;
+    --text: var(--pf-night);
+  }
+  .pf-voice-mic.muted,
+  .pf-btn.icon.muted {
+    --face: color-mix(in srgb, var(--pf-coral) 22%, var(--pf-felt));
+    --edge: color-mix(in srgb, var(--pf-coral) 50%, var(--pf-rim));
+    --text: var(--pf-coral);
+  }
+
+  .pf-popover.pf-voice-pop {
+    width: 320px;
+    max-width: calc(100vw - 24px);
+    max-height: min(70vh, 560px);
+    overflow-y: auto;
+  }
+  .pf-voice-body {
+    display: grid;
+    gap: 12px;
+  }
+  .pf-voice-body .pf-note {
+    margin: -4px 0 0;
+  }
+  .pf-voice-list {
+    display: grid;
+    gap: 10px;
+  }
+  .pf-voice-row {
+    display: grid;
+    grid-template-columns: 40px 1fr auto;
+    align-items: center;
+    gap: 10px;
+  }
+  .pf-voice-row .pf-btn.icon {
+    width: 40px;
+    height: 40px;
+  }
+  .pf-voice-who {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  .pf-voice-who .pf-slider > span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pf-voice-status {
+    color: var(--pf-haze);
+    font-size: 12px;
+  }
+  .pf-voice-face {
+    width: 40px;
+    height: 40px;
+    padding: 3px;
+    border-radius: 50%;
+    background: var(--c);
+  }
+
+  /* Speaking ring, on seats, score chips and the voice list. */
+  .pf-token.speaking,
+  .pf-voice-face.speaking,
+  .pf-chip.speaking .dot {
     box-shadow:
-      0 0 0 4px #4be3a0,
-      0 0 22px 7px rgb(75 227 160 / 0.45);
+      0 0 0 3px var(--pf-mint),
+      0 0 16px 4px rgb(75 227 160 / 0.6);
+    animation: pf-speak 900ms ease-in-out infinite;
   }
-}
+  @keyframes pf-speak {
+    50% {
+      box-shadow:
+        0 0 0 4px var(--pf-mint),
+        0 0 22px 7px rgb(75 227 160 / 0.45);
+    }
+  }
 
-/* ---------- Text chat ---------- */
+  /* ---------- Text chat ---------- */
 
-.pf-popover.pf-chat-pop {
-  width: 340px;
-  max-width: calc(100vw - 24px);
-  gap: 10px;
-  padding: 12px;
-}
-.pf-chat-list {
-  display: grid;
-  align-content: start;
-  gap: 8px;
-  height: min(45vh, 340px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 4px 2px;
-}
-.pf-chat-empty {
-  align-self: center;
-  text-align: center;
-  margin: 0;
-}
-.pf-chat-line {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  max-width: 92%;
-}
-.pf-chat-line.mine {
-  flex-direction: row-reverse;
-  justify-self: end;
-}
-.pf-chat-face {
-  flex: none;
-  width: 28px;
-  height: 28px;
-  padding: 2px;
-  border-radius: 50%;
-  background: var(--c);
-}
-.pf-chat-bubble {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-  padding: 7px 11px 8px;
-  border-radius: var(--pf-radius-md) var(--pf-radius-md) var(--pf-radius-md) 4px;
-  background: var(--pf-pit);
-  animation: pf-pop 200ms cubic-bezier(0.3, 1.4, 0.5, 1);
-}
-.pf-chat-line.mine .pf-chat-bubble {
-  border-radius: var(--pf-radius-md) var(--pf-radius-md) 4px var(--pf-radius-md);
-  background: var(--pf-rim);
-}
-.pf-chat-name {
-  font-size: 12px;
-  font-weight: 700;
-}
-.pf-chat-text {
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-  line-height: 1.3;
-}
-.pf-chat-form {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-}
-.pf-chat-input {
-  flex: 1;
-  min-width: 0;
-  padding: 10px 12px;
-  font-size: 16px; /* 16px stops iOS zooming into the field */
-}
-.pf-chat-form.nope {
-  animation: pf-rx-nope 320ms ease;
+  .pf-popover.pf-chat-pop {
+    width: 340px;
+    max-width: calc(100vw - 24px);
+    gap: 10px;
+    padding: 12px;
+  }
+  .pf-chat-list {
+    display: grid;
+    align-content: start;
+    gap: 8px;
+    height: min(45vh, 340px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 4px 2px;
+  }
+  .pf-chat-empty {
+    align-self: center;
+    text-align: center;
+    margin: 0;
+  }
+  .pf-chat-line {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    max-width: 92%;
+  }
+  .pf-chat-line.mine {
+    flex-direction: row-reverse;
+    justify-self: end;
+  }
+  .pf-chat-face {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    padding: 2px;
+    border-radius: 50%;
+    background: var(--c);
+  }
+  .pf-chat-bubble {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    padding: 7px 11px 8px;
+    border-radius: var(--pf-radius-md) var(--pf-radius-md) var(--pf-radius-md) 4px;
+    background: var(--pf-pit);
+    animation: pf-pop 200ms cubic-bezier(0.3, 1.4, 0.5, 1);
+  }
+  .pf-chat-line.mine .pf-chat-bubble {
+    border-radius: var(--pf-radius-md) var(--pf-radius-md) 4px var(--pf-radius-md);
+    background: var(--pf-rim);
+  }
+  .pf-chat-name {
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .pf-chat-text {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    line-height: 1.3;
+  }
+  .pf-chat-form {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  .pf-chat-input {
+    flex: 1;
+    min-width: 0;
+    padding: 10px 12px;
+    font-size: 16px; /* 16px stops iOS zooming into the field */
+  }
+  .pf-chat-form.nope {
+    animation: pf-rx-nope 320ms ease;
+  }
 }

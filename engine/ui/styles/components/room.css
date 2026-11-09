@@ -1,0 +1,154 @@
+@layer pf.components {
+  /* ---------- Room code ---------- */
+
+  .pf-room {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 10px 10px 16px;
+    background: var(--pf-pit);
+    border-radius: var(--pf-radius);
+  }
+  .pf-room-code {
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+  }
+  .pf-room small {
+    display: block;
+    color: var(--pf-haze);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: normal;
+  }
+
+  /* ---------- Seats: the lobby table ---------- */
+
+  .pf-seats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px 8px;
+    margin: 4px 0;
+  }
+  .pf-seat {
+    display: grid;
+    justify-items: center;
+    gap: 4px;
+    text-align: center;
+    min-width: 0;
+  }
+  .pf-token {
+    --c: var(--pf-rim);
+    position: relative;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: var(--c);
+    box-shadow:
+      inset 0 -5px 0 rgb(0 0 0 / 0.22),
+      0 var(--pf-edge) 0 color-mix(in srgb, var(--c) 55%, black);
+    display: grid;
+    place-items: center;
+    font-size: 26px;
+    font-weight: 700;
+    color: rgb(0 0 0 / 0.55);
+    transition:
+      filter 300ms,
+      opacity 300ms;
+  }
+  .pf-token.pop,
+  .pf-badge.pop {
+    animation: pf-pop 360ms cubic-bezier(0.3, 1.6, 0.5, 1);
+  }
+  .pf-seat.away .pf-token {
+    filter: grayscale(0.8);
+    opacity: 0.5;
+    animation: pf-breathe 1.4s ease-in-out infinite;
+  }
+  .pf-seat.away .pf-seat-status {
+    color: var(--pf-yolk);
+  }
+  @keyframes pf-breathe {
+    50% {
+      opacity: 0.25;
+    }
+  }
+  /* Your own seat: a chalk ring around the token. */
+  .pf-seat.self .pf-token {
+    outline: 3px solid var(--pf-chalk);
+    outline-offset: 4px;
+  }
+  .pf-seat.empty .pf-token {
+    background: none;
+    box-shadow: none;
+    border: 3px dashed var(--pf-rim);
+    animation: none;
+  }
+  .pf-seat.out .pf-token {
+    filter: grayscale(0.7) brightness(0.7);
+  }
+  .pf-badge {
+    position: absolute;
+    right: -6px;
+    bottom: -6px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--pf-chalk);
+    color: var(--pf-night);
+    border: 3px solid var(--pf-felt);
+  }
+  .pf-badge svg {
+    width: 15px;
+    height: 15px;
+    stroke-width: 3.2;
+  }
+  .pf-badge.host {
+    background: var(--pf-yolk);
+    color: var(--pf-ink);
+  }
+  .pf-seat-name {
+    font-weight: 600;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pf-seat-status {
+    font-size: 13px;
+    color: var(--pf-haze);
+    margin-top: -4px;
+  }
+  .pf-seat-status.ok {
+    color: var(--pf-chalk);
+  }
+  .pf-seat.empty .pf-seat-name {
+    color: var(--pf-haze);
+    opacity: 0.6;
+    font-weight: 500;
+  }
+
+  @keyframes pf-pop {
+    from {
+      transform: scale(0.3);
+      opacity: 0;
+    }
+  }
+
+  @media (max-width: 520px) {
+    .pf-seats {
+      gap: 12px 4px;
+    }
+    .pf-token {
+      width: 50px;
+      height: 50px;
+      font-size: 22px;
+    }
+    .pf-seat-name {
+      font-size: 15px;
+    }
+  }
+}

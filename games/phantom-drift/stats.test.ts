@@ -31,7 +31,7 @@ describe('Phantom Drift numbers', () => {
     s.score = 1234.7
     s.dist = 2500
     s.tick = 90 * TICK_RATE
-    s.stats = { wisps: 12, nearMisses: 12, bestCombo: 17, phantoms: 2, topSpeed: speedAt(4) }
+    s.stats = { wisps: 12, nearMisses: 12, bestCombo: 17, phantoms: 2, hearts: 1, topSpeed: speedAt(4) }
     const rows = summaryRows(s, t)
     expect(rows.map((r) => r.label)).toEqual([
       'Distance',

@@ -10,7 +10,7 @@ import { telegraph } from '@forge/reflex'
 import { DEFAULT_CHARACTER } from './characters'
 import { drawGhost2D, type GhostLook } from './ghost2d'
 import { Blinker, ghostRig, runPose, runPoseOut, type RunInput } from './ghost-motion'
-import { DriftHud } from './hud'
+import { DriftHud, traceHeart } from './hud'
 import { riftHue } from './ambience'
 import { C } from './palette'
 import type { DriftView } from './view'
@@ -144,8 +144,21 @@ export class DriftRenderer {
       case 'charged':
         this.fx.burst(px, py - 20, { count: 20, color: [C.phantom, C.wisp], speed: 140, life: 0.6, size: 4 })
         break
+      case 'heart': {
+        const [x, y] = this.at(e.lane, 0)
+        this.fx.burst(x, y - 30, {
+          count: 40,
+          color: [C.heart, '#fff', '#ffb3c7'],
+          speed: 240,
+          life: 0.7,
+          size: 6,
+        })
+        this.hud.heartPickup(x, y - 30)
+        this.shake.add(0.1)
+        break
+      }
       case 'heal':
-        this.hud.heal()
+        this.fx.burst(px, py - 30, { count: 20, color: [C.heart, '#fff'], speed: 140, life: 0.6, size: 4 })
         break
       case 'multiplier':
         this.hud.multiplier()
@@ -279,6 +292,7 @@ export class DriftRenderer {
     ctx.globalAlpha = fadeIn
     if (o.kind === 'shard') this.drawShard(lane, z, o.done)
     else if (o.kind === 'wisp') this.drawWisp(lane, z, o.id)
+    else if (o.kind === 'heart') this.drawHeart(lane, z, o.id)
     else if (o.kind === 'wall') this.drawWall(o.gap!, z)
     else this.drawSweeper(lane, z, o.to!)
     ctx.globalAlpha = 1
@@ -336,6 +350,37 @@ export class DriftRenderer {
     ctx.beginPath()
     ctx.arc(x - r * 0.3, cy - r * 0.3, r * 0.35, 0, Math.PI * 2)
     ctx.fill()
+  }
+
+  /** Heart pickup: a glossy, beating heart in a pink glow (same look as the HUD's). */
+  private drawHeart(lane: number, z: number, id: number) {
+    const { ctx } = this.view
+    const [x, y, s] = this.at(lane, z)
+    const bob = this.reduced ? 0 : Math.sin(this.time * 3 + id) * 5 * s
+    const k = (this.laneW() / 50) * s * (1 + 0.1 * Math.max(0, Math.sin(this.time * 7)))
+    const cy = y - 26 * s + bob
+    const r = 26 * k
+    const halo = ctx.createRadialGradient(x, cy, 0, x, cy, r * 1.4)
+    halo.addColorStop(0, 'rgb(255 143 166 / 0.55)')
+    halo.addColorStop(1, 'rgb(255 143 166 / 0)')
+    ctx.fillStyle = halo
+    ctx.beginPath()
+    ctx.arc(x, cy, r * 1.4, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.save()
+    ctx.translate(x, cy)
+    ctx.scale(k, k)
+    traceHeart(ctx)
+    ctx.fillStyle = C.heart
+    ctx.fill()
+    ctx.lineWidth = 1.5
+    ctx.strokeStyle = '#6e0a26'
+    ctx.stroke()
+    ctx.fillStyle = 'rgb(255 255 255 / 0.8)'
+    ctx.beginPath()
+    ctx.ellipse(-4.6, -4.4, 2.6, 1.5, -0.7, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
   }
 
   private drawWall(gap: number, z: number) {

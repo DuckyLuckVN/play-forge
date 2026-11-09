@@ -2,7 +2,7 @@
 // starts warning (rows are visible from far away) must never be hit: if it is,
 // the spawner made an unfair pattern.
 import { describe, expect, it } from 'vitest'
-import { covers, createState, step, TICK_RATE, type DriftInput, type DriftState } from './sim'
+import { covers, createState, isPickup, step, TICK_RATE, type DriftInput, type DriftState } from './sim'
 
 const me = [{ id: 'p0', name: 'P0', slot: 0, ready: true, connected: true }]
 const REACT = 12 // ticks
@@ -19,7 +19,7 @@ function bot(s: DriftState): DriftInput | null {
   const p = s.player
   const all = Array.from({ length: s.lanes }, (_, l) => l)
   const falling = s.fallers.filter((f) => s.tick - (f.slamAt - f.tele) >= REACT).map((f) => f.lane)
-  const ahead = s.objects.filter((o) => o.kind !== 'wisp' && !o.done && o.z > -5)
+  const ahead = s.objects.filter((o) => !isPickup(o) && !o.done && o.z > -5)
   const nextRow = ahead.length ? ahead.reduce((a, b) => (b.z < a.z ? b : a)).row : null
   const blocked = new Set(ahead.filter((o) => o.row === nextRow).flatMap((o) => blockedByRow(o, s.lanes)))
   const rowFree = all.filter((l) => !blocked.has(l))

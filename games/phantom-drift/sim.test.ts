@@ -5,6 +5,9 @@ import {
   createState,
   DEATH_TICKS,
   HEART_REGEN_TICKS,
+  heartChance,
+  MAX_HEARTS,
+  regenProgress,
   INVULN_TICKS,
   laneCount,
   multiplier,
@@ -401,5 +404,118 @@ describe('Phantom Drift perks', () => {
       for (const e of s.events) if (e.type === 'wisp') got.push(e.points)
     }
     expect(got).toEqual([12])
+  })
+})
+
+describe('Phantom Drift heart pickups', () => {
+  /** A spawning state with the player hurt (or not). */
+  function live(seed: number, hearts: number): DriftState {
+    const s = createState(me, seed)
+    s.player.hearts = hearts
+    return s
+  }
+  /** Steps with no input, keeping the player's hearts pinned (no hits, no regen). */
+  function hearts(s: DriftState, ticks: number, pin = s.player.hearts) {
+    const seen: Obj[] = []
+    let most = 0
+    for (let i = 0; i < ticks; i++) {
+      s.player.invulnUntil = Infinity
+      s.player.calmSince = s.tick
+      const before = new Set(s.objects.map((o) => o.id))
+      const lane = s.player.target
+      const x = s.player.x
+      step(s, [])
+      for (const o of s.objects)
+        if (o.kind === 'heart' && !before.has(o.id)) {
+          seen.push(o)
+          expect(o.lane).not.toBe(lane)
+          expect(o.lane).not.toBe(Math.round(x))
+          // Never in a hazard lane of its own row.
+          const row = s.objects.filter((h) => h.row === o.row && h.kind !== 'wisp' && h.kind !== 'heart')
+          for (const h of row) {
+            if (h.kind === 'wall') expect(o.lane).toBe(h.gap)
+            else if (h.kind === 'sweeper')
+              expect(o.lane < Math.min(h.from!, h.to!) || o.lane > Math.max(h.from!, h.to!)).toBe(true)
+            else expect(o.lane).not.toBe(h.lane)
+          }
+        }
+      most = Math.max(most, s.objects.filter((o) => o.kind === 'heart').length)
+      s.player.hearts = pin
+    }
+    return { seen, most }
+  }
+
+  it('never spawns while hearts are full', () => {
+    for (let seed = 1; seed <= 10; seed++) expect(hearts(live(seed, MAX_HEARTS), 120 * 60).seen).toEqual([])
+  })
+
+  it('spawns while hurt, rarely, one at a time, a lane change away and clear of hazards', () => {
+    let total = 0
+    const seconds = 60
+    for (let seed = 1; seed <= 40; seed++) {
+      const r = hearts(live(seed, 1), seconds * 60)
+      total += r.seen.length
+      expect(r.most).toBeLessThanOrEqual(1)
+    }
+    // Rare: about one a minute of being hurt, early on.
+    const every = (40 * seconds) / total
+    expect(every).toBeGreaterThan(45)
+    expect(every).toBeLessThan(110)
+  })
+
+  it('gets rarer as the rift speeds up', () => {
+    expect(heartChance(9)).toBeLessThan(heartChance(0) / 3)
+  })
+
+  it('grabbing one gives a heart (capped), restarts the regen wait, and counts', () => {
+    const s = quiet()
+    s.player.hearts = 1
+    s.tick = 500
+    s.player.calmSince = 0
+    place(s, { kind: 'heart', lane: 1, z: 5 })
+    const seen = events(s, 20)
+    expect(seen).toContain('heart')
+    expect(s.player.hearts).toBe(2)
+    expect(s.player.calmSince).toBeGreaterThanOrEqual(500)
+    expect(s.stats.hearts).toBe(1)
+    expect(s.objects.find((o) => o.kind === 'heart')).toBeUndefined()
+
+    s.player.hearts = MAX_HEARTS
+    place(s, { kind: 'heart', lane: 1, z: 5 })
+    run(s, 20)
+    expect(s.player.hearts).toBe(MAX_HEARTS)
+  })
+
+  it('a heart in another lane is missed, and never hurts', () => {
+    const s = quiet()
+    s.player.hearts = 2
+    place(s, { kind: 'heart', lane: 0, z: 5 })
+    const seen = events(s, 30)
+    expect(seen).not.toContain('heart')
+    expect(seen).not.toContain('hit')
+    expect(s.player.hearts).toBe(2)
+  })
+
+  it('runs with hearts on the track are deterministic per seed', () => {
+    const play = () => {
+      const s = live(7, 1)
+      const r = hearts(s, 240 * 60)
+      return { score: s.score, tick: s.tick, hearts: r.seen.map((o) => [o.id, o.lane]) }
+    }
+    const a = play()
+    expect(a.hearts.length).toBeGreaterThan(0)
+    expect(play()).toEqual(a)
+  })
+
+  it('regen progress: 0 when full, fills over the regen wait', () => {
+    const s = quiet()
+    expect(regenProgress(s)).toBe(0)
+    s.player.hearts = 2
+    s.player.calmSince = 100
+    s.tick = 100 + s.perks.regenTicks / 2
+    expect(regenProgress(s)).toBeCloseTo(0.5)
+    s.perks.regenTicks = 36 * 60
+    s.tick = 100 + 36 * 60
+    expect(regenProgress(s)).toBe(1)
   })
 })

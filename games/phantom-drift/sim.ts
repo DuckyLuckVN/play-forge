@@ -5,7 +5,7 @@ import { randomInt, type RngState } from '@forge/core/rng'
 import { clamp01, lerp } from '@forge/fx/tween'
 import type { GameDefinition, InputEvent, PlayerInfo } from '@forge/net/session'
 import { ramp, tierAt, withinWindow } from '@forge/reflex'
-import { pickRow, type HazardPlan } from './spawner'
+import { pickRow, placeHeart, type HazardPlan } from './spawner'
 
 export type DriftInput = 'left' | 'right' | 'phase'
 const INPUTS: readonly DriftInput[] = ['left', 'right', 'phase']
@@ -56,6 +56,15 @@ export function rowIntervalTicks(rawTier: number): number {
 }
 /** Faller warning time: 0.8 s → 0.35 s. */
 export const fallerTelegraph = (tier: number) => Math.round(ramp(tier, MAX_TIER, 0.8, 0.35) * TICK_RATE)
+/**
+ * Chance per row that a heart pickup comes down while hurt. Rows that can't
+ * take one (faller rows, no free lane) skip, so early on that's about one a
+ * minute of being hurt; rarer as the rift speeds up, so long runs stay hard.
+ * Tuned with balance.test.ts: mean survival stays within ~15% of no pickups.
+ */
+export const HEART_CHANCE_EARLY = 0.025
+export const HEART_CHANCE_LATE = 0.005
+export const heartChance = (tier: number) => ramp(tier, MAX_TIER, HEART_CHANCE_EARLY, HEART_CHANCE_LATE)
 /** Combo multiplier x1..x5: +1 for every `step` combo (5 unless a perk says otherwise). */
 export const multiplier = (combo: number, step = 5) => 1 + Math.min(4, Math.floor(combo / step))
 
@@ -86,7 +95,9 @@ export const BASE_PERKS: Readonly<Perks> = Object.freeze({
   phantomCost: PHANTOM_COST,
 })
 
-export type ObjKind = 'shard' | 'wisp' | 'wall' | 'sweeper'
+export type ObjKind = 'shard' | 'wisp' | 'heart' | 'wall' | 'sweeper'
+/** Things to grab (the rest hurt). */
+export const isPickup = (o: Pick<Obj, 'kind'>) => o.kind === 'wisp' || o.kind === 'heart'
 export interface Obj {
   id: number
   kind: ObjKind
@@ -139,7 +150,10 @@ export type DriftEvent =
   /** A faller starts warning over `lane`; it slams in `ticks`. */
   | { type: 'warn'; lane: number; ticks: number }
   | { type: 'multiplier'; mult: number }
+  /** A heart regrew after a calm stretch. */
   | { type: 'heal' }
+  /** A heart pickup was grabbed in `lane` (+1 heart). */
+  | { type: 'heart'; lane: number }
   | { type: 'tier'; tier: number }
   | { type: 'lanes'; lanes: number }
   /** Last heart gone: the dying phase starts. */
@@ -152,6 +166,8 @@ export interface RunStats {
   nearMisses: number
   bestCombo: number
   phantoms: number
+  /** Heart pickups grabbed. */
+  hearts: number
   /** Depth units per second. */
   topSpeed: number
 }
@@ -220,7 +236,7 @@ export function createState(
     diedAt: null,
     diedDist: null,
     over: false,
-    stats: { wisps: 0, nearMisses: 0, bestCombo: 0, phantoms: 0, topSpeed: speedAt(0) },
+    stats: { wisps: 0, nearMisses: 0, bestCombo: 0, phantoms: 0, hearts: 0, topSpeed: speedAt(0) },
     perks: { ...perks },
     events: [],
   }
@@ -296,6 +312,12 @@ function spawnRow(s: DriftState) {
     s.objects.push({ id: s.nextId++, row: id, z: SPAWN_Z, ...o })
   for (const h of row.hazards) add(fromPlan(h))
   for (const lane of row.wisps) add({ kind: 'wisp', lane })
+  // Hurt and no heart already coming: maybe one, a lane change away.
+  const p = s.player
+  if (p.hearts < MAX_HEARTS && !s.objects.some((o) => o.kind === 'heart')) {
+    const lane = placeHeart(s.rng, row, s.lanes, [p.target, Math.round(p.x)], heartChance(s.tier))
+    if (lane !== undefined) add({ kind: 'heart', lane })
+  }
   if (row.drop) s.drops.push({ at: s.tick + Math.ceil((SPAWN_Z / s.speed) * TICK_RATE), count: row.drop })
 }
 
@@ -343,6 +365,17 @@ function updateObjects(s: DriftState) {
       }
       continue
     }
+    if (o.kind === 'heart') {
+      if (overlapping && Math.abs(p.x - o.lane) < PICK_DX) {
+        o.done = true
+        // Capped; the regen wait starts over from the pickup.
+        p.hearts = Math.min(MAX_HEARTS, p.hearts + 1)
+        p.calmSince = s.tick
+        s.stats.hearts++
+        s.events.push({ type: 'heart', lane: o.lane })
+      }
+      continue
+    }
     const lanes = covers(o, s.lanes)
     if (overlapping) {
       if (phantom(s)) o.done = true
@@ -355,7 +388,7 @@ function updateObjects(s: DriftState) {
       nearMiss(s, lanes, o.arrivedAt ?? s.tick)
     }
   }
-  s.objects = s.objects.filter((o) => o.z > -20 && !(o.kind === 'wisp' && o.done))
+  s.objects = s.objects.filter((o) => o.z > -20 && !(isPickup(o) && o.done))
 }
 
 function updateFallers(s: DriftState) {
@@ -454,6 +487,13 @@ export const phantomDrift: GameDefinition<DriftState, DriftInput> = {
   tick: step,
   isFinished: (s) => s.over,
   removePlayer: () => {},
+}
+
+/** How far the next heart is through regrowing: 0 (just lost) … 1 (about to return); 0 when full. */
+export function regenProgress(s: Pick<DriftState, 'tick' | 'player' | 'perks'>): number {
+  const p = s.player
+  if (p.hearts >= MAX_HEARTS) return 0
+  return clamp01((s.tick - p.calmSince) / s.perks.regenTicks)
 }
 
 /** Whole points, for display. */

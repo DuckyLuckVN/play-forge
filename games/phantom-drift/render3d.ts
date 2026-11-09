@@ -44,6 +44,7 @@ import {
   makeCrack,
   makeFaller,
   makeGhost,
+  makeHeart,
   makeRibbon,
   makeShard,
   makeSweeper,
@@ -101,6 +102,7 @@ function part<T extends Object3D = Object3D>(g: Object3D, name: string): T {
 const FACTORIES: Record<Obj['kind'], () => Group> = {
   shard: makeShard,
   wisp: makeWisp,
+  heart: makeHeart,
   wall: makeWall,
   sweeper: makeSweeper,
 }
@@ -233,7 +235,7 @@ export class Drift3D implements DriftView {
    */
   async warm(): Promise<void> {
     const z = -12
-    const kinds: Obj['kind'][] = ['shard', 'wisp', 'wall', 'sweeper']
+    const kinds: Obj['kind'][] = ['shard', 'wisp', 'heart', 'wall', 'sweeper']
     const samples = kinds.map((kind, i): Obj => ({
       id: -1 - i,
       kind,
@@ -439,8 +441,32 @@ export class Drift3D implements DriftView {
       case 'charged':
         this.fx.burst(gx, 1.1, 0, { count: 30, color: [C.phantom, C.wisp], speed: 4, life: 0.8, size: 0.3 })
         break
+      case 'heart': {
+        // Grabbed: a big pink pop on the track, and the heart flies into the HUD.
+        const x = laneX(e.lane, this.lanes)
+        this.fx.burst(x, 1.1, 0, {
+          count: 60,
+          color: [C.heart, '#ffffff', '#ffb3c7'],
+          speed: 8,
+          life: 0.8,
+          size: 0.4,
+        })
+        this.fx.burst(x, 1.1, 0, {
+          count: 16,
+          color: ['#ffffff', C.gold],
+          speed: 3,
+          life: 0.9,
+          size: 0.3,
+          dir: [0, 1, 0],
+          spread: 0.5,
+        })
+        const [sx, sy] = this.screen(x, 1.1, 0)
+        this.hud.heartPickup(sx, sy)
+        this.shake.add(0.15)
+        this.fovKick = Math.max(this.fovKick, 4)
+        break
+      }
       case 'heal':
-        this.hud.heal()
         this.fx.burst(gx, 1.2, 0, { count: 24, color: [C.heart, '#ffffff'], speed: 4, life: 0.7, size: 0.3 })
         break
       case 'tier':
@@ -743,6 +769,20 @@ export class Drift3D implements DriftView {
         const trail = part<Sprite>(g, 'trail')
         trail.position.set(0, y, 0.9)
         trail.scale.set(0.7, 0.7, 1)
+      } else if (o.kind === 'heart') {
+        // Bobs, sways to show off its shine, and beats like the HUD hearts.
+        const y = 1.1 + Math.sin(this.time * 3 + o.id) * 0.15
+        const body = part(g, 'body')
+        body.position.y = y
+        body.rotation.y = Math.sin(this.time * 2 + o.id) * 0.5
+        body.scale.setScalar(1.25 * (1 + 0.1 * Math.max(0, Math.sin(this.time * 7))))
+        const halo = part<Sprite>(g, 'halo')
+        halo.position.y = y
+        halo.scale.setScalar(2.3 + Math.sin(this.time * 7) * 0.3)
+        for (let i = 0; i < 2; i++) {
+          const a = this.time * 3 + i * Math.PI + o.id
+          part(g, `orb${i}`).position.set(Math.cos(a) * 0.75, y + Math.sin(a * 2) * 0.2, Math.sin(a) * 0.75)
+        }
       } else if (o.kind === 'sweeper') {
         part(g, 'saw').rotation.z = -this.time * 12
         // Sparks where the blade bites the track.

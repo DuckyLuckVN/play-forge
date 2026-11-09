@@ -6,6 +6,7 @@ import { t } from './i18n'
 import { bindInput } from './input'
 import { loadPreset, pickerStrip } from './picker'
 import { Court3D } from './render3d'
+import { scoreText, summaryRows } from './results'
 import { winner } from './rules'
 import { createState, seedPreset, shuttlePopGame, type SpInput, type SpState } from './sim'
 
@@ -65,13 +66,6 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
   }
 }
 
-/** The final score from `selfId`'s side (side 0 first for spectators), e.g. "11–7". */
-function scoreText(s: SpState, selfId: string): string {
-  const me = s.players.find((p) => p.id === selfId)
-  const [a, b] = me?.side === 1 ? [s.score[1], s.score[0]] : s.score
-  return `${a}–${b}`
-}
-
 createGameApp<SpState, SpInput>({
   // The host's stored look is in the state from the countdown on (no pop at "Go!").
   def: {
@@ -117,15 +111,5 @@ createGameApp<SpState, SpInput>({
       return { headline: t('The computer wins {score}. Rematch?', { score }), result: 'lose' }
     return { headline: t('{name} wins {score}.', { name: won.name, score }), result: 'lose' }
   },
-  summary(s, selfId) {
-    const me = s.players.find((p) => p.id === selfId)
-    const { longest, perfect } = s.stats
-    return [
-      { label: t('Final score'), value: scoreText(s, selfId) },
-      { label: t('Longest rally'), value: t('{n} shots', { n: longest }) },
-      me
-        ? { label: t('Your Perfect hits'), value: String(perfect[me.side]) }
-        : { label: t('Perfect hits'), value: `${perfect[0]}–${perfect[1]}` },
-    ]
-  },
+  summary: summaryRows,
 })

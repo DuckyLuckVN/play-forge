@@ -46,6 +46,7 @@ export const VI: Dictionary = {
   '{name} wins {score}.': '{name} thắng {score}.',
   'Final score': 'Tỉ số chung cuộc',
   'Longest rally': 'Pha cầu dài nhất',
+  '{n} shot': '{n} cú đánh',
   '{n} shots': '{n} cú đánh',
   'Your Perfect hits': 'Cú Hoàn hảo của bạn',
   'Perfect hits': 'Cú Hoàn hảo',

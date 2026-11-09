@@ -199,6 +199,7 @@
 }
 .sp-pop.smash {
   --tilt: -8deg;
+  filter: drop-shadow(0 0 10px rgb(255 77 109 / 0.8)) drop-shadow(0 2px 0 rgb(122 0 30 / 0.45));
 }
 .sp-pop.smash.sp-pop-perfect {
   filter: drop-shadow(0 0 12px rgb(255 77 109 / 0.8)) drop-shadow(0 3px 0 rgb(122 0 30 / 0.5));

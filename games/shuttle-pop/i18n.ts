@@ -18,6 +18,13 @@ export const VI: Dictionary = {
   'Move with WASD or the arrow keys. Swing with Space, J or a click. Hold forward as you swing to smash or drive, back to clear, nothing to drop; left or right aims.':
     'Di chuyển bằng WASD hoặc phím mũi tên. Vung vợt bằng Space, J hoặc nhấp chuột. Giữ tiến khi vung để đập cầu hoặc tạt cầu, giữ lùi để đánh cầu cao sâu, không giữ để bỏ nhỏ; trái hoặc phải để nhắm hướng.',
 
+  // Character picker (preset names in actors.ts)
+  'Choose your player': 'Chọn nhân vật',
+  Berry: 'Dâu',
+  Cloud: 'Mây',
+  Sunny: 'Nắng',
+  Mint: 'Bạc Hà',
+
   // Play
   'Shuttle Pop needs WebGL to run.': 'Shuttle Pop cần WebGL để chạy.',
   'Badminton court': 'Sân cầu lông',

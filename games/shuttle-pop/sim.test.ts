@@ -142,6 +142,22 @@ describe('pick', () => {
     game.tick(s, [ev('p0', { t: 'pick', preset: -2 })])
     expect(s.players[0].preset).toBe(0)
   })
+
+  it('the computer moves off the preset the player picks', () => {
+    const s = game.setup(players(1), 1, {})
+    expect(s.players[1].preset).toBe(1)
+    game.tick(s, [ev('p0', { t: 'pick', preset: 1 })])
+    expect(s.players[0].preset).toBe(1)
+    expect(s.players[1].preset).toBe(2)
+    game.tick(s, [ev('p0', { t: 'pick', preset: 3 })])
+    expect(s.players[1].preset).toBe(2)
+  })
+
+  it('two humans may pick the same preset', () => {
+    const s = duel()
+    game.tick(s, [ev('p0', { t: 'pick', preset: 2 }), ev('p1', { t: 'pick', preset: 2 })])
+    expect(s.players.map((p) => p.preset)).toEqual([2, 2])
+  })
 })
 
 describe('serve', () => {

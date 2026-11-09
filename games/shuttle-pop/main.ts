@@ -3,6 +3,7 @@ import { webglAvailable } from '@forge/render3d'
 import './shuttle-pop.css'
 import { t } from './i18n'
 import { bindInput } from './input'
+import { loadPreset, pickerStrip } from './picker'
 import { Court3D } from './render3d'
 import { winner } from './rules'
 import { shuttlePopGame, type SpInput, type SpState } from './sim'
@@ -36,12 +37,23 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
     session.sendInput(input)
   }
   const input = bindInput(court.surface, send, () => smooth.curr?.tick ?? 0)
+  // Our character: sent once play starts (inputs are dropped before), again only if the state
+  // doesn't wear it yet (a rematch starts from the default looks).
+  const pick = () => {
+    const preset = loadPreset()
+    if (session.state?.players.find((p) => p.id === session.selfId)?.preset !== preset)
+      session.sendInput({ t: 'pick', preset })
+  }
   // Play starting or resuming: re-send the held keys (a key held through "Go!" moves you, one let
-  // go during a pause stops you).
+  // go during a pause stops you) and our character.
   let wasLive = live()
+  if (wasLive) pick()
   const offLobby = session.on('lobby', () => {
     const now = live()
-    if (now && !wasLive) input.resync()
+    if (now && !wasLive) {
+      input.resync()
+      pick()
+    }
     wasLive = now
   })
   return () => {
@@ -71,6 +83,7 @@ createGameApp<SpState, SpInput>({
   ),
   preload,
   mount,
+  menuExtras: pickerStrip,
   // Both seats; `name` labels the computer's chip (lobby players keep their lobby name).
   scores: (s) => s.players.map((p) => ({ id: p.id, score: s.score[p.side], name: p.name })),
   outcome(s, selfId) {

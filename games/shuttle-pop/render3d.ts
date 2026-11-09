@@ -1,17 +1,14 @@
-// Shuttle Pop in 3D (primitive slice): court, net, capsule players with a racket, shuttle, landing
-// ring. Reads interpolated sim state only; gameplay lives in sim.ts.
+// Shuttle Pop in 3D: court, net, chibi players (actors.ts), shuttle, landing ring. Reads interpolated sim state only; gameplay lives in sim.ts.
 //
 // Built once per page: `warm()` (menu preload) compiles every shader, each match `attach`es it to the
 // stage and gets a cleanup that parks it offscreen again. The render loop allocates nothing.
 
 import {
-  CapsuleGeometry,
   CircleGeometry,
   Color,
   CylinderGeometry,
   DirectionalLight,
   DoubleSide,
-  Group,
   HemisphereLight,
   Mesh,
   MeshBasicMaterial,
@@ -24,6 +21,8 @@ import {
 import { startRenderLoop } from '@forge/core/loop'
 import type { Smoothed } from '@forge/net/smoothing'
 import { createScene3D, type Scene3D } from '@forge/render3d'
+import { createChibi, type Chibi, type ChibiPose } from './actors'
+import { MOVE_SPEED } from './court'
 import { COURT, predictLanding, type Vec3 } from './physics'
 import type { SpState } from './sim'
 import { CAMERA, cameraPose, dampFocus, lerpV, viewOf, type CameraPose } from './world'
@@ -38,11 +37,7 @@ const PALETTE = {
   shuttle: '#ffffff',
   ringMine: '#ffd166',
   ringTheirs: '#ffffff',
-  skin: '#ffe0c7',
-  racket: '#ff6f91',
 }
-/** Shirt colours by character preset (sim PRESETS = 4). */
-const PRESET_COLORS = ['#ff8fab', '#7cc6fe', '#ffd166', '#9be7a8']
 
 const LINE_W = 0.05
 const POST_OUT = 0.25
@@ -52,43 +47,43 @@ const SHUTTLE_R = 0.08
 const PLAYER_SNAP = 1.5
 /** Shuttle moves ≤ 0.75 m a tick in flight; more is a reset into the server's hand. */
 const SHUTTLE_SNAP = 2
-const SWING_TIME = 0.28
-const RACKET_IDLE = -0.7
-const RACKET_FWD = 1.6
+const SWING_TIME = 0.32
+/** Smash leap length (s). */
+const JUMP_TIME = 0.5
+/** Run blend damping (1/s). */
+const RUN_DAMP = 10
 /** A local swing press already animated; ignore the matching swingAt change for this long. */
 const LOCAL_SWING_GRACE = 0.4
+/** Chibis are ~1.3 m in model space; drawn a bit larger so they read from the far camera. */
+const CHIBI_SCALE = 1.15
 
 interface PlayerView {
-  group: Group
-  shirt: MeshStandardMaterial
-  racket: Group
+  chibi: Chibi
   preset: number
+  /** Drawn as the tinted far twin (both sides on the same preset). */
+  alt: boolean
   /** Seconds since the last swing started (Infinity = idle). */
   swingAge: number
   /** Last swingAt seen in the state (NaN = none yet). */
   swingAt: number
+  /** Seconds since the last smash leap started (Infinity = grounded). */
+  jumpAge: number
+  /** Reused every frame. */
+  pose: ChibiPose
 }
 
-function makePlayer(skin: MeshStandardMaterial, racketMat: MeshStandardMaterial): PlayerView {
-  const group = new Group()
-  const shirt = new MeshStandardMaterial({ color: PRESET_COLORS[0], roughness: 0.7 })
-  const body = new Mesh(new CapsuleGeometry(0.28, 0.5, 6, 12), shirt)
-  body.position.y = 0.55
-  // Big chibi head.
-  const head = new Mesh(new SphereGeometry(0.3, 20, 14), skin)
-  head.position.y = 1.32
-  // Racket: pivot at the right shoulder (the player faces +z, so right is −x), sweeping about y.
-  const racket = new Group()
-  racket.position.set(-0.3, 1.0, 0)
-  const handle = new Mesh(new CylinderGeometry(0.025, 0.025, 0.32, 8), racketMat)
-  handle.rotation.z = Math.PI / 2
-  handle.position.x = -0.16
-  const frame = new Mesh(new TorusGeometry(0.17, 0.025, 8, 20), racketMat)
-  frame.position.x = -0.5
-  racket.add(handle, frame)
-  racket.rotation.y = RACKET_IDLE
-  group.add(body, head, racket)
-  return { group, shirt, racket, preset: -1, swingAge: Infinity, swingAt: NaN }
+function makePlayer(preset: number): PlayerView {
+  const chibi = createChibi(preset)
+  chibi.root.scale.setScalar(CHIBI_SCALE)
+  return {
+    chibi,
+    preset: -1,
+    alt: false,
+    swingAge: Infinity,
+    swingAt: NaN,
+    jumpAge: Infinity,
+    pose: { run: 0, swing: 0, jump: 0, mood: 'idle' },
+  }
 }
 
 export class Court3D {
@@ -107,6 +102,10 @@ export class Court3D {
   private lastShotId = 0
   private lastHitter = -2
   private lastTick = -1
+  /** Newest event id already turned into a pose (smash leap, point mood). */
+  private lastEventId = 0
+  /** Side that won the latest point (−1 = none yet). */
+  private pointSide = -1
   private localIdx = 0
   private side: 0 | 1 = 0
   private flip: 1 | -1 = 1
@@ -134,10 +133,8 @@ export class Court3D {
 
     this.buildCourt()
 
-    const skin = new MeshStandardMaterial({ color: PALETTE.skin, roughness: 0.8 })
-    const racketMat = new MeshStandardMaterial({ color: PALETTE.racket, roughness: 0.5 })
-    this.players = [makePlayer(skin, racketMat), makePlayer(skin, racketMat)]
-    for (const p of this.players) scene.add(p.group)
+    this.players = [makePlayer(0), makePlayer(1)]
+    for (const p of this.players) scene.add(p.chibi.root)
 
     this.shuttle = new Mesh(
       new SphereGeometry(SHUTTLE_R, 14, 10),
@@ -222,10 +219,13 @@ export class Court3D {
   /** Compile every shader up front, so the first match starts without a hitch. */
   async warm(): Promise<void> {
     this.ring.visible = true
+    // Every hat + the twin outline, so no material compiles mid-match.
+    for (const p of this.players) p.chibi.root.traverse((o) => (o.visible = true))
     this.placeCamera(0, 1)
     await this.view.renderer.compileAsync(this.view.scene, this.view.camera)
     this.view.render(0)
     this.ring.visible = false
+    for (let i = 0; i < 2; i++) this.players[i].chibi.setPreset(i)
   }
 
   /**
@@ -259,11 +259,15 @@ export class Court3D {
     this.lastShotId = 0
     this.lastHitter = -2
     this.lastTick = -1
+    this.lastEventId = 0
+    this.pointSide = -1
     this.localPressAt = -Infinity
     this.ring.visible = false
     for (const p of this.players) {
       p.swingAge = Infinity
       p.swingAt = NaN
+      p.jumpAge = Infinity
+      p.pose.run = 0
     }
   }
 
@@ -290,23 +294,29 @@ export class Court3D {
       this.flip = viewOf(side).flip
     }
     const flip = this.flip
+    this.scanEvents(curr)
+    // Same look on both sides: the far one (not the local / side-0 player) is the tinted twin.
+    const twins = curr.players[0].preset === curr.players[1].preset
 
     let localX = 0
     for (let i = 0; i < 2; i++) {
       const cp = curr.players[i]
       const pp = prev.players[i]
       const view = this.players[i]
-      const jump = Math.abs(cp.x - pp.x) + Math.abs(cp.z - pp.z) > PLAYER_SNAP
-      const t = jump ? 1 : a
+      const placed = Math.abs(cp.x - pp.x) + Math.abs(cp.z - pp.z) > PLAYER_SNAP
+      const t = placed ? 1 : a
       const x = (pp.x + (cp.x - pp.x) * t) * flip
       const z = (pp.z + (cp.z - pp.z) * t) * flip
-      view.group.position.set(x, 0, z)
+      const root = view.chibi.root
+      root.position.set(x, 0, z)
       // Everyone faces the net.
-      view.group.rotation.y = z < 0 ? 0 : Math.PI
+      root.rotation.y = z < 0 ? 0 : Math.PI
       if (i === this.localIdx) localX = x
-      if (cp.preset !== view.preset) {
+      const alt = twins && i !== this.localIdx
+      if (cp.preset !== view.preset || alt !== view.alt) {
         view.preset = cp.preset
-        view.shirt.color.set(PRESET_COLORS[cp.preset % PRESET_COLORS.length])
+        view.alt = alt
+        view.chibi.setPreset(cp.preset, alt)
       }
       // Swings seen in the state (the opponent's, or ours if the press wasn't animated already).
       if (cp.swingAt !== view.swingAt) {
@@ -315,8 +325,16 @@ export class Court3D {
         view.swingAt = cp.swingAt
       }
       view.swingAge += dt
-      const k = view.swingAge < SWING_TIME ? Math.sin((Math.PI * view.swingAge) / SWING_TIME) : 0
-      view.racket.rotation.y = RACKET_IDLE + (RACKET_FWD - RACKET_IDLE) * k
+      view.jumpAge += dt
+      const pose = view.pose
+      const speed = Math.min(1, Math.hypot(cp.vx, cp.vz) / MOVE_SPEED)
+      pose.run += (speed - pose.run) * (1 - Math.exp(-RUN_DAMP * dt))
+      pose.swing = view.swingAge < SWING_TIME ? view.swingAge / SWING_TIME : 0
+      pose.jump = view.jumpAge < JUMP_TIME ? Math.sin((Math.PI * view.jumpAge) / JUMP_TIME) : 0
+      // Celebrate / slump through the point pause and on the results screen.
+      const won = curr.phase === 'over' ? curr.winner : curr.phase === 'point' ? this.pointSide : -1
+      pose.mood = won === -1 ? 'idle' : won === cp.side ? 'happy' : 'sad'
+      view.chibi.setPose(pose, this.time)
     }
 
     // Shuttle (+ its shadow for depth).
@@ -333,6 +351,20 @@ export class Court3D {
 
     this.placeCamera(localX * CAMERA.followX, pos.y, dt)
     this.view.render(dt)
+  }
+
+  /** New events → poses: a smash leaps, a point sets who celebrates. */
+  private scanEvents(s: SpState) {
+    let newest = this.lastEventId
+    for (let i = 0; i < s.events.length; i++) {
+      const e = s.events[i]
+      if (e.id <= this.lastEventId) continue
+      if (e.id > newest) newest = e.id
+      if (e.k === 'point') this.pointSide = e.side
+      else if (e.k === 'hit' && e.shot === 'smash')
+        for (let j = 0; j < 2; j++) if (s.players[j].side === e.side) this.players[j].jumpAge = 0
+    }
+    this.lastEventId = newest
   }
 
   /** Landing ring: predicted once per new shot (a new hit/serve event or a new hitter), not per frame. */

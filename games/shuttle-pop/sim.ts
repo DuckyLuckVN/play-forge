@@ -421,7 +421,12 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
     if (!p || !input) continue
     if (input.t === 'move') p.move = clampDir(input.x, input.z)
     else if (input.t === 'pick') {
-      if (finite(input.preset)) p.preset = Math.min(PRESETS - 1, Math.max(0, Math.trunc(input.preset)))
+      if (finite(input.preset)) {
+        p.preset = Math.min(PRESETS - 1, Math.max(0, Math.trunc(input.preset)))
+        // The computer never wears the player's look (two humans may match; the view tints the far one).
+        for (const q of state.players)
+          if (q.kind === 'ai' && q.preset === p.preset) q.preset = (p.preset + 1) % PRESETS
+      }
     } else if (input.t === 'swing') {
       // Only swings that resolve (any rally swing, the server's serve) start the cooldown.
       const live = state.phase === 'rally' || (state.phase === 'serve' && p.side === state.server)

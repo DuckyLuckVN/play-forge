@@ -108,6 +108,27 @@ function sawGeometry() {
   return geo
 }
 const SAW = sawGeometry()
+
+/** The HUD's heart, extruded and bevelled (same curves, y up). */
+function heartGeometry() {
+  const k = 0.05
+  const shape = new Shape()
+  shape.moveTo(0, -9 * k)
+  shape.bezierCurveTo(-14 * k, 1 * k, -8 * k, 12 * k, 0, 5 * k)
+  shape.bezierCurveTo(8 * k, 12 * k, 14 * k, 1 * k, 0, -9 * k)
+  const geo = new ExtrudeGeometry(shape, {
+    depth: 0.18,
+    bevelEnabled: true,
+    bevelSize: 0.07,
+    bevelThickness: 0.08,
+    bevelSegments: 4,
+    curveSegments: 18,
+  })
+  geo.center()
+  return geo
+}
+const HEART = heartGeometry()
+const HEART_SHINE = new SphereGeometry(0.09, 10, 8)
 const HUB = new CylinderGeometry(0.2, 0.2, 0.3, 16).rotateX(Math.PI / 2)
 
 // ---------- Factories ----------
@@ -190,6 +211,44 @@ export function makeWisp(): Group {
   trail.name = 'trail'
   trail.scale.set(0.9, 0.9, 1)
   g.add(ball, halo, trail, groundGlow(C.wisp, 1.6, 0.45))
+  return g
+}
+
+/**
+ * Heart pickup: the HUD's glossy heart in 3D, with a dark outline shell, a
+ * shine, a soft pink glow and orbiting sparkles so it never reads as a hazard.
+ */
+export function makeHeart(): Group {
+  const g = new Group()
+  const body = new Group()
+  body.name = 'body'
+  body.position.y = 1.1
+  const mat = new MeshStandardMaterial({
+    color: C.heart,
+    emissive: C.heart,
+    emissiveIntensity: 0.55,
+    roughness: 0.18,
+    metalness: 0.1,
+  })
+  const outline = new Mesh(HEART, OUTLINE)
+  outline.scale.setScalar(1.12)
+  const shine = new Mesh(HEART_SHINE, new MeshBasicMaterial({ color: '#ffffff' }))
+  shine.scale.set(1.4, 0.8, 0.6)
+  shine.position.set(-0.22, 0.2, 0.2)
+  shine.rotation.z = 0.7
+  body.add(new Mesh(HEART, mat), outline, shine)
+  body.scale.setScalar(1.25)
+  const halo = glowSprite('#ff8fa6', 0.75)
+  halo.scale.setScalar(2.4)
+  halo.name = 'halo'
+  halo.position.y = 1.1
+  for (let i = 0; i < 2; i++) {
+    const orb = glowSprite('#ffffff', 0.9)
+    orb.scale.setScalar(0.3)
+    orb.name = `orb${i}`
+    g.add(orb)
+  }
+  g.add(body, halo, groundGlow(C.heart, 1.8, 0.5))
   return g
 }
 

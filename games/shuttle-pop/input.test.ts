@@ -78,3 +78,55 @@ describe('held keys', () => {
     expect(got.at(-1)).toEqual({ t: 'swing', x: 0, z: -1, tick: 42 })
   })
 })
+
+describe('joystick through held keys (one source of truth)', () => {
+  function setup() {
+    const got: SpInput[] = []
+    const keys = new HeldKeys(
+      (i) => got.push(i),
+      () => 9,
+    )
+    return { got, keys }
+  }
+
+  it('the stick feeds the held direction: move sent on change, quantised to 0.05', () => {
+    const { got, keys } = setup()
+    keys.stick(0.31, 0.72)
+    keys.stick(0.33, 0.74) // same 0.05 step → nothing new
+    keys.stick(0, 0)
+    expect(got).toEqual([
+      { t: 'move', x: 0.3, z: 0.7 },
+      { t: 'move', x: 0, z: 0 },
+    ])
+  })
+
+  it('swing uses the stick direction as the held direction', () => {
+    const { got, keys } = setup()
+    keys.stick(0, -1)
+    keys.swing()
+    expect(got.at(-1)).toEqual({ t: 'swing', x: 0, z: -1, tick: 9 })
+  })
+
+  it('held keys win over the stick; letting go of the keys falls back to the stick', () => {
+    const { got, keys } = setup()
+    keys.stick(1, 0)
+    keys.press('KeyW')
+    expect(got.at(-1)).toEqual({ t: 'move', x: 0, z: 1 })
+    keys.release('KeyW')
+    expect(got.at(-1)).toEqual({ t: 'move', x: 1, z: 0 })
+  })
+
+  it('clear (blur / leaving play) drops the stick too', () => {
+    const { got, keys } = setup()
+    keys.stick(0.5, 0.5)
+    keys.clear()
+    expect(got.at(-1)).toEqual({ t: 'move', x: 0, z: 0 })
+  })
+
+  it('a stick overshoot never sends a vector longer than 1', () => {
+    const { got, keys } = setup()
+    keys.stick(0.8, 0.8)
+    const m = got.at(-1) as { x: number; z: number }
+    expect(Math.hypot(m.x, m.z)).toBeLessThanOrEqual(1)
+  })
+})

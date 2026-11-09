@@ -262,3 +262,88 @@
     transform: translate(-50%, -50%) scale(var(--size, 1));
   }
 }
+
+/* ---------- Touch controls (hud.ts TouchPad, input.ts) ---------- */
+/* The court takes every touch: no scroll, pinch, double-tap zoom, long-press menu or selection. */
+.sp-touchable {
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.sp-touch {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.sp-touch[hidden] {
+  display: none;
+}
+/* Floating stick: positioned by its centre (left/top) while held; rests dim bottom-left. */
+.sp-stick {
+  --sp-stick-r: 48px;
+  position: absolute;
+  width: calc(var(--sp-stick-r) * 2);
+  height: calc(var(--sp-stick-r) * 2);
+  margin: calc(var(--sp-stick-r) * -1) 0 0 calc(var(--sp-stick-r) * -1);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(255 255 255 / 0.1) 40%, rgb(255 255 255 / 0.22));
+  border: 2px solid rgb(255 255 255 / 0.55);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
+  display: grid;
+  place-items: center;
+  transition: opacity 0.25s ease;
+}
+.sp-stick.idle {
+  left: calc(var(--sp-stick-r) + 22px + env(safe-area-inset-left, 0px));
+  top: calc(100% - var(--sp-stick-r) - 22px - env(safe-area-inset-bottom, 0px));
+  opacity: 0.35;
+}
+.sp-knob {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff, #ffe3ec 55%, #ffb3c7);
+  box-shadow:
+    0 3px 8px rgb(0 0 0 / 0.25),
+    inset 0 -3px 0 rgb(230 62 109 / 0.25);
+}
+/* Swing: big round thumb button bottom-right; squashes and glows while pressed. */
+.sp-swing {
+  position: absolute;
+  right: calc(20px + env(safe-area-inset-right, 0px));
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+  color: #fff;
+  background: radial-gradient(circle at 35% 28%, #ff9db5, #ff6b8b 55%, #e63e6d);
+  border: 3px solid rgb(255 255 255 / 0.85);
+  box-shadow:
+    0 6px 0 #b42a55,
+    0 10px 18px rgb(0 0 0 / 0.25);
+  opacity: 0.9;
+  transition:
+    transform 0.08s ease,
+    box-shadow 0.08s ease;
+}
+.sp-swing svg {
+  width: 48px;
+  height: 48px;
+}
+.sp-swing.down {
+  transform: translateY(5px) scale(0.94);
+  box-shadow:
+    0 1px 0 #b42a55,
+    0 0 22px rgb(255 209 102 / 0.75);
+}
+@media (prefers-reduced-motion: reduce) {
+  .sp-stick,
+  .sp-swing {
+    transition: none;
+  }
+}

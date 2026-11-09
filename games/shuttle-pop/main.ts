@@ -3,6 +3,7 @@ import { ARCADE } from '@forge/audio/tracks'
 import { webglAvailable } from '@forge/render3d'
 import './shuttle-pop.css'
 import { t } from './i18n'
+import { TouchPad } from './hud'
 import { bindInput } from './input'
 import { loadPreset, pickerStrip } from './picker'
 import { Court3D } from './render3d'
@@ -41,7 +42,10 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
     if (input.t === 'swing' && live()) onSwing?.()
     session.sendInput(input)
   }
-  const input = bindInput(court.surface, send, () => smooth.curr?.tick ?? 0)
+  // Touch: floating stick (left) + swing button (bottom-right), over the court.
+  const pad = new TouchPad()
+  court.surface.append(pad.root)
+  const input = bindInput(court.surface, send, () => smooth.curr?.tick ?? 0, pad)
   // Our character on every play start (inputs are dropped before). The host's look is already seeded
   // in setup; a guest's shows from "Go!". Idempotent, so resumes may resend it.
   const pick = () => session.sendInput({ t: 'pick', preset: loadPreset() })
@@ -55,12 +59,15 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
       input.resync()
       pick()
     }
+    // Paused or over: drop the stick and the button (a finger held through the pause can't stick).
+    if (!now && wasLive) input.release()
     wasLive = now
   })
   return () => {
     hostId = null
     offLobby()
     input.stop()
+    pad.root.remove()
     detach()
     smooth.dispose()
   }
@@ -82,7 +89,7 @@ createGameApp<SpState, SpInput>({
     'Chibi badminton. Time your swing for a Perfect, smash on high balls. Play the computer or a friend online.',
   ),
   controls: t(
-    'Move with WASD or the arrow keys. Swing with Space, J or a click. Hold forward as you swing to smash or drive, back to clear, nothing to drop; left or right aims.',
+    'Move with WASD or the arrow keys. Swing with Space, J or a click. Hold forward as you swing to smash or drive, back to clear, nothing to drop; left or right aims. On a phone: drag on the left side to move, tap the racket button to swing; the stick direction picks the shot the same way.',
   ),
   // Stock upbeat gameplay loop.
   music: ARCADE,

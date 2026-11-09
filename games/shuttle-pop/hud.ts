@@ -3,6 +3,7 @@
 // DOM nodes are made once and reused; animations are CSS (time-based, so frame-rate independent).
 import { h } from '@forge'
 import { t } from './i18n'
+import { STICK_RADIUS } from './joystick'
 import { winner } from './rules'
 import type { SpEvent } from './sim'
 
@@ -113,5 +114,72 @@ function showBadge(el: HTMLElement, text: string | null) {
     el.classList.remove('in')
     void el.offsetWidth
     el.classList.add('in')
+  }
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg'
+/** Racket glyph for the swing button (drawn once). */
+function racketIcon(): SVGSVGElement {
+  const svg = document.createElementNS(SVG_NS, 'svg')
+  svg.setAttribute('viewBox', '0 0 48 48')
+  svg.setAttribute('aria-hidden', 'true')
+  svg.innerHTML =
+    '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="3.5">' +
+    '<ellipse cx="29" cy="17" rx="11" ry="13" transform="rotate(40 29 17)"/>' +
+    '<path d="M21 26 9 40"/></g>' +
+    '<g stroke="currentColor" stroke-width="1.4" opacity=".55">' +
+    '<path d="M22 12l14 12M25 8l13 11M20 17l12 11M27 6v24M32 7v21M22 10v18"/></g>'
+  return svg
+}
+
+/**
+ * Touch controls' visuals: a floating stick (rests dim in the bottom-left corner, jumps under the
+ * thumb while held) and the swing button bottom-right. Hidden until the device has a coarse pointer
+ * or the first touch lands. Input logic lives in input.ts; this only draws.
+ */
+export class TouchPad {
+  readonly root: HTMLElement
+  /** Touch presses on this swing. */
+  readonly swingEl: HTMLElement
+  private stickEl: HTMLElement
+  private knobEl: HTMLElement
+
+  constructor() {
+    this.knobEl = h('div', { class: 'sp-knob' })
+    this.stickEl = h('div', { class: 'sp-stick idle' }, this.knobEl)
+    this.stickEl.style.setProperty('--sp-stick-r', `${STICK_RADIUS}px`)
+    this.swingEl = h('div', { class: 'sp-swing' }, racketIcon())
+    this.root = h('div', { class: 'sp-touch' }, this.stickEl, this.swingEl)
+    this.root.setAttribute('aria-hidden', 'true')
+    this.root.hidden = !globalThis.matchMedia?.('(pointer: coarse)').matches
+  }
+
+  /** Show the controls (first touch on a device that didn't report a coarse pointer). */
+  enable() {
+    this.root.hidden = false
+  }
+
+  /** Stick held at (x, y) px in the view. */
+  showStick(x: number, y: number) {
+    this.stickEl.classList.remove('idle')
+    this.stickEl.style.left = `${x}px`
+    this.stickEl.style.top = `${y}px`
+    this.moveKnob(0, 0)
+  }
+
+  moveKnob(dx: number, dy: number) {
+    this.knobEl.style.transform = `translate(${dx}px, ${dy}px)`
+  }
+
+  /** Stick let go: back to its resting corner, knob centred. */
+  hideStick() {
+    this.stickEl.classList.add('idle')
+    this.stickEl.style.left = ''
+    this.stickEl.style.top = ''
+    this.moveKnob(0, 0)
+  }
+
+  setPressed(on: boolean) {
+    this.swingEl.classList.toggle('down', on)
   }
 }

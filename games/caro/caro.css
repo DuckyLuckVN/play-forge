@@ -17,7 +17,7 @@
 
 .caro-canvas {
   touch-action: none; /* taps and pen strokes, not page scroll or zoom */
-  border-radius: 16px;
+  border-radius: var(--pf-radius-md);
   outline: none;
 }
 .caro-canvas:focus-visible {

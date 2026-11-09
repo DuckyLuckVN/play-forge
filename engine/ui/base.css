@@ -25,8 +25,11 @@
 :root {
   color-scheme: dark;
   --pf-font: 'Fredoka', ui-rounded, system-ui, sans-serif;
-  --pf-radius-lg: 22px;
-  --pf-radius: 12px;
+  /* Corner radius scale: kept small for a crisper look. */
+  --pf-radius-lg: 14px;
+  --pf-radius-md: 10px;
+  --pf-radius: 8px;
+  --pf-radius-sm: 6px;
   --pf-edge: 4px; /* depth of chunky buttons and tokens */
 }
 
@@ -336,7 +339,7 @@ body {
 
 .pf-stat {
   padding: 8px 10px;
-  border-radius: 12px;
+  border-radius: var(--pf-radius);
   background: var(--pf-pit);
   text-align: center;
 }
@@ -368,7 +371,7 @@ body {
   }
   .pf-stat {
     padding: 6px 4px;
-    border-radius: 10px;
+    border-radius: var(--pf-radius-sm);
   }
   .pf-stat dt {
     font-size: 11px;
@@ -394,7 +397,7 @@ body {
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
-  border-radius: 12px;
+  border-radius: var(--pf-radius);
   background: var(--pf-pit);
   border-left: 4px solid var(--c, var(--pf-rim));
 }
@@ -644,7 +647,7 @@ body {
   padding: 16px;
   background: var(--pf-felt);
   border: 2px solid var(--pf-rim);
-  border-radius: 16px;
+  border-radius: var(--pf-radius-md);
   box-shadow:
     0 6px 0 var(--pf-rim),
     0 20px 50px rgb(0 0 0 / 0.4);
@@ -1013,7 +1016,7 @@ body {
     max-height: calc(var(--pf-vh, 100dvh) * 0.8);
     overflow-y: auto;
     padding-bottom: calc(16px + env(safe-area-inset-bottom));
-    border-radius: 22px 22px 0 0;
+    border-radius: var(--pf-radius-lg) var(--pf-radius-lg) 0 0;
     border-bottom: 0;
     box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.45);
     animation: pf-sheet 240ms cubic-bezier(0.2, 1.1, 0.4, 1);
@@ -1115,7 +1118,7 @@ body {
   color: var(--pf-haze);
   background: none;
   border: 0;
-  border-radius: 9px;
+  border-radius: var(--pf-radius-sm);
   padding: 10px 6px;
   cursor: pointer;
   transition:

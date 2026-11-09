@@ -19,7 +19,7 @@
   touch-action: none; /* swipes slide tiles, not the page */
   user-select: none;
   -webkit-user-select: none;
-  border-radius: 16px;
+  border-radius: var(--pf-radius-md);
   outline: none;
 }
 .fuse-canvas:focus-visible {

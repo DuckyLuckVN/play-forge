@@ -22,6 +22,7 @@ export const theme = {
   mint: '#4be3a0', // good news: live, free, new, synergy
   sky: '#5ab8ff', // common rarity, info
   violet: '#b48cff', // rare rarity
+  pink: '#ff6fb5', // bonus, celebration
 } as const
 
 /** Player token colours, by seat. Distinct from each other and from `yolk`. */

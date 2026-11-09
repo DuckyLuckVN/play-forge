@@ -19,7 +19,7 @@
   }
   .pf-dots i:nth-child(3) {
     animation-delay: 0.3s;
-    background: #ff6fb5;
+    background: var(--pf-pink);
   }
   @keyframes pf-hop {
     0%,

@@ -71,13 +71,15 @@
     display: none;
   }
 }
+/* Side panels: the shared card look (see .pf-card). */
 .bs-side-block {
   display: grid;
-  gap: 8px;
-  padding: 14px;
+  gap: var(--pf-space-4);
+  padding: var(--pf-space-5);
   border: 2px solid var(--pf-rim);
-  border-radius: var(--pf-radius-md);
-  background: rgb(16 19 44 / 0.75);
+  border-radius: var(--pf-radius-lg);
+  background: var(--pf-felt);
+  box-shadow: var(--pf-lift-lg);
 }
 .bs-side-block h3 {
   margin: 0;
@@ -122,14 +124,9 @@
   width: 28px;
   height: 28px;
 }
-.bs-mini-icon.common {
-  color: #5ab8ff;
-}
-.bs-mini-icon.rare {
-  color: #b48cff;
-}
-.bs-mini-icon.epic {
-  color: var(--pf-yolk);
+/* Rarity colours come from the shared accent classes (.common, .rare, .epic set --accent). */
+.bs-mini-icon:is(.common, .rare, .epic) {
+  color: var(--accent);
 }
 .bs-boost-count {
   color: var(--pf-yolk);
@@ -283,24 +280,14 @@
   letter-spacing: 0.08em;
   font-weight: 700;
 }
-.bs-card.common {
-  border-color: #5ab8ff;
+.bs-card:is(.common, .rare, .epic) {
+  border-color: var(--accent);
 }
-.bs-card.common small {
-  color: #5ab8ff;
-}
-.bs-card.rare {
-  border-color: #b48cff;
-}
-.bs-card.rare small {
-  color: #b48cff;
+.bs-card:is(.common, .rare, .epic) small {
+  color: var(--accent);
 }
 .bs-card.epic {
-  border-color: var(--pf-yolk);
-  box-shadow: 0 0 18px rgb(255 200 61 / 0.45);
-}
-.bs-card.epic small {
-  color: var(--pf-yolk);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--pf-yolk) 45%, transparent);
 }
 
 @keyframes bs-flip {
@@ -315,7 +302,7 @@
   position: absolute;
   top: 52%;
   left: 50%;
-  z-index: 5;
+  z-index: var(--pf-z-notice);
   width: min(320px, calc(var(--bs-board-w, 100%) - 24px));
   display: grid;
   grid-template-columns: 32px 1fr;
@@ -323,10 +310,10 @@
   gap: 10px;
   padding: 8px 12px 10px;
   overflow: hidden;
-  border: 1px solid rgb(255 255 255 / 0.12);
+  border: 2px solid var(--pf-rim);
   border-radius: var(--pf-radius);
-  background: rgb(16 19 44 / 0.88);
-  box-shadow: 0 6px 18px rgb(0 0 0 / 0.35);
+  background: var(--pf-felt);
+  box-shadow: var(--pf-lift-md);
   color: var(--pf-chalk);
   font: inherit;
   text-align: left;
@@ -394,7 +381,7 @@
 .bs-shop > .bs-panel-head {
   position: sticky;
   top: calc(-1 * var(--pf-panel-pad));
-  z-index: 2;
+  z-index: var(--pf-z-raised);
   margin: calc(-1 * var(--pf-panel-pad)) calc(-1 * var(--pf-panel-pad)) 0;
   padding: var(--pf-panel-pad) var(--pf-panel-pad) 10px;
   background: var(--pf-felt);
@@ -464,13 +451,14 @@
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   gap: 10px;
 }
+/* Shop items: sunken wells (see .pf-card.sunken). */
 .bs-item {
   display: grid;
   justify-items: center;
-  gap: 6px;
+  gap: var(--pf-space-3);
   padding: 10px;
   border: 2px solid var(--pf-rim);
-  border-radius: var(--pf-radius-md);
+  border-radius: var(--pf-radius-lg);
   background: var(--pf-pit);
   text-align: center;
 }
@@ -508,18 +496,12 @@
   width: 56px;
   height: 56px;
 }
-.bs-card.common .bs-card-icon {
-  color: #5ab8ff;
-}
-.bs-card.rare .bs-card-icon {
-  color: #b48cff;
-}
-.bs-card.epic .bs-card-icon {
-  color: var(--pf-yolk);
+.bs-card:is(.common, .rare, .epic) .bs-card-icon {
+  color: var(--accent);
 }
 .bs-card.synergy {
-  border-color: #4be3a0;
-  box-shadow: 0 0 22px rgb(75 227 160 / 0.45);
+  border-color: var(--pf-mint);
+  box-shadow: 0 0 22px color-mix(in srgb, var(--pf-mint) 45%, transparent);
 }
 .bs-ribbon {
   position: absolute;
@@ -527,8 +509,8 @@
   right: -6px;
   padding: 3px 10px;
   border-radius: var(--pf-radius-sm);
-  background: #4be3a0;
-  color: #0b2a1c;
+  background: var(--pf-mint);
+  color: var(--pf-night);
   font-style: normal;
   font-size: 12px;
   font-weight: 700;
@@ -558,8 +540,8 @@
   margin: 10px 0 0;
   padding: 6px 10px;
   border-radius: var(--pf-radius-sm);
-  background: rgb(90 184 255 / 0.14);
-  color: #5ab8ff;
+  background: color-mix(in srgb, var(--pf-sky) 14%, transparent);
+  color: var(--pf-sky);
   font-size: 13px;
   font-weight: 700;
 }
@@ -573,6 +555,7 @@
   border: 2px solid var(--pf-rim);
   border-radius: var(--pf-radius-md);
   background: var(--pf-felt);
+  box-shadow: var(--pf-lift-sm);
   color: var(--pf-chalk);
   font: inherit;
   cursor: pointer;
@@ -587,21 +570,17 @@
   outline: 3px solid var(--pf-yolk);
   outline-offset: 2px;
 }
-.bs-tile.common {
-  border-color: #5ab8ff;
-  color: #5ab8ff;
-}
-.bs-tile.rare {
-  border-color: #b48cff;
-  color: #b48cff;
+.bs-tile:is(.common, .rare, .epic) {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .bs-tile.epic {
-  border-color: var(--pf-yolk);
-  color: var(--pf-yolk);
-  box-shadow: 0 0 12px rgb(255 200 61 / 0.3);
+  box-shadow:
+    var(--pf-lift-sm),
+    0 0 12px color-mix(in srgb, var(--pf-yolk) 30%, transparent);
 }
 .bs-tile.helper {
-  border-color: #4be3a0;
+  border-color: var(--pf-mint);
 }
 .bs-tile.helper.waiting {
   opacity: 0.55;
@@ -615,7 +594,7 @@
   display: grid;
   place-items: center;
   font-size: 24px;
-  color: #4be3a0;
+  color: var(--pf-mint);
 }
 .bs-tile-name {
   font-size: 12px;
@@ -628,12 +607,13 @@
   top: -8px;
   left: -6px;
   min-width: 24px;
-  padding: 1px 6px;
-  border-radius: 999px;
+  padding: 0 var(--pf-space-3);
+  border: 2px solid var(--pf-night);
+  border-radius: var(--pf-radius-pill);
   background: var(--pf-yolk);
   color: var(--pf-ink);
-  font-size: 12px;
-  font-weight: 700;
+  font-size: var(--pf-fs-xs);
+  font-weight: var(--pf-fw-bold);
 }
 .bs-info {
   position: absolute;
@@ -706,6 +686,7 @@
   border-style: dashed;
   border-color: var(--pf-rim);
   background: transparent;
+  box-shadow: none;
   color: var(--pf-haze);
   cursor: default;
   opacity: 0.8;
@@ -732,8 +713,8 @@
   letter-spacing: 0.03em;
 }
 .bs-card .bs-tag.up {
-  background: rgb(255 200 61 / 0.18);
-  color: #ffc83d;
+  background: color-mix(in srgb, var(--pf-yolk) 18%, transparent);
+  color: var(--pf-yolk);
 }
 
 /* "New skill slot!" after a bonus round's socket is hit. */
@@ -742,10 +723,10 @@
   gap: 12px;
   align-items: center;
   padding: 10px 14px;
-  border: 2px solid #4be3a0;
+  border: 2px solid var(--pf-mint);
   border-radius: var(--pf-radius);
-  background: rgb(75 227 160 / 0.12);
-  color: #4be3a0;
+  background: color-mix(in srgb, var(--pf-mint) 12%, transparent);
+  color: var(--pf-mint);
   animation: bs-flip 420ms cubic-bezier(0.2, 1.3, 0.4, 1) backwards;
 }
 .bs-slot-callout div {
@@ -776,12 +757,12 @@
   align-items: center;
 }
 .bs-card .bs-tag.synergy {
-  background: rgb(75 227 160 / 0.25);
-  color: #4be3a0;
+  background: color-mix(in srgb, var(--pf-mint) 25%, transparent);
+  color: var(--pf-mint);
 }
 .bs-card .bs-tag.held {
-  background: #ffc83d;
-  color: #3a2a00;
+  background: var(--pf-yolk);
+  color: var(--pf-ink);
 }
 .bs-card .bs-price {
   margin-top: auto;
@@ -793,7 +774,7 @@
   opacity: 0.55;
 }
 .bs-card.held {
-  box-shadow: 0 0 0 3px rgb(255 200 61 / 0.5);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pf-yolk) 50%, transparent);
 }
 .bs-lock {
   position: absolute;
@@ -804,8 +785,8 @@
   gap: 4px;
   padding: 4px 8px;
   border: 2px solid var(--pf-rim);
-  border-radius: 999px;
-  background: var(--pf-night, #12102a);
+  border-radius: var(--pf-radius-pill);
+  background: var(--pf-night);
   color: var(--pf-haze);
   font: inherit;
   font-size: 12px;
@@ -813,8 +794,8 @@
   cursor: pointer;
 }
 .bs-lock:hover:not(:disabled) {
-  border-color: #ffc83d;
-  color: #ffc83d;
+  border-color: var(--pf-yolk);
+  color: var(--pf-yolk);
 }
 .bs-lock:focus-visible {
   outline: 3px solid var(--pf-yolk);
@@ -833,8 +814,8 @@
 }
 .bs-card .bs-stashed svg,
 .bs-card .bs-stashed .pf-icon {
-  color: #ffc83d;
-  stroke: #ffc83d;
+  color: var(--pf-yolk);
+  stroke: var(--pf-yolk);
 }
 /* Grey the content, keep the gold "held" line bright. */
 .bs-card.stashed > :not(.bs-stashed) {
@@ -844,7 +825,7 @@
 .bs-card .bs-stashed {
   justify-content: flex-start;
   gap: 6px;
-  color: #ffc83d;
+  color: var(--pf-yolk);
   font-size: 13px;
   font-weight: 700;
 }
@@ -867,25 +848,25 @@
   gap: 8px;
   align-items: center;
   padding: 10px 12px;
-  border: 2px solid var(--pf-coral, #ff6b6b);
+  border: 2px solid var(--pf-coral);
   border-radius: var(--pf-radius-md);
   background: rgb(40 10 20 / 0.92);
   color: var(--pf-chalk);
   animation: bs-danger-pulse 1.2s ease-in-out infinite;
-  z-index: 2;
+  z-index: var(--pf-z-raised);
 }
 .bs-danger[hidden] {
   display: none;
 }
 .bs-danger strong {
-  color: var(--pf-coral, #ff6b6b);
+  color: var(--pf-coral);
 }
 .bs-danger span {
   font-size: 14px;
 }
 @keyframes bs-danger-pulse {
   50% {
-    box-shadow: 0 0 18px rgb(255 107 107 / 0.6);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--pf-coral) 60%, transparent);
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -894,12 +875,7 @@
   }
 }
 
-/* Fresh start: the erase button is red, and the undo row after it. */
-.bs-danger-btn.pf-btn {
-  --face: #7a1f2e;
-  --edge: #4a0f1a;
-  --text: #ffe3e8;
-}
+/* Fresh start: the erase button is .pf-btn.danger; the undo row after it. */
 .bs-reset-done {
   display: flex;
   gap: 10px;
@@ -917,11 +893,11 @@
   border: 3px solid transparent;
   background:
     linear-gradient(var(--face), var(--face)) padding-box,
-    repeating-linear-gradient(45deg, #ff6fb5 0 10px, #ffc83d 10px 20px) border-box;
-  --edge: #ff6fb5;
+    repeating-linear-gradient(45deg, var(--pf-pink) 0 10px, var(--pf-yolk) 10px 20px) border-box;
+  --edge: var(--pf-pink);
 }
 .bs-card.bonus .bs-card-icon {
-  color: #ffc83d;
+  color: var(--pf-yolk);
 }
 .bs-card .bs-ribbon {
   position: absolute;
@@ -930,7 +906,7 @@
   width: 110px;
   padding: 3px 0;
   transform: rotate(45deg);
-  background: #ff6fb5;
+  background: var(--pf-pink);
   color: var(--pf-night);
   font-size: 10px;
   font-weight: 800;
@@ -994,7 +970,7 @@
   font-size: 14px;
 }
 .bs-hero-hp {
-  color: #ff8fa3;
+  color: var(--pf-coral);
   font-weight: 700;
   font-size: 15px;
 }
@@ -1007,10 +983,10 @@
   gap: 2px;
 }
 .bs-hero-perks .good {
-  color: #69db7c;
+  color: var(--pf-mint);
 }
 .bs-hero-perks .bad {
-  color: #ff8787;
+  color: var(--pf-coral);
 }
 .bs-hero-grid {
   display: grid;
@@ -1021,7 +997,7 @@
   display: grid;
   justify-items: center;
   gap: 2px;
-  padding: 6px 4px;
+  padding: var(--pf-space-3) var(--pf-space-2);
   border: 2px solid var(--pf-rim);
   border-radius: var(--pf-radius-md);
   background: var(--pf-pit);
@@ -1064,7 +1040,7 @@
   }
 }
 .bs-danger-hp {
-  color: #ff8787;
+  color: var(--pf-coral);
   font-weight: 800;
   white-space: nowrap;
 }
@@ -1094,7 +1070,7 @@
   color: var(--pf-haze);
 }
 .bs-slot-strip.full .bs-slot-count {
-  color: #ff8787;
+  color: var(--pf-coral);
 }
 .bs-socks {
   display: flex;
@@ -1119,14 +1095,8 @@
   width: 24px;
   height: 24px;
 }
-.bs-sock.common {
-  color: #5ab8ff;
-}
-.bs-sock.rare {
-  color: #b48cff;
-}
-.bs-sock.epic {
-  color: var(--pf-yolk);
+.bs-sock:is(.common, .rare, .epic) {
+  color: var(--accent);
 }
 .bs-sock-lv {
   position: absolute;
@@ -1136,7 +1106,7 @@
   padding: 0 4px;
   white-space: nowrap;
   border-radius: var(--pf-radius-sm);
-  background: var(--pf-night, #14102a);
+  background: var(--pf-night);
   color: var(--pf-chalk);
   font: 800 10px/16px inherit;
   font-style: normal;
@@ -1154,8 +1124,8 @@
 }
 /* The next free socket: where the skill you pick goes. */
 .bs-sock.empty.next {
-  border-color: #4be3a0;
-  color: #4be3a0;
+  border-color: var(--pf-mint);
+  color: var(--pf-mint);
   animation: bs-sock-glow 1.4s ease-in-out infinite;
 }
 .bs-sock.empty.next b {
@@ -1164,8 +1134,8 @@
 @keyframes bs-sock-glow {
   50% {
     box-shadow:
-      0 0 12px rgb(75 227 160 / 0.6),
-      inset 0 0 6px rgb(75 227 160 / 0.3);
+      0 0 12px color-mix(in srgb, var(--pf-mint) 60%, transparent),
+      inset 0 0 6px color-mix(in srgb, var(--pf-mint) 30%, transparent);
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1174,8 +1144,8 @@
   }
 }
 .bs-card .bs-tag.swap {
-  background: rgb(255 107 107 / 0.18);
-  color: #ff8787;
+  background: color-mix(in srgb, var(--pf-coral) 18%, transparent);
+  color: var(--pf-coral);
   font-size: 13px;
   padding: 0 7px;
 }
@@ -1300,14 +1270,14 @@
   height: 24px;
   padding: 0;
   border-radius: 50%;
-  background: #ff6b6b;
-  color: #fff;
+  background: var(--pf-coral);
+  color: var(--pf-chalk);
   font-size: 17px;
   font-weight: 900;
   line-height: 1;
   box-shadow:
     0 0 0 2px rgb(0 0 0 / 0.25),
-    0 0 10px rgb(255 107 107 / 0.6);
+    0 0 10px color-mix(in srgb, var(--pf-coral) 60%, transparent);
 }
 /* The price: a gold pill (green when free). */
 .bs-card .bs-price {
@@ -1315,19 +1285,19 @@
   align-items: center;
   gap: 4px;
   padding: 3px 10px 3px 4px;
-  border-radius: 999px;
+  border-radius: var(--pf-radius-pill);
   background: var(--pf-yolk);
-  color: var(--pf-ink, #1b1d2b);
+  color: var(--pf-ink);
   font-weight: 800;
   font-size: 16px;
   box-shadow: 0 2px 0 rgb(0 0 0 / 0.3);
 }
 .bs-card .bs-price .bs-coins {
-  color: var(--pf-ink, #1b1d2b);
+  color: var(--pf-ink);
 }
 .bs-card .bs-price.free {
   padding: 3px 10px;
-  background: #4be3a0;
+  background: var(--pf-mint);
 }
 .bs-card:disabled .bs-price {
   filter: grayscale(0.6);
@@ -1340,7 +1310,7 @@
 /* Price numbers: dark on the gold pill so they read. */
 .bs-card .bs-price span,
 .bs-card .bs-price .bs-coins span {
-  color: var(--pf-ink, #1b1d2b);
+  color: var(--pf-ink);
   font-weight: 800;
 }
 
@@ -1358,9 +1328,10 @@
 .bs-points {
   display: inline-block;
   margin-left: 6px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: #4be3a0;
+  padding: 0 var(--pf-space-4);
+  border: 2px solid var(--pf-night);
+  border-radius: var(--pf-radius-pill);
+  background: var(--pf-mint);
   color: var(--pf-ink);
   font-size: 13px;
   font-weight: 800;
@@ -1387,12 +1358,12 @@
 @keyframes bs-points-pulse {
   50% {
     transform: scale(1.15);
-    box-shadow: 0 0 10px rgb(75 227 160 / 0.8);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--pf-mint) 80%, transparent);
   }
 }
 @media (prefers-reduced-motion: reduce) {
   .bs-points.bs-pulse {
     animation: none;
-    box-shadow: 0 0 6px rgb(75 227 160 / 0.7);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--pf-mint) 70%, transparent);
   }
 }

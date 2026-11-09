@@ -2,11 +2,11 @@ import {
   createCanvas2D,
   createGameApp,
   h,
-  icon,
   playSound,
   startRenderLoop,
   theme,
   toast,
+  toolButton,
   UI_SOUNDS,
   type Session,
 } from '@forge'
@@ -61,18 +61,10 @@ function statusLine(s: CaroState, selfId: string, names: [string, string]): [str
   return [t("{name}'s turn", { name: seat.name }), theme.haze]
 }
 
-function button(label: string, svgIcon: string, onclick: () => void, extra = ''): HTMLButtonElement {
-  const b = h('button', { class: `pf-btn caro-tool ${extra}`.trim(), type: 'button', onclick })
-  b.append(icon(svgIcon), h('span', { class: 'caro-tool-label', textContent: label }))
-  b.title = label
-  b.setAttribute('aria-label', label)
-  return b
-}
-
 function mount(session: Session<CaroState, CaroInput>, stage: HTMLElement): () => void {
   const selfId = session.selfId
   const host = h('div', { class: 'caro-board' })
-  const toolbar = h('div', { class: 'caro-toolbar' })
+  const toolbar = h('div', { class: 'pf-toolbar' })
   const root = h('div', { class: 'caro' }, host, toolbar)
   stage.append(root)
 
@@ -351,12 +343,12 @@ function mount(session: Session<CaroState, CaroInput>, stage: HTMLElement): () =
 
     const items: HTMLElement[] = []
     if (offline) {
-      const u = button(t('Undo ({n})', { n: undosLeft }), ICONS.undo, undo)
+      const u = toolButton(t('Undo ({n})', { n: undosLeft }), ICONS.undo, undo)
       u.disabled = !canUndo
       items.push(u)
     } else if (canResign) {
       items.push(
-        button(
+        toolButton(
           resignArmed ? t('Sure? Tap again') : t('Resign'),
           ICONS.flag,
           resign,
@@ -364,7 +356,12 @@ function mount(session: Session<CaroState, CaroInput>, stage: HTMLElement): () =
         ),
       )
     }
-    const pen = button(ui.pen ? t('Done drawing') : t('Draw'), ICONS.pen, togglePen, ui.pen ? 'primary' : '')
+    const pen = toolButton(
+      ui.pen ? t('Done drawing') : t('Draw'),
+      ICONS.pen,
+      togglePen,
+      ui.pen ? 'primary' : '',
+    )
     pen.setAttribute('aria-pressed', String(ui.pen))
     items.push(h('span', { class: 'caro-sep' }), pen)
     if (ui.pen) {
@@ -386,12 +383,12 @@ function mount(session: Session<CaroState, CaroInput>, stage: HTMLElement): () =
       items.push(swatches)
     }
     const hasInk = shared.board.strokes.length > 0
-    const erase = button(t('Erase my last'), ICONS.eraser, () => {
+    const erase = toolButton(t('Erase my last'), ICONS.eraser, () => {
       if (shared.undoMine()) playSound(CARO_SOUNDS.undo, 0.6)
       refresh()
     })
     erase.disabled = !hasInk
-    const clear = button(t('Clear drawing'), ICONS.trash, () => {
+    const clear = toolButton(t('Clear drawing'), ICONS.trash, () => {
       shared.clear()
       playSound(CARO_SOUNDS.erase)
       refresh()

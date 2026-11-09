@@ -25,6 +25,7 @@
     --pf-mint: #4be3a0; /* good news: live, free, new, synergy */
     --pf-sky: #5ab8ff; /* common rarity, info */
     --pf-violet: #b48cff; /* rare rarity */
+    --pf-pink: #ff6fb5; /* bonus, celebration */
 
     /* ---- Type ---- */
     --pf-font: 'Fredoka', ui-rounded, system-ui, sans-serif;

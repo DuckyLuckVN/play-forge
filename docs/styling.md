@@ -53,7 +53,7 @@ z-index. If a value you need is missing, add a token rather than a raw value.
 | Group   | Tokens                                                                                                                                  |
 | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | Colour  | `--pf-night` `--pf-felt` `--pf-rim` `--pf-pit` `--pf-chalk` `--pf-haze` `--pf-yolk` `--pf-yolk-edge` `--pf-ink`                         |
-|         | `--pf-coral` `--pf-coral-edge` `--pf-coral-ink` `--pf-mint` `--pf-sky` `--pf-violet`                                                    |
+|         | `--pf-coral` `--pf-coral-edge` `--pf-coral-ink` `--pf-mint` `--pf-sky` `--pf-violet` `--pf-pink`                                        |
 | Type    | `--pf-font`; sizes `--pf-fs-xs/sm/md/base/lg/xl/2xl` = 12/13/14/16/20/24/28px; weights `--pf-fw-semi` 600, `--pf-fw-bold` 700           |
 | Spacing | `--pf-space-1..7` = 2/4/6/8/12/16/20px                                                                                                  |
 | Radius  | `--pf-radius-lg` 14, `--pf-radius-md` 10, `--pf-radius` 8, `--pf-radius-sm` 6, `--pf-radius-pill` 999px                                 |
@@ -114,6 +114,8 @@ raised edge), `--text`; and `--pf-edge` for the depth. Player colour on seats, c
 ## Rules
 
 - Use tokens. No raw hex colours in game CSS; add a token (and the `theme.ts` entry) if one is missing.
+  A game's own palette (e.g. Synthstride's neon, from its `palette.ts`) is named once as game custom
+  properties at the top of its CSS file (`--ss-cyan`), never repeated as hex.
 - Reuse a component before writing a new class; extend it with a modifier class in the game file.
 - No inline visual styles from TS (`style="color:…"`). Use a class. Inline is fine for geometry or
   per-element hand-offs (`left`, `width`, `--c`, `--i`, `--left`).

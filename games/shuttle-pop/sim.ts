@@ -5,7 +5,7 @@ import type { GameDefinition, GameOptions, InputEvent, PlayerInfo } from '@forge
 import { botStep, newBotMemory, type BotMemory } from './ai'
 import { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld } from './court'
 import { t } from './i18n'
-import { COURT, DT, stepShuttle, type Flight, type Vec3 } from './physics'
+import { COURT, DT, settleOnFloor, stepShuttle, type Flight, type Vec3 } from './physics'
 import { award, serveBox, winner } from './rules'
 import {
   chooseShot,
@@ -418,7 +418,6 @@ function scorePoint(state: SpState, side: 0 | 1) {
 
 function landed(state: SpState) {
   const s = state.shuttle
-  s.pos.y = 0
   const hitter = s.lastHitter === -1 ? state.server : s.lastHitter
   const landSide: 0 | 1 = s.pos.z > 0 ? 1 : s.pos.z < 0 ? 0 : other(hitter)
   const inCourt = Math.abs(s.pos.x) <= COURT.halfWidth && Math.abs(s.pos.z) <= COURT.halfLen
@@ -506,10 +505,17 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
 
   // 4. Flight, landing, net.
   if (state.phase === 'rally') {
+    const px = s.pos.x
+    const py = s.pos.y
+    const pz = s.pos.z
     if (stepShuttle(s).netHit) {
       emit(state, { k: 'net' })
       scorePoint(state, other(s.lastHitter === -1 ? state.server : s.lastHitter))
-    } else if (s.pos.y <= 0) landed(state)
+    } else if (s.pos.y <= 0) {
+      // Call the line where it truly touched down, not at the below-floor overshoot.
+      settleOnFloor(s.pos, px, py, pz)
+      landed(state)
+    }
   } else if (state.phase === 'point') {
     // Let it fall (e.g. off the net tape) for the renderer; no more faults.
     if (s.pos.y > 0) {

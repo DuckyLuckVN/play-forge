@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { InputEvent, PlayerInfo } from '@forge/net/session'
-import { COURT } from './physics'
+import { COURT, predictLanding } from './physics'
 import {
   MAX_REWIND,
   MOVE_SPEED,
@@ -262,6 +262,27 @@ describe('faults and points', () => {
     // side 1 server, own score 1 (odd) → left box from side 1's view = world x < 0
     expect(s.players[1].x).toBeLessThan(0)
     expect(s.players[1].z).toBeGreaterThan(COURT.shortLine)
+  })
+  it('a smash onto the back corner lines is called at its true landing point → in', () => {
+    // Shift a steep smash so its predicted landing sits on the corner (lines are in); the call
+    // must use that point, not the below-floor overshoot of the last tick.
+    const vel = { x: 1.2, y: -7, z: 16 }
+    const probe = predictLanding({ pos: { x: 0, y: 2.6, z: 1 }, vel: { ...vel } }).pos
+    const eps = 1e-9
+    const start = { x: COURT.halfWidth - eps - probe.x, y: 2.6, z: 1 + COURT.halfLen - eps - probe.z }
+    const want = predictLanding({ pos: { ...start }, vel: { ...vel } }).pos
+    expect(Math.abs(want.x)).toBeLessThanOrEqual(COURT.halfWidth)
+    expect(want.z).toBeLessThanOrEqual(COURT.halfLen)
+    expect(want.z).toBeCloseTo(COURT.halfLen, 6)
+    const s = duel()
+    rally(s, start, vel, 0)
+    const seen = run(s, 120)
+    const land = seen.find((e) => e.k === 'land')
+    if (land?.k !== 'land') throw new Error('no land event')
+    expect(land.in).toBe(true)
+    expect(Math.abs(land.x - want.x)).toBeLessThan(1e-6)
+    expect(Math.abs(land.z - want.z)).toBeLessThan(1e-6)
+    expect(seen.find((e) => e.k === 'point')).toMatchObject({ side: 0 })
   })
   it('falling back on own side (never crossed) → point to the other side', () => {
     const s = duel()

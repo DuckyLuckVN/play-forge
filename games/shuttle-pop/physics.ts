@@ -44,21 +44,32 @@ function advance(f: Flight, dt: number, useNet: boolean): { netHit: boolean } {
   return { netHit: false }
 }
 
+/**
+ * If a step took `pos` to or below the floor, pull it back along that step (from px/py/pz) to the
+ * exact y = 0 crossing. Shared by predictLanding and the sim's line calls so both agree. No alloc.
+ */
+export function settleOnFloor(pos: Vec3, px: number, py: number, pz: number): void {
+  if (pos.y > 0) return
+  if (py > 0) {
+    const k = py / (py - pos.y)
+    pos.x = px + (pos.x - px) * k
+    pos.z = pz + (pos.z - pz) * k
+  }
+  pos.y = 0
+}
+
 function land(f: Flight, maxTicks: number, useNet: boolean): { pos: Vec3; ticks: number; netHit: boolean } {
   const g: Flight = { pos: { ...f.pos }, vel: { ...f.vel } }
   let netHit = false
   let ticks = 0
   while (g.pos.y > 0 && ticks < maxTicks) {
-    const prev = { ...g.pos }
+    const px = g.pos.x
+    const py = g.pos.y
+    const pz = g.pos.z
     if (advance(g, DT, useNet).netHit) netHit = true
     ticks++
-    if (g.pos.y <= 0) {
-      // interpolate to y = 0 so the result is smooth in the launch parameters
-      const k = prev.y / (prev.y - g.pos.y)
-      g.pos.x = prev.x + (g.pos.x - prev.x) * k
-      g.pos.z = prev.z + (g.pos.z - prev.z) * k
-      g.pos.y = 0
-    }
+    // interpolate to y = 0 so the result is smooth in the launch parameters
+    settleOnFloor(g.pos, px, py, pz)
   }
   return { pos: g.pos, ticks, netHit }
 }

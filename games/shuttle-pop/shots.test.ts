@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { COURT, isIn, predictLanding, stepShuttle, type Flight } from './physics'
-import { chooseShot, type Grade, findContact, gradeOf, launchFor, REACH, shotTarget, type ShotKind } from './shots'
+import {
+  chooseShot,
+  type Grade,
+  findContact,
+  gradeOf,
+  launchFor,
+  REACH,
+  shotTarget,
+  type ShotKind,
+} from './shots'
 
 const rngOf = (...v: number[]) => {
   let i = 0
@@ -154,6 +163,7 @@ describe('launchFor guarantees', () => {
                 const vel = launchFor(kind, grade, from, target, zero)
                 const land = predictLanding({ pos: from, vel })
                 const tag = `${kind} ${grade} side${side} x${x} y${y} z${from.z}`
+                expect(Math.hypot(vel.x, vel.y, vel.z), tag).toBeLessThanOrEqual(45 + 1e-9)
                 expect(land.netHit, tag).toBe(false)
                 expect(land.pos.y, tag).toBe(0)
                 expect(land.pos.z * dir, tag).toBeGreaterThanOrEqual(1.0)
@@ -177,6 +187,31 @@ describe('launchFor guarantees', () => {
         const l = predictLanding({ pos: from, vel: launchFor(kind, 'perfect', from, t, zero) }).pos
         expect(Math.hypot(l.x - t.x, l.z - t.z)).toBeLessThan(0.3)
       }
+  })
+
+  it('serveLong from the serve spot lands within 1 m of the back line (perfect)', () => {
+    for (const side of [0, 1] as const)
+      for (const z of [-2, -2.5, -3])
+        for (const x of [-1.6, -0.6, 0.6, 1.6]) {
+          const dir = side === 0 ? 1 : -1
+          const from = { x, y: 1.0, z: dir * z }
+          const t = shotTarget('serveLong', side, 0)
+          const l = predictLanding({ pos: from, vel: launchFor('serveLong', 'perfect', from, t, zero) }).pos
+          expect(l.z * dir, `${side} ${x} ${z}`).toBeGreaterThanOrEqual(COURT.halfLen - 1.0)
+        }
+  })
+
+  it('late is never faster than perfect for the same kind and spot', () => {
+    const speed = (v: { x: number; y: number; z: number }) => Math.hypot(v.x, v.y, v.z)
+    for (const kind of kinds)
+      for (const z of [-6.5, -5, -3.5, -2, -0.8])
+        for (const y of [0.6, 1.5, 2.8]) {
+          const from = { x: 0.5, y, z }
+          const t = shotTarget(kind, 0, 0)
+          const p = speed(launchFor(kind, 'perfect', from, t, zero))
+          const l = speed(launchFor(kind, 'late', from, t, zero))
+          expect(l, `${kind} ${z} ${y}`).toBeLessThanOrEqual(p + 1e-6)
+        }
   })
 
   it('late is shorter than perfect but still in play', () => {

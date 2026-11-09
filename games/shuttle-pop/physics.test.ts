@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { COURT, DT, isIn, predictLanding, solveLaunch, stepShuttle, type Flight } from './physics'
+import { COURT, DRAG, DT, G, isIn, predictLanding, solveLaunch, stepShuttle, type Flight } from './physics'
 
 const copy = (f: Flight): Flight => ({ pos: { ...f.pos }, vel: { ...f.vel } })
 
@@ -7,7 +7,7 @@ describe('shuttle physics', () => {
   it('falls under gravity with drag', () => {
     const f: Flight = { pos: { x: 0, y: 300, z: 0 }, vel: { x: 0, y: 0, z: 0 } }
     for (let i = 0; i < 180; i++) stepShuttle(f)
-    expect(Math.abs(Math.abs(f.vel.y) - 6.8)).toBeLessThan(0.2)
+    expect(Math.abs(Math.abs(f.vel.y) - Math.sqrt(G / DRAG))).toBeLessThan(0.2)
   })
 
   it('predictLanding matches stepping and does not mutate', () => {

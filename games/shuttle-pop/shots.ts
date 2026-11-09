@@ -16,12 +16,12 @@ interface ShotSpec {
 }
 
 const SHOTS: Record<ShotKind, ShotSpec> = {
-  clear: { elevation: 40, maxSpeed: 100, depth: COURT.halfLen - 0.6 },
+  clear: { elevation: 50, maxSpeed: 45, depth: COURT.halfLen - 0.6 },
   drop: { elevation: 20, maxSpeed: 45, depth: 1.0 },
-  drive: { elevation: 6, maxSpeed: 50, depth: 3.5 },
-  smash: { elevation: -10, maxSpeed: 34, depth: 4.0 },
+  drive: { elevation: 6, maxSpeed: 45, depth: 3.5 },
+  smash: { elevation: -10, maxSpeed: 45, depth: 4.0 },
   serveShort: { elevation: 25, maxSpeed: 45, depth: COURT.shortLine + 0.4 },
-  serveLong: { elevation: 55, maxSpeed: 38, depth: COURT.halfLen - 0.5 },
+  serveLong: { elevation: 55, maxSpeed: 45, depth: COURT.halfLen - 0.5 },
 }
 
 const JITTER: Record<Grade, number> = { perfect: 0.2, good: 0.6, late: 1.2 }
@@ -109,7 +109,7 @@ const scaled = (v: Vec3, k: number): Vec3 => ({ x: v.x * k, y: v.y * k, z: v.z *
  * Launch velocity toward `target` (jittered by grade). maxSpeed is a cap: the speed is solved to hit
  * the aim, then scaled by the grade factor (worse grade = shorter, floatier). Guarantee: clears the
  * net and lands >= MIN_DEPTH past it; if the grade scale breaks that, elevation is lifted (+3 deg
- * steps, up to +75), then the scale is dropped.
+ * steps, up to +75), then the full-power shot is used (worse grades never exceed its speed).
  */
 export function launchFor(
   kind: ShotKind,
@@ -128,14 +128,16 @@ export function launchFor(
     const p = predictLanding({ pos: from, vel: v })
     return !p.netHit && p.pos.y <= 0 && p.pos.z * dir >= MIN_DEPTH
   }
-  const k = SPEED_FACTOR[grade]
-  let last = solveLaunch(from, aim, spec.elevation, spec.maxSpeed)
-  for (const factor of k === 1 ? [1] : [k, 1]) {
+  const search = (factor: number, maxV: number): Vec3 | null => {
     for (let lift = 0; lift <= NET_LIFT_MAX && spec.elevation + lift <= 80; lift += NET_LIFT_STEP) {
       const v = scaled(solveLaunch(from, aim, spec.elevation + lift, spec.maxSpeed), factor)
-      last = v
-      if (ok(v)) return v
+      if (Math.hypot(v.x, v.y, v.z) <= maxV && ok(v)) return v
     }
+    return null
   }
-  return last
+  // reference = the full-power (Perfect-style) shot for this aim; worse grades never exceed its speed
+  const ref = search(1, Infinity) ?? solveLaunch(from, aim, spec.elevation, spec.maxSpeed)
+  const k = SPEED_FACTOR[grade]
+  if (k === 1) return ref
+  return search(k, Math.hypot(ref.x, ref.y, ref.z)) ?? ref
 }

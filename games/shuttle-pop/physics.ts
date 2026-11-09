@@ -7,9 +7,9 @@ export interface Vec3 {
 }
 
 export const COURT = { halfLen: 6.7, halfWidth: 2.59, netH: 1.55, shortLine: 1.98 } as const
-/** Gravity, quadratic drag coefficient (terminal speed ≈ 6.8 m/s), fixed tick. */
+/** Gravity, quadratic drag coefficient (terminal speed = sqrt(G/DRAG)), fixed tick. */
 export const G = 9.8
-export const DRAG = 0.21
+export const DRAG = 0.15
 export const DT = 1 / 60
 
 export interface Flight {

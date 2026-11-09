@@ -5,6 +5,8 @@ import {
   MOVE_SPEED,
   NET_MARGIN,
   POINT_TICKS,
+  SERVE_TIMEOUT,
+  SWING_COOLDOWN,
   shuttlePopGame as game,
   toWorld,
   type SpEvent,
@@ -260,16 +262,23 @@ describe('swings', () => {
     rally(s, { x: 0, y: 1.5, z: -2.2 }, { x: 0, y: 3, z: 2 }, 0)
     const seen = run(s, 20, (st) => (st.tick % 20 === 1 ? [swing('p0')] : []))
     expect(seen.some((e) => e.k === 'hit')).toBe(false)
+    expect(seen.some((e) => e.k === 'whiff' && e.side === 0)).toBe(true)
   })
   it('double swing at the net on the same tick → exactly one hit, by the side the shuttle is over', () => {
-    for (const z of [0.05, 0]) {
+    for (const [z, reversed] of [
+      [0.05, false],
+      [0, false],
+      [0.05, true],
+      [0, true],
+    ] as const) {
       const s = duel()
       s.players[0].x = 0
       s.players[0].z = -0.4
       s.players[1].x = 0
       s.players[1].z = 0.4
       rally(s, { x: 0, y: 1.7, z }, { x: 0, y: 0.5, z: 1 }, 0)
-      game.tick(s, [swing('p0', 0, 1), swing('p1', 0, 1)])
+      const both = [swing('p0', 0, 1), swing('p1', 0, 1)]
+      game.tick(s, reversed ? both.reverse() : both)
       const seen: SpEvent[] = []
       allEvents(s, seen)
       run(s, 30, () => [], seen)
@@ -303,6 +312,92 @@ describe('swings', () => {
     const land = seen.find((e) => e.k === 'land')
     if (land?.k !== 'land') throw new Error()
     expect(land.z).toBeLessThan(0)
+  })
+})
+
+describe('swing timing', () => {
+  /** Shuttle passes right through p1 (closest on the first tick), drifting slowly so it stays in reach. */
+  function passing() {
+    const s = duel()
+    s.players[1].x = 0
+    s.players[1].z = 3
+    rally(s, { x: 0, y: 1.5, z: 3 }, { x: 1.2, y: 1, z: 0 }, 0)
+    return s
+  }
+  /** Swing `after` ticks after the closest approach; returns the swing tick's events. */
+  function swingAfter(after: number) {
+    const s = passing()
+    run(s, after) // first tick records the closest approach
+    game.tick(s, [swing('p1')])
+    return s.events.filter((e) => e.tick === s.tick)
+  }
+  it('a few ticks late is graded by |dt| (perfect band), hit at once', () => {
+    expect(swingAfter(3).find((e) => e.k === 'hit')).toMatchObject({ side: 1, grade: 'perfect' })
+    expect(swingAfter(6).find((e) => e.k === 'hit')).toMatchObject({ side: 1, grade: 'perfect' })
+  })
+  it('later than pastGrace is a whiff, not a free perfect', () => {
+    for (const after of [7, 8, 10, 14]) {
+      const evs = swingAfter(after)
+      expect(evs.some((e) => e.k === 'hit')).toBe(false)
+      expect(evs.some((e) => e.k === 'whiff' && e.side === 1)).toBe(true)
+    }
+  })
+  it('a hit with dt > 0 fires exactly at its contact tick', () => {
+    const s = duel()
+    s.players[1].x = 0
+    s.players[1].z = 3
+    rally(s, { x: 0, y: 1.6, z: 1.6 }, { x: 0, y: 1.5, z: 3 }, 0)
+    game.tick(s, [swing('p1')])
+    const pend = s.shuttle.pending
+    expect(pend).not.toBeNull()
+    expect(pend!.atTick).toBeGreaterThan(s.tick)
+    const seen = run(s, 30)
+    const hits = seen.filter((e) => e.k === 'hit')
+    expect(hits).toHaveLength(1)
+    expect(hits[0].tick).toBe(pend!.atTick)
+  })
+  it('running away from a scheduled hit whiffs', () => {
+    const s = duel()
+    s.players[1].x = 0
+    s.players[1].z = 3
+    rally(s, { x: 0, y: 1.6, z: 1.6 }, { x: 0, y: 1.5, z: 3 }, 0)
+    game.tick(s, [swing('p1')])
+    expect(s.shuttle.pending!.atTick).toBeGreaterThan(s.tick)
+    s.players[1].x = 2.5 // ran off
+    const seen = run(s, 30)
+    expect(seen.some((e) => e.k === 'hit')).toBe(false)
+    expect(seen.some((e) => e.k === 'whiff' && e.side === 1)).toBe(true)
+  })
+  it('swing cooldown: a second swing inside SWING_COOLDOWN ticks is ignored', () => {
+    const s = duel()
+    rally(s, { x: 0, y: 3, z: -3 }, { x: 0, y: 5, z: 0 }, 1) // p1 hit last: every p1 swing whiffs
+    const whiffs = () => s.events.filter((e) => e.k === 'whiff').length
+    game.tick(s, [swing('p1')])
+    expect(whiffs()).toBe(1)
+    run(s, SWING_COOLDOWN - 2)
+    game.tick(s, [swing('p1')])
+    expect(whiffs()).toBe(1)
+    game.tick(s, [swing('p1')])
+    expect(whiffs()).toBe(2)
+  })
+  it("a swing that can't resolve (receiver during the serve) doesn't start the cooldown", () => {
+    const s = duel()
+    const before = s.players[1].swingAt
+    game.tick(s, [swing('p1')])
+    expect(s.players[1].swingAt).toBe(before)
+  })
+})
+
+describe('serve timeout', () => {
+  it('an idle server short-serves after SERVE_TIMEOUT ticks', () => {
+    const s = game.setup(players(1), 5, {})
+    s.server = 1 // the (still idle) computer serves
+    game.tick(s, [])
+    run(s, SERVE_TIMEOUT - 2)
+    expect(s.phase).toBe('serve')
+    game.tick(s, [])
+    expect(s.phase).toBe('rally')
+    expect(s.events.some((e) => e.k === 'serve' && e.side === 1)).toBe(true)
   })
 })
 

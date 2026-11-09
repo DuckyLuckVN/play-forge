@@ -10,6 +10,7 @@ import {
   findContact,
   gradeOf,
   launchFor,
+  REACH,
   shotTarget,
   WINDOW,
   type Grade,
@@ -30,6 +31,10 @@ const OUT_MARGIN = 0.8
 export const POINT_TICKS = 72
 /** Ticks before a player can swing again (stops swing-mashing). */
 export const SWING_COOLDOWN = 20
+/** Ticks in the serve phase before the server short-serves automatically (idle player / AI). */
+export const SERVE_TIMEOUT = 300
+/** A scheduled hit whiffs if the swinger is further than REACH.radius + this from the shuttle. */
+const PENDING_SLACK = 0.3
 const EVENT_TICKS = 60
 const HISTORY_TICKS = 8
 export const PRESETS = 4
@@ -275,21 +280,67 @@ function onHalf(z: number, side: 0 | 1, lastHitter: -1 | 0 | 1): boolean {
   return side === 0 ? z < 0 : z > 0
 }
 
-/** Rewind is 0 for now (Task 11 uses `history` + the input's tick). */
-function trySwing(state: SpState, p: SpPlayer, held: { x: number; z: number }) {
+const sq = (n: number) => n * n
+
+/**
+ * Resolve a rally swing. `rewind` = ticks the swing happened before now (0 here; Task 11 passes the
+ * guest's lag). Candidates: in-reach shuttle positions on the swinger's half from `history` (the past)
+ * and the forward scan (the future, up to WINDOW.late after the swing). The closest one wins (the past
+ * only when strictly closer); dt = contact tick − swing tick, graded by gradeOf (|dt| bands, dt <
+ * −pastGrace → whiff). A contact at or before now hits at once from the current position; a future one
+ * is scheduled as `pending`. Past candidates come only from `history`, so it must cover
+ * rewind + pastGrace + 1 ticks.
+ */
+export function resolveSwing(state: SpState, p: SpPlayer, held: { x: number; z: number }, rewind = 0) {
   const s = state.shuttle
   if (s.lastHitter === p.side || s.pending) {
     emit(state, { k: 'whiff', side: p.side })
     return
   }
-  const c = findContact(s, p, 0, WINDOW.late)
-  const grade = c && onHalf(c.pos.z, p.side, s.lastHitter) ? gradeOf(c.dt) : null
-  if (!c || !grade) {
+  const swingTick = state.tick - rewind
+  let bestD = Infinity
+  let bestTick = 0
+  let bestY = 0
+  for (const h of state.history) {
+    if (h.tick >= state.tick || h.pos.y < REACH.minY || h.pos.y > REACH.maxY) continue
+    if (!onHalf(h.pos.z, p.side, s.lastHitter)) continue
+    const d = Math.hypot(h.pos.x - p.x, h.pos.z - p.z)
+    if (d <= REACH.radius && d < bestD) {
+      bestD = d
+      bestTick = h.tick
+      bestY = h.pos.y
+    }
+  }
+  const c = findContact(s, p, 0, Math.max(0, swingTick + WINDOW.late - state.tick))
+  if (c && onHalf(c.pos.z, p.side, s.lastHitter)) {
+    const d = Math.hypot(c.pos.x - p.x, c.pos.z - p.z)
+    if (d <= bestD) {
+      bestD = d
+      bestTick = state.tick + c.dt
+      bestY = c.pos.y
+    }
+  }
+  const grade = bestD === Infinity ? null : gradeOf(bestTick - swingTick)
+  if (!grade) {
     emit(state, { k: 'whiff', side: p.side })
     return
   }
-  const kind = chooseShot(held, c.pos.y, grade)
-  s.pending = { atTick: state.tick + c.dt, side: p.side, kind, grade, aimX: held.x }
+  const kind = chooseShot(held, bestY, grade)
+  s.pending = { atTick: Math.max(bestTick, state.tick), side: p.side, kind, grade, aimX: held.x }
+  if (s.pending.atTick === state.tick) hit(state)
+}
+
+/** Fire a scheduled hit; whiff if the swinger ran too far from the shuttle since the swing. */
+function firePending(state: SpState) {
+  const s = state.shuttle
+  const pend = s.pending!
+  const p = state.players[pend.side]
+  if (sq(s.pos.x - p.x) + sq(s.pos.z - p.z) > sq(REACH.radius + PENDING_SLACK)) {
+    s.pending = null
+    emit(state, { k: 'whiff', side: pend.side })
+    return
+  }
+  hit(state)
 }
 
 function hit(state: SpState) {
@@ -345,7 +396,9 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
     else if (input.t === 'pick') {
       if (finite(input.preset)) p.preset = Math.min(PRESETS - 1, Math.max(0, Math.trunc(input.preset)))
     } else if (input.t === 'swing') {
-      if (state.tick - p.swingAt < SWING_COOLDOWN || swings.some((w) => w.p === p)) continue
+      // Only swings that resolve (any rally swing, the server's serve) start the cooldown.
+      const live = state.phase === 'rally' || (state.phase === 'serve' && p.side === state.server)
+      if (!live || state.tick - p.swingAt < SWING_COOLDOWN || swings.some((w) => w.p === p)) continue
       p.swingAt = state.tick
       swings.push({ p, held: clampDir(input.x, input.z) })
     }
@@ -364,10 +417,12 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
     holdShuttle(state)
     const sw = swings.find((w) => w.p.side === state.server)
     if (sw) serve(state, sw.p, sw.held)
+    // Nobody stalls the match: an idle server short-serves automatically.
+    else if (state.phaseT >= SERVE_TIMEOUT) serve(state, state.players[state.server], { x: 0, z: 0 })
   } else if (state.phase === 'rally') {
     // 3. Swings: who can hit is decided by lastHitter + the shuttle's half, so at most one schedules.
-    for (const { p, held } of swings) trySwing(state, p, held)
-    if (s.pending && s.pending.atTick <= state.tick) hit(state)
+    for (const { p, held } of swings) resolveSwing(state, p, held)
+    if (s.pending && s.pending.atTick <= state.tick) firePending(state)
   }
 
   recordHistory(state)

@@ -9,14 +9,14 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    font: 600 17px/1 var(--pf-font);
+    gap: var(--pf-space-4);
+    font: var(--pf-fw-semi) var(--pf-fs-base) / 1 var(--pf-font);
     color: var(--text);
     background: var(--face);
     border: 2px solid var(--edge);
     border-radius: var(--pf-radius);
     box-shadow: 0 var(--pf-edge) 0 var(--edge);
-    padding: 13px 18px 12px;
+    padding: 12px 16px 11px;
     margin-bottom: var(--pf-edge);
     cursor: pointer;
     transition:
@@ -54,13 +54,36 @@
     color: var(--pf-chalk);
   }
   .pf-btn.icon {
-    padding: 8px;
-    width: 44px;
-    height: 44px;
+    padding: var(--pf-space-4);
+    width: 42px;
+    height: 42px;
     --pf-edge: 3px;
   }
   .pf-btn.wide {
     width: 100%;
+  }
+  /* Small: toolbar buttons under a board. */
+  .pf-btn.sm {
+    --pf-edge: 3px;
+    padding: 9px 12px 8px;
+    font-size: var(--pf-fs-md);
+    gap: var(--pf-space-3);
+  }
+  /* Danger: destructive or "armed" actions. */
+  .pf-btn.danger {
+    --face: var(--pf-coral);
+    --edge: var(--pf-coral-edge);
+    --text: var(--pf-coral-ink);
+  }
+
+  /* ---------- Toolbar: a centred, wrapping row of small buttons ---------- */
+  .pf-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--pf-space-4);
+    min-height: 48px;
   }
   .pf-icon {
     display: inline-flex;

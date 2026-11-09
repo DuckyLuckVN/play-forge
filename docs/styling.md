@@ -68,24 +68,44 @@ drift apart, so change a colour in both places. For a translucent tint of a toke
 
 ## Components
 
-| File            | Classes                                                                                         | TS helper                                |
-| --------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| `shell.css`     | `.pf-shell` `.pf-bar` `.pf-bar-title` `.pf-bar-scores` `.pf-bar-actions` `.pf-stage`            | `createGameApp` builds it                |
-| `button.css`    | `.pf-btn` + `.primary` `.quiet` `.icon` `.wide` `.loading`; `.pf-icon`                          | `iconButton()`, `icon()`                 |
-| `overlay.css`   | `.pf-overlay`, `.pf-panel` (+ `.wide`, `.enter`)                                                |                                          |
-| `text.css`      | `.pf-heading` `.pf-lede` `.pf-headline` `.pf-note` (+ `.error`) `.pf-or`                        |                                          |
-| `forms.css`     | `.pf-field` `.pf-input` (+ `.code`) `.pf-row`                                                   |                                          |
-| `results.css`   | `.pf-summary` `.pf-stat` (+ `.hi`), `.pf-ranking` `.pf-rank*`                                   |                                          |
-| `room.css`      | `.pf-room` `.pf-room-code`, `.pf-seats` `.pf-seat` `.pf-token` `.pf-badge` `.pf-seat-*`         |                                          |
-| `chip.css`      | `.pf-chip` (+ `.self` `.out` `.bump`; `.dot`)                                                   |                                          |
-| `dots.css`      | `.pf-dots` (waiting)                                                                            |                                          |
-| `popover.css`   | `.pf-popover-anchor` `.pf-popover` `.pf-lang-btn` `.pf-lang-pop`                                | `popover()`, `audioMenu()`, `langMenu()` |
-| `slider.css`    | `.pf-slider` `.pf-range` `.pf-range-value`                                                      | `slider()`                               |
-| `countdown.css` | `.pf-countdown`                                                                                 |                                          |
-| `toast.css`     | `.pf-toasts` `.pf-toast` (`--pf-toast-dot`)                                                     | `toast()`                                |
-| `count.css`     | `.pf-count` (number badge on a button)                                                          | `countBadge()`                           |
-| `mobile.css`    | top-bar groups: `.pf-fan*` `.pf-fab` `.pf-more*` `.pf-overflow` `.pf-slot`; phone bottom sheets |                                          |
-| `options.css`   | `.pf-options` `.pf-option` `.pf-segmented` `.pf-segment`                                        | `optionPickers()`                        |
+| File            | Classes                                                                                               | TS helper                                            |
+| --------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `shell.css`     | `.pf-shell` `.pf-bar` `.pf-bar-title` `.pf-bar-scores` `.pf-bar-actions` `.pf-stage`                  | `createGameApp` builds it                            |
+| `surface.css`   | `.pf-card` (+ `.sunken` `.raised` `.sm`)                                                              | `card()`, `cardClass()`                              |
+| `pill.css`      | `.pf-pill` (+ `.mint` `.common` `.rare` `.epic` `.dot`); accent classes set `--accent`                | `pill()`, `pillClass()`                              |
+| `button.css`    | `.pf-btn` + `.primary` `.quiet` `.icon` `.wide` `.sm` `.danger` `.loading`; `.pf-icon`; `.pf-toolbar` | `button()`, `toolButton()`, `iconButton()`, `icon()` |
+| `overlay.css`   | `.pf-overlay`, `.pf-panel` (+ `.wide`, `.enter`; `--pf-panel-pad`)                                    | `panel()`                                            |
+| `text.css`      | `.pf-heading` `.pf-lede` `.pf-headline` `.pf-note` (+ `.error`) `.pf-or`                              | `note()`                                             |
+| `forms.css`     | `.pf-field` `.pf-input` (+ `.code`) `.pf-row`                                                         |                                                      |
+| `results.css`   | `.pf-summary` `.pf-stat` (+ `.hi`), `.pf-ranking` `.pf-rank*`                                         |                                                      |
+| `room.css`      | `.pf-room` `.pf-room-code`, `.pf-seats` `.pf-seat` `.pf-token` `.pf-badge` `.pf-seat-*`               |                                                      |
+| `chip.css`      | `.pf-chip` (+ `.self` `.out` `.bump`; `.dot`)                                                         |                                                      |
+| `dots.css`      | `.pf-dots` (waiting)                                                                                  |                                                      |
+| `popover.css`   | `.pf-popover-anchor` `.pf-popover` `.pf-lang-btn` `.pf-lang-pop`                                      | `popover()`, `audioMenu()`, `langMenu()`             |
+| `slider.css`    | `.pf-slider` `.pf-range` `.pf-range-value`                                                            | `slider()`                                           |
+| `countdown.css` | `.pf-countdown`                                                                                       |                                                      |
+| `toast.css`     | `.pf-toasts` `.pf-toast` (`--pf-toast-dot`)                                                           | `toast()`                                            |
+| `count.css`     | `.pf-count` (number badge on a button)                                                                | `countBadge()`                                       |
+| `mobile.css`    | top-bar groups: `.pf-fan*` `.pf-fab` `.pf-more*` `.pf-overflow` `.pf-slot`; phone bottom sheets       |                                                      |
+| `options.css`   | `.pf-options` `.pf-option` `.pf-segmented` `.pf-segment`                                              | `optionPickers()`                                    |
+
+The look in numbers ("tidy chunky"):
+
+- Card: felt, `2px solid var(--pf-rim)`, `--pf-radius-lg`, `--pf-lift-lg` (6px edge), 12px padding.
+  Notices and hints: `.pf-card.sm` (8px radius, 4px edge).
+- Panel (modal): the card plus `--pf-drop`, 20px padding (`--pf-panel-pad`).
+- Button: 600 16px, padding `12px 16px 11px`, 4px edge; icon buttons 42px (40px in a phone's top
+  bar); `.sm` for toolbars (3px edge, 14px text).
+- Pills stay round with a 2px border; toasts are 8px rounded with a 4px edge.
+
+Accents: `.mint`, `.common` (sky), `.rare` (violet), `.epic` (yolk) set `--accent` with zero
+specificity. Any element can then use `border-color: var(--accent)` / `color: var(--accent)` instead
+of repeating the colour per rarity.
+
+TS helpers (`engine/ui/components.ts`, exported from `@forge`): `button(text, onclick, variant?)`,
+`toolButton(label, svgIcon, onclick, variant?)`, `panel(...children)`, `card(...children)`,
+`pill(text, variant?)`, `note(text, error?)`, plus the pure class builders `buttonClass`,
+`cardClass`, `pillClass`, `noteClass` and `cx`.
 
 Buttons are themed by three variables, which games may set: `--face` (fill), `--edge` (border and
 raised edge), `--text`; and `--pf-edge` for the depth. Player colour on seats, chips and rankings is

@@ -7,7 +7,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 16px;
+    padding: var(--pf-space-6);
     background: rgb(10 12 30 / 0.6);
     z-index: var(--pf-z-overlay);
     overflow-y: auto;
@@ -38,12 +38,12 @@
     background: var(--pf-felt);
     border: 2px solid var(--pf-rim);
     border-radius: var(--pf-radius-lg);
-    padding: 26px 24px 20px;
+    /* Games line up full-bleed parts (e.g. a sticky head) with this. */
+    --pf-panel-pad: var(--pf-space-7);
+    padding: var(--pf-panel-pad);
     display: grid;
-    gap: 16px;
-    box-shadow:
-      0 8px 0 var(--pf-rim),
-      0 30px 80px rgb(0 0 0 / 0.35);
+    gap: var(--pf-space-6);
+    box-shadow: var(--pf-lift-lg), var(--pf-drop);
   }
   .pf-panel.wide {
     width: min(560px, 100%);

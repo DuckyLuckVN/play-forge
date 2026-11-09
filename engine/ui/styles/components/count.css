@@ -16,7 +16,7 @@
     background: var(--pf-mint);
     color: var(--pf-night);
     border: 2px solid var(--pf-night);
-    font: 700 12px/1 var(--pf-font);
+    font: var(--pf-fw-bold) var(--pf-fs-xs) / 1 var(--pf-font);
     font-variant-numeric: tabular-nums;
     pointer-events: none;
   }

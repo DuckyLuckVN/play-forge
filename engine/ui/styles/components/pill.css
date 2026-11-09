@@ -1,0 +1,52 @@
+@layer pf.components {
+  /* ---------- Accents ----------
+     One `--accent` colour per meaning, shared by pills, cards, tiles and game
+     UI (border-color: var(--accent), color: var(--accent), …). Zero
+     specificity, so any rule can override them. Rarity: common, rare, epic. */
+
+  :where(.mint) {
+    --accent: var(--pf-mint);
+  }
+  :where(.common) {
+    --accent: var(--pf-sky);
+  }
+  :where(.rare) {
+    --accent: var(--pf-violet);
+  }
+  :where(.epic) {
+    --accent: var(--pf-yolk);
+  }
+
+  /* ---------- Pill: a small rounded label ----------
+     Prices, levels, counts, "NEW". Solid accent fill with dark text; plain
+     pills are felt with a rim border. */
+
+  .pf-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--pf-space-2);
+    padding: 0 var(--pf-space-4);
+    border: 2px solid var(--accent, var(--pf-rim));
+    border-radius: var(--pf-radius-pill);
+    background: var(--accent, var(--pf-felt));
+    color: var(--pf-chalk);
+    font: var(--pf-fw-bold) var(--pf-fs-sm) / 1.5 var(--pf-font);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .pf-pill:is(.mint, .common, .rare, .epic) {
+    color: var(--pf-night);
+  }
+  /* A leading dot in the accent (or yolk) colour, as on toasts. */
+  .pf-pill.dot::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent, var(--pf-yolk));
+  }
+  .pf-pill.dot:is(.mint, .common, .rare, .epic) {
+    background: var(--pf-felt);
+    color: var(--pf-chalk);
+  }
+}

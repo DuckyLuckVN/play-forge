@@ -7,6 +7,8 @@
 @import './reset.css';
 
 @import './components/shell.css';
+@import './components/surface.css';
+@import './components/pill.css';
 @import './components/button.css';
 @import './components/overlay.css';
 @import './components/text.css';

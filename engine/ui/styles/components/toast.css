@@ -17,7 +17,8 @@
     align-items: center;
     gap: 10px;
     padding: 10px 16px;
-    border-radius: var(--pf-radius-pill);
+    border-radius: var(--pf-radius);
+    box-shadow: var(--pf-lift-md);
     background: var(--pf-chalk);
     color: var(--pf-night);
     font-weight: 600;

@@ -393,10 +393,10 @@
 }
 .bs-shop > .bs-panel-head {
   position: sticky;
-  top: -26px;
+  top: calc(-1 * var(--pf-panel-pad));
   z-index: 2;
-  margin: -26px -24px 0;
-  padding: 20px 24px 10px;
+  margin: calc(-1 * var(--pf-panel-pad)) calc(-1 * var(--pf-panel-pad)) 0;
+  padding: var(--pf-panel-pad) var(--pf-panel-pad) 10px;
   background: var(--pf-felt);
 }
 .bs-close.pf-btn {

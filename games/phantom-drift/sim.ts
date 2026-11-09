@@ -44,6 +44,9 @@ const NEAR_POINTS = 50
 
 /** Rift speed in depth units per second. */
 export const speedAt = (tier: number) => ramp(tier, MAX_TIER, 45, 108)
+/** A speed as 0 (first tier) … 1 (top tier), for effects. */
+export const speedLevel = (speed: number) =>
+  Math.min(1, Math.max(0, (speed - speedAt(0)) / (speedAt(MAX_TIER) - speedAt(0))))
 export const laneCount = (tier: number) => (tier >= 5 ? 5 : tier >= 3 ? 4 : 3)
 /** Ticks between rows; keeps shrinking slowly past the cap, never below 0.6 s. */
 export function rowIntervalTicks(rawTier: number): number {

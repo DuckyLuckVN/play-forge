@@ -1,6 +1,8 @@
-// The ghost drawn with 2D canvas shapes: the no-WebGL rift and the character
-// picker's previews. Shaded body (lit from the top left), a wavy scalloped
-// skirt, eyes that blink and look, and each character's accessory.
+// The ghost drawn with 2D canvas shapes: the one look of every ghost, in the
+// character picker's previews, the no-WebGL rift, and the 3D rift (as the
+// texture of a camera-facing card). Shaded body (lit from the top left), a
+// wavy scalloped skirt, eyes that blink and look (or, seen from behind, peek
+// round as the head turns), and each character's accessory.
 
 import type { Character } from './characters'
 
@@ -21,6 +23,11 @@ export interface GhostPose {
   glow: number
   /** Seen from behind (running away from the camera): no face. Missing = front. */
   back?: boolean
+  /**
+   * Seen from behind, the head turns -1 (left) … 1 (right): past about 0.3 the
+   * face peeks round that side, both eyes showing near 1. Missing = 0.
+   */
+  peek?: number
 }
 
 export const RESTING: GhostPose = { time: 0, tilt: 0, eyes: 1, look: 0, sx: 1, sy: 1, glow: 0 }
@@ -29,6 +36,7 @@ export const RESTING: GhostPose = { time: 0, tilt: 0, eyes: 1, look: 0, sx: 1, s
 const R = 22
 const HEAD_Y = -6
 const SKIRT_Y = 24
+const SIDES = [-1, 1] as const
 
 /** Blend two #rrggbb colours (t = 0 → a, 1 → b). */
 export function mixHex(a: string, b: string, t: number): string {
@@ -102,36 +110,86 @@ export function drawGhost2D(
   ctx.fill()
   ctx.shadowBlur = 0
 
-  if (look.accessory === 'hood') hood(ctx, colors.accent, rim)
-  if (!pose.back) {
-    // Eyes: blink (height) and glance (shift).
+  const face = faceView(pose)
+  if (look.accessory === 'hood') hood(ctx, colors.accent, rim, face)
+  if (face.show > 0) {
+    const alpha = ctx.globalAlpha
+    ctx.globalAlpha = alpha * face.show
+    // Eyes: blink (height) and glance (shift). The one on the far side of a
+    // turned head is a little narrower.
     ctx.fillStyle = colors.eye
-    for (const side of [-1, 1]) {
+    for (const side of SIDES) {
+      const far = side === face.turn ? 0.75 : 1
       ctx.beginPath()
-      ctx.ellipse(side * 9 + pose.look * 3, HEAD_Y + 2, 4, Math.max(0.6, 6 * pose.eyes), 0, 0, Math.PI * 2)
+      ctx.ellipse(
+        face.x + side * 9 * face.k + pose.look * 3 * face.k,
+        HEAD_Y + 2,
+        4 * face.k * far,
+        Math.max(0.6, 6 * pose.eyes),
+        0,
+        0,
+        Math.PI * 2,
+      )
       ctx.fill()
     }
     // Blush.
-    ctx.globalAlpha *= 0.55
+    ctx.globalAlpha = alpha * face.show * 0.55
     ctx.fillStyle = colors.blush
-    for (const side of [-1, 1]) {
+    for (const side of SIDES) {
       ctx.beginPath()
-      ctx.ellipse(side * 15, HEAD_Y + 11, 4.5, 2.5, 0, 0, Math.PI * 2)
+      ctx.ellipse(face.x + side * 15 * face.k, HEAD_Y + 11, 4.5 * face.k, 2.5, 0, 0, Math.PI * 2)
       ctx.fill()
     }
-    ctx.globalAlpha /= 0.55
+    ctx.globalAlpha = alpha
   }
   if (look.accessory === 'horns') horns(ctx, colors.accent)
   else if (look.accessory === 'crown') crown(ctx, colors.accent, colors.rim)
-  else if (look.accessory === 'flower') flower(ctx, colors.blush, colors.accent, pose.time)
+  // From behind, the flower is on the other side of the head.
+  else if (look.accessory === 'flower')
+    flower(ctx, colors.blush, colors.accent, pose.time, pose.back ? -1 : 1)
   ctx.restore()
+}
+
+/** Where the face is: centre x, horizontal squash k, opacity, and which way it turned. */
+interface FaceView {
+  x: number
+  k: number
+  show: number
+  turn: number
+}
+
+const faceOut: FaceView = { x: 0, k: 1, show: 1, turn: 0 }
+
+/**
+ * Front: the whole face. Back: none, until the head turns (`peek`) and the
+ * face comes round from the edge of the head towards the middle, squashed
+ * like a 3/4 profile. Reuses one object: read it before the next call.
+ */
+function faceView(pose: GhostPose): FaceView {
+  const f = faceOut
+  if (!pose.back) {
+    f.x = 0
+    f.k = f.show = 1
+    f.turn = 0
+    return f
+  }
+  const peek = pose.peek ?? 0
+  const a = Math.min(1, Math.abs(peek))
+  // Smoothstep 0.3…1: nothing for a small turn, the full 3/4 face at 1.
+  const t = Math.max(0, Math.min(1, (a - 0.3) / 0.7))
+  const e = t * t * (3 - 2 * t)
+  f.turn = Math.sign(peek)
+  f.show = e
+  f.k = 0.3 + 0.3 * e
+  f.x = f.turn * (R - 3 - (R - 3 - 11) * e)
+  return f
 }
 
 const TOP = HEAD_Y - R
 
 function horns(ctx: CanvasRenderingContext2D, color: string) {
   ctx.fillStyle = color
-  for (const side of [-1, 1]) {
+  for (const side of SIDES) {
     ctx.beginPath()
     ctx.moveTo(side * 8, TOP + 5)
     ctx.quadraticCurveTo(side * 18, TOP - 2, side * 17, TOP - 12)
@@ -158,9 +216,9 @@ function crown(ctx: CanvasRenderingContext2D, color: string, edge: string) {
   ctx.stroke()
 }
 
-function flower(ctx: CanvasRenderingContext2D, petal: string, centre: string, time: number) {
+function flower(ctx: CanvasRenderingContext2D, petal: string, centre: string, time: number, side: number) {
   ctx.save()
-  ctx.translate(13, TOP + 4)
+  ctx.translate(13 * side, TOP + 4)
   ctx.rotate(Math.sin(time * 2) * 0.15)
   ctx.fillStyle = petal
   for (let i = 0; i < 5; i++) {
@@ -176,8 +234,9 @@ function flower(ctx: CanvasRenderingContext2D, petal: string, centre: string, ti
   ctx.restore()
 }
 
-function hood(ctx: CanvasRenderingContext2D, color: string, edge: string) {
-  // A cowl with a pointed tip; the face shows through an oval opening.
+function hood(ctx: CanvasRenderingContext2D, color: string, edge: string, face: FaceView) {
+  // A cowl with a pointed tip; the face shows through an oval opening (from
+  // behind: closed, opening round the side as the head turns).
   ctx.fillStyle = color
   ctx.strokeStyle = edge
   ctx.lineWidth = 1.2
@@ -188,8 +247,12 @@ function hood(ctx: CanvasRenderingContext2D, color: string, edge: string) {
   ctx.arc(0, HEAD_Y, R + 3, Math.PI * 1.5 + 0.25, Math.PI * 2)
   ctx.lineTo(R + 3, HEAD_Y + 16)
   ctx.closePath()
-  ctx.moveTo(R - 5, HEAD_Y + 3)
-  ctx.ellipse(0, HEAD_Y + 3, R - 5, R - 9, 0, 0, Math.PI * 2)
+  if (face.show > 0) {
+    const rx = (R - 5) * face.k
+    const x = Math.max(-R + rx, Math.min(R - rx, face.x))
+    ctx.moveTo(x + rx, HEAD_Y + 3)
+    ctx.ellipse(x, HEAD_Y + 3, rx, (R - 9) * face.show, 0, 0, Math.PI * 2)
+  }
   ctx.fill('evenodd')
   ctx.stroke()
 }

@@ -1,6 +1,6 @@
 // The ghosts you can play: a look and one small perk each, unlocked by your
-// best score. Pure data and rules; the picker lives in picker.ts, the looks in
-// actors.ts (3D) and render.ts (2D).
+// best score. Pure data and rules; the picker lives in picker.ts, the look in
+// ghost2d.ts (drawn the same in the picker, the 2D rift and the 3D rift).
 
 import { BASE_PERKS, type Perks } from './sim'
 

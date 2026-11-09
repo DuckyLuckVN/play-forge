@@ -15,6 +15,8 @@ export const VI: Dictionary = {
     'Né trong khe nứt neon. Đọc nguy hiểm, sượt qua để ghi điểm, hóa Bóng ma và xuyên qua.',
   'Dance across a neon grid to the beat. Read the warned tiles, dodge on the drop, grab the notes. Solo or with up to 4 friends.':
     'Nhảy trên lưới neon theo nhịp. Đọc ô cảnh báo, né đúng nhịp, nhặt nốt nhạc. Chơi một mình hoặc tối đa 4 người.',
+  'Chibi badminton. Time your swing for a Perfect, smash on high balls. Play the computer or a friend online.':
+    'Cầu lông chibi. Vung vợt đúng lúc để được Perfect, đập mạnh khi cầu cao. Chơi với máy hoặc với bạn bè trực tuyến.',
   '{n} player': '{n} người chơi',
   '{n} players': '{n} người chơi',
   Play: 'Chơi',
@@ -33,6 +35,7 @@ export const VI: Dictionary = {
   'Five crosses in a row struck through on notebook paper':
     'Năm dấu X liên tiếp bị gạch ngang trên giấy ô ly',
   'Two snakes racing for an apple': 'Hai con rắn đua nhau tới quả táo',
+  'A chibi player swinging a racket at a shuttlecock': 'Một nhân vật chibi vung vợt đánh quả cầu lông',
 }
 
 export const t = translator(VI)

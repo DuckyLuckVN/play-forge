@@ -1,0 +1,10 @@
+/* Shuttle Pop: the no-WebGL note (the court itself is a three.js canvas). */
+.sp-nogl {
+  max-width: 32ch;
+  margin: auto;
+  padding: 16px 20px;
+  border-radius: 14px;
+  background: var(--pf-pit);
+  color: var(--pf-chalk);
+  text-align: center;
+}

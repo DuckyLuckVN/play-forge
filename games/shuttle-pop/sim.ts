@@ -3,6 +3,7 @@
 import { random } from '@forge/core/rng'
 import type { GameDefinition, GameOptions, InputEvent, PlayerInfo } from '@forge/net/session'
 import { botStep, newBotMemory, type BotMemory } from './ai'
+import { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld } from './court'
 import { t } from './i18n'
 import { COURT, DT, stepShuttle, type Flight, type Vec3 } from './physics'
 import { award, serveBox, winner } from './rules'
@@ -18,14 +19,11 @@ import {
   type ShotKind,
 } from './shots'
 
-export const TICK_RATE = 60
+export { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld }
 export const AI_ID = 'ai'
-/** Top run speed, m/s, reached after ~ACCEL_TICKS ticks. */
-export const MOVE_SPEED = 4.5
+/** MOVE_SPEED is reached after ~ACCEL_TICKS ticks. */
 const ACCEL_TICKS = 6
 const ACCEL = MOVE_SPEED / (ACCEL_TICKS * DT)
-/** Players stay this far from the net plane. */
-export const NET_MARGIN = 0.3
 /** How far past the side/back lines a player may run to chase a shuttle. */
 const OUT_MARGIN = 0.8
 /** Ticks between the rally's end and the next serve (or the results). */
@@ -111,11 +109,6 @@ export interface SpState {
 }
 
 const other = (side: 0 | 1): 0 | 1 => (side === 0 ? 1 : 0)
-
-/** View-relative (ix = screen right, iz = toward the net) → world. */
-export function toWorld(side: 0 | 1, ix: number, iz: number): { x: number; z: number } {
-  return side === 0 ? { x: -ix, z: iz } : { x: ix, z: -iz }
-}
 
 function rand(state: SpState): number {
   const r = { seed: state.rng }
@@ -249,6 +242,7 @@ export function createState(players: PlayerInfo[], seed: number, options: GameOp
   }
   // Online: a coin flip picks the first server. Against the computer the player serves first.
   if (players.length >= 2) state.server = rand(state) < 0.5 ? 0 : 1
+  for (const p of state.players) if (p.kind === 'ai') p.bot = newBotMemory(seed, p.side)
   resetForServe(state)
   return state
 }
@@ -266,6 +260,7 @@ export function setupBots(levelA: Level, levelB: Level, seed: number): SpState {
   state.players.forEach((p, i) => {
     p.kind = 'ai'
     p.level = i === 0 ? levelA : levelB
+    p.bot = newBotMemory(seed, p.side)
   })
   return state
 }
@@ -275,9 +270,14 @@ function botInputs(state: SpState): InputEvent<SpInput>[] {
   const out: InputEvent<SpInput>[] = []
   for (const p of state.players) {
     if (p.kind !== 'ai' || !p.level) continue
-    p.bot ??= newBotMemory()
-    for (const input of botStep(state, p.side, p.level, p.bot, () => rand(state)))
-      out.push({ player: p.id, input })
+    const mem = (p.bot ??= newBotMemory(state.rng, p.side))
+    const rng = () => {
+      const r = { seed: mem.rng }
+      const v = random(r)
+      mem.rng = r.seed
+      return v
+    }
+    for (const input of botStep(state, p.side, p.level, mem, rng)) out.push({ player: p.id, input })
   }
   return out
 }

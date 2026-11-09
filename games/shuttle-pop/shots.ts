@@ -122,7 +122,8 @@ export function launchFor(
   const dir = target.z >= 0 ? 1 : -1
   const ang = rng() * Math.PI * 2
   const r = JITTER[grade] * Math.sqrt(rng())
-  const aim = { x: target.x + Math.cos(ang) * r, z: target.z + Math.sin(ang) * r }
+  // Jitter in the hitter's frame (rotated 180° for side 1) so both ends play exactly mirrored.
+  const aim = { x: target.x + dir * Math.cos(ang) * r, z: target.z + dir * Math.sin(ang) * r }
   if (aim.z * dir < MIN_DEPTH + AIM_MARGIN) aim.z = dir * (MIN_DEPTH + AIM_MARGIN)
   const ok = (v: Vec3): boolean => {
     const p = predictLanding({ pos: from, vel: v })

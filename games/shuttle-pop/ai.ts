@@ -3,7 +3,8 @@
 // after the opponent's hit, and cached in BotMemory (plain data, lives in SpPlayer → JSON-safe).
 import { COURT, isIn, predictLanding, stepShuttle, type Flight } from './physics'
 import { findContact, REACH, WINDOW, type Grade } from './shots'
-import { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld, type SpInput, type SpState } from './sim'
+import { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld } from './court'
+import type { SpInput, SpState } from './sim'
 
 type GradeRoll = Grade | 'whiff'
 
@@ -13,22 +14,32 @@ export const LEVELS = {
     speedMul: 0.8,
     grade: { perfect: 0.15, good: 0.55, late: 0.2, whiff: 0.1 },
     smash: 0.15,
+    misjudge: 0.3,
   },
   normal: {
     reactTicks: 11,
     speedMul: 0.95,
     grade: { perfect: 0.4, good: 0.45, late: 0.1, whiff: 0.05 },
     smash: 0.5,
+    misjudge: 0,
   },
   hard: {
     reactTicks: 6,
-    speedMul: 1.0,
-    grade: { perfect: 0.75, good: 0.2, late: 0.03, whiff: 0.02 },
+    speedMul: 0.95,
+    grade: { perfect: 0.7, good: 0.21, late: 0.05, whiff: 0.04 },
     smash: 0.85,
+    misjudge: 0,
   },
 } satisfies Record<
   string,
-  { reactTicks: number; speedMul: number; grade: Record<GradeRoll, number>; smash: number }
+  {
+    reactTicks: number
+    speedMul: number
+    grade: Record<GradeRoll, number>
+    smash: number
+    /** Chance to get in/out wrong for a shuttle landing within NEAR_LINE of a line. */
+    misjudge: number
+  }
 >
 
 export type BotLevel = keyof typeof LEVELS
@@ -42,6 +53,8 @@ export interface BotMemory {
   plannedSwingTick: number
   /** View-relative held direction for the planned swing. */
   plannedHeld: { x: number; z: number }
+  /** This bot's own rng stream (mulberry32 seed): no draw-order coupling with the other seat. */
+  rng: number
 }
 
 /** Server swings this many ticks into the serve phase (well under SERVE_TIMEOUT). */
@@ -53,6 +66,8 @@ const BASE_Z = 3.2
 const SIDE_OFFSET = 0.4
 /** Meet the falling shuttle at this height (smash attempts: SMASH_MEET_Y), leaving room for late swings. */
 const MEET_Y = 1.4
+/** Line calls within this distance (m) of a line can be misjudged (LEVELS.misjudge). */
+export const NEAR_LINE = 0.3
 /** Extra ticks on top of distance / speed to get going and settle (accel + arrive easing). */
 const ARRIVE_TICKS = 12
 const SMASH_MEET_Y = 2.6
@@ -64,11 +79,13 @@ const STOP = 0.03
 const MOVE_LIMIT_X = COURT.halfWidth + 0.75
 const MOVE_LIMIT_Z = COURT.halfLen + 0.75
 
-export const newBotMemory = (): BotMemory => ({
+/** seed: the match seed; each side gets its own stream. */
+export const newBotMemory = (seed: number, side: 0 | 1): BotMemory => ({
   targetAt: -1,
   target: { x: 0, z: 0 },
   plannedSwingTick: -1,
   plannedHeld: { x: 0, z: 0 },
+  rng: (seed ^ Math.imul(0x9e3779b9, side + 1)) | 0,
 })
 
 const scratch: Flight = { pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 } }
@@ -95,8 +112,13 @@ function swingOffset(g: GradeRoll, rng: () => number): number {
   if (g === 'perfect') return randInt(rng, -WINDOW.perfect, WINDOW.perfect)
   if (g === 'good') return sign * randInt(rng, WINDOW.perfect + 1, WINDOW.good)
   if (g === 'late') return -randInt(rng, WINDOW.good + 1, WINDOW.late)
-  return randInt(rng, WINDOW.pastGrace + 2, WINDOW.pastGrace + 5)
+  return randInt(rng, WINDOW.pastGrace + 1, WINDOW.pastGrace + 3)
 }
+
+/** Within NEAR_LINE of a side or back line. */
+const nearLine = (p: { x: number; z: number }) =>
+  Math.abs(Math.abs(p.x) - COURT.halfWidth) <= NEAR_LINE ||
+  Math.abs(Math.abs(p.z) - COURT.halfLen) <= NEAR_LINE
 
 const onMyHalf = (z: number, side: 0 | 1) => (side === 0 ? z < 0 : z > 0)
 
@@ -152,25 +174,30 @@ function plan(s: SpState, side: 0 | 1, level: BotLevel, mem: BotMemory, rng: () 
   const land = predictLanding(s.shuttle)
   const back = side === 0 ? -1 : 1 // world z sign of "away from the net"
   mem.plannedSwingTick = -1
-  // Leave shots that go into the net or out.
-  if (land.netHit || !isIn(land.pos, side)) {
+  // Leave shots that go into the net or out (near-line calls can be misjudged on low levels).
+  let callIn = isIn(land.pos, side)
+  if (nearLine(land.pos) && rng() < L.misjudge) callIn = !callIn
+  if (land.netHit || !callIn) {
     mem.target = { x: 0, z: back * BASE_Z }
     return
   }
   const grade = rollGrade(level, rng)
   const smashTry = rng() < L.smash
-  const meet = meetSpot(s, side, level, smashTry ? SMASH_MEET_Y : MEET_Y, land.ticks)
-  const high = smashTry && meet !== null && meet.y >= REACH.smashY
+  // A rolled whiff meets the shuttle high so the too-late swing still happens in the air (visible whiff).
+  const meetY = smashTry || grade === 'whiff' ? SMASH_MEET_Y : MEET_Y
+  const meet = meetSpot(s, side, level, meetY, land.ticks)
+  const high = smashTry && grade !== 'whiff' && meet !== null && meet.y >= REACH.smashY
   const target = meet ? { x: meet.x, z: meet.z } : { x: land.pos.x, z: land.pos.z + back * SIDE_OFFSET }
   clampTarget(target, side)
   mem.target = target
   const c = findContact(s.shuttle, target, 0, land.ticks)
   if (!c) return
   mem.plannedSwingTick = Math.max(s.tick, s.tick + c.dt + swingOffset(grade, rng))
-  // Aim away from the opponent: world target x = −dir·heldX·w (shotTarget), dir = +1 for side 0.
+  // Aim away from the opponent, in my view frame (held x = screen right; shotTarget mirrors it per side).
   const opp = s.players[side === 0 ? 1 : 0]
-  const away = Math.abs(opp.x) > 0.3 ? Math.sign(opp.x) : rng() < 0.5 ? -1 : 1
-  const heldX = away * (side === 0 ? 1 : -1) * (0.3 + 0.5 * rng())
+  const oppView = toWorld(side, opp.x, opp.z).x
+  const away = Math.abs(oppView) > 0.3 ? -Math.sign(oppView) : rng() < 0.5 ? -1 : 1
+  const heldX = away * (0.3 + 0.5 * rng())
   let heldZ: number
   if (high) heldZ = 1
   else {

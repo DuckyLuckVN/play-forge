@@ -79,3 +79,29 @@ export function moodOf(
 export function isTwinAlt(preset0: number, preset1: number, i: number, localIdx: number): boolean {
   return preset0 === preset1 && i !== localIdx
 }
+
+/** Crowd tuning: cheers from a rally of `rally` hits, and for `pointTime` s after every point. */
+export const CHEER = {
+  rally: 8,
+  /** Level when a long rally starts cheering; each further hit adds `perHit`. */
+  base: 0.45,
+  perHit: 0.06,
+  /** Level for a point after a short rally (a long one gets the full 1). */
+  point: 0.55,
+  pointTime: 1.8,
+} as const
+
+/** Hits in the current rally after an event of kind `k`: a serve or a point starts over. */
+export function rallyHits(hits: number, k: string): number {
+  return k === 'hit' ? hits + 1 : k === 'serve' || k === 'point' ? 0 : hits
+}
+
+/**
+ * Crowd excitement 0..1. `hits` = the rally so far, `pointAge` = seconds since the latest point
+ * (Infinity = none), `pointHits` = how long that point's rally was.
+ */
+export function cheerLevel(hits: number, pointAge: number, pointHits: number): number {
+  if (pointAge < CHEER.pointTime) return pointHits >= CHEER.rally ? 1 : CHEER.point
+  if (hits < CHEER.rally) return 0
+  return Math.min(1, CHEER.base + (hits - CHEER.rally) * CHEER.perHit)
+}

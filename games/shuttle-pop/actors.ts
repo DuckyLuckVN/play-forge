@@ -304,6 +304,22 @@ export function createChibi(preset: number): Chibi {
   }
   for (const k of Object.keys(hats) as Hat[]) head.add(hats[k])
 
+  // Real shadows (when the renderer has them on) from the big shapes only: face details, hands and
+  // shoes would add shadow-pass draw calls for nothing visible.
+  const casts = new Set<BufferGeometry>([
+    P.body,
+    P.limb,
+    P.head,
+    P.hair,
+    P.frame,
+    P.capDome,
+    P.band,
+    P.beanieDome,
+  ])
+  rig.traverse((o) => {
+    if (o instanceof Mesh && casts.has(o.geometry)) o.castShadow = true
+  })
+
   function setPreset(n: number, alt = false) {
     const p = PRESETS[Math.min(PRESETS.length - 1, Math.max(0, n | 0))]
     body.material = flat(p.body, alt)

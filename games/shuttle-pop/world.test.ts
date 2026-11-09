@@ -2,7 +2,18 @@ import { Frustum, Matrix4, PerspectiveCamera, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
 import { COURT, stepShuttle, type Flight, type Vec3 } from './physics'
 import { launchFor, shotTarget } from './shots'
-import { CAMERA, cameraPose, dampFocus, isTwinAlt, lerpV, moodOf, viewOf } from './world'
+import {
+  CAMERA,
+  CHEER,
+  cameraPose,
+  cheerLevel,
+  dampFocus,
+  isTwinAlt,
+  lerpV,
+  moodOf,
+  rallyHits,
+  viewOf,
+} from './world'
 
 describe('view mapping', () => {
   it('keeps side 0 as is', () => {
@@ -123,5 +134,31 @@ describe('poses', () => {
     expect(isTwinAlt(2, 2, 0, 0)).toBe(false)
     expect(isTwinAlt(2, 2, 0, 1)).toBe(true)
     expect(isTwinAlt(1, 2, 1, 0)).toBe(false)
+  })
+})
+
+describe('crowd', () => {
+  const run = (kinds: string[]) => kinds.reduce(rallyHits, 0)
+
+  it('counts hits since the last serve or point', () => {
+    expect(run(['serve', 'hit', 'hit', 'land', 'net', 'whiff'])).toBe(2)
+    expect(run(['hit', 'hit', 'point'])).toBe(0)
+    expect(run(['hit', 'hit', 'hit', 'serve', 'hit'])).toBe(1)
+  })
+
+  it('stays quiet in a short rally and cheers from the rally threshold, louder as it goes on', () => {
+    expect(cheerLevel(CHEER.rally - 1, Infinity, 0)).toBe(0)
+    const at = cheerLevel(CHEER.rally, Infinity, 0)
+    expect(at).toBeGreaterThan(0)
+    expect(cheerLevel(CHEER.rally + 4, Infinity, 0)).toBeGreaterThan(at)
+    expect(cheerLevel(CHEER.rally + 100, Infinity, 0)).toBe(1)
+  })
+
+  it('cheers every point for a moment, loudest after a long rally', () => {
+    const short = cheerLevel(0, 0.2, 3)
+    expect(short).toBeGreaterThan(0)
+    expect(cheerLevel(0, 0.2, CHEER.rally)).toBe(1)
+    expect(cheerLevel(0, 0.2, CHEER.rally)).toBeGreaterThan(short)
+    expect(cheerLevel(0, CHEER.pointTime + 0.01, CHEER.rally)).toBe(0)
   })
 })

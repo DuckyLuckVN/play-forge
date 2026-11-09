@@ -3,35 +3,50 @@
 //
 // Built once per page: `warm()` (menu preload) compiles every shader, each match `attach`es it to the
 // stage and gets a cleanup that parks it offscreen again. The render loop allocates nothing.
+// The park around the court (sky, lights, crowd) is scenery.ts. Real shadows come from the players
+// only and switch off (between rallies) once the quality governor sees slow frames.
 
 import {
   CircleGeometry,
   Color,
   CylinderGeometry,
-  DirectionalLight,
   DoubleSide,
-  HemisphereLight,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
   PlaneGeometry,
+  ShadowMaterial,
   SphereGeometry,
   TorusGeometry,
   BoxGeometry,
+  type BufferGeometry,
 } from 'three'
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { startRenderLoop } from '@forge/core/loop'
 import type { Smoothed } from '@forge/net/smoothing'
-import { createScene3D, type Scene3D } from '@forge/render3d'
+import { createScene3D, QualityGovernor, type Scene3D } from '@forge/render3d'
 import { createChibi, type Chibi, type ChibiPose } from './actors'
 import { MOVE_SPEED } from './court'
 import { COURT, predictLanding, type Vec3 } from './physics'
+import { Park } from './scenery'
 import type { SpState } from './sim'
-import { CAMERA, cameraPose, dampFocus, isTwinAlt, lerpV, moodOf, viewOf, type CameraPose } from './world'
+import {
+  CAMERA,
+  cameraPose,
+  cheerLevel,
+  dampFocus,
+  isTwinAlt,
+  lerpV,
+  moodOf,
+  rallyHits,
+  viewOf,
+  type CameraPose,
+} from './world'
 
 const PALETTE = {
-  sky: '#bfe6ff',
-  grass: '#a7dca0',
-  court: '#5fb87c',
+  /** Light border around the court (the park grass is scenery.ts). */
+  surround: '#bcd09a',
+  court: '#3f9a86',
   line: '#ffffff',
   net: '#ffffff',
   post: '#6b5b73',
@@ -57,6 +72,12 @@ const RUN_DAMP = 10
 const LOCAL_SWING_GRACE = 0.4
 /** Chibis are ~1.3 m in model space; drawn a bit larger so they read from the far camera. */
 const CHIBI_SCALE = 1.15
+/** Court surface and its light border, beyond the lines (m). */
+const COURT_RUNOFF = { x: 0.35, z: 0.45 }
+const SURROUND = { x: 1.3, z: 1.6 }
+/** Quality level (QualityGovernor) from which players stop casting real shadows. */
+const SHADOWS_OFF_LEVEL = 1
+const SHADOW_OPACITY = 0.26
 
 interface PlayerView {
   chibi: Chibi
@@ -117,6 +138,17 @@ export class Court3D {
   private focus = 1
   private pose: CameraPose = { x: 0, y: 0, z: 0, lookX: 0, lookY: 0, lookZ: 0 }
   private tmp: Vec3 = { x: 0, y: 0, z: 0 }
+  private park: Park
+  /** Takes the players' real shadows (the ground is unlit, so it can't). */
+  private catcher!: Mesh
+  private quality = new QualityGovernor()
+  private shadows = true
+  private wantShadows = true
+  /** Crowd: hits in the current rally, length of the last point's rally, when that point was. */
+  private rally = 0
+  private pointHits = 0
+  private pointAt = -Infinity
+  private callsLogged = false
 
   constructor() {
     this.parking = document.createElement('div')
@@ -125,12 +157,9 @@ export class Court3D {
       'position:fixed;left:-10000px;top:0;width:100vw;height:85vh;pointer-events:none;opacity:0'
     document.body.appendChild(this.parking)
     this.view = createScene3D(this.parking, { fov: CAMERA.fov, far: 120, maxDpr: 2 })
-    const { scene } = this.view
-    scene.background = new Color(PALETTE.sky)
-
-    const sun = new DirectionalLight('#ffffff', 1.8)
-    sun.position.set(4, 10, -6)
-    scene.add(new HemisphereLight('#ffffff', '#7fae7a', 1.2), sun)
+    const { scene, renderer } = this.view
+    renderer.shadowMap.enabled = true
+    this.park = new Park(scene)
 
     this.buildCourt()
 
@@ -169,17 +198,23 @@ export class Court3D {
       scene.add(m)
       return m
     }
-    flat(60, 60, PALETTE.grass, 0)
-    flat(COURT.halfWidth * 2 + 1.2, COURT.halfLen * 2 + 1.6, PALETTE.court, 0.002)
+    const outerW = (COURT.halfWidth + SURROUND.x) * 2
+    const outerL = (COURT.halfLen + SURROUND.z) * 2
+    flat(outerW, outerL, PALETTE.surround, 0.002)
+    flat((COURT.halfWidth + COURT_RUNOFF.x) * 2, (COURT.halfLen + COURT_RUNOFF.z) * 2, PALETTE.court, 0.004)
+    this.catcher = new Mesh(
+      new PlaneGeometry(outerW, outerL),
+      new ShadowMaterial({ opacity: SHADOW_OPACITY, depthWrite: false }),
+    )
+    this.catcher.rotation.x = -Math.PI / 2
+    this.catcher.position.y = 0.008
+    this.catcher.receiveShadow = true
+    scene.add(this.catcher)
 
-    // Lines are centred on the boundary (a shuttle on the line is in).
-    const lineMat = new MeshBasicMaterial({ color: PALETTE.line })
-    const line = (x: number, z: number, w: number, d: number) => {
-      const m = new Mesh(new PlaneGeometry(w, d), lineMat)
-      m.rotation.x = -Math.PI / 2
-      m.position.set(x, 0.006, z)
-      scene.add(m)
-    }
+    // Lines are centred on the boundary (a shuttle on the line is in). One merged mesh.
+    const lines: BufferGeometry[] = []
+    const line = (x: number, z: number, w: number, d: number) =>
+      lines.push(new PlaneGeometry(w, d).rotateX(-Math.PI / 2).translate(x, 0.006, z))
     const W = COURT.halfWidth * 2 + LINE_W
     const L = COURT.halfLen * 2 + LINE_W
     for (const s of [-1, 1]) {
@@ -189,6 +224,7 @@ export class Court3D {
       const centreLen = COURT.halfLen - COURT.shortLine
       line(0, s * (COURT.shortLine + centreLen / 2), LINE_W, centreLen) // centre lines
     }
+    scene.add(new Mesh(mergeGeometries(lines), new MeshBasicMaterial({ color: PALETTE.line })))
 
     // Net: two posts, a see-through mesh and a white tape at net height.
     const span = COURT.halfWidth + POST_OUT
@@ -223,6 +259,7 @@ export class Court3D {
     // Every hat + the twin outline, so no material compiles mid-match.
     for (const p of this.players) p.chibi.root.traverse((o) => (o.visible = true))
     this.placeCamera(0, 1)
+    // Scenery, crowd and the shadow variants of every lit material are all in the scene by now.
     await this.view.renderer.compileAsync(this.view.scene, this.view.camera)
     this.view.render(0)
     this.ring.visible = false
@@ -263,6 +300,9 @@ export class Court3D {
     this.lastEventId = 0
     this.pointSide = -1
     this.localPressAt = -Infinity
+    this.rally = 0
+    this.pointHits = 0
+    this.pointAt = -Infinity
     this.ring.visible = false
     for (const p of this.players) {
       p.swingAge = Infinity
@@ -278,6 +318,10 @@ export class Court3D {
     if (!curr) return this.view.render(dt)
     if (curr.tick < this.lastTick) this.reset()
     this.lastTick = curr.tick
+    // Slow frames: drop the players' real shadows, but only between rallies (the switch recompiles
+    // the lit shaders, a hitch nobody should feel mid-rally). Blob shadows stay either way.
+    if (this.quality.sample(dt)) this.wantShadows = this.quality.level < SHADOWS_OFF_LEVEL
+    if (this.wantShadows !== this.shadows && curr.phase !== 'rally') this.setShadows(this.wantShadows)
     const prev = this.smooth!.prev ?? curr
     const a = this.smooth!.alpha()
 
@@ -347,8 +391,32 @@ export class Court3D {
     this.updateRing(curr, flip)
     this.ring.visible = this.ring.visible && curr.phase === 'rally'
 
+    this.park.update(cheerLevel(this.rally, this.time - this.pointAt, this.pointHits), this.time, dt)
+
     this.placeCamera(localX * CAMERA.followX, pos.y, dt)
+    if (import.meta.env.DEV && !this.callsLogged && curr.phase === 'rally') this.logDrawCalls(dt)
+    else this.view.render(dt)
+  }
+
+  private setShadows(on: boolean) {
+    this.shadows = on
+    this.view.renderer.shadowMap.enabled = on
+    this.park.sun.castShadow = on
+    this.catcher.visible = on
+  }
+
+  /** Dev only, once: draw calls in one full frame (shadow pass + scene + post passes). */
+  private logDrawCalls(dt: number) {
+    const info = this.view.renderer.info
+    info.autoReset = false
+    info.reset()
     this.view.render(dt)
+    // eslint-disable-next-line no-console
+    console.info(
+      `[shuttle-pop] draw calls per frame: ${info.render.calls} (shadows ${this.shadows ? 'on' : 'off'})`,
+    )
+    info.autoReset = true
+    this.callsLogged = true
   }
 
   /** New events → poses: a smash leaps, a point sets who celebrates. */
@@ -358,6 +426,11 @@ export class Court3D {
       const e = s.events[i]
       if (e.id <= this.lastEventId) continue
       if (e.id > newest) newest = e.id
+      if (e.k === 'point') {
+        this.pointHits = this.rally
+        this.pointAt = this.time
+      }
+      this.rally = rallyHits(this.rally, e.k)
       if (e.k === 'point') this.pointSide = e.side
       else if (e.k === 'hit' && e.shot === 'smash')
         for (let j = 0; j < 2; j++) if (s.players[j].side === e.side) this.players[j].jumpAge = 0

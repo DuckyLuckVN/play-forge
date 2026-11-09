@@ -98,7 +98,8 @@ describe('mirror invariance', () => {
           const diff = close(canon(mirror(a)), canon(b))
           if (diff) throw new Error(`seed ${seed} tick ${a.tick}: ${diff}`)
         }
-        expect(a.events.length + a.score[0] + a.score[1]).toBeGreaterThan(0)
+        // Something happened (scripted players can rally for the whole run, so count shots, not recent events).
+        expect(a.stats.shots + a.score[0] + a.score[1]).toBeGreaterThan(0)
       }
     },
     SLOW,

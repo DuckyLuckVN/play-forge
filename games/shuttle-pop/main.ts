@@ -6,10 +6,12 @@ import { t } from './i18n'
 import { TouchPad } from './hud'
 import { bindInput } from './input'
 import { loadPreset, pickerStrip } from './picker'
+import { GuestPredictor } from './predict'
 import { Court3D } from './render3d'
 import { scoreText, summaryRows } from './results'
 import { winner } from './rules'
 import { createState, seedPreset, shuttlePopGame, type SpInput, type SpState } from './sim'
+import { swingTick } from './world'
 
 /** Built and warmed while the menu shows, then reused by every match. */
 let court: Court3D | null = null
@@ -31,21 +33,28 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
   hostId = session.isHost ? session.selfId : null
   const smooth = smoothState(session)
   let onSwing: (() => void) | null = null
-  const detach = court.attach(stage, smooth, session.selfId, (cb) => (onSwing = cb))
+  // sendInput drops inputs during the countdown and while paused.
+  const live = () => session.phase === 'playing' && !session.lobby.paused
+  // Online guests predict their own player (the host and vs-computer already see their state at once).
+  const predictor = session.isHost || session.offline ? null : new GuestPredictor()
+  const detach = court.attach(stage, smooth, session.selfId, (cb) => (onSwing = cb), predictor, live)
   court.surface.setAttribute('role', 'img')
   court.surface.setAttribute('aria-label', t('Badminton court'))
 
-  // sendInput drops inputs during the countdown and while paused.
-  const live = () => session.phase === 'playing' && !session.lobby.paused
   const send = (input: SpInput) => {
     // Animate our own swing this frame (not when the session would drop it).
     if (input.t === 'swing' && live()) onSwing?.()
+    // The prediction moves with exactly the moves the host gets.
+    if (input.t === 'move' && live()) predictor?.setMove(input.x, input.z)
     session.sendInput(input)
   }
   // Touch: floating stick (left) + swing button (bottom-right), over the court.
   const pad = new TouchPad()
   court.surface.append(pad.root)
-  const input = bindInput(court.surface, send, () => smooth.curr?.tick ?? 0, pad)
+  // A guest's swing carries the tick it saw (the host rewinds up to MAX_REWIND for the lag); the
+  // host's own swings carry none (judged now).
+  const seen = () => (smooth.curr ? swingTick(smooth.curr.tick, smooth.alpha()) : undefined)
+  const input = bindInput(court.surface, send, session.isHost ? () => undefined : seen, pad)
   // Our character on every play start (inputs are dropped before). The host's look is already seeded
   // in setup; a guest's shows from "Go!". Idempotent, so resumes may resend it.
   const pick = () => session.sendInput({ t: 'pick', preset: loadPreset() })

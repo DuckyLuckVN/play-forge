@@ -1,6 +1,33 @@
 import { describe, expect, it } from 'vitest'
 import type { SpInput } from './sim'
-import { HeldKeys, heldDir } from './input'
+import { HeldKeys, heldDir, MOVE_GAP_MS, type InputClock } from './input'
+
+/** A clock a whole tick later on every read: every change is in a new tick (no coalescing). */
+function slowClock(): InputClock {
+  let t = 0
+  return { now: () => (t += MOVE_GAP_MS), later: () => () => {} }
+}
+
+/** A manual clock: `advance(ms)` moves time and runs the timers that came due. */
+function manualClock() {
+  let t = 1000
+  let timers: { at: number; fn: () => void }[] = []
+  const clock: InputClock = {
+    now: () => t,
+    later(fn, ms) {
+      const timer = { at: t + ms, fn }
+      timers.push(timer)
+      return () => (timers = timers.filter((x) => x !== timer))
+    },
+  }
+  const advance = (ms: number) => {
+    t += ms
+    const due = timers.filter((x) => x.at <= t)
+    timers = timers.filter((x) => x.at > t)
+    for (const x of due) x.fn()
+  }
+  return { clock, advance, pending: () => timers.length }
+}
 
 const dir = (...codes: string[]) => heldDir(new Set(codes))
 
@@ -33,6 +60,7 @@ describe('held keys', () => {
     const keys = new HeldKeys(
       (i) => net.live && got.push(i),
       () => 42,
+      slowClock(),
     )
     return { got, net, keys }
   }
@@ -85,6 +113,7 @@ describe('joystick through held keys (one source of truth)', () => {
     const keys = new HeldKeys(
       (i) => got.push(i),
       () => 9,
+      slowClock(),
     )
     return { got, keys }
   }
@@ -128,5 +157,79 @@ describe('joystick through held keys (one source of truth)', () => {
     keys.stick(0.8, 0.8)
     const m = got.at(-1) as { x: number; z: number }
     expect(Math.hypot(m.x, m.z)).toBeLessThanOrEqual(1)
+  })
+})
+
+describe('move coalescing (at most one move per sim tick)', () => {
+  function setup() {
+    const got: SpInput[] = []
+    const m = manualClock()
+    const keys = new HeldKeys(
+      (i) => got.push(i),
+      () => 7,
+      m.clock,
+    )
+    const moves = () => got.filter((i) => i.t === 'move')
+    return { got, keys, moves, ...m }
+  }
+
+  it('a burst of stick moves inside one tick sends the first now and the latest at the next tick', () => {
+    const { keys, moves, advance } = setup()
+    keys.stick(0.2, 0)
+    keys.stick(0.4, 0)
+    keys.stick(0.6, 0)
+    keys.stick(0.8, 0)
+    expect(moves()).toEqual([{ t: 'move', x: 0.2, z: 0 }])
+    advance(MOVE_GAP_MS)
+    expect(moves()).toEqual([
+      { t: 'move', x: 0.2, z: 0 },
+      { t: 'move', x: 0.8, z: 0 },
+    ])
+  })
+
+  it('never more than one move per tick over a long drag (120 Hz pointer events)', () => {
+    const { keys, moves, advance } = setup()
+    for (let i = 0; i < 120; i++) {
+      keys.stick(Math.cos(i / 10), Math.sin(i / 10))
+      advance(1000 / 120)
+    }
+    advance(MOVE_GAP_MS)
+    // 1 s of dragging: at most one per 1/60 s (+1 for the first, sent at once).
+    expect(moves().length).toBeLessThanOrEqual(61)
+    expect(moves().length).toBeGreaterThan(30)
+  })
+
+  it('a change back to the last sent direction within the tick sends nothing extra', () => {
+    const { keys, moves, advance } = setup()
+    keys.stick(1, 0)
+    keys.stick(0, 1)
+    keys.stick(1, 0)
+    advance(MOVE_GAP_MS)
+    expect(moves()).toHaveLength(1)
+  })
+
+  it('a swing goes out at once with the latest held direction (even one not sent yet)', () => {
+    const { got, keys } = setup()
+    keys.stick(1, 0)
+    keys.stick(0, -1) // coalesced: not sent yet
+    keys.swing()
+    expect(got.at(-1)).toEqual({ t: 'swing', x: 0, z: -1, tick: 7 })
+  })
+
+  it('a key press after a quiet tick goes out at once (keyboard latency unchanged)', () => {
+    const { keys, moves, advance } = setup()
+    advance(100)
+    keys.press('KeyD')
+    expect(moves()).toEqual([{ t: 'move', x: 1, z: 0 }])
+  })
+
+  it('dispose cancels a coalesced move', () => {
+    const { keys, moves, advance, pending } = setup()
+    keys.stick(1, 0)
+    keys.stick(0, 1)
+    keys.dispose()
+    expect(pending()).toBe(0)
+    advance(MOVE_GAP_MS)
+    expect(moves()).toHaveLength(1)
   })
 })

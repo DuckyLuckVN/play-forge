@@ -8,11 +8,14 @@ import {
   CHEER,
   cameraPose,
   cheerLevel,
+  CORRECT,
+  correct,
   dampFocus,
   isTwinAlt,
   lerpV,
   moodOf,
   rallyHits,
+  swingTick,
   viewOf,
 } from './world'
 
@@ -161,5 +164,43 @@ describe('crowd', () => {
     expect(cheerLevel(0, 0.2, CHEER.rally)).toBe(1)
     expect(cheerLevel(0, 0.2, CHEER.rally)).toBeGreaterThan(short)
     expect(cheerLevel(0, CHEER.pointTime + 0.01, CHEER.rally)).toBe(0)
+  })
+})
+
+describe('guest prediction correction', () => {
+  const out = { x: 0, z: 0 }
+  it('keeps the prediction when the error is under 5 cm', () => {
+    correct({ x: 1, z: 2 }, { x: 1.03, z: 2.03 }, out)
+    expect(out).toEqual({ x: 1, z: 2 })
+  })
+  it('blends 15% per 60 Hz frame toward the authority under 1 m', () => {
+    correct({ x: 0, z: 0 }, { x: 0.5, z: 0 }, out)
+    expect(out.x).toBeCloseTo(0.5 * CORRECT.blend)
+    expect(out.z).toBe(0)
+  })
+  it('the blend is frame-rate independent: two 120 Hz frames = one 60 Hz frame', () => {
+    const half = { x: 0, z: 0 }
+    correct({ x: 0, z: 0 }, { x: 0.8, z: 0 }, half, 1 / 120)
+    correct(half, { x: 0.8, z: 0 }, half, 1 / 120)
+    correct({ x: 0, z: 0 }, { x: 0.8, z: 0 }, out, 1 / 60)
+    expect(half.x).toBeCloseTo(out.x, 10)
+  })
+  it('snaps when 1 m or more off', () => {
+    correct({ x: 0, z: 0 }, { x: 0.6, z: 0.8 }, out)
+    expect(out).toEqual({ x: 0.6, z: 0.8 })
+  })
+  it('may write into the prediction itself', () => {
+    const p = { x: 0, z: 0 }
+    correct(p, { x: 0, z: 0.4 }, p)
+    expect(p.z).toBeCloseTo(0.4 * CORRECT.blend)
+  })
+})
+
+describe('swing tick', () => {
+  it('the tick on screen in history terms: curr, +1 past the halfway point', () => {
+    expect(swingTick(100, 0)).toBe(100)
+    expect(swingTick(100, 0.5)).toBe(100)
+    expect(swingTick(100, 0.51)).toBe(101)
+    expect(swingTick(100, 1)).toBe(101)
   })
 })

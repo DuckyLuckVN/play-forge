@@ -106,3 +106,33 @@ export function cheerLevel(hits: number, pointAge: number, pointHits: number): n
   if (hits < CHEER.rally) return 0
   return Math.min(1, CHEER.base + (hits - CHEER.rally) * CHEER.perHit)
 }
+
+/**
+ * The swing's tick in host history terms. The screen shows prev → curr by `alpha`, and the state of
+ * tick T holds the shuttle that history records at T + 1 (the swings of tick T + 1 see it), so the
+ * shuttle on screen is history tick curr + alpha, rounded.
+ */
+export function swingTick(currTick: number, alpha: number): number {
+  return currTick + (alpha > 0.5 ? 1 : 0)
+}
+
+/** Guest prediction correction: metres, and the share of the error closed per 60 Hz frame. */
+export const CORRECT = { keep: 0.05, snap: 1.0, blend: 0.15 } as const
+
+/**
+ * Pulls a predicted position toward the authoritative one (writes `out`, which may be `pred`): under
+ * `keep` it stays, under `snap` it closes `blend` of the error per 60 Hz frame (dt-based), else it snaps.
+ */
+export function correct(
+  pred: { x: number; z: number },
+  auth: { x: number; z: number },
+  out: { x: number; z: number },
+  dt = 1 / 60,
+): void {
+  const ex = auth.x - pred.x
+  const ez = auth.z - pred.z
+  const err = Math.hypot(ex, ez)
+  const k = err < CORRECT.keep ? 0 : err < CORRECT.snap ? 1 - Math.pow(1 - CORRECT.blend, dt * 60) : 1
+  out.x = k === 1 ? auth.x : pred.x + ex * k
+  out.z = k === 1 ? auth.z : pred.z + ez * k
+}

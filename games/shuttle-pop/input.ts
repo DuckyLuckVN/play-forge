@@ -1,8 +1,27 @@
 // Keyboard + mouse + touch (stick + swing button) → SpInput. Directions are view-relative (x = screen right, z = toward the net).
-// `move` goes out only when the held direction changes; a swing carries the held direction and the
-// tick the player is looking at.
+// `move` goes out only when the held direction changes, at most once per sim tick (a stick dragged at
+// 120 Hz coalesces to the latest); a swing goes out at once with the held direction and the tick the
+// player is looking at.
 import { knobOffset, quantise, STICK_RADIUS, StickTracker } from './joystick'
-import type { SpInput } from './sim'
+import { TICK_RATE, type SpInput } from './sim'
+
+/** Least time between two `move` sends: one sim tick. */
+export const MOVE_GAP_MS = 1000 / TICK_RATE
+
+/** Time + a one-shot timer (injected so tests run on a manual clock). */
+export interface InputClock {
+  now(): number
+  /** Run `fn` in `ms`; returns a cancel. */
+  later(fn: () => void, ms: number): () => void
+}
+
+const realClock: InputClock = {
+  now: () => performance.now(),
+  later(fn, ms) {
+    const id = setTimeout(fn, ms)
+    return () => clearTimeout(id)
+  },
+}
 
 const DIRS: Record<string, readonly [number, number]> = {
   KeyW: [0, 1],
@@ -42,7 +61,8 @@ const isUi = (t: EventTarget | null) =>
 
 /**
  * Held keys + the touch stick → inputs, DOM-free (one held direction for both: held keys win, else
- * the stick). `move` goes out when the held direction changes; `resync()` re-sends
+ * the stick). `move` goes out when the held direction changes, at most once per MOVE_GAP_MS: a change
+ * inside the gap waits for its end and sends the latest direction then. `resync()` re-sends
  * it, because the session drops inputs during the countdown and while paused (a key held through
  * "Go!" or let go during a pause would otherwise be lost).
  */
@@ -50,10 +70,17 @@ export class HeldKeys {
   private held = new Set<string>()
   private dir = { x: 0, z: 0 }
   private stickDir = { x: 0, z: 0 }
+  /** The last move sent, and when. */
+  private sentX = 0
+  private sentZ = 0
+  private sentAt = -Infinity
+  private cancelFlush: (() => void) | null = null
 
+  /** `nowTick` = the swing's tick (undefined = none: the host's own swings aren't rewound). */
   constructor(
     private send: (i: SpInput) => void,
-    private nowTick: () => number,
+    private nowTick: () => number | undefined,
+    private clock: InputClock = realClock,
   ) {}
 
   /** True when the key is a direction (the caller then stops its default). */
@@ -84,12 +111,31 @@ export class HeldKeys {
   }
 
   swing(): void {
-    this.send({ t: 'swing', x: this.dir.x, z: this.dir.z, tick: this.nowTick() })
+    const tick = this.nowTick()
+    this.send(
+      tick === undefined
+        ? { t: 'swing', x: this.dir.x, z: this.dir.z }
+        : { t: 'swing', x: this.dir.x, z: this.dir.z, tick },
+    )
   }
 
-  /** Send the held direction again (stop when nothing is held). */
+  /** Send the held direction again now (stop when nothing is held). */
   resync(): void {
+    this.cancel()
+    this.sentX = this.dir.x
+    this.sentZ = this.dir.z
+    this.sentAt = this.clock.now()
     this.send({ t: 'move', x: this.dir.x, z: this.dir.z })
+  }
+
+  /** Drop a coalesced move that hasn't gone out (unbinding). */
+  dispose(): void {
+    this.cancel()
+  }
+
+  private cancel() {
+    this.cancelFlush?.()
+    this.cancelFlush = null
   }
 
   private update() {
@@ -97,7 +143,15 @@ export class HeldKeys {
     const next = keys.x || keys.z ? keys : this.stickDir
     if (next.x === this.dir.x && next.z === this.dir.z) return
     this.dir = next
-    this.resync()
+    if (this.cancelFlush) return // the pending flush sends the latest
+    const wait = this.sentAt + MOVE_GAP_MS - this.clock.now()
+    if (wait <= 0) this.resync()
+    else this.cancelFlush = this.clock.later(() => this.flush(), wait)
+  }
+
+  private flush() {
+    this.cancelFlush = null
+    if (this.dir.x !== this.sentX || this.dir.z !== this.sentZ) this.resync()
   }
 }
 
@@ -125,12 +179,12 @@ const STICK_ZONE = 0.45
 /**
  * WASD / arrows move; Space, J or a left click on `target` swings. With a `pad`, touches on the left
  * of `target` drive a floating stick and the pad's swing button swings (both at once: each finger is
- * tracked by pointer id). `nowTick` = the state tick on screen (sent with the swing).
+ * tracked by pointer id). `nowTick` = the swing's tick (world.ts swingTick; undefined on the host).
  */
 export function bindInput(
   target: HTMLElement,
   send: (i: SpInput) => void,
-  nowTick: () => number,
+  nowTick: () => number | undefined,
   pad?: TouchView,
 ): InputBinding {
   const keys = new HeldKeys(send, nowTick)
@@ -224,6 +278,7 @@ export function bindInput(
     resync: () => keys.resync(),
     release: letGo,
     stop() {
+      keys.dispose()
       window.removeEventListener('keydown', onDown)
       window.removeEventListener('keyup', onUp)
       window.removeEventListener('blur', letGo)

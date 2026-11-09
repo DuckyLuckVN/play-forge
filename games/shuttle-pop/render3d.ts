@@ -9,6 +9,8 @@
 // camera punch on smashes and the sounds (sounds.ts), all driven by new sim events.
 // Motion: one Gait per player (locomotion.ts) fed by the interpolated sim velocity, so the remote / bot
 // player animates exactly like the local one; swing / leap curves are moves.ts; dust puffs are dust.ts.
+// Online guests: the own chibi comes from GuestPredictor (predict.ts: moves the frame the input does,
+// gait fed by the predicted velocity); the shuttle and the opponent stay pure interpolation.
 
 import {
   BackSide,
@@ -40,6 +42,7 @@ import { t } from './i18n'
 import { damp, Gait, GaitEvent } from './locomotion'
 import { leapAtHit, leapStartAge, lookAround, SMASH, smashJump, SWING, type Hop } from './moves'
 import { COURT, predictLanding, type Vec3 } from './physics'
+import type { GuestPredictor } from './predict'
 import { SpringPunch } from './punch'
 import { SURROUND } from './props'
 import { Park } from './scenery'
@@ -256,6 +259,10 @@ export class Court3D {
   private fresh: SpEvent[] = []
   /** No seat is ours: everything is drawn from side 0's view, pops all full size. */
   private spectating = false
+  /** Online guest only: our own player's prediction (null = draw it from the interpolated state). */
+  private predictor: GuestPredictor | null = null
+  /** Whether our inputs reach the sim now (no prediction while they'd be dropped). */
+  private live: () => boolean = () => false
   private hud = new Hud()
   /** What the serve / match-point badges were last drawn for (phase '' = redraw). */
   private hudPhase = ''
@@ -405,16 +412,22 @@ export class Court3D {
 
   /**
    * Show the match on `stage`. `onLocalSwing` registers a callback main calls the moment the local
-   * player swings (the racket moves the same frame, before the state comes back). Returns the cleanup.
+   * player swings (the racket moves the same frame, before the state comes back). An online guest
+   * passes its `predictor` (fed by main with the moves it sends) and `live` (inputs reach the sim).
+   * Returns the cleanup.
    */
   attach(
     stage: HTMLElement,
     smooth: Smoothed<SpState>,
     selfId: string,
     onLocalSwing: (cb: () => void) => void,
+    predictor: GuestPredictor | null = null,
+    live: () => boolean = () => false,
   ): () => void {
     this.smooth = smooth
     this.selfId = selfId
+    this.predictor = predictor
+    this.live = live
     this.reset()
     stage.appendChild(this.view.root)
     this.settle = QUALITY_SETTLE
@@ -428,6 +441,7 @@ export class Court3D {
     return () => {
       stop()
       this.smooth = null
+      this.predictor = null
       this.parking.appendChild(this.view.root)
     }
   }
@@ -501,8 +515,15 @@ export class Court3D {
       const view = this.players[i]
       const placed = Math.abs(cp.x - pp.x) + Math.abs(cp.z - pp.z) > PLAYER_SNAP
       const t = placed ? 1 : a
-      const x = (pp.x + (cp.x - pp.x) * t) * flip
-      const z = (pp.z + (cp.z - pp.z) * t) * flip
+      const pred = i === this.localIdx && !this.spectating ? this.predictor : null
+      if (pred) {
+        // The host places or holds us (serve set-up, the server before the serve, countdown, over).
+        const held =
+          !this.live() || curr.phase === 'over' || (curr.phase === 'serve' && cp.side === curr.server)
+        pred.update(dt, cp, curr.tick, placed || held)
+      }
+      const x = (pred ? pred.x : pp.x + (cp.x - pp.x) * t) * flip
+      const z = (pred ? pred.z : pp.z + (cp.z - pp.z) * t) * flip
       const root = view.chibi.root
       root.position.set(x, 0, z)
       if (i === this.localIdx) localX = x
@@ -544,8 +565,8 @@ export class Court3D {
         view.gait.reset(netYaw)
         view.fresh = false
       }
-      const vx = (pp.vx + (cp.vx - pp.vx) * t) * flip
-      const vz = (pp.vz + (cp.vz - pp.vz) * t) * flip
+      const vx = (pred ? pred.vx : pp.vx + (cp.vx - pp.vx) * t) * flip
+      const vz = (pred ? pred.vz : pp.vz + (cp.vz - pp.vz) * t) * flip
       const g = view.gait
       const flags = g.update(vx, vz, netYaw, swinging || mood !== 'idle', dt)
       root.rotation.y = g.yaw

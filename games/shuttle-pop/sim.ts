@@ -35,7 +35,9 @@ export const SERVE_TIMEOUT = 300
 /** A scheduled hit whiffs if the swinger is further than REACH.radius + this from the shuttle. */
 const PENDING_SLACK = 0.3
 const EVENT_TICKS = 60
-/** Covers Task 11 rewind (≤7) + WINDOW.pastGrace (12) + margin. */
+/** Lag fairness: a guest's swing is judged up to this many ticks back (~117 ms). */
+export const MAX_REWIND = 7
+/** Covers MAX_REWIND + WINDOW.pastGrace (12) + margin. */
 const HISTORY_TICKS = 24
 export const PRESETS = 4
 
@@ -53,7 +55,8 @@ export type Level = 'easy' | 'normal' | 'hard'
 
 export type SpInput =
   | { t: 'move'; x: number; z: number }
-  | { t: 'swing'; x: number; z: number; tick: number }
+  /** `tick` = the state tick the guest saw (lag rewind); the host's own swings leave it out (no rewind). */
+  | { t: 'swing'; x: number; z: number; tick?: number }
   | { t: 'pick'; preset: number }
 
 export interface SpPlayer {
@@ -138,7 +141,7 @@ function clampDir(x: unknown, z: unknown): { x: number; z: number } {
  * position stays on the player's own half (NET_MARGIN from the net, OUT_MARGIN past the lines).
  * Mutates p. Shared with guest prediction.
  */
-export function stepPlayer(p: SpPlayer, dt: number): void {
+export function stepPlayer(p: Pick<SpPlayer, 'side' | 'x' | 'z' | 'vx' | 'vz' | 'move'>, dt: number): void {
   const want = toWorld(p.side, p.move.x * MOVE_SPEED, p.move.z * MOVE_SPEED)
   let dvx = want.x - p.vx
   let dvz = want.z - p.vz
@@ -314,8 +317,17 @@ function onHalf(z: number, side: 0 | 1, lastHitter: -1 | 0 | 1): boolean {
 const sq = (n: number) => n * n
 
 /**
- * Resolve a rally swing. `rewind` = ticks the swing happened before now (0 here; Task 11 passes the
- * guest's lag). Candidates: in-reach shuttle positions on the swinger's half from `history` (the past)
+ * How many ticks before `hostTick` a swing stamped `inputTick` happened: clamped to [0, MAX_REWIND], so a
+ * bad clock or a tampered tick never rewinds further, and a tick from the future is no head start.
+ */
+export function rewindTicks(hostTick: number, inputTick: number): number {
+  if (!finite(inputTick)) return 0
+  return Math.min(MAX_REWIND, Math.max(0, Math.round(hostTick - inputTick)))
+}
+
+/**
+ * Resolve a rally swing. `rewind` = ticks the swing happened before now (a guest's lag, rewindTicks;
+ * 0 for the host's own and the computer's swings). Candidates: in-reach shuttle positions on the swinger's half from `history` (the past)
  * and the forward scan (the future, up to WINDOW.late after the swing). The closest one wins (the past
  * only when strictly closer); dt = contact tick − swing tick, graded by gradeOf (|dt| bands, dt <
  * −pastGrace → whiff). A contact at or before now hits at once from the current position; a future one
@@ -384,6 +396,8 @@ function hit(state: SpState) {
   s.vel.z = v.z
   s.lastHitter = pend.side
   s.pending = null
+  // A new flight: positions from before the hit are never a (rewound) contact for the other side.
+  state.history.length = 0
   state.stats.shots++
   if (pend.grade === 'perfect') state.stats.perfect[pend.side]++
   emit(state, { k: 'hit', side: pend.side, grade: pend.grade, shot: pend.kind })
@@ -442,7 +456,7 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
   state.events = state.events.filter((e) => e.tick > state.tick - EVENT_TICKS)
 
   // 1. Inputs (from the network: check everything).
-  const swings: { p: SpPlayer; held: { x: number; z: number } }[] = []
+  const swings: { p: SpPlayer; held: { x: number; z: number }; rewind: number }[] = []
   for (const { player, input } of [...inputs, ...botInputs(state)]) {
     const p = state.players.find((q) => q.id === player)
     if (!p || !input) continue
@@ -454,7 +468,9 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
       const live = state.phase === 'rally' || (state.phase === 'serve' && p.side === state.server)
       if (!live || state.tick - p.swingAt < SWING_COOLDOWN || swings.some((w) => w.p === p)) continue
       p.swingAt = state.tick
-      swings.push({ p, held: clampDir(input.x, input.z) })
+      // Guests stamp the tick they saw; the host's own swings and the computer's are judged now.
+      const rewind = p.kind === 'human' && input.tick !== undefined ? rewindTicks(state.tick, input.tick) : 0
+      swings.push({ p, held: clampDir(input.x, input.z), rewind })
     }
   }
   for (const p of state.players) {
@@ -475,7 +491,12 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
     else if (state.phaseT >= SERVE_TIMEOUT) serve(state, state.players[state.server], { x: 0, z: 0 })
   } else if (state.phase === 'rally') {
     // 3. Swings: who can hit is decided by lastHitter + the shuttle's half, so at most one schedules.
-    for (const { p, held } of swings) resolveSwing(state, p, held)
+    // A shuttle hit this tick can't be hit back on the same tick (else input order would decide).
+    const hitter = s.lastHitter
+    for (const { p, held, rewind } of swings) {
+      if (s.lastHitter !== hitter) emit(state, { k: 'whiff', side: p.side })
+      else resolveSwing(state, p, held, rewind)
+    }
     if (s.pending && s.pending.atTick <= state.tick) firePending(state)
   }
 

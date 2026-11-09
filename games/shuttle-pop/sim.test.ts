@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import type { InputEvent, PlayerInfo } from '@forge/net/session'
 import { COURT } from './physics'
 import {
+  MAX_REWIND,
   MOVE_SPEED,
   NET_MARGIN,
   POINT_TICKS,
+  rewindTicks,
   SERVE_TIMEOUT,
   seedPreset,
   separateAi,
@@ -21,7 +23,8 @@ const players = (n: number): PlayerInfo[] =>
   Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: `P${i}`, slot: i, ready: true, connected: true }))
 
 const ev = (player: string, input: SpInput): InputEvent<SpInput> => ({ player, input })
-const swing = (player: string, x = 0, z = 0): InputEvent<SpInput> => ev(player, { t: 'swing', x, z, tick: 0 })
+/** No tick: the host's own swing (rewind 0). Guest swings carry the tick they saw (see 'lag fairness'). */
+const swing = (player: string, x = 0, z = 0): InputEvent<SpInput> => ev(player, { t: 'swing', x, z })
 
 /** Online match, p0 on side 0, p0 serving (searches seeds). */
 function duel(): SpState {
@@ -326,6 +329,23 @@ describe('swings', () => {
       expect(hits[0]).toMatchObject({ side: 1 })
     }
   })
+  it('a shuttle hit this tick is not hittable back on the same tick, whatever the input order', () => {
+    for (const reversed of [false, true]) {
+      const s = duel()
+      s.players[0].x = 0
+      s.players[0].z = -0.5
+      s.players[1].x = 0
+      s.players[1].z = 0.4
+      // Over p0 (p1 hit last), within p0's reach now; once p0 hits it, it crosses into p1's reach.
+      rally(s, { x: 0, y: 1.5, z: -0.5 }, { x: 0, y: 0, z: 2 }, 1)
+      const both = [swing('p0', 0, 1), swing('p1', 0, 1)]
+      game.tick(s, reversed ? both.reverse() : both)
+      const now = s.events.filter((e) => e.tick === s.tick)
+      expect(now.find((e) => e.k === 'hit')).toMatchObject({ side: 0 })
+      expect(now.some((e) => e.k === 'whiff' && e.side === 1)).toBe(true)
+      expect(s.shuttle.pending).toBeNull()
+    }
+  })
   it("can't hit a shuttle over the other half (reach across the net)", () => {
     const s = duel()
     s.players[1].x = 0
@@ -435,6 +455,88 @@ describe('swing timing', () => {
     const before = s.players[1].swingAt
     game.tick(s, [swing('p1')])
     expect(s.players[1].swingAt).toBe(before)
+  })
+})
+
+describe('lag fairness (swing rewind)', () => {
+  it('rewindTicks clamps host − input to [0, MAX_REWIND]', () => {
+    expect(MAX_REWIND).toBe(7)
+    expect(rewindTicks(100, 50)).toBe(7)
+    expect(rewindTicks(100, 120)).toBe(0)
+    expect(rewindTicks(100, 95)).toBe(5)
+    expect(rewindTicks(100, 100)).toBe(0)
+    expect(rewindTicks(100, NaN)).toBe(0)
+    expect(rewindTicks(100, -1e9)).toBe(7)
+  })
+
+  /** The shuttle crosses p1 sideways at 6 m/s: in reach for ~±11 ticks around the closest approach. */
+  function crossing() {
+    const s = duel()
+    s.players[1].x = 0
+    s.players[1].z = 3
+    rally(s, { x: 0, y: 1.5, z: 3 }, { x: 6, y: 1, z: 0 }, 0)
+    game.tick(s, []) // records the closest approach at this tick
+    return { s, closest: s.tick }
+  }
+  /** p1 pressed `seen` ticks after the closest approach (on screen); the press reaches the host `lag` ticks later. */
+  function guestSwing(seen: number, lag: number) {
+    const { s, closest } = crossing()
+    run(s, seen + lag - 1)
+    game.tick(s, [ev('p1', { t: 'swing', x: 0, z: 0, tick: closest + seen })])
+    return { s, evs: s.events.filter((e) => e.tick === s.tick) }
+  }
+
+  it('history tick T holds the shuttle as swings at tick T see it (findContact dt = 0)', () => {
+    const s = duel()
+    rally(s, { x: 0, y: 1.5, z: 3 }, { x: 6, y: 1, z: 0 }, 0)
+    run(s, 3)
+    const seen = { ...s.shuttle.pos }
+    game.tick(s, [])
+    expect(s.history.at(-1)).toMatchObject({ tick: s.tick, pos: seen })
+  })
+  it('a guest swing 5 ticks late is graded from the rewound time', () => {
+    const { evs } = guestSwing(3, 5) // host-time dt = −8 (good); the guest saw dt = −3
+    expect(evs.find((e) => e.k === 'hit')).toMatchObject({ side: 1, grade: 'perfect' })
+  })
+  it('hits via history when the shuttle is already past (out of reach now), launching from where it is', () => {
+    const { s, evs } = guestSwing(8, 5)
+    expect(evs.find((e) => e.k === 'hit')).toMatchObject({ side: 1, grade: 'good' })
+    expect(s.shuttle.lastHitter).toBe(1)
+    expect(s.shuttle.vel.z).toBeLessThan(0) // sent back over the net
+  })
+  it('without a tick (host / own swing) there is no rewind: the same press whiffs', () => {
+    const { s } = crossing()
+    run(s, 12)
+    game.tick(s, [swing('p1')])
+    expect(s.events.filter((e) => e.tick === s.tick).some((e) => e.k === 'whiff')).toBe(true)
+  })
+  it('a tick far in the past rewinds only MAX_REWIND ticks', () => {
+    const { evs } = guestSwing(3, 30) // tampered / bad clock: would be a perfect if fully rewound
+    expect(evs.some((e) => e.k === 'hit')).toBe(false)
+    expect(evs.some((e) => e.k === 'whiff' && e.side === 1)).toBe(true)
+  })
+  it('a tick in the future is no rewind (never a head start)', () => {
+    const { s, closest } = crossing()
+    run(s, 12)
+    game.tick(s, [ev('p1', { t: 'swing', x: 0, z: 0, tick: closest + 1000 })])
+    expect(s.events.filter((e) => e.tick === s.tick).some((e) => e.k === 'whiff')).toBe(true)
+  })
+  it('the computer never gets a rewind', () => {
+    const s = game.setup(players(1), 5, {})
+    s.players[1].x = 0
+    s.players[1].z = 3
+    s.players[1].level = undefined // no bot inputs of its own
+    rally(s, { x: 0, y: 1.5, z: 3 }, { x: 6, y: 1, z: 0 }, 0)
+    game.tick(s, [])
+    const closest = s.tick
+    run(s, 12)
+    game.tick(s, [ev('ai', { t: 'swing', x: 0, z: 0, tick: closest })])
+    expect(s.events.filter((e) => e.tick === s.tick).some((e) => e.k === 'whiff')).toBe(true)
+  })
+  it('a hit clears the history: the old flight is never a rewind candidate', () => {
+    const { s } = guestSwing(3, 5)
+    const hitTick = s.tick
+    expect(s.history.every((h) => h.tick >= hitTick)).toBe(true)
   })
 })
 

@@ -11,15 +11,7 @@ import { DriftHud } from './hud'
 import { riftHue } from './ambience'
 import { C } from './palette'
 import type { DriftView } from './view'
-import {
-  DEATH_TICKS,
-  PHANTOM_COST,
-  SPAWN_Z,
-  type DriftEvent,
-  type DriftState,
-  type Faller,
-  type Obj,
-} from './sim'
+import { DEATH_TICKS, SPAWN_Z, type DriftEvent, type DriftState, type Faller, type Obj } from './sim'
 
 export const WIDTH = 420
 export const HEIGHT = 720
@@ -445,7 +437,7 @@ export class DriftRenderer {
     }
     ctx.globalAlpha = 1
     // A full meter makes the ghost sparkle: ready to go Phantom.
-    if (s.player.charge >= PHANTOM_COST && !phantom && Math.random() < 0.4)
+    if (s.player.charge >= s.perks.phantomCost && !phantom && Math.random() < 0.4)
       this.fx.burst(x + (Math.random() - 0.5) * 40, y - 40, {
         count: 1,
         color: C.phantom,

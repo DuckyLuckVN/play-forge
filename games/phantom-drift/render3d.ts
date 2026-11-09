@@ -53,7 +53,6 @@ import { FAR, Scenery } from './scenery'
 import {
   DEATH_TICKS,
   MAX_TIER,
-  PHANTOM_COST,
   speedAt,
   SPAWN_Z,
   type DriftEvent,
@@ -613,7 +612,7 @@ export class Drift3D implements DriftView {
     })
 
     // A full meter: the ghost sheds sparkles, ready to go Phantom.
-    if (s.player.charge >= PHANTOM_COST && !phantom && Math.random() < 0.5)
+    if (s.player.charge >= s.perks.phantomCost && !phantom && Math.random() < 0.5)
       this.fx.burst(gx + (Math.random() - 0.5), 0.6 + Math.random() * 1.2, 0, {
         count: 1,
         color: C.phantom,

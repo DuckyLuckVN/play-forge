@@ -39,7 +39,7 @@ const DEATH_BRAKE = 0.94
 const SLAM_TICKS = 6
 
 const DISTANCE_POINTS = 0.2
-const WISP_POINTS = 10
+export const WISP_POINTS = 10
 const NEAR_POINTS = 50
 
 /** Rift speed in depth units per second. */
@@ -53,8 +53,35 @@ export function rowIntervalTicks(rawTier: number): number {
 }
 /** Faller warning time: 0.8 s → 0.35 s. */
 export const fallerTelegraph = (tier: number) => Math.round(ramp(tier, MAX_TIER, 0.8, 0.35) * TICK_RATE)
-/** Combo multiplier x1..x5: +1 for every 5 combo. */
-export const multiplier = (combo: number) => 1 + Math.min(4, Math.floor(combo / 5))
+/** Combo multiplier x1..x5: +1 for every `step` combo (5 unless a perk says otherwise). */
+export const multiplier = (combo: number, step = 5) => 1 + Math.min(4, Math.floor(combo / step))
+
+/**
+ * The tuning a character can bend. Lives in the state so the sim stays pure
+ * and deterministic: the same seed and perks always play out the same.
+ */
+export interface Perks {
+  /** Dodges/wisps per multiplier step. */
+  comboStep: number
+  phantomTicks: number
+  /** Calm ticks before a lost heart grows back. */
+  regenTicks: number
+  /** Near-miss window in ticks. */
+  nearWindow: number
+  wispPoints: number
+  /** Wisps needed to fill the Phantom ring. */
+  phantomCost: number
+}
+
+/** The plain ghost: no perk. */
+export const BASE_PERKS: Readonly<Perks> = Object.freeze({
+  comboStep: 5,
+  phantomTicks: PHANTOM_TICKS,
+  regenTicks: HEART_REGEN_TICKS,
+  nearWindow: NEAR_WINDOW,
+  wispPoints: WISP_POINTS,
+  phantomCost: PHANTOM_COST,
+})
 
 export type ObjKind = 'shard' | 'wisp' | 'wall' | 'sweeper'
 export interface Obj {
@@ -150,10 +177,16 @@ export interface DriftState {
   diedDist: number | null
   over: boolean
   stats: RunStats
+  /** The character's tuning (see {@link Perks}). */
+  perks: Perks
   events: DriftEvent[]
 }
 
-export function createState(players: PlayerInfo[], seed: number): DriftState {
+export function createState(
+  players: PlayerInfo[],
+  seed: number,
+  perks: Readonly<Perks> = BASE_PERKS,
+): DriftState {
   return {
     tick: 0,
     rng: { seed },
@@ -185,6 +218,7 @@ export function createState(players: PlayerInfo[], seed: number): DriftState {
     diedDist: null,
     over: false,
     stats: { wisps: 0, nearMisses: 0, bestCombo: 0, phantoms: 0, topSpeed: speedAt(0) },
+    perks: { ...perks },
     events: [],
   }
 }
@@ -204,9 +238,9 @@ function touches(x: number, lanes: number[], reach: number): boolean {
 function applyInput(s: DriftState, input: DriftInput) {
   const p = s.player
   if (input === 'phase') {
-    if (p.charge >= PHANTOM_COST && !phantom(s)) {
+    if (p.charge >= s.perks.phantomCost && !phantom(s)) {
       p.charge = 0
-      p.phantomUntil = s.tick + PHANTOM_TICKS
+      p.phantomUntil = s.tick + s.perks.phantomTicks
       s.stats.phantoms++
       s.events.push({ type: 'phantom' })
     }
@@ -230,20 +264,23 @@ function hit(s: DriftState) {
   s.events.push({ type: 'hit' })
 }
 
+/** The multiplier right now, with the character's combo step. */
+export const comboMultiplier = (s: DriftState) => multiplier(s.player.combo, s.perks.comboStep)
+
 function reward(s: DriftState, base: number): number {
-  const before = multiplier(s.player.combo)
+  const before = comboMultiplier(s)
   const points = base * before
   s.score += points
   s.player.combo++
   s.stats.bestCombo = Math.max(s.stats.bestCombo, s.player.combo)
-  const after = multiplier(s.player.combo)
+  const after = comboMultiplier(s)
   if (after > before) s.events.push({ type: 'multiplier', mult: after })
   return points
 }
 
 function nearMiss(s: DriftState, lanes: number[], arrivedAt: number) {
   const p = s.player
-  if (!lanes.includes(p.leftLane) || !withinWindow(p.leftAt, arrivedAt, NEAR_WINDOW)) return
+  if (!lanes.includes(p.leftLane) || !withinWindow(p.leftAt, arrivedAt, s.perks.nearWindow)) return
   const points = reward(s, NEAR_POINTS)
   s.stats.nearMisses++
   s.events.push({ type: 'nearMiss', lane: p.leftLane, points })
@@ -293,12 +330,13 @@ function updateObjects(s: DriftState) {
     if (o.kind === 'wisp') {
       if (overlapping && Math.abs(p.x - o.lane) < PICK_DX) {
         o.done = true
-        const points = reward(s, WISP_POINTS)
+        const points = reward(s, s.perks.wispPoints)
         s.stats.wisps++
         const was = p.charge
-        p.charge = Math.min(PHANTOM_COST, p.charge + 1)
+        const cost = s.perks.phantomCost
+        p.charge = Math.min(cost, p.charge + 1)
         s.events.push({ type: 'wisp', lane: o.lane, points })
-        if (was < PHANTOM_COST && p.charge === PHANTOM_COST) s.events.push({ type: 'charged' })
+        if (was < cost && p.charge === cost) s.events.push({ type: 'charged' })
       }
       continue
     }
@@ -386,10 +424,10 @@ export function step(s: DriftState, inputs: InputEvent<DriftInput>[]): DriftStat
   updateFallers(s)
 
   if (s.tick === p.phantomUntil - 1) s.events.push({ type: 'phantomEnd' })
-  s.score += (s.speed / TICK_RATE) * DISTANCE_POINTS * multiplier(p.combo)
+  s.score += (s.speed / TICK_RATE) * DISTANCE_POINTS * comboMultiplier(s)
 
   if (p.hearts >= MAX_HEARTS) p.calmSince = s.tick
-  else if (s.tick - p.calmSince >= HEART_REGEN_TICKS) {
+  else if (s.tick - p.calmSince >= s.perks.regenTicks) {
     p.hearts++
     p.calmSince = s.tick
     s.events.push({ type: 'heal' })

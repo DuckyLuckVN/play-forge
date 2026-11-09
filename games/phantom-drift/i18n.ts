@@ -26,6 +26,19 @@ export const VI: Dictionary = {
   'NEW BEST!': 'KỶ LỤC MỚI!',
   'New best! {score} points': 'Kỷ lục mới! {score} điểm',
   '{score} points. Your best: {best}': '{score} điểm. Kỷ lục của bạn: {best}',
+  // Characters (names and perks live in characters.ts)
+  Wisp: 'Linh Hồn',
+  Ember: 'Than Hồng',
+  Frost: 'Băng Giá',
+  Bloom: 'Hoa Nở',
+  Shade: 'Bóng Tối',
+  Gold: 'Hoàng Kim',
+  'Balanced: no perk, pure skill': 'Cân bằng: không đặc quyền, chỉ có kỹ năng',
+  'Hot streak: combo climbs every 4, not 5': 'Chuỗi nóng: combo tăng mỗi 4 lần, thay vì 5',
+  'Cool head: Phantom lasts 2.5 s, not 2 s': 'Bình tĩnh: Bóng ma kéo dài 2,5 giây, thay vì 2 giây',
+  'Regrowth: hearts regrow in 36 s, not 45 s': 'Hồi sinh: tim mọc lại sau 36 giây, thay vì 45 giây',
+  'Close call: near misses come easier': 'Suýt soát: né sát dễ hơn',
+  'Gold rush: wisps worth 12, Phantom needs 12': 'Cơn sốt vàng: đốm sáng được 12 điểm, Bóng ma cần 12',
 }
 
 export const t = translator(VI)

@@ -77,18 +77,26 @@ describe('computer opponent', () => {
     }
   })
 
-  it('bot memory stays JSON (state round-trips mid-match)', () => {
-    const s = setupBots('normal', 'normal', 3)
-    for (let i = 0; i < 400; i++) game.tick(s, [])
-    expect(s.players[0].bot).toBeDefined()
-    expect(JSON.parse(JSON.stringify(s))).toEqual(s)
-  })
+  it(
+    'bot memory stays JSON (state round-trips mid-match)',
+    () => {
+      const s = setupBots('normal', 'normal', 3)
+      for (let i = 0; i < 400; i++) game.tick(s, [])
+      expect(s.players[0].bot).toBeDefined()
+      expect(JSON.parse(JSON.stringify(s))).toEqual(s)
+    },
+    SLOW,
+  )
 
-  it('serves within ~1 s (well before the serve timeout)', () => {
-    const m = play('normal', 'easy', 7)
-    expect(m.serveTick.length).toBeGreaterThan(5)
-    for (const t of m.serveTick) expect(t).toBeLessThanOrEqual(TICK_RATE)
-  })
+  it(
+    'serves within ~1 s (well before the serve timeout)',
+    () => {
+      const m = play('normal', 'easy', 7)
+      expect(m.serveTick.length).toBeGreaterThan(5)
+      for (const t of m.serveTick) expect(t).toBeLessThanOrEqual(TICK_RATE)
+    },
+    SLOW,
+  )
 
   it(
     'hard v hard: never perfect-only, ends within 10 min, both ends even',

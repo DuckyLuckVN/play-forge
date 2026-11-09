@@ -68,22 +68,24 @@ describe('park layout', () => {
   })
 
   it('never stands between the camera and the court or the players on it', () => {
-    const pose: CameraPose = { x: 0, y: 0, z: 0, lookX: 0, lookY: 0, lookZ: 0 }
+    const pose: CameraPose = { x: 0, y: 0, z: 0, lookX: 0, lookY: 0, lookZ: 0, fov: 0 }
     const blockers = new Set<Prop>()
-    for (const camX of [-1, 0, 1]) {
-      cameraPose(camX, CAMERA.riseFrom, pose)
-      const eye = [pose.x, pose.y, pose.z]
-      for (let i = 0; i <= 4; i++)
-        for (let j = 0; j <= 8; j++)
-          for (const y of [0.02, 1.4]) {
-            const pt = [
-              -COURT.halfWidth + (i / 4) * COURT.halfWidth * 2,
-              y,
-              -COURT.halfLen + (j / 8) * COURT.halfLen * 2,
-            ]
-            for (const p of layout) if (blocks(p, eye, pt)) blockers.add(p)
-          }
-    }
+    // Both framings: roomy (desktop) and tight (phone: lower camera, further back).
+    for (const tight of [0, 1])
+      for (const camX of [-1, 0, 1]) {
+        cameraPose(camX, CAMERA.riseFrom, pose, tight)
+        const eye = [pose.x, pose.y, pose.z]
+        for (let i = 0; i <= 4; i++)
+          for (let j = 0; j <= 8; j++)
+            for (const y of [0.02, 1.4]) {
+              const pt = [
+                -COURT.halfWidth + (i / 4) * COURT.halfWidth * 2,
+                y,
+                -COURT.halfLen + (j / 8) * COURT.halfLen * 2,
+              ]
+              for (const p of layout) if (blocks(p, eye, pt)) blockers.add(p)
+            }
+      }
     expect([...blockers]).toEqual([])
   })
 

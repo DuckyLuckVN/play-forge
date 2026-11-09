@@ -5,8 +5,10 @@ import { launchFor, shotTarget } from './shots'
 import type { SpEvent } from './sim'
 import {
   CAMERA,
+  CAMERA_TIGHT,
   CHEER,
   cameraPose,
+  framingTightness,
   cheerLevel,
   CORRECT,
   correct,
@@ -76,49 +78,89 @@ describe('camera framing', () => {
   const frustum = new Frustum()
   const m = new Matrix4()
   const p = new Vector3()
-  const pose = { x: 0, y: 0, z: 0, lookX: 0, lookY: 0, lookZ: 0 }
+  const pose = { x: 0, y: 0, z: 0, lookX: 0, lookY: 0, lookZ: 0, fov: 0 }
 
-  function view(cam: PerspectiveCamera, playerX: number, focus: number) {
-    cameraPose(playerX, focus, pose)
+  function view(cam: PerspectiveCamera, playerX: number, focus: number, tight: number) {
+    cameraPose(playerX, focus, pose, tight)
+    cam.fov = pose.fov
+    cam.updateProjectionMatrix()
     cam.position.set(pose.x, pose.y, pose.z)
     cam.lookAt(pose.lookX, pose.lookY, pose.lookZ)
     cam.updateMatrixWorld()
     frustum.setFromProjectionMatrix(m.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse))
   }
 
+  // Desktop 16:9, a phone in landscape (19.5:9), and a phone canvas under the shell bar (short, ~2.6:1).
+  // Every framing from roomy (0) to tight (1) must hold on each of them.
   for (const [label, aspect] of [
     ['16:9', 16 / 9],
     ['19.5:9 phone', 19.5 / 9],
+    ['short phone canvas 2.6:1', 2.6],
   ] as const)
-    for (const playerX of [0, -COURT.halfWidth, COURT.halfWidth].map((x) => x * CAMERA.followX))
-      it(`${label}, camera x ${playerX.toFixed(2)}: shuttle on screen ≥ 95% of every high shot, all court corners always`, () => {
-        const cam = new PerspectiveCamera(CAMERA.fov, aspect, 0.1, 200)
-        for (const [name, pts] of Object.entries(flights)) {
-          let focus = 1
-          let seen = 0
-          for (const s of pts) {
-            focus = dampFocus(focus, s.y, 1 / 60)
-            view(cam, playerX, focus)
-            if (frustum.containsPoint(p.set(s.x, s.y, s.z))) seen++
-            for (const c of corners)
-              expect(frustum.containsPoint(c), `${name}: corner ${c.x},${c.z}`).toBe(true)
+    for (const tight of [0, 0.5, 1])
+      for (const playerX of [0, -COURT.halfWidth, COURT.halfWidth].map((x) => x * CAMERA.followX))
+        it(`${label}, tightness ${tight}, camera x ${playerX.toFixed(2)}: shuttle on screen ≥ 95% of every high shot, all court corners always`, () => {
+          const cam = new PerspectiveCamera(CAMERA.fov, aspect, 0.1, 200)
+          for (const [name, pts] of Object.entries(flights)) {
+            let focus = 1
+            let seen = 0
+            for (const s of pts) {
+              focus = dampFocus(focus, s.y, 1 / 60)
+              view(cam, playerX, focus, tight)
+              if (frustum.containsPoint(p.set(s.x, s.y, s.z))) seen++
+              for (const c of corners)
+                expect(frustum.containsPoint(c), `${name}: corner ${c.x},${c.z}`).toBe(true)
+            }
+            expect(seen / pts.length, name).toBeGreaterThanOrEqual(0.95)
           }
-          expect(seen / pts.length, name).toBeGreaterThanOrEqual(0.95)
-        }
-      })
+          // At rest, a player reaching up (2.6 m) at any corner is on screen too.
+          view(cam, playerX, 1, tight)
+          for (const c of corners)
+            expect(frustum.containsPoint(p.set(c.x, 2.6, c.z)), `overhead at ${c.x},${c.z}`).toBe(true)
+        })
 
-  it('moves the look-at smoothly (small per-tick steps) and rests on the floor between rallies', () => {
-    for (const [name, pts] of Object.entries(flights)) {
-      let focus = 1
-      let last = cameraPose(0, focus, pose).lookY
-      for (const s of pts) {
-        focus = dampFocus(focus, s.y, 1 / 60)
-        const y = cameraPose(0, focus, pose).lookY
-        expect(Math.abs(y - last), name).toBeLessThan(0.1) // ≤ ~0.4° of tilt a tick
-        last = y
-      }
+  it('tight framing draws the players bigger at rest (the phone readability fix)', () => {
+    const cam = new PerspectiveCamera(CAMERA.fov, 2.6, 0.1, 200)
+    const tall = (tight: number, z: number) => {
+      view(cam, 0, 1, tight)
+      const a = p.set(0, 0, z).project(cam).y
+      return (p.set(0, 1.5, z).project(cam).y - a) / 2
     }
+    expect(tall(1, -5) / tall(0, -5)).toBeGreaterThan(1.5) // near player
+    expect(tall(1, 5) / tall(0, 5)).toBeGreaterThan(1.4) // far player
+    expect(CAMERA_TIGHT.fov).toBeLessThan(CAMERA.fov)
+  })
+
+  it('tightness: roomy at 16:9 and taller, tight on wide or short canvases, blended between', () => {
+    expect(framingTightness(1920, 1080)).toBe(0)
+    expect(framingTightness(1024, 768)).toBe(0)
+    expect(framingTightness(844, 390)).toBe(1) // phone landscape
+    expect(framingTightness(812, 320)).toBe(1) // phone under the shell bar
+    expect(framingTightness(640, 360)).toBe(1) // small 16:9 window
+    const mid = framingTightness(1280, 660)
+    expect(mid).toBeGreaterThan(0)
+    expect(mid).toBeLessThan(1)
+    expect(framingTightness(0, 0)).toBe(0)
+  })
+
+  it('moves the look-at and zoom smoothly (small per-tick steps) and rests on the floor between rallies', () => {
+    for (const tight of [0, 1])
+      for (const [name, pts] of Object.entries(flights)) {
+        let focus = 1
+        cameraPose(0, focus, pose, tight)
+        let lastY = pose.lookY
+        let lastFov = pose.fov
+        for (const s of pts) {
+          focus = dampFocus(focus, s.y, 1 / 60)
+          cameraPose(0, focus, pose, tight)
+          expect(Math.abs(pose.lookY - lastY), name).toBeLessThan(0.1) // ≤ ~0.4° of tilt a tick
+          expect(Math.abs(pose.fov - lastFov), name).toBeLessThan(0.5) // a gentle zoom, never a jump
+          lastY = pose.lookY
+          lastFov = pose.fov
+        }
+      }
     expect(cameraPose(0, 1, pose).lookY).toBe(0)
+    expect(cameraPose(0, 1, pose, 1).fov).toBe(CAMERA_TIGHT.fov)
   })
 })
 

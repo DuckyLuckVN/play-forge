@@ -55,6 +55,7 @@ import {
   cameraPose,
   cheerLevel,
   dampFocus,
+  framingTightness,
   isTwinAlt,
   lerpV,
   moodOf,
@@ -240,7 +241,9 @@ export class Court3D {
   private camX = 0
   /** Damped shuttle height the camera frames. */
   private focus = 1
-  private pose: CameraPose = { x: 0, y: 0, z: 0, lookX: 0, lookY: 0, lookZ: 0 }
+  private pose: CameraPose = { x: 0, y: 0, z: 0, lookX: 0, lookY: 0, lookZ: 0, fov: CAMERA.fov }
+  /** Framing for the canvas shape (world.ts framingTightness): tight on phone landscape. */
+  private tight = 0
   private tmp: Vec3 = { x: 0, y: 0, z: 0 }
   private park: Park
   /** Takes the players' real shadows (the ground is unlit, so it can't). */
@@ -292,7 +295,10 @@ export class Court3D {
 
     this.buildCourt()
     // The engine's own governor restarts its window on every resize (buffers realloc); so does ours.
-    this.view.onResize(() => this.quality.restart())
+    this.view.onResize((w, h) => {
+      this.quality.restart()
+      this.tight = framingTightness(w, h)
+    })
 
     this.players = [makePlayer(0), makePlayer(1)]
     for (const p of this.players) scene.add(p.chibi.root)
@@ -803,8 +809,12 @@ export class Court3D {
   private placeCamera(targetX: number, shuttleY: number, dt = 1) {
     this.camX += (targetX - this.camX) * (1 - Math.exp(-6 * dt))
     this.focus = dampFocus(this.focus, shuttleY, dt)
-    const p = cameraPose(this.camX, this.focus, this.pose)
+    const p = cameraPose(this.camX, this.focus, this.pose, this.tight)
     const cam = this.view.camera
+    if (Math.abs(cam.fov - p.fov) > 1e-3) {
+      cam.fov = p.fov
+      cam.updateProjectionMatrix()
+    }
     cam.position.set(p.x, p.y, p.z)
     cam.lookAt(p.lookX, p.lookY, p.lookZ)
     // Smash punch: a post offset on top of the framed pose (cameraPose itself is untouched).

@@ -65,6 +65,12 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
   let portrait = false
   // A microtask later: at "Go!" the session emits 'playing' before it starts its ticker, so a
   // pause from inside that lobby event would be undone by the ticker starting after it.
+  // TODO(engine): Session.start()/runCountdown() call setPhase('playing') (which emits 'lobby') and
+  // only then startSimulation(), which starts the ticker without checking lobby.paused. A
+  // setPaused(true) from a lobby listener at "Go!" therefore leaves the lobby paused but the sim
+  // running. Fix in engine/net/session.ts (start the ticker before announcing 'playing', or have
+  // startSimulation honour `paused`), add a session regression test, then drop this microtask.
+  // Not changed here: reordering Session touches every game.
   const pauseIfUpright = () =>
     queueMicrotask(() => {
       if (portrait && session.offline && live()) session.setPaused(true)

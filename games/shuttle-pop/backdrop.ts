@@ -19,7 +19,7 @@ import {
 } from 'three'
 import { rng } from './kit'
 
-/** Horizon colour the far layer hazes into (matches the sky's horizon + fog). */
+/** Horizon colour: the far layer hazes into it, and the sky's horizon + fog use it too (scenery.ts). */
 export const HAZE = '#eeb08c'
 
 /** Arc half-angle (rad): wide enough for the widest phone aspect plus the camera's side slide. */
@@ -41,7 +41,8 @@ const CLOUD_BANDS = [
 ] as const
 
 const PAINT = {
-  sun: { u: 0.74, y: 6.5, core: 2.6, glow: 10, coreColor: '#ffd79a', glowColor: '255, 196, 138' },
+  /** Toned down so a high shuttle near the right edge still reads against it. */
+  sun: { u: 0.74, y: 6.5, core: 2.6, glow: 10, coreColor: '#f6c592', glowColor: '250, 184, 134', glowA: 0.6 },
   /** Back + front building rows (hazier at the back). */
   cityBack: '#c99ca2',
   cityFront: '#b08597',
@@ -49,7 +50,7 @@ const PAINT = {
   wheel: '#b98c9b',
   hillFar: '#c89ea0',
   hillNear: '#b3a683',
-  cloudLit: '#eeb8a8',
+  cloudLit: '#e4ab9f',
   cloudShade: '#d29bb0',
 }
 
@@ -124,8 +125,8 @@ function paintPanorama(): HTMLCanvasElement {
   const S = PAINT.sun
   const sx = S.u * length
   const glow = ctx.createRadialGradient(sx, S.y, 0, sx, S.y, S.glow)
-  glow.addColorStop(0, `rgba(${S.glowColor}, 0.75)`)
-  glow.addColorStop(0.25, `rgba(${S.glowColor}, 0.35)`)
+  glow.addColorStop(0, `rgba(${S.glowColor}, ${S.glowA})`)
+  glow.addColorStop(0.25, `rgba(${S.glowColor}, ${S.glowA * 0.45})`)
   glow.addColorStop(1, `rgba(${S.glowColor}, 0)`)
   ctx.fillStyle = glow
   ctx.fillRect(sx - S.glow, S.y - S.glow, S.glow * 2, S.glow * 2)

@@ -16,6 +16,8 @@ const rngOf = (...v: number[]) => {
   return () => v[i++ % v.length]
 }
 const mid = rngOf(0.25, 0)
+/** Grid tests run thousands of launch solves; generous so a busy machine does not flake. */
+const SLOW = 30_000
 
 describe('gradeOf', () => {
   it('boundaries', () => {
@@ -50,8 +52,8 @@ describe('shotTarget', () => {
   it('lands on the opponent half, mirrored laterally by side', () => {
     const a = shotTarget('drive', 0, 1)
     const b = shotTarget('drive', 1, 1)
-    expect(a.z).toBeCloseTo(3.5)
-    expect(b.z).toBeCloseTo(-3.5)
+    expect(a.z).toBeCloseTo(5.6)
+    expect(b.z).toBeCloseTo(-5.6)
     expect(a.x).toBeCloseTo(-b.x)
     expect(Math.abs(a.x)).toBeCloseTo(COURT.halfWidth - 0.4)
     expect(shotTarget('clear', 0, 0).z).toBeCloseTo(COURT.halfLen - 0.6)
@@ -153,24 +155,28 @@ describe('launchFor guarantees', () => {
   const grades: Grade[] = ['perfect', 'good', 'late']
   const zero = () => 0 // jitter radius 0
   for (const side of [0, 1] as const) {
-    it(`side ${side}: every kind x grade from anywhere on own half clears the net and lands >= 1 m past it`, () => {
-      const dir = side === 0 ? 1 : -1
-      for (const kind of kinds)
-        for (const grade of grades)
-          for (const z of [-6.5, -5.5, -4, -2.5, -1.2, -0.5])
-            for (const x of [-2.4, 0, 2.4])
-              for (const y of [0.6, 1.5, 2.8]) {
-                const from = { x, y, z: side === 0 ? z : -z }
-                const target = shotTarget(kind, side, x / 2.4)
-                const vel = launchFor(kind, grade, from, target, zero)
-                const land = predictLanding({ pos: from, vel })
-                const tag = `${kind} ${grade} side${side} x${x} y${y} z${from.z}`
-                expect(Math.hypot(vel.x, vel.y, vel.z), tag).toBeLessThanOrEqual(45 + 1e-9)
-                expect(land.netHit, tag).toBe(false)
-                expect(land.pos.y, tag).toBe(0)
-                expect(land.pos.z * dir, tag).toBeGreaterThanOrEqual(1.0)
-              }
-    })
+    it(
+      `side ${side}: every kind x grade from anywhere on own half clears the net and lands >= 1 m past it`,
+      () => {
+        const dir = side === 0 ? 1 : -1
+        for (const kind of kinds)
+          for (const grade of grades)
+            for (const z of [-6.5, -5.5, -4, -2.5, -1.2, -0.5])
+              for (const x of [-2.4, 0, 2.4])
+                for (const y of [0.6, 1.5, 2.8]) {
+                  const from = { x, y, z: side === 0 ? z : -z }
+                  const target = shotTarget(kind, side, x / 2.4)
+                  const vel = launchFor(kind, grade, from, target, zero)
+                  const land = predictLanding({ pos: from, vel })
+                  const tag = `${kind} ${grade} side${side} x${x} y${y} z${from.z}`
+                  expect(Math.hypot(vel.x, vel.y, vel.z), tag).toBeLessThanOrEqual(45 + 1e-9)
+                  expect(land.netHit, tag).toBe(false)
+                  expect(land.pos.y, tag).toBe(0)
+                  expect(land.pos.z * dir, tag).toBeGreaterThanOrEqual(1.0)
+                }
+      },
+      SLOW,
+    )
   }
 
   it('perfect clear from the back court lands deep', () => {
@@ -203,18 +209,22 @@ describe('launchFor guarantees', () => {
         }
   })
 
-  it('late is never faster than perfect for the same kind and spot', () => {
-    const speed = (v: { x: number; y: number; z: number }) => Math.hypot(v.x, v.y, v.z)
-    for (const kind of kinds)
-      for (const z of [-6.5, -5, -3.5, -2, -0.8])
-        for (const y of [0.6, 1.5, 2.8]) {
-          const from = { x: 0.5, y, z }
-          const t = shotTarget(kind, 0, 0)
-          const p = speed(launchFor(kind, 'perfect', from, t, zero))
-          const l = speed(launchFor(kind, 'late', from, t, zero))
-          expect(l, `${kind} ${z} ${y}`).toBeLessThanOrEqual(p + 1e-6)
-        }
-  })
+  it(
+    'late is never faster than perfect for the same kind and spot',
+    () => {
+      const speed = (v: { x: number; y: number; z: number }) => Math.hypot(v.x, v.y, v.z)
+      for (const kind of kinds)
+        for (const z of [-6.5, -5, -3.5, -2, -0.8])
+          for (const y of [0.6, 1.5, 2.8]) {
+            const from = { x: 0.5, y, z }
+            const t = shotTarget(kind, 0, 0)
+            const p = speed(launchFor(kind, 'perfect', from, t, zero))
+            const l = speed(launchFor(kind, 'late', from, t, zero))
+            expect(l, `${kind} ${z} ${y}`).toBeLessThanOrEqual(p + 1e-6)
+          }
+    },
+    SLOW,
+  )
 
   it('late is shorter than perfect but still in play', () => {
     const from = { x: 0, y: 1.5, z: -2 }

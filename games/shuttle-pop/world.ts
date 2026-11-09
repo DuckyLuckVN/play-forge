@@ -19,7 +19,8 @@ export function lerpV(a: Vec3, b: Vec3, t: number, out: Vec3): Vec3 {
 /**
  * Camera behind the near baseline, looking toward the net. Metres / degrees. Pulled back and a touch
  * wide so a Perfect clear (apex ~8.5 m) stays on screen with the look-at rising with the shuttle,
- * while all four court corners stay in view (world.test.ts checks 16:9 and 19.5:9).
+ * while all four court corners stay in view (world.test.ts checks 16:9, 19.5:9 and a short canvas).
+ * This is the roomy framing for tall-ish canvases (16:9 and narrower); see CAMERA_TIGHT.
  */
 export const CAMERA = {
   fov: 55,
@@ -31,11 +32,37 @@ export const CAMERA = {
   /** Look-at height gained per metre the (damped) shuttle is above `riseFrom`. */
   rise: 0.4,
   riseFrom: 1.5,
+  /** Field of view gained (deg) per metre the (damped) shuttle is above `riseFrom`. */
+  zoom: 0,
   /** Focus easing toward the shuttle height, per second (smooth: no jerks on hits). */
   focusRate: 5,
   /** How much the camera slides with the local player's x (0 = fixed). */
   followX: 0.3,
 } as const
+
+/**
+ * Framing for wide or short canvases (phone landscape under the shell bar). Height, not width, is
+ * what limits the view there, so the camera sits lower, looks a bit past the net and zooms in at rest
+ * (players ~1.7× taller on screen), then widens with the shuttle's height (`zoom`) so high clears
+ * and long serves stay in frame.
+ */
+export const CAMERA_TIGHT = { fov: 34, height: 4.5, back: 8.5, lookZ: 2, zoom: 2 } as const
+
+/** Never wider than this, however high the shuttle goes. */
+const FOV_MAX = 58
+
+/** Canvas aspect / CSS height where the tight framing is fully on (it blends in from 16:9 / 560 px). */
+export const TIGHT_AT = { aspect: 2.1, height: 380 } as const
+
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
+
+/** 0 = roomy CAMERA framing, 1 = CAMERA_TIGHT: on as the canvas gets wider than 16:9 or shorter than 560 px. */
+export function framingTightness(width: number, height: number): number {
+  if (width <= 0 || height <= 0) return 0
+  const wide = (width / height - 16 / 9) / (TIGHT_AT.aspect - 16 / 9)
+  const short = (560 - height) / (560 - TIGHT_AT.height)
+  return clamp01(Math.max(wide, short))
+}
 
 export interface CameraPose {
   x: number
@@ -44,16 +71,27 @@ export interface CameraPose {
   lookX: number
   lookY: number
   lookZ: number
+  /** Vertical field of view, degrees. */
+  fov: number
 }
 
-/** Camera position + look-at for a (damped) camera x and focus height. Writes into `out`. */
-export function cameraPose(camX: number, focusY: number, out: CameraPose): CameraPose {
+const mix = (a: number, b: number, t: number) => a + (b - a) * t
+
+/**
+ * Camera position + look-at + fov for a (damped) camera x and focus height, at framing tightness
+ * `tight` (framingTightness; 0 = the roomy CAMERA framing). Writes into `out`.
+ */
+export function cameraPose(camX: number, focusY: number, out: CameraPose, tight = 0): CameraPose {
+  const t = clamp01(tight)
+  const T = CAMERA_TIGHT
+  const above = Math.max(0, focusY - CAMERA.riseFrom)
   out.x = camX
-  out.y = CAMERA.height
-  out.z = -(COURT.halfLen + CAMERA.back)
+  out.y = mix(CAMERA.height, T.height, t)
+  out.z = -(COURT.halfLen + mix(CAMERA.back, T.back, t))
   out.lookX = camX * 0.5
-  out.lookY = CAMERA.rise * Math.max(0, focusY - CAMERA.riseFrom)
-  out.lookZ = CAMERA.lookZ
+  out.lookY = CAMERA.rise * above
+  out.lookZ = mix(CAMERA.lookZ, T.lookZ, t)
+  out.fov = Math.min(FOV_MAX, mix(CAMERA.fov, T.fov, t) + mix(CAMERA.zoom, T.zoom, t) * above)
   return out
 }
 

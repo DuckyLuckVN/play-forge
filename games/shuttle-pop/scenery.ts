@@ -32,7 +32,7 @@ import {
 } from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { Ambient } from './ambient'
-import { Backdrop } from './backdrop'
+import { Backdrop, HAZE } from './backdrop'
 import { Crowd } from './crowd'
 import { buildProps, instanced, lambert, yawTo } from './kit'
 import { BENCHES, LANTERN, lanternHang, parkLayout } from './props'
@@ -40,7 +40,7 @@ import { BENCHES, LANTERN, lanternHang, parkLayout } from './props'
 const SKY = {
   top: '#a995d4',
   mid: '#eaa9ae',
-  horizon: '#eeb08c',
+  horizon: HAZE,
   sun: '#ffb877',
 }
 const PARK = {

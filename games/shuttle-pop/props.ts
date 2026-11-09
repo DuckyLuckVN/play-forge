@@ -26,7 +26,8 @@ const COLORS = {
   stone: '#cbb49a',
   flowers: ['#e6918f', '#f0c36a', '#c4a0d8', '#f2a7b5', '#ef9f72'],
   lampPost: '#5e5160',
-  bulb: '#ffbf5e',
+  /** Soft, not hot: the near bulbs sit at the screen edges on phone and must not out-shine the shuttle. */
+  bulb: '#efc795',
   blankets: ['#d98b7e', '#8fa7c9', '#d6b25e', '#a990c4'],
   picnic: ['#b07d4f', '#e07a6a', '#e9d9bd'],
   pole: '#7d6a62',
@@ -39,7 +40,8 @@ const COLORS = {
   balloons: ['#e88a8a', '#f0c36a', '#8fb7d8', '#b79ad6'],
   string: '#efe6dc',
   wood: '#9a7458',
-  board: '#3b3550',
+  /** Mid-tone (not near-black), so the board by the net doesn't pull the eye on a small screen. */
+  board: '#7a6f93',
   card: '#efe2c8',
   tufts: ['#7f9f63', '#8fae6b', '#6f8f58'],
 }
@@ -167,10 +169,11 @@ function pathAndLamps(out: Prop[], r: () => number) {
       stone(side * (PATH.x - 1.5 + 1.5 * Math.cos(a)), PATH.zBack - 1.5 + 1.5 * Math.sin(a))
   }
   for (let x = -PATH.x + 1.5 + PATH.step; x < PATH.x - 1.5; x += PATH.step) stone(x, PATH.zBack)
-  // Lamp posts beside the path: post, cap, warm bulb.
+  // Lamp posts beside the path: post, cap, warm bulb. The near pair stands well out to the sides, at
+  // (or past) the screen edges, so they frame the court instead of competing with it.
   const lamps = [
-    { x: -9.4, z: -3.5 },
-    { x: 9.4, z: -3 },
+    { x: -11, z: -4 },
+    { x: 11, z: -3.5 },
     { x: -9.4, z: 5.5 },
     { x: 9.4, z: 6 },
     { x: -6.6, z: 13.6 },

@@ -16,9 +16,9 @@ interface ShotSpec {
 }
 
 const SHOTS: Record<ShotKind, ShotSpec> = {
-  clear: { elevation: 50, maxSpeed: 45, depth: COURT.halfLen - 0.6 },
+  clear: { elevation: 47, maxSpeed: 45, depth: COURT.halfLen - 0.6 },
   drop: { elevation: 20, maxSpeed: 45, depth: 1.0 },
-  drive: { elevation: 6, maxSpeed: 45, depth: 3.5 },
+  drive: { elevation: 3, maxSpeed: 45, depth: 5.6 },
   smash: { elevation: -10, maxSpeed: 45, depth: 4.0 },
   serveShort: { elevation: 25, maxSpeed: 45, depth: COURT.shortLine + 0.4 },
   serveLong: { elevation: 55, maxSpeed: 45, depth: COURT.halfLen - 0.5 },

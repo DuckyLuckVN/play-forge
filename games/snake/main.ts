@@ -7,6 +7,7 @@ import {
   startRenderLoop,
   type Direction,
 } from '@forge'
+import { t } from './i18n'
 import { CELL, SnakeRenderer } from './render'
 import { snakeGame, type SnakeState } from './sim'
 import { SNAKE_SOUNDS } from './sounds'
@@ -14,8 +15,8 @@ import { SNAKE_SOUNDS } from './sounds'
 createGameApp<SnakeState, Direction>({
   def: snakeGame,
   title: 'Snake',
-  tagline: 'Eat, grow, and be the last snake moving.',
-  controls: 'Steer with the arrow keys or WASD. On a phone, swipe.',
+  tagline: t('Eat, grow, and be the last snake moving.'),
+  controls: t('Steer with the arrow keys or WASD. On a phone, swipe.'),
   mount(session, stage) {
     const view = createCanvas2D(stage, 32 * CELL, 24 * CELL)
     const smooth = smoothState(session)
@@ -59,12 +60,13 @@ createGameApp<SnakeState, Direction>({
   outcome(state, selfId) {
     if (state.snakes.length === 1) {
       const n = state.snakes[0].score
-      return { headline: `You ate ${n} ${n === 1 ? 'apple' : 'apples'}`, result: n > 0 ? 'done' : 'lose' }
+      const headline = n === 1 ? t('You ate {n} apple', { n }) : t('You ate {n} apples', { n })
+      return { headline, result: n > 0 ? 'done' : 'lose' }
     }
     const winner = state.snakes.find((s) => s.id === state.winner)
-    if (!winner) return { headline: 'Draw!', result: 'draw' }
+    if (!winner) return { headline: t('Draw!'), result: 'draw' }
     return winner.id === selfId
-      ? { headline: 'You win!', result: 'win' }
-      : { headline: `${winner.name} wins`, result: 'lose' }
+      ? { headline: t('You win!'), result: 'win' }
+      : { headline: t('{name} wins', { name: winner.name }), result: 'lose' }
   },
 })

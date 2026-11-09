@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  BASE_PERKS,
+  comboMultiplier,
   createState,
   DEATH_TICKS,
   HEART_REGEN_TICKS,
@@ -16,6 +18,7 @@ import {
   type DriftInput,
   type DriftState,
   type Obj,
+  type Perks,
 } from './sim'
 
 const me = [{ id: 'p0', name: 'P0', slot: 0, ready: true, connected: true }]
@@ -311,5 +314,92 @@ describe('Phantom Drift run stats', () => {
     const s = quiet()
     run(s, TIER_TICKS * 2 + 1)
     expect(s.stats.topSpeed).toBe(speedAt(2))
+  })
+})
+
+describe('Phantom Drift perks', () => {
+  const with_ = (perks: Partial<Perks>) => {
+    const s = createState(me, 1, { ...BASE_PERKS, ...perks })
+    s.spawnIn = Infinity
+    return s
+  }
+  /** A close dodge: the shard arrives 10 ticks after the ghost leaves its lane. */
+  const closeDodge = (s: DriftState) => {
+    place(s, { kind: 'shard', lane: 1, z: 13 })
+    step(s, send('left'))
+    return events(s, 30)
+  }
+
+  it('the default is the plain ghost', () => {
+    expect(createState(me, 1).perks).toEqual(BASE_PERKS)
+    expect(BASE_PERKS).toEqual({
+      comboStep: 5,
+      phantomTicks: PHANTOM_TICKS,
+      regenTicks: HEART_REGEN_TICKS,
+      nearWindow: 9,
+      wispPoints: 10,
+      phantomCost: PHANTOM_COST,
+    })
+  })
+
+  it('combo step: the multiplier climbs every 4 instead of 5', () => {
+    const s = with_({ comboStep: 4 })
+    s.player.combo = 3
+    place(s, { kind: 'wisp', lane: 1, z: 5 })
+    const seen = events(s, 20)
+    expect(seen).toContain('multiplier')
+    expect(comboMultiplier(s)).toBe(2)
+    const plain = quiet()
+    plain.player.combo = 3
+    place(plain, { kind: 'wisp', lane: 1, z: 5 })
+    expect(events(plain, 20)).not.toContain('multiplier')
+    expect(multiplier(16, 4)).toBe(5)
+    expect(multiplier(40, 4)).toBe(5)
+  })
+
+  it('phantom ticks: Phantom lasts longer', () => {
+    const s = with_({ phantomTicks: 150 })
+    s.player.charge = PHANTOM_COST
+    step(s, send('phase'))
+    expect(s.player.phantomUntil - s.tick).toBe(149)
+  })
+
+  it('regen ticks: hearts regrow sooner', () => {
+    const s = with_({ regenTicks: 36 * 60 })
+    place(s, { kind: 'shard', lane: 1, z: 4 })
+    run(s, 10)
+    expect(s.player.hearts).toBe(2)
+    expect(events(s, 36 * 60)).toContain('heal')
+  })
+
+  it('near window: a 10-tick dodge is a near miss only with the wider window', () => {
+    expect(closeDodge(quiet())).not.toContain('nearMiss')
+    const seen = closeDodge(with_({ nearWindow: 11 }))
+    expect(seen).toContain('nearMiss')
+    expect(seen).not.toContain('hit')
+  })
+
+  it('Phantom cost: a bigger ring to fill', () => {
+    const s = with_({ wispPoints: 12, phantomCost: 12 })
+    s.player.charge = 10
+    step(s, send('phase'))
+    expect(s.player.phantomUntil).toBe(0)
+    s.player.charge = 11
+    place(s, { kind: 'wisp', lane: 1, z: 5 })
+    expect(events(s, 20)).toContain('charged')
+    expect(s.player.charge).toBe(12)
+    step(s, send('phase'))
+    expect(s.player.phantomUntil).toBeGreaterThan(s.tick)
+  })
+
+  it('wisp points: a wisp scores 12 instead of 10', () => {
+    const s = with_({ wispPoints: 12 })
+    const got: number[] = []
+    place(s, { kind: 'wisp', lane: 1, z: 5 })
+    for (let i = 0; i < 20; i++) {
+      step(s, [])
+      for (const e of s.events) if (e.type === 'wisp') got.push(e.points)
+    }
+    expect(got).toEqual([12])
   })
 })

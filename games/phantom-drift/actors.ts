@@ -30,10 +30,13 @@ import {
   SphereGeometry,
   Sprite,
   SpriteMaterial,
+  TorusGeometry,
   Vector2,
   Vector3,
+  DynamicDrawUsage,
 } from 'three'
 import { glowTexture } from '@forge/render3d'
+import type { Accessory, Character } from './characters'
 import { C } from './palette'
 import { LANE_W } from './world'
 
@@ -431,7 +434,11 @@ export function makeCrack(): Mesh {
 
 // ---------- The ghost ----------
 
-/** Body with a glowing rim (fresnel) and a skirt that ripples. */
+/**
+ * Body: a soft fake-lit glow (no real lights, so it never recompiles), a
+ * glowing fresnel rim, and a tapered tail that waves like cloth, streams back
+ * with speed and trails behind a slide.
+ */
 export function ghostMaterial(): ShaderMaterial {
   return new ShaderMaterial({
     transparent: true,
@@ -440,65 +447,238 @@ export function ghostMaterial(): ShaderMaterial {
       core: { value: new Color('#6f97b0') },
       rim: { value: new Color(C.wisp) },
       opacity: { value: 1 },
+      /** -1…1: how hard it is sliding (the tail swings the other way). */
+      slide: { value: 0 },
+      /** 0…1: rift speed (the tail streams further back). */
+      speed: { value: 0 },
+      /** 0…1: wave strength (0 for reduced motion). */
+      motion: { value: 1 },
     },
     vertexShader: /* glsl */ `
-      uniform float time; varying vec3 vNormal; varying vec3 vView;
+      uniform float time; uniform float slide; uniform float speed; uniform float motion;
+      varying vec3 vNormal; varying vec3 vView; varying vec3 vObjN; varying float vY;
       void main() {
         vec3 p = position;
-        float skirt = 1.0 - smoothstep(0.0, 0.45, p.y);
+        // 0 at the waist … 1 at the tail tip.
+        float t = clamp((0.75 - p.y) / 1.07, 0.0, 1.0);
+        float t2 = t * t;
         float a = atan(p.z, p.x);
-        p.y += sin(a * 6.0 + time * 9.0) * 0.07 * skirt;
-        p.xz *= 1.0 + sin(a * 3.0 - time * 5.0) * 0.04 * skirt;
+        // Waves travel down the tail; the hem ripples.
+        p.x += sin(p.y * 7.0 + time * 8.0) * 0.09 * t2 * motion;
+        p.z += cos(p.y * 5.0 + time * 6.0) * 0.05 * t2 * motion;
+        p.xz *= 1.0 + sin(a * 3.0 - time * 5.0) * 0.05 * t * motion;
+        // Trails behind a slide, streams back with speed (forward is -z).
+        p.x -= slide * 0.5 * t2;
+        p.z += (0.12 + speed * 0.25) * t2;
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
         vNormal = normalize(normalMatrix * normal);
         vView = normalize(-mv.xyz);
+        vObjN = normal;
+        vY = position.y;
         gl_Position = projectionMatrix * mv;
       }`,
     fragmentShader: /* glsl */ `
       uniform vec3 core; uniform vec3 rim; uniform float opacity;
-      varying vec3 vNormal; varying vec3 vView;
+      varying vec3 vNormal; varying vec3 vView; varying vec3 vObjN; varying float vY;
       void main() {
+        vec3 n = normalize(vObjN);
         float f = pow(1.0 - abs(dot(normalize(vNormal), vView)), 2.2);
-        vec3 col = mix(core, rim * 1.1, f * 0.85);
-        gl_FragColor = vec4(col, opacity * (0.82 + f * 0.18));
+        // Fake key light from the top front left, plus a soft sky term.
+        float key = max(dot(n, normalize(vec3(-0.45, 0.8, 0.55))), 0.0);
+        float sky = n.y * 0.5 + 0.5;
+        vec3 col = core * (0.5 + 0.45 * key + 0.25 * sky);
+        // Inner glow: brighter towards the head, a little highlight on top.
+        col += core * 0.35 * smoothstep(0.2, 1.4, vY);
+        col += vec3(1.0) * pow(key, 14.0) * 0.35;
+        col = mix(col, rim * 1.15, f * 0.85);
+        // The tail thins out into mist.
+        float mist = mix(0.3, 1.0, smoothstep(-0.32, 0.45, vY));
+        gl_FragColor = vec4(col, opacity * (0.82 + f * 0.18) * mist);
       }`,
   })
 }
 
 const GHOST_BODY = (() => {
-  // Profile from the crown down to the skirt (x = radius, y = height).
+  // Profile from the crown down to the tail tip (x = radius, y = height).
   const pts: Vector2[] = []
   for (let i = 0; i <= 10; i++) {
     const a = (i / 10) * (Math.PI / 2)
     pts.push(new Vector2(Math.sin(a) * 0.62, 1.05 + Math.cos(a) * 0.62))
   }
-  pts.push(new Vector2(0.66, 0.6), new Vector2(0.7, 0.25), new Vector2(0.76, 0.02))
+  pts.push(
+    new Vector2(0.64, 0.82),
+    new Vector2(0.62, 0.58),
+    new Vector2(0.55, 0.36),
+    new Vector2(0.42, 0.15),
+    new Vector2(0.27, -0.04),
+    new Vector2(0.13, -0.2),
+    new Vector2(0.02, -0.32),
+  )
   return new LatheGeometry(pts, 40)
 })()
 const EYE = new SphereGeometry(0.09, 12, 10)
+/** Wispy arm: a cone hanging from the shoulder, tip down. */
+const ARM = new ConeGeometry(0.12, 0.46, 10).rotateX(Math.PI).translate(0, -0.23, 0)
+const HORN = new ConeGeometry(0.09, 0.34, 10).translate(0, 0.17, 0)
+const CROWN_RING = new TorusGeometry(0.3, 0.035, 6, 24).rotateX(Math.PI / 2)
+const CROWN_SPIKE = new ConeGeometry(0.06, 0.22, 4).translate(0, 0.11, 0)
+const PETAL = new SphereGeometry(0.1, 10, 8).scale(1, 0.45, 0.6)
+const FLOWER_HEART = new SphereGeometry(0.065, 10, 8)
+/** Cowl over the head, open at the front (+z) for the face. */
+const HOOD = new SphereGeometry(0.7, 28, 14, Math.PI / 2 + 0.85, Math.PI * 2 - 1.7, 0, Math.PI * 0.55)
+const HOOD_TIP = new ConeGeometry(0.16, 0.42, 10).translate(0, 0.21, 0)
+const HALO = new TorusGeometry(0.34, 0.04, 8, 32).rotateX(Math.PI / 2)
 
-export function makeGhost(): { root: Group; body: Mesh; mat: ShaderMaterial; eyes: Group } {
+export const SHOULDER_Y = 0.7
+
+export interface GhostModel {
+  root: Group
+  /** Everything that flickers and leans: body mesh, face, arms, accessories. */
+  body: Group
+  mat: ShaderMaterial
+  /** Eyes and blush: shift with a glance. */
+  face: Group
+  eyes: Mesh[]
+  arms: Mesh[]
+  accessories: Record<Exclude<Accessory, 'none'>, Group>
+  /** Colours that follow the character (set by {@link applyLook}). */
+  paint: {
+    eye: MeshBasicMaterial
+    blush: SpriteMaterial[]
+    arm: MeshBasicMaterial
+    accent: MeshBasicMaterial
+    glowAccent: MeshBasicMaterial
+    petal: MeshBasicMaterial
+    hood: MeshBasicMaterial
+  }
+  /** The character's own core and rim (the uniforms get lerped each frame). */
+  core: Color
+  rim: Color
+}
+
+const basic = (color: string, glow = false) =>
+  new MeshBasicMaterial(
+    glow ? { color, transparent: true, blending: AdditiveBlending, depthWrite: false } : { color },
+  )
+
+export function makeGhost(): GhostModel {
   const root = new Group()
+  const body = new Group()
   const mat = ghostMaterial()
-  const body = new Mesh(GHOST_BODY, mat)
-  const eyes = new Group()
-  const eyeMat = new MeshBasicMaterial({ color: '#1b1240' })
+  body.add(new Mesh(GHOST_BODY, mat))
+  const paint = {
+    eye: basic('#1b1240'),
+    blush: [] as SpriteMaterial[],
+    arm: basic(C.wisp, true),
+    accent: basic('#ffffff'),
+    glowAccent: basic('#ffffff', true),
+    petal: basic('#ff8fc8'),
+    hood: new MeshBasicMaterial({ color: '#ffffff', side: DoubleSide }),
+  }
+  paint.arm.opacity = 0.8
+
+  const face = new Group()
+  const eyes: Mesh[] = []
   for (const side of [-1, 1]) {
-    const eye = new Mesh(EYE, eyeMat)
+    const eye = new Mesh(EYE, paint.eye)
     eye.scale.set(1, 1.5, 0.6)
     eye.position.set(side * 0.2, 1.08, 0.56)
-    eyes.add(eye)
+    eyes.push(eye)
+    face.add(eye)
   }
-  // Blush: tiny pink glows under the eyes.
+  // Blush: tiny glows under the eyes.
   for (const side of [-1, 1]) {
     const blush = glowSprite('#ff8fc8', 0.5)
     blush.scale.setScalar(0.28)
     blush.position.set(side * 0.34, 0.9, 0.55)
-    eyes.add(blush)
+    paint.blush.push(blush.material)
+    face.add(blush)
   }
-  body.add(eyes)
+  body.add(face)
+
+  const arms: Mesh[] = []
+  for (const side of [-1, 1]) {
+    const arm = new Mesh(ARM, paint.arm)
+    arm.position.set(side * 0.56, SHOULDER_Y, 0.12)
+    arms.push(arm)
+    body.add(arm)
+  }
+
+  const horns = new Group()
+  for (const side of [-1, 1]) {
+    const horn = new Mesh(HORN, paint.accent)
+    horn.position.set(side * 0.3, 1.5, 0.08)
+    horn.rotation.z = -side * 0.45
+    horns.add(horn)
+  }
+  const crown = new Group()
+  crown.add(new Mesh(CROWN_RING, paint.glowAccent))
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + Math.PI / 2
+    const spike = new Mesh(CROWN_SPIKE, paint.glowAccent)
+    spike.position.set(Math.cos(a) * 0.3, 0, Math.sin(a) * 0.3)
+    spike.scale.setScalar(i === 0 ? 1.4 : 1)
+    crown.add(spike)
+  }
+  crown.position.set(0, 1.6, 0)
+  const flower = new Group()
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2
+    const petal = new Mesh(PETAL, paint.petal)
+    petal.position.set(Math.cos(a) * 0.1, Math.sin(a) * 0.1, 0)
+    petal.rotation.z = a
+    flower.add(petal)
+  }
+  flower.add(new Mesh(FLOWER_HEART, paint.accent))
+  flower.position.set(0.36, 1.48, 0.32)
+  flower.rotation.set(-0.3, 0.5, -0.3)
+  const hood = new Group()
+  const cowl = new Mesh(HOOD, paint.hood)
+  cowl.position.y = 1.05
+  const tip = new Mesh(HOOD_TIP, paint.hood)
+  tip.position.set(0, 1.62, -0.22)
+  tip.rotation.x = -0.6
+  hood.add(cowl, tip)
+  const halo = new Group()
+  halo.add(new Mesh(HALO, paint.glowAccent))
+  halo.position.set(0, 1.95, 0)
+  body.add(horns, crown, flower, hood, halo)
+
   root.add(body)
-  return { root, body, mat, eyes }
+  return {
+    root,
+    body,
+    mat,
+    face,
+    eyes,
+    arms,
+    accessories: { horns, crown, flower, hood, halo },
+    paint,
+    core: new Color('#6f97b0'),
+    rim: new Color(C.wisp),
+  }
+}
+
+/** Dress the ghost as a character: colours and accessory only, no new materials. */
+export function applyLook(g: GhostModel, c: Character): void {
+  const k = c.colors
+  g.core.set(k.core)
+  g.rim.set(k.rim)
+  g.mat.uniforms.core.value.copy(g.core)
+  g.mat.uniforms.rim.value.copy(g.rim)
+  g.paint.eye.color.set(k.eye)
+  for (const b of g.paint.blush) b.color.set(k.blush)
+  g.paint.arm.color.set(k.rim)
+  g.paint.accent.color.set(k.accent)
+  g.paint.glowAccent.color.set(k.accent)
+  g.paint.petal.color.set(k.blush)
+  g.paint.hood.color.set(k.accent)
+  for (const [name, obj] of Object.entries(g.accessories)) obj.visible = name === c.accessory
+}
+
+/** Show every accessory (only while warming up, so all of them get compiled). */
+export function showAllAccessories(g: GhostModel): void {
+  for (const obj of Object.values(g.accessories)) obj.visible = true
 }
 
 /** Faint copies trailing a slide. */
@@ -514,4 +694,47 @@ export function makeAfterimage(): Mesh {
     }),
   )
   return m
+}
+
+/** A glowing ribbon behind the ghost: one buffer, rewritten in place each frame. */
+export interface Ribbon {
+  mesh: Mesh
+  material: MeshBasicMaterial
+  /** Points along the ribbon (head first). */
+  points: number
+  position: Float32BufferAttribute
+}
+
+export function makeRibbon(points = 16): Ribbon {
+  const geo = new BufferGeometry()
+  const position = new Float32BufferAttribute(new Float32Array(points * 2 * 3), 3)
+  const color = new Float32BufferAttribute(new Float32Array(points * 2 * 3), 3)
+  position.setUsage(DynamicDrawUsage)
+  geo.setAttribute('position', position)
+  geo.setAttribute('color', color)
+  const index: number[] = []
+  for (let i = 0; i < points - 1; i++) {
+    const a = i * 2
+    index.push(a, a + 1, a + 2, a + 1, a + 3, a + 2)
+  }
+  geo.setIndex(index)
+  // Fades along its length: bright at the ghost, black (= invisible, additive) at the end.
+  for (let i = 0; i < points; i++) {
+    const v = (1 - i / (points - 1)) ** 1.5
+    color.setXYZ(i * 2, v, v, v)
+    color.setXYZ(i * 2 + 1, v, v, v)
+  }
+  const material = new MeshBasicMaterial({
+    color: C.wisp,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.6,
+    blending: AdditiveBlending,
+    depthWrite: false,
+    side: DoubleSide,
+  })
+  const mesh = new Mesh(geo, material)
+  // Its points move every frame; the bounds would always be stale.
+  mesh.frustumCulled = false
+  return { mesh, material, points, position }
 }

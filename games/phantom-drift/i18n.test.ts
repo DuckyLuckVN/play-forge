@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { CHARACTERS } from './characters'
 import { VI } from './i18n'
 
 // Every `t('…')` call in the game's source.
@@ -10,6 +11,8 @@ const sources = import.meta.glob<string>(['./*.ts', '!./*.test.ts'], {
 const called = Object.values(sources).flatMap((src) =>
   [...src.matchAll(/\bt\(\s*(['"`])((?:\\.|(?!\1).)*)\1/gs)].map((m) => m[2].replace(/\\(.)/g, '$1')),
 )
+// Text kept as data and translated where shown: character names and perks.
+called.push(...CHARACTERS.flatMap((c) => [c.name, c.perk]))
 
 describe('Vietnamese', () => {
   it('finds the strings to check', () => {

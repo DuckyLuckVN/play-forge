@@ -8,15 +8,7 @@ import { clamp, ease, lerp, progress } from '@forge/fx/tween'
 import { FONT } from '@forge/ui/theme'
 import type { Moment } from './moments'
 import { C } from './palette'
-import {
-  MAX_HEARTS,
-  MAX_TIER,
-  multiplier,
-  PHANTOM_COST,
-  PHANTOM_TICKS,
-  speedAt,
-  type DriftState,
-} from './sim'
+import { MAX_HEARTS, MAX_TIER, comboMultiplier, speedAt, type DriftState } from './sim'
 import { distanceText, kmh } from './stats'
 
 const METER_R = 32
@@ -142,7 +134,7 @@ export class DriftHud {
       speedColor,
     )
 
-    const mult = multiplier(p.combo)
+    const mult = comboMultiplier(s)
     if (mult > 1) {
       const mp = 1 - ease.outCubic(progress(this.time, this.multPop, 0.4))
       ctx.font = `700 ${Math.round((22 + mult * 2) * (1 + mp * 0.8))}px ${FONT}`
@@ -238,7 +230,7 @@ export class DriftHud {
     const p = s.player
     const [cx, cy] = meterAt(w, h)
     const phantom = s.tick < p.phantomUntil
-    const fill = Math.min(1, p.charge / PHANTOM_COST)
+    const fill = Math.min(1, p.charge / s.perks.phantomCost)
     const ready = fill >= 1
     ctx.fillStyle = 'rgb(8 6 24 / 0.5)'
     ctx.beginPath()
@@ -251,7 +243,7 @@ export class DriftHud {
     ctx.stroke()
     ctx.strokeStyle = ready || phantom ? C.phantom : C.wisp
     ctx.beginPath()
-    const amount = phantom ? (p.phantomUntil - s.tick) / PHANTOM_TICKS : fill
+    const amount = phantom ? (p.phantomUntil - s.tick) / s.perks.phantomTicks : fill
     ctx.arc(cx, cy, METER_R, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * amount)
     ctx.stroke()
     if (ready) {

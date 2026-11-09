@@ -264,6 +264,10 @@
 }
 
 /* ---------- Touch controls (hud.ts TouchPad, input.ts) ---------- */
+/* While a match is playing (main.ts) the whole stage swallows touches, not just the court. */
+.pf-stage.sp-playing {
+  touch-action: none;
+}
 /* The court takes every touch: no scroll, pinch, double-tap zoom, long-press menu or selection. */
 .sp-touchable {
   touch-action: none;

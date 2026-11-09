@@ -200,16 +200,24 @@ export function bindInput(
     }
   }
   const noMenu = (e: Event) => e.preventDefault()
+  // Tab hidden or phone rotated mid-drag: no pointerup will come for the held fingers.
+  const onHidden = () => {
+    if (document.hidden) letGo()
+  }
 
   window.addEventListener('keydown', onDown)
   window.addEventListener('keyup', onUp)
   window.addEventListener('blur', letGo)
+  window.addEventListener('orientationchange', letGo)
+  document.addEventListener('visibilitychange', onHidden)
   target.addEventListener('pointerdown', onPointer)
   if (pad) {
     target.classList.add('sp-touchable')
     target.addEventListener('pointermove', onMove)
     target.addEventListener('pointerup', onPointerUp)
     target.addEventListener('pointercancel', onPointerUp)
+    // The browser took the finger away (e.g. a system gesture): same as lifting it.
+    target.addEventListener('lostpointercapture', onPointerUp)
     target.addEventListener('contextmenu', noMenu)
   }
   return {
@@ -219,10 +227,13 @@ export function bindInput(
       window.removeEventListener('keydown', onDown)
       window.removeEventListener('keyup', onUp)
       window.removeEventListener('blur', letGo)
+      window.removeEventListener('orientationchange', letGo)
+      document.removeEventListener('visibilitychange', onHidden)
       target.removeEventListener('pointerdown', onPointer)
       target.removeEventListener('pointermove', onMove)
       target.removeEventListener('pointerup', onPointerUp)
       target.removeEventListener('pointercancel', onPointerUp)
+      target.removeEventListener('lostpointercapture', onPointerUp)
       target.removeEventListener('contextmenu', noMenu)
       target.classList.remove('sp-touchable')
     },

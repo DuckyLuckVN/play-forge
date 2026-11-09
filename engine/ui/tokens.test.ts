@@ -39,6 +39,7 @@ describe('tokens.css', () => {
       'notice',
       'overlay',
       'countdown',
+      'rotate',
       'bar',
       'toast',
       'popover',

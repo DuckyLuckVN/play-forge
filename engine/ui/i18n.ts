@@ -14,6 +14,9 @@ export const VI: Dictionary = {
   'Leave room': 'Rời phòng',
   'Full screen': 'Toàn màn hình',
   'Exit full screen': 'Thoát toàn màn hình',
+  // Landscape guard (engine/ui/landscape.ts)
+  'Rotate your phone': 'Xoay ngang điện thoại',
+  'This game plays sideways.': 'Trò chơi này cần màn hình ngang.',
   Language: 'Ngôn ngữ',
   'Language: {name}': 'Ngôn ngữ: {name}',
   Music: 'Nhạc',

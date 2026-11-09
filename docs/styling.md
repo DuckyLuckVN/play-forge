@@ -50,15 +50,15 @@ Two things to know:
 Defined in `engine/ui/styles/tokens.css`. Use them for every colour, size, gap, radius, shadow and
 z-index. If a value you need is missing, add a token rather than a raw value.
 
-| Group   | Tokens                                                                                                                                  |
-| ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Colour  | `--pf-night` `--pf-felt` `--pf-rim` `--pf-pit` `--pf-chalk` `--pf-haze` `--pf-yolk` `--pf-yolk-edge` `--pf-ink`                         |
-|         | `--pf-coral` `--pf-coral-edge` `--pf-coral-ink` `--pf-mint` `--pf-sky` `--pf-violet` `--pf-pink`                                        |
-| Type    | `--pf-font`; sizes `--pf-fs-xs/sm/md/base/lg/xl/2xl` = 12/13/14/16/20/24/28px; weights `--pf-fw-semi` 600, `--pf-fw-bold` 700           |
-| Spacing | `--pf-space-1..7` = 2/4/6/8/12/16/20px                                                                                                  |
-| Radius  | `--pf-radius-lg` 14, `--pf-radius-md` 10, `--pf-radius` 8, `--pf-radius-sm` 6, `--pf-radius-pill` 999px                                 |
-| Depth   | `--pf-edge` (button depth, 4px); `--pf-lift-sm/md/lg` = `0 3px/4px/6px 0 var(--pf-rim)`; `--pf-drop` (modal shadow)                     |
-| Stack   | `--pf-z-raised` 2, `-notice` 5, `-overlay` 10, `-countdown` 11, `-bar` 15, `-toast` 20, `-popover` 25, `-fab` 40, `-sheet` 50, `-fx` 60 |
+| Group   | Tokens                                                                                                                                                |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Colour  | `--pf-night` `--pf-felt` `--pf-rim` `--pf-pit` `--pf-chalk` `--pf-haze` `--pf-yolk` `--pf-yolk-edge` `--pf-ink`                                       |
+|         | `--pf-coral` `--pf-coral-edge` `--pf-coral-ink` `--pf-mint` `--pf-sky` `--pf-violet` `--pf-pink`                                                      |
+| Type    | `--pf-font`; sizes `--pf-fs-xs/sm/md/base/lg/xl/2xl` = 12/13/14/16/20/24/28px; weights `--pf-fw-semi` 600, `--pf-fw-bold` 700                         |
+| Spacing | `--pf-space-1..7` = 2/4/6/8/12/16/20px                                                                                                                |
+| Radius  | `--pf-radius-lg` 14, `--pf-radius-md` 10, `--pf-radius` 8, `--pf-radius-sm` 6, `--pf-radius-pill` 999px                                               |
+| Depth   | `--pf-edge` (button depth, 4px); `--pf-lift-sm/md/lg` = `0 3px/4px/6px 0 var(--pf-rim)`; `--pf-drop` (modal shadow)                                   |
+| Stack   | `--pf-z-raised` 2, `-notice` 5, `-overlay` 10, `-countdown` 11, `-rotate` 12, `-bar` 15, `-toast` 20, `-popover` 25, `-fab` 40, `-sheet` 50, `-fx` 60 |
 
 Colours come from `engine/ui/theme.ts` (canvas renderers import `theme`; `applyTheme()` writes each
 key as `--pf-<kebab-key>` on `<html>` at startup). `tokens.css` repeats the same values as static

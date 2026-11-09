@@ -1,4 +1,4 @@
-import { createGameApp, h, smoothState, type Session } from '@forge'
+import { createGameApp, h, landscapeGuard, smoothState, type Session } from '@forge'
 import { ARCADE } from '@forge/audio/tracks'
 import { webglAvailable } from '@forge/render3d'
 import './shuttle-pop.css'
@@ -49,12 +49,51 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
   // Our character on every play start (inputs are dropped before). The host's look is already seeded
   // in setup; a guest's shows from "Go!". Idempotent, so resumes may resend it.
   const pick = () => session.sendInput({ t: 'pick', preset: loadPreset() })
+  // Phones play in landscape. Upright: the rotate card covers the court and held controls let go;
+  // vs the computer also pauses (like a hidden tab: Resume from the pause screen after rotating).
+  // Online play can't pause, so it keeps running under the card.
+  // Only during a match: the room lobby and the results stay usable upright.
+  let portrait = false
+  // A microtask later: at "Go!" the session emits 'playing' before it starts its ticker, so a
+  // pause from inside that lobby event would be undone by the ticker starting after it.
+  const pauseIfUpright = () =>
+    queueMicrotask(() => {
+      if (portrait && session.offline && live()) session.setPaused(true)
+    })
+  let offGuard: (() => void) | null = null
+  const guardMatch = () => {
+    const inMatch = session.phase === 'countdown' || session.phase === 'playing'
+    if (inMatch && !offGuard) {
+      offGuard = landscapeGuard(stage, (upright) => {
+        portrait = upright
+        if (!upright) return
+        input.release()
+        pauseIfUpright()
+      })
+    } else if (!inMatch && offGuard) {
+      offGuard()
+      offGuard = null
+      portrait = false
+    }
+  }
+  guardMatch()
+  // While playing, the stage takes every touch (no page scroll / pinch zoom around the court).
+  stage.classList.toggle('sp-playing', live())
+  const noPinch = (e: Event) => {
+    if (live()) e.preventDefault()
+  }
+  // iOS Safari pinch-zooms despite touch-action; its gesture events must be cancelled (non-passive).
+  document.addEventListener('gesturestart', noPinch, { passive: false })
   // Play starting or resuming: re-send the held keys (a key held through "Go!" moves you, one let
   // go during a pause stops you) and our character.
   let wasLive = live()
   if (wasLive) pick()
   const offLobby = session.on('lobby', () => {
+    guardMatch()
+    // Countdown ended (or resumed) while upright: straight back to paused.
+    pauseIfUpright()
     const now = live()
+    stage.classList.toggle('sp-playing', now)
     if (now && !wasLive) {
       input.resync()
       pick()
@@ -66,6 +105,9 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
   return () => {
     hostId = null
     offLobby()
+    offGuard?.()
+    document.removeEventListener('gesturestart', noPinch)
+    stage.classList.remove('sp-playing')
     input.stop()
     pad.root.remove()
     detach()

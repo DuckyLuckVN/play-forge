@@ -39,6 +39,11 @@ export const VI: Dictionary = {
   'Regrowth: hearts regrow in 36 s, not 45 s': 'Hồi sinh: tim mọc lại sau 36 giây, thay vì 45 giây',
   'Close call: near misses come easier': 'Suýt soát: né sát dễ hơn',
   'Gold rush: wisps worth 12, Phantom needs 12': 'Cơn sốt vàng: đốm sáng được 12 điểm, Bóng ma cần 12',
+  // Character picker and unlocks
+  'Choose your ghost': 'Chọn bóng ma',
+  'Best {n} to unlock': 'Đạt kỷ lục {n} để mở khóa',
+  'Unlocked: {name}!': 'Đã mở khóa: {name}!',
+  'New ghost': 'Bóng ma mới',
 }
 
 export const t = translator(VI)

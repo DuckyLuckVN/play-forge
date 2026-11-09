@@ -7,6 +7,7 @@ import {
   isUnlocked,
   newlyUnlocked,
   perksOf,
+  UnlockWatch,
 } from './characters'
 import { VI } from './i18n'
 import { BASE_PERKS } from './sim'
@@ -93,5 +94,18 @@ describe('Phantom Drift characters', () => {
   it('uses valid #rrggbb colours', () => {
     for (const c of CHARACTERS)
       for (const [k, v] of Object.entries(c.colors)) expect(v, `${c.id}.${k}`).toMatch(/^#[0-9a-f]{6}$/i)
+  })
+
+  it('reports each unlock once, the moment the score crosses it', () => {
+    const [, , frost, bloom] = CHARACTERS
+    const watch = new UnlockWatch(0)
+    expect(watch.update(frost.unlock - 1)).toEqual([])
+    expect(watch.update(frost.unlock)).toEqual([frost])
+    expect(watch.update(frost.unlock + 5)).toEqual([])
+    expect(watch.update(bloom.unlock)).toEqual([bloom])
+    expect(watch.unlocked).toEqual([frost, bloom])
+    watch.reset(bloom.unlock)
+    expect(watch.unlocked).toEqual([])
+    expect(watch.update(bloom.unlock + 1)).toEqual([])
   })
 })

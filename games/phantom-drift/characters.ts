@@ -61,7 +61,7 @@ export const CHARACTERS: readonly Character[] = [
       eye: '#2a0d06',
       blush: '#ff5a3c',
       trail: '#ff8a3d',
-      accent: '#ffd28a',
+      accent: '#e8452c',
     },
     accessory: 'horns',
     unlock: 0,
@@ -149,6 +149,30 @@ export const isUnlocked = (c: Character, best: number) => best >= c.unlock
 /** Characters a new best of `after` unlocks that `before` had not. */
 export function newlyUnlocked(before: number, after: number): Character[] {
   return CHARACTERS.filter((c) => c.unlock > before && c.unlock <= after)
+}
+
+/**
+ * Unlocks reached during a run, each reported once (for a banner the moment
+ * the score crosses one). `best` is the stored best when the run started.
+ */
+export class UnlockWatch {
+  /** Everything unlocked this run so far. */
+  readonly unlocked: Character[] = []
+
+  constructor(private best: number) {}
+
+  /** New run: forget, and count from this best. */
+  reset(best: number): void {
+    this.best = best
+    this.unlocked.length = 0
+  }
+
+  /** Characters the score unlocked just now. */
+  update(score: number): Character[] {
+    const fresh = newlyUnlocked(this.best, score).filter((c) => !this.unlocked.includes(c))
+    this.unlocked.push(...fresh)
+    return fresh
+  }
 }
 
 type Store = Pick<Storage, 'getItem' | 'setItem'>

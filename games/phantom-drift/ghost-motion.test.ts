@@ -1,5 +1,75 @@
 import { describe, expect, it } from 'vitest'
-import { Blinker, bob, spring, springTo } from './ghost-motion'
+import { Blinker, bob, ghostRig, runPose, runPoseOut, spring, springTo } from './ghost-motion'
+
+describe('running pose', () => {
+  const input = (slide: number, reduced = false, speed = 0) => ({
+    time: 1.3,
+    dt: 1 / 60,
+    slide,
+    speed,
+    eyes: 1,
+    glow: 8,
+    reduced,
+  })
+  /** Hop one lane: the slide shrinks from 1 to 0 over 5 ticks (as in the sim), then rest. */
+  function hop(dir: number, frames: number, reduced = false) {
+    const rig = ghostRig()
+    const out = runPoseOut()
+    const peeks: number[] = []
+    for (let i = 0; i < frames; i++) {
+      const slide = dir * Math.max(0, 1 - i / 5)
+      peeks.push(runPose(rig, input(slide, reduced), out).peek!)
+    }
+    return { out, peeks }
+  }
+
+  it('at rest: seen from behind, no peek', () => {
+    const out = runPose(ghostRig(), input(0), runPoseOut())
+    expect(out.back).toBe(true)
+    expect(out.peek).toBe(0)
+  })
+
+  it('peeks towards the lane it moves into, then turns back', () => {
+    for (const dir of [-1, 1]) {
+      const { peeks } = hop(dir, 120)
+      expect(Math.max(...peeks.map((p) => p * dir))).toBeGreaterThan(0.6) // enough to show the face
+      expect(Math.min(...peeks.map((p) => p * dir))).toBeGreaterThanOrEqual(-0.05)
+      expect(Math.abs(peeks.at(-1)!)).toBeLessThan(0.05)
+    }
+  })
+
+  it('the face lingers a moment after a quick hop', () => {
+    const { peeks } = hop(1, 30)
+    // A quarter second after the hop began, the face still shows.
+    expect(peeks[15]).toBeGreaterThan(0.3)
+  })
+
+  it('peek is bounded however hard it slides', () => {
+    const rig = ghostRig()
+    const out = runPoseOut()
+    for (let i = 0; i < 200; i++) {
+      const p = runPose(rig, input(i % 40 < 20 ? 4 : -4), out).peek!
+      expect(Math.abs(p)).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('reduced motion: no bob, lean or turning head', () => {
+    const { out, peeks } = hop(1, 10, true)
+    expect(peeks.every((p) => p === 0)).toBe(true)
+    expect(out.tilt).toBe(0)
+    expect(out.lift).toBeCloseTo(0)
+    expect(out.sx).toBe(1)
+    expect(out.time).toBe(0)
+    expect(out.glow).toBe(0)
+  })
+
+  it('a little shorter at top speed (tipped forward)', () => {
+    const slow = runPose(ghostRig(), input(0, true, 0), runPoseOut()).sy
+    const fast = runPose(ghostRig(), input(0, true, 1), runPoseOut()).sy
+    expect(fast).toBeLessThan(slow)
+    expect(fast).toBeGreaterThan(0.9)
+  })
+})
 
 describe('ghost motion', () => {
   it('a spring overshoots a little, then settles on the target', () => {

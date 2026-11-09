@@ -3,18 +3,26 @@
 
 import { Particles } from '@forge/fx/particles'
 import { Shake } from '@forge/fx/shake'
-import { clamp, clamp01, damp, ease, lerp, prefersReducedMotion, progress } from '@forge/fx/tween'
+import { clamp01, damp, ease, lerp, prefersReducedMotion, progress } from '@forge/fx/tween'
 import type { Smoothed } from '@forge/net/smoothing'
 import { createCanvas2D, type Canvas2D } from '@forge/render2d/canvas'
 import { telegraph } from '@forge/reflex'
 import { DEFAULT_CHARACTER } from './characters'
-import { drawGhost2D, type GhostLook, type GhostPose } from './ghost2d'
-import { bob, Blinker, spring, springTo } from './ghost-motion'
+import { drawGhost2D, type GhostLook } from './ghost2d'
+import { Blinker, ghostRig, runPose, runPoseOut, type RunInput } from './ghost-motion'
 import { DriftHud } from './hud'
 import { riftHue } from './ambience'
 import { C } from './palette'
 import type { DriftView } from './view'
-import { DEATH_TICKS, SPAWN_Z, type DriftEvent, type DriftState, type Faller, type Obj } from './sim'
+import {
+  DEATH_TICKS,
+  SPAWN_Z,
+  speedLevel,
+  type DriftEvent,
+  type DriftState,
+  type Faller,
+  type Obj,
+} from './sim'
 
 export const WIDTH = 420
 export const HEIGHT = 720
@@ -36,7 +44,9 @@ export class DriftRenderer {
   private flash = { at: -10, color: '#fff' }
   private trail: { x: number; t: number }[] = []
   private reduced = prefersReducedMotion()
-  private lean = spring()
+  private rig = ghostRig()
+  private pose = runPoseOut()
+  private runIn: RunInput = { time: 0, dt: 0, slide: 0, speed: 0, eyes: 1, glow: 0, reduced: false }
   private blink = new Blinker(11)
 
   constructor(
@@ -418,21 +428,16 @@ export class DriftRenderer {
     const [x, y] = this.at(lx, 0)
     const invuln = s.tick < s.player.invulnUntil
     const flicker = invuln && !phantom && Math.floor(this.time * 14) % 2 === 0
-    const slide = s.player.target - lx
-    const motion = this.reduced ? 0 : 1
-    springTo(this.lean, clamp(slide * 0.35, -0.3, 0.3) * motion, dt)
-    const b = bob(this.time, motion)
-    const pose: GhostPose = {
-      time: this.reduced ? 0 : this.time,
-      tilt: this.lean.value,
-      eyes: this.reduced ? 1 : this.blink.update(dt),
-      look: clamp(slide * 2, -1, 1),
-      sx: b.sx,
-      sy: b.sy,
-      glow: this.reduced ? 0 : phantom ? 30 : 16,
-      // Running away from the camera: we see its back, not its face.
-      back: true,
-    }
+    // Running away from the camera: its back, the face peeking round on a turn.
+    const input = this.runIn
+    input.time = this.time
+    input.dt = dt
+    input.slide = s.player.target - lx
+    input.speed = speedLevel(s.speed)
+    input.eyes = this.reduced ? 1 : this.blink.update(dt)
+    input.glow = phantom ? 30 : 16
+    input.reduced = this.reduced
+    const pose = runPose(this.rig, input, this.pose)
     const look = this.character
     const tint = phantom ? C.phantom : undefined
     // Afterimages trail the slide.
@@ -443,7 +448,7 @@ export class DriftRenderer {
       drawGhost2D(
         ctx,
         p.x,
-        y + b.y * 40,
+        y + pose.lift * 40,
         look,
         { ...pose, glow: 0 },
         1,
@@ -451,7 +456,7 @@ export class DriftRenderer {
       )
     }
     ctx.globalAlpha = flicker ? 0.25 : phantom ? 0.55 + 0.2 * Math.sin(this.time * 20) : 1
-    drawGhost2D(ctx, x, y + b.y * 40, look, pose, 1, tint)
+    drawGhost2D(ctx, x, y + pose.lift * 40, look, pose, 1, tint)
     ctx.globalAlpha = 1
     // A full meter makes the ghost sparkle: ready to go Phantom.
     if (s.player.charge >= s.perks.phantomCost && !phantom && Math.random() < 0.4)

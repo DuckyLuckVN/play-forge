@@ -2,6 +2,7 @@
 // Side 0 owns z < 0, side 1 owns z > 0. Inputs are view-relative (x = screen right, z = toward the net).
 import { random } from '@forge/core/rng'
 import type { GameDefinition, GameOptions, InputEvent, PlayerInfo } from '@forge/net/session'
+import { botStep, newBotMemory, type BotMemory } from './ai'
 import { t } from './i18n'
 import { COURT, DT, stepShuttle, type Flight, type Vec3 } from './physics'
 import { award, serveBox, winner } from './rules'
@@ -72,6 +73,8 @@ export interface SpPlayer {
   swingAt: number
   preset: number
   level?: Level
+  /** AI seats: the bot's cached plan (see ai.ts). */
+  bot?: BotMemory
 }
 
 export type SpEvent = { id: number; tick: number } & (
@@ -250,10 +253,33 @@ export function createState(players: PlayerInfo[], seed: number, options: GameOp
   return state
 }
 
-/** Hook for the computer's inputs (Task 4: botStep). For now the AI seat stands still. */
+/** Test helper: both seats are computers (bot vs bot balance runs). */
+export function setupBots(levelA: Level, levelB: Level, seed: number): SpState {
+  const seat = (i: number): PlayerInfo => ({
+    id: `${AI_ID}${i}`,
+    name: t('Computer'),
+    slot: i,
+    ready: true,
+    connected: true,
+  })
+  const state = createState([seat(0), seat(1)], seed)
+  state.players.forEach((p, i) => {
+    p.kind = 'ai'
+    p.level = i === 0 ? levelA : levelB
+  })
+  return state
+}
+
+/** The computer's inputs this tick (botStep per AI seat; its plan lives in player.bot). */
 function botInputs(state: SpState): InputEvent<SpInput>[] {
-  void state
-  return []
+  const out: InputEvent<SpInput>[] = []
+  for (const p of state.players) {
+    if (p.kind !== 'ai' || !p.level) continue
+    p.bot ??= newBotMemory()
+    for (const input of botStep(state, p.side, p.level, p.bot, () => rand(state)))
+      out.push({ player: p.id, input })
+  }
+  return out
 }
 
 function serve(state: SpState, p: SpPlayer, held: { x: number; z: number }) {

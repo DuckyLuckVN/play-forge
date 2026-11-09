@@ -396,7 +396,8 @@ describe('swing timing', () => {
 describe('serve timeout', () => {
   it('an idle server short-serves after SERVE_TIMEOUT ticks', () => {
     const s = game.setup(players(1), 5, {})
-    s.server = 1 // the (still idle) computer serves
+    s.server = 1
+    s.players[1].kind = 'human' // an idle seat (the computer would serve on its own)
     game.tick(s, [])
     run(s, SERVE_TIMEOUT - 2)
     expect(s.phase).toBe('serve')

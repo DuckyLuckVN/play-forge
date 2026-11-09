@@ -32,7 +32,10 @@ export const CAMERA = {
   /** Look-at height gained per metre the (damped) shuttle is above `riseFrom`. */
   rise: 0.4,
   riseFrom: 1.5,
-  /** Field of view gained (deg) per metre the (damped) shuttle is above `riseFrom`. */
+  /**
+   * Field of view gained (deg) per metre the (damped) shuttle is above `riseFrom`. 0 here: the roomy
+   * framing already fits a clear's apex at 55°; only CAMERA_TIGHT needs to widen.
+   */
   zoom: 0,
   /** Focus easing toward the shuttle height, per second (smooth: no jerks on hits). */
   focusRate: 5,
@@ -48,7 +51,7 @@ export const CAMERA = {
  */
 export const CAMERA_TIGHT = { fov: 34, height: 4.5, back: 8.5, lookZ: 2, zoom: 2 } as const
 
-/** Never wider than this, however high the shuttle goes. */
+/** Never wider than this, however high the shuttle goes (past ~60° the edges stretch visibly). */
 const FOV_MAX = 58
 
 /** Canvas aspect / CSS height where the tight framing is fully on (it blends in from 16:9 / 560 px). */

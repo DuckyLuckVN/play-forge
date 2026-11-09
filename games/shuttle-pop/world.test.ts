@@ -92,14 +92,17 @@ describe('camera framing', () => {
 
   // Desktop 16:9, a phone in landscape (19.5:9), and a phone canvas under the shell bar (short, ~2.6:1).
   // Every framing from roomy (0) to tight (1) must hold on each of them.
-  for (const [label, aspect] of [
-    ['16:9', 16 / 9],
-    ['19.5:9 phone', 19.5 / 9],
-    ['short phone canvas 2.6:1', 2.6],
-  ] as const)
-    for (const tight of [0, 0.5, 1])
+  const cases: [string, number, number[]][] = [
+    ['16:9', 16 / 9, [0, 0.5, 1]],
+    ['19.5:9 phone', 19.5 / 9, [0, 0.5, 1]],
+    ['short phone canvas 2.6:1', 2.6, [0, 0.5, 1]],
+    // The real desktop canvas at 1280×720 (shell bar + gutters), at the blend it actually gets.
+    ['desktop canvas 1248×639', 1248 / 639, [framingTightness(1248, 639)]],
+  ]
+  for (const [label, aspect, tights] of cases)
+    for (const tight of tights)
       for (const playerX of [0, -COURT.halfWidth, COURT.halfWidth].map((x) => x * CAMERA.followX))
-        it(`${label}, tightness ${tight}, camera x ${playerX.toFixed(2)}: shuttle on screen ≥ 95% of every high shot, all court corners always`, () => {
+        it(`${label}, tightness ${tight.toFixed(2)}, camera x ${playerX.toFixed(2)}: shuttle on screen ≥ 95% of every high shot, all court corners always`, () => {
           const cam = new PerspectiveCamera(CAMERA.fov, aspect, 0.1, 200)
           for (const [name, pts] of Object.entries(flights)) {
             let focus = 1

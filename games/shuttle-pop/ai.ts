@@ -10,23 +10,23 @@ type GradeRoll = Grade | 'whiff'
 
 export const LEVELS = {
   easy: {
-    reactTicks: 18,
-    speedMul: 0.8,
-    grade: { perfect: 0.15, good: 0.55, late: 0.2, whiff: 0.1 },
+    reactTicks: 22,
+    speedMul: 0.72,
+    grade: { perfect: 0.1, good: 0.55, late: 0.22, whiff: 0.13 },
     smash: 0.15,
     misjudge: 0.3,
   },
   normal: {
-    reactTicks: 8,
-    speedMul: 0.97,
-    grade: { perfect: 0.45, good: 0.4, late: 0.09, whiff: 0.06 },
-    smash: 0.75,
+    reactTicks: 14,
+    speedMul: 0.88,
+    grade: { perfect: 0.3, good: 0.5, late: 0.12, whiff: 0.08 },
+    smash: 0.4,
     misjudge: 0,
   },
   hard: {
-    reactTicks: 6,
-    speedMul: 1,
-    grade: { perfect: 0.62, good: 0.27, late: 0.05, whiff: 0.06 },
+    reactTicks: 10,
+    speedMul: 0.93,
+    grade: { perfect: 0.56, good: 0.29, late: 0.07, whiff: 0.08 },
     smash: 0.85,
     misjudge: 0,
   },

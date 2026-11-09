@@ -297,6 +297,8 @@ export class Court3D {
     // The engine's own governor restarts its window on every resize (buffers realloc); so does ours.
     this.view.onResize((w, h) => {
       this.quality.restart()
+      // Snaps on purpose: a resize/rotate already redraws everything at a new size, so easing the
+      // framing would only add a second, slower jump.
       this.tight = framingTightness(w, h)
     })
 

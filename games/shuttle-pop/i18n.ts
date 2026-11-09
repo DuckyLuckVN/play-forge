@@ -29,6 +29,15 @@ export const VI: Dictionary = {
   'Shuttle Pop needs WebGL to run.': 'Shuttle Pop cần WebGL để chạy.',
   'Badminton court': 'Sân cầu lông',
 
+  // In-match overlay (hud.ts): timing pops, badges
+  'Perfect!': 'Hoàn hảo!',
+  Good: 'Tốt',
+  Late: 'Trễ',
+  Miss: 'Hụt',
+  'Your serve': 'Lượt bạn giao cầu',
+  '{name} serves': '{name} giao cầu',
+  'Match point': 'Điểm quyết định',
+
   // Results
   '{name} wins!': '{name} thắng!',
   'Your opponent left. You win!': 'Đối thủ đã rời đi. Bạn thắng!',
@@ -36,6 +45,10 @@ export const VI: Dictionary = {
   'The computer wins {score}. Rematch?': 'Máy thắng {score}. Đấu lại nhé?',
   '{name} wins {score}.': '{name} thắng {score}.',
   'Final score': 'Tỉ số chung cuộc',
+  'Longest rally': 'Pha cầu dài nhất',
+  '{n} shots': '{n} cú đánh',
+  'Your Perfect hits': 'Cú Hoàn hảo của bạn',
+  'Perfect hits': 'Cú Hoàn hảo',
 }
 
 export const t = translator(VI)

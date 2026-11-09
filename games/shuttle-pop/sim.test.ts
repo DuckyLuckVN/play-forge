@@ -8,6 +8,7 @@ import {
   SERVE_TIMEOUT,
   seedPreset,
   separateAi,
+  setupBots,
   SWING_COOLDOWN,
   shuttlePopGame as game,
   toWorld,
@@ -369,6 +370,12 @@ describe('swing timing', () => {
     game.tick(s, [swing('p1')])
     return s.events.filter((e) => e.tick === s.tick)
   }
+  it('a Perfect hit counts in stats.perfect for its side', () => {
+    const s = passing()
+    run(s, 3)
+    game.tick(s, [swing('p1')])
+    expect(s.stats.perfect).toEqual([0, 1])
+  })
   it('a few ticks late is graded by |dt| (perfect band), hit at once', () => {
     expect(swingAfter(3).find((e) => e.k === 'hit')).toMatchObject({ side: 1, grade: 'perfect' })
     expect(swingAfter(6).find((e) => e.k === 'hit')).toMatchObject({ side: 1, grade: 'perfect' })
@@ -493,5 +500,32 @@ describe('bookkeeping', () => {
     run(b, 600, script)
     expect(JSON.stringify(a)).toBe(JSON.stringify(b))
     expect(JSON.parse(JSON.stringify(a))).toEqual(a)
+  })
+})
+
+describe('match stats (results screen)', () => {
+  it('longest rally (serve + hits) and Perfect hits per side match the events', () => {
+    const s = setupBots('normal', 'normal', 5)
+    const seen: SpEvent[] = []
+    for (let i = 0; i < 60 * 60 * 2; i++) {
+      game.tick(s, [])
+      allEvents(s, seen)
+    }
+    let shots = 0
+    let longest = 0
+    const perfect = [0, 0]
+    for (const e of seen) {
+      if (e.k === 'serve') shots = 1
+      else if (e.k === 'hit') {
+        shots++
+        if (e.grade === 'perfect') perfect[e.side]++
+      } else if (e.k === 'point') longest = Math.max(longest, shots)
+    }
+    expect(longest).toBeGreaterThan(1)
+    expect(s.stats).toEqual({ shots, longest, perfect })
+  })
+
+  it('starts at zero', () => {
+    expect(game.setup(players(2), 1, {}).stats).toEqual({ shots: 0, longest: 0, perfect: [0, 0] })
   })
 })

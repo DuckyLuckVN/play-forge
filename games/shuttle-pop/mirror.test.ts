@@ -26,6 +26,7 @@ function mirror(s: SpState): SpState {
   if (m.shuttle.lastHitter !== -1) m.shuttle.lastHitter = flip(m.shuttle.lastHitter)
   if (m.shuttle.pending) m.shuttle.pending.side = flip(m.shuttle.pending.side)
   m.score = [m.score[1], m.score[0]]
+  m.stats.perfect = [m.stats.perfect[1], m.stats.perfect[0]]
   m.server = flip(m.server)
   if (m.winner !== -1) m.winner = flip(m.winner)
   for (const h of m.history) {

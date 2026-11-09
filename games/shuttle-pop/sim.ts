@@ -102,6 +102,8 @@ export interface SpState {
   /** Last EVENT_TICKS ticks of events; renderers dedupe by id. */
   events: SpEvent[]
   nextEventId: number
+  /** For the results screen: shots in this rally (serve + hits), the longest finished rally, Perfect hits per side. */
+  stats: { shots: number; longest: number; perfect: [number, number] }
   /** Seeded rng state (mulberry32 seed). Host-only. */
   rng: number
   /** Host-only: shuttle flight as of each of the last HISTORY_TICKS ticks (for swing rewind). */
@@ -237,6 +239,7 @@ export function createState(players: PlayerInfo[], seed: number, options: GameOp
     winner: -1,
     events: [],
     nextEventId: 1,
+    stats: { shots: 0, longest: 0, perfect: [0, 0] },
     rng: seed | 0,
     history: [],
   }
@@ -298,6 +301,7 @@ function serve(state: SpState, p: SpPlayer, held: { x: number; z: number }) {
   s.pending = null
   state.phase = 'rally'
   state.phaseT = 0
+  state.stats.shots = 1
   emit(state, { k: 'serve', side: p.side })
 }
 
@@ -380,6 +384,8 @@ function hit(state: SpState) {
   s.vel.z = v.z
   s.lastHitter = pend.side
   s.pending = null
+  state.stats.shots++
+  if (pend.grade === 'perfect') state.stats.perfect[pend.side]++
   emit(state, { k: 'hit', side: pend.side, grade: pend.grade, shot: pend.kind })
 }
 
@@ -389,6 +395,8 @@ function scorePoint(state: SpState, side: 0 | 1) {
   state.phase = 'point'
   state.phaseT = 0
   state.shuttle.pending = null
+  state.stats.longest = Math.max(state.stats.longest, state.stats.shots)
+  state.stats.shots = 0
   emit(state, { k: 'point', side })
 }
 

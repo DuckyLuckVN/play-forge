@@ -5,6 +5,8 @@
 // stage and gets a cleanup that parks it offscreen again. The render loop allocates nothing.
 // The park around the court (sky, lights, crowd) is scenery.ts. Real shadows come from the players
 // only and stop (between rallies) once the quality governor sees slow frames.
+// Juice: timing pops + badges (hud.ts), Perfect sparkles, a shuttle trail (hot after a smash), a sprung
+// camera punch on smashes and the sounds (sounds.ts), all driven by new sim events.
 
 import {
   BackSide,
@@ -20,19 +22,27 @@ import {
   SphereGeometry,
   TorusGeometry,
   BoxGeometry,
+  InstancedMesh,
+  Object3D,
+  Vector3,
   type BufferGeometry,
 } from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { startRenderLoop } from '@forge/core/loop'
 import type { Smoothed } from '@forge/net/smoothing'
-import { createScene3D, QualityGovernor, type Scene3D } from '@forge/render3d'
+import { playSound } from '@forge/audio/sound'
+import { createScene3D, Particles3D, QualityGovernor, type Scene3D } from '@forge/render3d'
 import { createChibi, type Chibi, type ChibiPose } from './actors'
 import { MOVE_SPEED } from './court'
+import { Hud, matchPoint, newEvents, type PopKind } from './hud'
+import { t } from './i18n'
 import { COURT, predictLanding, type Vec3 } from './physics'
 import { Park } from './scenery'
-import type { SpState } from './sim'
+import type { SpEvent, SpState } from './sim'
+import { eventSound, SHUTTLE_SOUNDS } from './sounds'
 import {
   CAMERA,
+  CHEER,
   cameraPose,
   cheerLevel,
   dampFocus,
@@ -85,6 +95,43 @@ const SHADOWS_OFF_LEVEL = 1
 /** Seconds after attach the shadow governor ignores (first frames hitch: buffers, textures, GC). */
 const QUALITY_SETTLE = 2
 const SHADOW_OPACITY = 0.26
+
+/** Shuttle trail: TRAIL_DOTS spheres spread along the last TRAIL_SAMPLES positions, one every TRAIL_STEP s. */
+const TRAIL_DOTS = 18
+const TRAIL_SAMPLES = 7
+const TRAIL_STEP = 1 / 60
+/** Trail look per shot: colour, opacity, head dot radius (m). Smash = hot and thick. */
+const TRAIL = {
+  plain: { color: new Color('#e4dcff'), opacity: 0.4, size: 0.06 },
+  perfect: { color: new Color('#ffd166'), opacity: 0.7, size: 0.075 },
+  smash: { color: new Color('#ff4d6d'), opacity: 0.85, size: 0.1 },
+}
+type TrailLook = (typeof TRAIL)[keyof typeof TRAIL]
+
+/**
+ * Camera punch on a smash: a damped spring (stiffness, damping ratio) kicked with a velocity (m/s);
+ * the offset dollies the camera toward the net and down a touch. Stepped in fixed sub-steps so it
+ * feels the same at any frame rate.
+ */
+const PUNCH = { k: 380, zeta: 0.42, kickMine: 11, kickTheirs: 6, step: 1 / 240, dip: 0.35 }
+
+/** Timing pops: anchor heights (m) for the near player (at the knees, under the shuttle path) and the far one (over the head). */
+const POP_Y = { near: 0.35, far: 2.1 }
+/**
+ * A second pop for the same player within POP_STACK.time s stacks POP_STACK.px above the first (no
+ * overlap); a "Miss" that soon after a hit is just swing-spam and is dropped.
+ */
+const POP_STACK = { time: 0.6, px: 38 }
+/** Perfect sparkles: short, gold, juicy. */
+const SPARKLE = {
+  count: 22,
+  color: ['#ffd166', '#fff3b0', '#ffffff'],
+  speed: 3.4,
+  life: 0.38,
+  size: 0.22,
+  gravity: 2,
+}
+const SMASH_BURST = { count: 14, color: ['#ff4d6d', '#ffb3c1'], speed: 4.2, life: 0.3, size: 0.2 }
 
 interface PlayerView {
   chibi: Chibi
@@ -158,6 +205,29 @@ export class Court3D {
   private pointHits = 0
   private pointAt = -Infinity
   private callsLogged = false
+  /** New events this frame (reused). */
+  private fresh: SpEvent[] = []
+  /** No seat is ours: everything is drawn from side 0's view, pops all full size. */
+  private spectating = false
+  private hud = new Hud()
+  /** Last serve badge / match-point state shown ('' = recompute). */
+  private hudKey = ''
+  private fx = new Particles3D(160)
+  private trail: InstancedMesh
+  private trailMat: MeshBasicMaterial
+  private trailLook: TrailLook = TRAIL.plain
+  /** Trail samples x,y,z (render coords), newest first; sample 0 always tracks the shuttle. */
+  private trailPts = new Float32Array(TRAIL_SAMPLES * 3)
+  private trailLen = 0
+  private trailAcc = 0
+  private dummy = new Object3D()
+  private proj = new Vector3()
+  /** When each player's latest pop showed (for stacking). */
+  private lastPop: [number, number] = [-Infinity, -Infinity]
+  /** Camera punch spring: offset (m) and velocity, plus unsimulated time. */
+  private punch = 0
+  private punchV = 0
+  private punchAcc = 0
 
   constructor() {
     this.parking = document.createElement('div')
@@ -198,6 +268,15 @@ export class Court3D {
     this.ring.rotation.x = -Math.PI / 2
     this.ring.position.y = 0.03
     scene.add(this.shuttle, this.shadow, this.ring)
+
+    // Always transparent (no recompiles); colour/opacity follow the last shot.
+    this.trailMat = new MeshBasicMaterial({ color: TRAIL.plain.color, transparent: true, depthWrite: false })
+    this.trail = new InstancedMesh(new SphereGeometry(1, 8, 6), this.trailMat, TRAIL_DOTS)
+    this.trail.frustumCulled = false
+    this.trail.visible = false
+    scene.add(this.trail, this.fx.points)
+    this.view.onResize((_w, h) => this.fx.setScale(h * this.view.renderer.getPixelRatio()))
+    this.view.root.appendChild(this.hud.root)
   }
 
   /** The element under the view (for pointer input). */
@@ -272,6 +351,7 @@ export class Court3D {
   /** Compile every shader up front, so the first match starts without a hitch. */
   async warm(): Promise<void> {
     this.ring.visible = true
+    this.trail.visible = true
     // Every hat + the twin outline, so no material compiles mid-match.
     for (const p of this.players) p.chibi.root.traverse((o) => (o.visible = true))
     this.placeCamera(0, 1)
@@ -279,6 +359,7 @@ export class Court3D {
     await this.view.renderer.compileAsync(this.view.scene, this.view.camera)
     this.view.render(0)
     this.ring.visible = false
+    this.trail.visible = false
     for (let i = 0; i < 2; i++) this.players[i].chibi.setPreset(i)
   }
 
@@ -301,6 +382,7 @@ export class Court3D {
     onLocalSwing(() => {
       this.players[this.localIdx].swingAge = 0
       this.localPressAt = this.time
+      playSound(SHUTTLE_SOUNDS.swing)
     })
     const stop = startRenderLoop((dt) => this.frame(dt))
     return () => {
@@ -322,6 +404,13 @@ export class Court3D {
     this.pointHits = 0
     this.pointAt = -Infinity
     this.ring.visible = false
+    this.hud.reset()
+    this.hudKey = ''
+    this.trailLen = 0
+    this.trail.visible = false
+    this.trailLook = TRAIL.plain
+    this.punch = this.punchV = this.punchAcc = 0
+    this.lastPop[0] = this.lastPop[1] = -Infinity
     for (const p of this.players) {
       p.swingAge = Infinity
       p.swingAt = NaN
@@ -347,10 +436,12 @@ export class Court3D {
     // The local player's side is drawn near; spectators see side 0's view.
     let side: 0 | 1 = 0
     this.localIdx = 0
+    this.spectating = true
     for (let i = 0; i < 2; i++)
       if (curr.players[i].id === this.selfId) {
         side = curr.players[i].side
         this.localIdx = i
+        this.spectating = false
       }
     // viewOf allocates: only when the side changes.
     if (side !== this.side) {
@@ -383,7 +474,10 @@ export class Court3D {
       // Swings seen in the state (the opponent's, or ours if the press wasn't animated already).
       if (cp.swingAt !== view.swingAt) {
         const pressed = i === this.localIdx && this.time - this.localPressAt < LOCAL_SWING_GRACE
-        if (!Number.isNaN(view.swingAt) && !pressed) view.swingAge = 0
+        if (!Number.isNaN(view.swingAt) && !pressed) {
+          view.swingAge = 0
+          playSound(SHUTTLE_SOUNDS.swing, i === this.localIdx ? 1 : 0.5)
+        }
         view.swingAt = cp.swingAt
       }
       view.swingAge += dt
@@ -406,6 +500,10 @@ export class Court3D {
     this.shuttle.position.set(pos.x * flip, Math.max(SHUTTLE_R, pos.y), pos.z * flip)
     this.shadow.position.x = pos.x * flip
     this.shadow.position.z = pos.z * flip
+    const flying = curr.phase === 'rally' && curr.shuttle.lastHitter !== -1 && !snap
+    this.updateTrail(flying, this.shuttle.position, dt)
+    this.fx.update(dt)
+    this.updateHud(curr)
 
     this.updateRing(curr, flip)
     this.ring.visible = this.ring.visible && curr.phase === 'rally'
@@ -442,23 +540,117 @@ export class Court3D {
     this.callsLogged = true
   }
 
-  /** New events → poses: a smash leaps, a point sets who celebrates. */
+  /** New events → poses (a smash leaps, a point sets who celebrates), pops, sparkles, punch, sounds. */
   private scanEvents(s: SpState) {
-    let newest = this.lastEventId
-    for (let i = 0; i < s.events.length; i++) {
-      const e = s.events[i]
-      if (e.id <= this.lastEventId) continue
-      if (e.id > newest) newest = e.id
+    const fresh = newEvents(s.events, this.lastEventId, this.fresh)
+    for (let i = 0; i < fresh.length; i++) {
+      const e = fresh[i]
+      this.lastEventId = e.id
       if (e.k === 'point') {
         this.pointHits = this.rally
         this.pointAt = this.time
       }
       this.rally = rallyHits(this.rally, e.k)
-      if (e.k === 'point') this.pointSide = e.side
-      else if (e.k === 'hit' && e.shot === 'smash')
-        for (let j = 0; j < 2; j++) if (s.players[j].side === e.side) this.players[j].jumpAge = 0
+      const sound = eventSound(e, this.side)
+      if (sound) playSound(sound.sound, sound.vol)
+      if (e.k === 'point') {
+        this.pointSide = e.side
+        if (this.pointHits >= CHEER.rally) playSound(SHUTTLE_SOUNDS.cheer)
+      } else if (e.k === 'hit') this.onHit(s, e.side, e.grade, e.shot === 'smash')
+      else if (e.k === 'serve') this.trailLook = TRAIL.plain
+      else if (e.k === 'whiff' && !this.spectating && e.side === this.side)
+        this.popAt(this.localIdx, 'miss', false)
     }
-    this.lastEventId = newest
+  }
+
+  private onHit(s: SpState, side: 0 | 1, grade: PopKind, smash: boolean) {
+    const j = s.players[0].side === side ? 0 : 1
+    const mine = this.spectating || side === this.side
+    this.popAt(j, grade, smash)
+    this.trailLook = smash ? TRAIL.smash : grade === 'perfect' ? TRAIL.perfect : TRAIL.plain
+    const p = this.shuttle.position
+    if (grade === 'perfect') this.fx.burst(p.x, p.y, p.z, SPARKLE)
+    if (smash) {
+      this.players[j].jumpAge = 0
+      this.fx.burst(p.x, p.y, p.z, SMASH_BURST)
+      this.punchV += mine ? PUNCH.kickMine : PUNCH.kickTheirs
+    }
+  }
+
+  /** A timing pop at player j: the near player's at the knees (clear of the shuttle), the far one's overhead. */
+  private popAt(j: number, kind: PopKind, smash: boolean) {
+    const recent = this.time - this.lastPop[j] < POP_STACK.time
+    if (recent && kind === 'miss') return
+    this.lastPop[j] = this.time
+    const root = this.players[j].chibi.root
+    const near = root.position.z < 0
+    this.proj.set(root.position.x, near ? POP_Y.near : POP_Y.far, root.position.z).project(this.view.camera)
+    const w = this.view.width
+    const h = this.view.height
+    const mine = this.spectating || j === this.localIdx
+    const y = ((1 - this.proj.y) / 2) * h - (recent ? POP_STACK.px : 0)
+    this.hud.pop(kind, ((this.proj.x + 1) / 2) * w, y, w, h, mine, smash)
+  }
+
+  /** Serve badge + match-point badge, touched only when phase / server / score change. */
+  private updateHud(s: SpState) {
+    const key = `${s.phase}${s.server}${s.score[0]}-${s.score[1]}`
+    if (key === this.hudKey) return
+    this.hudKey = key
+    const live = s.phase === 'serve' || s.phase === 'rally'
+    if (s.phase !== 'serve') this.hud.setServe(null)
+    else if (!this.spectating && s.server === this.side) this.hud.setServe(t('Your serve'))
+    else {
+      const server = s.players[0].side === s.server ? s.players[0] : s.players[1]
+      this.hud.setServe(t('{name} serves', { name: server.name }))
+    }
+    const mine = live && matchPoint(s.score, this.side)
+    const theirs = live && matchPoint(s.score, this.side === 0 ? 1 : 0)
+    this.hud.setMatchPoint(mine && theirs ? 'both' : mine ? 'mine' : theirs ? 'theirs' : null)
+  }
+
+  /** Trail dots spread evenly along the recent shuttle path, shrinking toward the tail. No allocations. */
+  private updateTrail(flying: boolean, head: Vector3, dt: number) {
+    if (!flying) {
+      this.trailLen = 0
+      this.trail.visible = false
+      return
+    }
+    const pts = this.trailPts
+    this.trailAcc += dt
+    if (this.trailLen === 0 || this.trailAcc >= TRAIL_STEP) {
+      this.trailAcc = this.trailLen === 0 ? 0 : this.trailAcc % TRAIL_STEP
+      pts.copyWithin(3, 0, (TRAIL_SAMPLES - 1) * 3)
+      this.trailLen = Math.min(TRAIL_SAMPLES, this.trailLen + 1)
+    }
+    pts[0] = head.x
+    pts[1] = head.y
+    pts[2] = head.z
+    if (this.trailLen < 2) {
+      this.trail.visible = false
+      return
+    }
+    const look = this.trailLook
+    this.trailMat.color.copy(look.color)
+    this.trailMat.opacity = look.opacity
+    const d = this.dummy
+    for (let j = 0; j < TRAIL_DOTS; j++) {
+      const f = (j / (TRAIL_DOTS - 1)) * (this.trailLen - 1)
+      const k = Math.min(Math.floor(f), this.trailLen - 2)
+      const u = f - k
+      const a = k * 3
+      const b = a + 3
+      d.position.set(
+        pts[a] + (pts[b] - pts[a]) * u,
+        pts[a + 1] + (pts[b + 1] - pts[a + 1]) * u,
+        pts[a + 2] + (pts[b + 2] - pts[a + 2]) * u,
+      )
+      d.scale.setScalar(look.size * (1 - j / TRAIL_DOTS))
+      d.updateMatrix()
+      this.trail.setMatrixAt(j, d.matrix)
+    }
+    this.trail.instanceMatrix.needsUpdate = true
+    this.trail.visible = true
   }
 
   /** Landing ring: predicted once per new shot (a new hit/serve event or a new hitter), not per frame. */
@@ -496,5 +688,22 @@ export class Court3D {
     const cam = this.view.camera
     cam.position.set(p.x, p.y, p.z)
     cam.lookAt(p.lookX, p.lookY, p.lookZ)
+    // Smash punch: a post offset on top of the framed pose (cameraPose itself is untouched).
+    this.stepPunch(dt)
+    cam.position.z += this.punch
+    cam.position.y -= this.punch * PUNCH.dip
+  }
+
+  /** Damped spring back to rest, in fixed sub-steps (same feel at 30, 60 or 144 fps). */
+  private stepPunch(dt: number) {
+    if (this.punch === 0 && this.punchV === 0) return
+    const c = 2 * PUNCH.zeta * Math.sqrt(PUNCH.k)
+    this.punchAcc = Math.min(this.punchAcc + dt, 0.1)
+    while (this.punchAcc >= PUNCH.step) {
+      this.punchAcc -= PUNCH.step
+      this.punchV += (-PUNCH.k * this.punch - c * this.punchV) * PUNCH.step
+      this.punch += this.punchV * PUNCH.step
+    }
+    if (Math.abs(this.punch) < 1e-4 && Math.abs(this.punchV) < 1e-3) this.punch = this.punchV = 0
   }
 }

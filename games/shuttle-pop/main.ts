@@ -1,4 +1,5 @@
 import { createGameApp, h, smoothState, type Session } from '@forge'
+import { ARCADE } from '@forge/audio/tracks'
 import { webglAvailable } from '@forge/render3d'
 import './shuttle-pop.css'
 import { t } from './i18n'
@@ -89,11 +90,19 @@ createGameApp<SpState, SpInput>({
   controls: t(
     'Move with WASD or the arrow keys. Swing with Space, J or a click. Hold forward as you swing to smash or drive, back to clear, nothing to drop; left or right aims.',
   ),
+  // Stock upbeat gameplay loop.
+  music: ARCADE,
   preload,
   mount,
   menuExtras: pickerStrip,
   // Both seats; `name` labels the computer's chip (lobby players keep their lobby name).
-  scores: (s) => s.players.map((p) => ({ id: p.id, score: s.score[p.side], name: p.name })),
+  // The computer's chip gets its own colour slot and the robot avatar (it isn't in the lobby).
+  scores: (s) =>
+    s.players.map((p) =>
+      p.kind === 'ai'
+        ? { id: p.id, score: s.score[p.side], name: p.name, slot: 1, avatar: 'robot' }
+        : { id: p.id, score: s.score[p.side], name: p.name },
+    ),
   outcome(s, selfId) {
     const score = scoreText(s, selfId)
     const me = s.players.find((p) => p.id === selfId)
@@ -108,5 +117,15 @@ createGameApp<SpState, SpInput>({
       return { headline: t('The computer wins {score}. Rematch?', { score }), result: 'lose' }
     return { headline: t('{name} wins {score}.', { name: won.name, score }), result: 'lose' }
   },
-  summary: (s, selfId) => [{ label: t('Final score'), value: scoreText(s, selfId) }],
+  summary(s, selfId) {
+    const me = s.players.find((p) => p.id === selfId)
+    const { longest, perfect } = s.stats
+    return [
+      { label: t('Final score'), value: scoreText(s, selfId) },
+      { label: t('Longest rally'), value: t('{n} shots', { n: longest }) },
+      me
+        ? { label: t('Your Perfect hits'), value: String(perfect[me.side]) }
+        : { label: t('Perfect hits'), value: `${perfect[0]}–${perfect[1]}` },
+    ]
+  },
 })

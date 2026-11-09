@@ -81,3 +81,183 @@
     transition: none;
   }
 }
+
+/* ---------- In-match overlay (hud.ts) ---------- */
+.sp-hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  font-family: var(--pf-font, inherit);
+}
+.sp-badges {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+}
+.sp-badge {
+  padding: 4px 14px;
+  border-radius: 999px;
+  background: rgb(36 26 48 / 0.72);
+  color: #fff;
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  box-shadow: 0 3px 10px rgb(0 0 0 / 0.18);
+}
+.sp-badge[hidden] {
+  display: none;
+}
+.sp-badge.in {
+  animation: sp-badge-in 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+/* Match point: hot pill that breathes; yellow when it's ours, pink when it's theirs. */
+.sp-match {
+  font-size: 17px;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #ff6b8b, #e63e6d);
+}
+.sp-match[data-who='mine'] {
+  background: linear-gradient(180deg, #ffd166, #f4a52c);
+  color: #3b2400;
+}
+.sp-match[data-who='both'] {
+  background: linear-gradient(90deg, #ffd166, #ff6b8b);
+  color: #3b2400;
+}
+.sp-match:not([hidden]) {
+  animation:
+    sp-badge-in 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both,
+    sp-breathe 1.4s ease-in-out 420ms infinite;
+}
+@keyframes sp-badge-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes sp-breathe {
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+/* Timing pop: overshoot pop-in, then an eased float up and fade (per-segment easing, time-based). */
+.sp-pop {
+  position: absolute;
+  left: 0;
+  top: 0;
+  opacity: 0;
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  color: #fff;
+  -webkit-text-stroke: 1px rgb(40 24 56 / 0.55);
+  text-shadow:
+    0 2px 0 rgb(40 24 56 / 0.55),
+    0 4px 12px rgb(0 0 0 / 0.25);
+  transform: translate(-50%, -50%);
+  will-change: transform, opacity;
+}
+.sp-pop.show {
+  animation: sp-pop 900ms both;
+}
+.sp-pop-perfect {
+  font-size: 40px;
+  color: #ffd166;
+  background: linear-gradient(180deg, #fff6c9 10%, #ffd166 55%, #ff9f1c);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 1.5px #7a3d00;
+  filter: drop-shadow(0 0 10px rgb(255 209 102 / 0.75)) drop-shadow(0 3px 0 rgb(122 61 0 / 0.5));
+  text-shadow: none;
+}
+.sp-pop-perfect.show {
+  animation-duration: 1000ms;
+}
+.sp-pop-good {
+  color: #9ff0c8;
+}
+.sp-pop-late {
+  color: #ffd9a8;
+  font-size: 26px;
+}
+.sp-pop-miss {
+  color: #ffb3c1;
+  font-size: 24px;
+}
+.sp-pop.smash {
+  --tilt: -8deg;
+}
+.sp-pop.smash.sp-pop-perfect {
+  filter: drop-shadow(0 0 12px rgb(255 77 109 / 0.8)) drop-shadow(0 3px 0 rgb(122 0 30 / 0.5));
+}
+/* The opponent's: smaller and dimmer (both players still see every grade). */
+.sp-pop.theirs {
+  --size: 0.68;
+  --dim: 0.75;
+}
+@keyframes sp-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(var(--tilt, 0deg)) scale(calc(var(--size, 1) * 0.3));
+    animation-timing-function: cubic-bezier(0.34, 1.7, 0.64, 1);
+  }
+  22% {
+    opacity: var(--dim, 1);
+    transform: translate(-50%, -50%) rotate(var(--tilt, 0deg)) scale(var(--size, 1));
+    animation-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1);
+  }
+  60% {
+    opacity: var(--dim, 1);
+    transform: translate(-50%, calc(-50% - 18px)) rotate(var(--tilt, 0deg)) scale(var(--size, 1));
+    animation-timing-function: cubic-bezier(0.55, 0, 0.75, 0.4);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% - 34px)) rotate(var(--tilt, 0deg)) scale(calc(var(--size, 1) * 0.92));
+  }
+}
+@media (max-width: 600px) {
+  .sp-pop {
+    font-size: 24px;
+  }
+  .sp-pop-perfect {
+    font-size: 32px;
+  }
+  .sp-badge {
+    font-size: 13px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sp-pop.show {
+    animation-name: sp-pop-calm;
+  }
+  .sp-match:not([hidden]),
+  .sp-badge.in {
+    animation: none;
+  }
+}
+@keyframes sp-pop-calm {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(var(--size, 1));
+  }
+  15%,
+  70% {
+    opacity: var(--dim, 1);
+    transform: translate(-50%, -50%) scale(var(--size, 1));
+  }
+}

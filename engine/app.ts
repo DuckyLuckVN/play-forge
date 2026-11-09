@@ -27,7 +27,7 @@ import { langMenu } from './ui/lang-menu'
 import { h, icon, iconButton, toast } from './ui/dom'
 import { fullscreenButton } from './ui/fullscreen'
 import { t } from './ui/i18n'
-import { scoreLabel } from './ui/scoreline'
+import { chipLook, scoreLabel } from './ui/scoreline'
 import { icons } from './ui/icons'
 import { optionPickers } from './ui/options'
 import { popover } from './ui/popover'
@@ -38,6 +38,10 @@ export interface Scoreline {
   score: number
   /** Chip name for a seat that isn't in the lobby (e.g. the computer). Lobby players keep their own name. */
   name?: string
+  /** Colour slot for a seat that isn't in the lobby (lobby players keep their own). Default 0. */
+  slot?: number
+  /** Avatar id for a seat that isn't in the lobby (e.g. 'robot' for the computer). Default none. */
+  avatar?: string
   /** Knocked out / no longer in play. */
   out?: boolean
 }
@@ -496,17 +500,17 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     chipText.clear()
     scoresEl.replaceChildren(
       ...lines.map((line) => {
-        const p = s!.lobby.players.find((q) => q.id === line.id)
+        const look = chipLook(line, s!.lobby.players)
         const cls = ['pf-chip', line.out && 'out', line.id === s!.selfId && 'self']
         const text = document.createTextNode(label(line))
         chipText.set(line.id, text)
         const chip = h(
           'span',
           { class: cls.filter(Boolean).join(' ') },
-          h('span', { class: 'dot' }, p && avatarEl(avatarFor(p))),
+          h('span', { class: 'dot' }, look.avatar && avatarEl(look.avatar)),
           text,
         )
-        chip.style.setProperty('--c', playerColor(p?.slot ?? 0))
+        chip.style.setProperty('--c', playerColor(look.slot))
         chip.dataset.player = line.id
         if (social?.isSpeaking(line.id)) chip.classList.add('speaking')
         return chip

@@ -5,21 +5,11 @@ import {
   setAudioSettings,
   UI_SOUNDS,
 } from '../audio/sound'
-import { translator } from '../core/i18n'
+import { t } from './i18n'
 import { h, icon, setLabel } from './dom'
 import { icons } from './icons'
 import { popover } from './popover'
 import { slider } from './slider'
-
-const t = translator({
-  Music: 'Nhạc',
-  Effects: 'Hiệu ứng',
-  '{label} volume': 'Âm lượng {label}',
-  Off: 'Tắt',
-  'Turn sound on': 'Bật âm thanh',
-  'Mute everything': 'Tắt hết âm thanh',
-  'Sound settings': 'Cài đặt âm thanh',
-})
 
 /**
  * Sound button with a popover: music volume, effects volume, mute.

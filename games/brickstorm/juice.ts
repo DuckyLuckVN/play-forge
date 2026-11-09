@@ -435,7 +435,7 @@ export class Juice {
         })
         // Comic impacts pop a word now and then.
         if (IMPACT_STYLE[this.impact]?.text && Math.random() < 0.3)
-          this.particles.text(e.x, e.y, IMPACT_STYLE[this.impact].text!, {
+          this.particles.text(e.x, e.y, t(IMPACT_STYLE[this.impact].text!), {
             color: theme.yolk,
             size: 16,
             rise: 30,

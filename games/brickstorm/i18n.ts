@@ -670,6 +670,7 @@ export const VI: Dictionary = {
   'ARMOR −1': 'GIÁP −1',
   'STICKY!': 'DÍNH!',
   'BOOM!': 'BÙM!',
+  'POW!': 'BỤP!',
   'ZAP!': 'XẸT!',
   'SPLIT!': 'TÁCH!',
   'GULP!': 'NUỐT!',

@@ -1,11 +1,9 @@
 // Fullscreen toggle for the top bar. Uses the standard Fullscreen API with the
 // webkit-prefixed fallback (older Safari / iPad). iPhone Safari has no element
 // fullscreen, so the button hides there; Add to Home Screen covers it instead.
-import { translator } from '../core/i18n'
+import { t } from './i18n'
 import { icon, iconButton, setLabel } from './dom'
 import { icons } from './icons'
-
-const t = translator({ 'Full screen': 'Toàn màn hình', 'Exit full screen': 'Thoát toàn màn hình' })
 
 /** The parts of an element used to enter fullscreen (standard + webkit). */
 export interface FullscreenTarget {

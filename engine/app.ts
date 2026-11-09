@@ -25,6 +25,7 @@ import { button } from './ui/components'
 import { langMenu } from './ui/lang-menu'
 import { h, icon, iconButton, toast } from './ui/dom'
 import { fullscreenButton } from './ui/fullscreen'
+import { t } from './ui/i18n'
 import { icons } from './ui/icons'
 import { optionPickers } from './ui/options'
 import { popover } from './ui/popover'
@@ -180,8 +181,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
 
   // ---------- Shell ----------
   const scoresEl = h('div', { class: 'pf-bar-scores' })
-  const pauseBtn = iconButton(icons.pause, 'Pause', () => session?.setPaused(true))
-  const leaveBtn = iconButton(icons.leave, 'Leave', () => leave())
+  const pauseBtn = iconButton(icons.pause, t('Pause'), () => session?.setPaused(true))
+  const leaveBtn = iconButton(icons.leave, t('Leave'), () => leave())
   // Reactions, voice and chat: only in online rooms; `social` is set while in one.
   let social: RoomSocial | null = null
   const reactBtn = reactionPicker((id) => social?.reactions.send(id) ?? false)
@@ -212,8 +213,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   )
   more.root.classList.add('pf-more-anchor')
   more.root.querySelector('button')!.classList.add('pf-more-btn')
-  const home = h('a', { class: 'pf-btn icon', href: LAUNCHER_URL, title: 'All games' })
-  home.setAttribute('aria-label', 'All games')
+  const home = h('a', { class: 'pf-btn icon', href: LAUNCHER_URL, title: t('All games') })
+  home.setAttribute('aria-label', t('All games'))
   home.append(icon(icons.home))
   const bar = h(
     'header',
@@ -271,7 +272,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     host: boolean,
     extra: { offline?: boolean; restore?: RoomSnapshot } = {},
   ) {
-    const name = storedName() || 'Player'
+    const name = storedName() || t('Player')
     const s = (session = new Session(def, transport, {
       host,
       name,
@@ -309,11 +310,11 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       }),
       s.on('hostBack', () => {
         playSound(UI_SOUNDS.join)
-        toast('The host is back')
+        toast(t('The host is back'))
       }),
       s.on('hostGone', () => {
         store.save(null)
-        showMessage('The room closed', 'The host left the room. Create a new room to keep playing.')
+        showMessage(t('The room closed'), t('The host left the room. Create a new room to keep playing.'))
       }),
     ]
     // Re-render to show the "still looking" hint if the host never answers.
@@ -367,13 +368,13 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         const before = prev.players.find((q) => q.id === p.id)
         if (!before) {
           playSound(UI_SOUNDS.join)
-          toast(`${p.name} joined`, playerColor(p.slot))
+          toast(t('{name} joined', { name: p.name }), playerColor(p.slot))
         } else if (before.connected && !p.connected) {
           playSound(UI_SOUNDS.leave)
-          toast(`${p.name} lost connection`, playerColor(p.slot))
+          toast(t('{name} lost connection', { name: p.name }), playerColor(p.slot))
         } else if (!before.connected && p.connected) {
           playSound(UI_SOUNDS.join)
-          toast(`${p.name} is back`, playerColor(p.slot))
+          toast(t('{name} is back', { name: p.name }), playerColor(p.slot))
         } else if (!before.ready && p.ready) {
           playSound(UI_SOUNDS.ready)
         }
@@ -381,7 +382,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       for (const p of prev.players)
         if (p.id !== s.selfId && !lobby.players.some((q) => q.id === p.id)) {
           playSound(UI_SOUNDS.leave)
-          toast(`${p.name} left`, playerColor(p.slot))
+          toast(t('{name} left', { name: p.name }), playerColor(p.slot))
         }
     }
 
@@ -402,7 +403,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     }
     if (lobby.phase === 'playing' && prev.phase === 'countdown') {
       playSound(UI_SOUNDS.go)
-      showCount('Go!')
+      showCount(t('Go!'))
     }
     if (lobby.phase === 'finished' && prev.phase !== 'finished' && s.state) {
       const result = opts.outcome?.(s.state, s.selfId).result ?? 'done'
@@ -425,11 +426,11 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       session.setPaused(!session.lobby.paused)
   })
   window.addEventListener('offline', () => {
-    if (session && !session.offline) toast('You are offline. Reconnecting when the network is back.')
+    if (session && !session.offline) toast(t('You are offline. Reconnecting when the network is back.'))
     render()
   })
   window.addEventListener('online', () => {
-    if (session && !session.offline) toast('Back online')
+    if (session && !session.offline) toast(t('Back online'))
     render()
   })
 
@@ -441,7 +442,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     // Reactions need someone to see them: online rooms we're seated or watching in.
     fan.root.hidden = !s || s.offline || (!s.isHost && !s.lobby.hostId)
     if (fan.root.hidden) fan.close()
-    const leaveLabel = s?.offline ? 'Quit to menu' : 'Leave room'
+    const leaveLabel = s?.offline ? t('Quit to menu') : t('Leave room')
     leaveBtn.title = leaveLabel
     leaveBtn.setAttribute('aria-label', leaveLabel)
     renderScores()
@@ -472,7 +473,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     const key = JSON.stringify(lines.map((l) => [l.id, !!l.out]))
     const label = (line: Scoreline) => {
       const p = s!.lobby.players.find((q) => q.id === line.id)
-      return `${p?.name ?? 'Gone'} ${line.score}`
+      return `${p?.name ?? t('Gone')} ${line.score}`
     }
     if (key === scoresKey) {
       for (const line of lines) {
@@ -540,7 +541,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       gated.set(b, b.textContent ?? '')
       b.disabled = true
       b.classList.add('loading')
-      b.textContent = 'Loading…'
+      b.textContent = t('Loading…')
     }
   }
   opts
@@ -562,25 +563,25 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     const fromLink = /room=([A-Z0-9]+)/i.exec(location.hash)?.[1]?.toUpperCase() ?? ''
     const name = h('input', {
       class: 'pf-input',
-      value: storedName() || 'Player',
+      value: storedName() || t('Player'),
       maxLength: 16,
       id: 'pf-name',
     })
-    const saveName = () => storedName(name.value.trim() || 'Player')
+    const saveName = () => storedName(name.value.trim() || t('Player'))
     const code = h('input', {
       class: 'pf-input code',
-      placeholder: 'CODE',
+      placeholder: t('CODE'),
       maxLength: 5,
       value: fromLink,
       spellcheck: false,
     })
-    code.setAttribute('aria-label', 'Room code')
+    code.setAttribute('aria-label', t('Room code'))
     code.setAttribute('autocapitalize', 'characters')
     const join = () => {
       const c = code.value.trim().toUpperCase()
       if (c.length !== 5) {
         playSound(UI_SOUNDS.error)
-        return showMenu('Room codes are 5 characters, like K7QXP.')
+        return showMenu(t('Room codes are 5 characters, like K7QXP.'))
       }
       saveName()
       room = c
@@ -595,7 +596,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     // Single-player games have no rooms: just a big Play button.
     const online = def.maxPlayers > 1
     const solo = button(
-      online ? 'Play solo' : 'Play',
+      online ? t('Play solo') : t('Play'),
       () => {
         saveName()
         begin(createOfflineTransport(), true, { offline: true })
@@ -603,7 +604,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       online ? '' : 'primary',
     )
     const create = button(
-      'Create room',
+      t('Create room'),
       () => {
         saveName()
         room = newRoomCode()
@@ -613,7 +614,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       },
       'primary',
     )
-    const joinBtn = button('Join', join, fromLink ? 'primary' : '')
+    const joinBtn = button(t('Join'), join, fromLink ? 'primary' : '')
     if (fromLink) joinBtn.autofocus = true
     gate(solo, create, joinBtn)
 
@@ -627,12 +628,12 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
           'div',
           { class: 'pf-identity' },
           avatarPicker(storedAvatar(), (id) => storedAvatar(id)),
-          h('label', { class: 'pf-field', htmlFor: 'pf-name' }, 'Your name', name),
+          h('label', { class: 'pf-field', htmlFor: 'pf-name' }, t('Your name'), name),
         ),
         menuOptions(),
         opts.menuExtras?.() ?? null,
         h('div', { class: 'pf-row' }, def.minPlayers <= 1 && solo, online && create),
-        online && h('div', { class: 'pf-or', textContent: "or join a friend's room" }),
+        online && h('div', { class: 'pf-or', textContent: t("or join a friend's room") }),
         online && h('div', { class: 'pf-row' }, code, joinBtn),
         error && h('p', { class: 'pf-note error', textContent: error }),
         opts.controls && h('p', { class: 'pf-note', textContent: opts.controls }),
@@ -658,7 +659,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   function offlineNote() {
     return (
       !navigator.onLine &&
-      h('p', { class: 'pf-note error', textContent: 'You are offline. Check your connection.' })
+      h('p', { class: 'pf-note error', textContent: t('You are offline. Check your connection.') })
     )
   }
 
@@ -674,16 +675,16 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       h(
         'div',
         { class: 'pf-panel' },
-        h('h2', { class: 'pf-heading', textContent: `Joining ${room}…` }),
+        h('h2', { class: 'pf-heading', textContent: t('Joining {room}…', { room }) }),
         h('p', {
           class: 'pf-lede',
           textContent: slow
-            ? "Still looking for this room. Check the code, and make sure the host's game is open."
-            : 'Finding the host. This usually takes a few seconds.',
+            ? t("Still looking for this room. Check the code, and make sure the host's game is open.")
+            : t('Finding the host. This usually takes a few seconds.'),
         }),
         waitingDots(),
         offlineNote(),
-        button('Cancel', leave, 'quiet'),
+        button(t('Cancel'), leave, 'quiet'),
       ),
       'joining',
     )
@@ -694,14 +695,14 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       h(
         'div',
         { class: 'pf-panel' },
-        h('h2', { class: 'pf-heading', textContent: 'Host disconnected' }),
+        h('h2', { class: 'pf-heading', textContent: t('Host disconnected') }),
         h('p', {
           class: 'pf-lede',
-          textContent: 'Waiting for them to come back. If they reloaded, this takes a few seconds.',
+          textContent: t('Waiting for them to come back. If they reloaded, this takes a few seconds.'),
         }),
         waitingDots(),
         offlineNote(),
-        button('Leave room', leave, 'quiet'),
+        button(t('Leave room'), leave, 'quiet'),
       ),
       'host-lost',
     )
@@ -710,9 +711,9 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   function roomCodeBox() {
     // A file:// link is useless to a friend; they type the code instead.
     const canLink = location.protocol !== 'file:'
-    const copy = iconButton(icons.copy, 'Copy invite link', async () => {
+    const copy = iconButton(icons.copy, t('Copy invite link'), async () => {
       await navigator.clipboard?.writeText(location.href).catch(() => {})
-      toast('Invite link copied')
+      toast(t('Invite link copied'))
     })
     return h(
       'div',
@@ -722,8 +723,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         { class: 'pf-room-code' },
         h('small', {
           textContent: canLink
-            ? 'Room code. Share it, or copy the link.'
-            : 'Room code. Share it with friends.',
+            ? t('Room code. Share it, or copy the link.')
+            : t('Room code. Share it with friends.'),
         }),
         room,
       ),
@@ -749,7 +750,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
             'div',
             { class: 'pf-seat empty' },
             h('div', { class: 'pf-token' }),
-            h('div', { class: 'pf-seat-name', textContent: 'Open' }),
+            h('div', { class: 'pf-seat-name', textContent: t('Open') }),
           )
         const isHost = p.id === hostId
         const isSelf = p.id === s.selfId
@@ -772,12 +773,18 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
           token.append(badge)
           seenReady.add(p.id)
         } else seenReady.delete(p.id)
-        const status = !p.connected ? 'Reconnecting…' : isHost ? 'Host' : p.ready ? 'Ready' : 'Not ready'
+        const status = !p.connected
+          ? t('Reconnecting…')
+          : isHost
+            ? t('Host')
+            : p.ready
+              ? t('Ready')
+              : t('Not ready')
         return h(
           'div',
           {
             class: `pf-seat${isSelf ? ' self' : ''}${p.connected ? '' : ' away'}`,
-            title: isSelf ? `${p.name} (you)` : p.name,
+            title: isSelf ? t('{name} (you)', { name: p.name }) : p.name,
           },
           token,
           h('div', { class: 'pf-seat-name', textContent: p.name }),
@@ -823,25 +830,25 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     let note: string
     let action: HTMLButtonElement | false = false
     if (!self) {
-      note = 'The room is full, so you are watching. You get a seat when one opens.'
+      note = t('The room is full, so you are watching. You get a seat when one opens.')
     } else if (s.isHost) {
       note = tooFew
-        ? `Waiting for players. ${opts.title} needs at least ${def.minPlayers}.`
+        ? t('Waiting for players. {game} needs at least {n}.', { game: opts.title, n: def.minPlayers })
         : away.length
-          ? `Waiting for ${listNames(away)} to reconnect.`
+          ? t('Waiting for {names} to reconnect.', { names: listNames(away) })
           : waiting.length
-            ? `Waiting for ${listNames(waiting)} to get ready.`
+            ? t('Waiting for {names} to get ready.', { names: listNames(waiting) })
             : s.lobby.players.length === 1
-              ? 'Invite friends with the code, or start on your own.'
-              : 'Everyone is ready.'
-      action = button(finished ? 'Start rematch' : 'Start game', () => s.start(), 'primary wide')
+              ? t('Invite friends with the code, or start on your own.')
+              : t('Everyone is ready.')
+      action = button(finished ? t('Start rematch') : t('Start game'), () => s.start(), 'primary wide')
       action.disabled = !s.canStart
       action.autofocus = s.canStart
     } else {
       const ready = self.ready
-      note = ready ? 'Waiting for the host to start.' : 'Get ready so the host can start.'
+      note = ready ? t('Waiting for the host to start.') : t('Get ready so the host can start.')
       action = button(
-        ready ? 'Not ready' : "I'm ready",
+        ready ? t('Not ready') : t("I'm ready"),
         () => {
           playSound(ready ? UI_SOUNDS.unready : UI_SOUNDS.ready)
           s.setReady(!ready)
@@ -857,7 +864,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         { class: 'pf-panel wide' },
         outcome
           ? h('p', { class: 'pf-headline', textContent: outcome.headline })
-          : h('h2', { class: 'pf-heading', textContent: `${opts.title} room` }),
+          : h('h2', { class: 'pf-heading', textContent: t('{game} room', { game: opts.title }) }),
         finished && opts.ranking && rankList(s),
         finished && s.state && opts.summary && summaryGrid(opts.summary(s.state, s.selfId)),
         roomCodeBox(),
@@ -875,7 +882,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         h('p', { class: 'pf-note', textContent: note }),
         offlineNote(),
         action,
-        button('Leave room', leave, 'quiet'),
+        button(t('Leave room'), leave, 'quiet'),
       ),
       finished ? `results-${s.lobby.round}` : 'room',
     )
@@ -883,39 +890,39 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
 
   function showSoloResult(s: Session<S, I>) {
     const outcome = s.state && opts.outcome?.(s.state, s.selfId)
-    const again = button('Play again', () => s.start(), 'primary wide')
+    const again = button(t('Play again'), () => s.start(), 'primary wide')
     again.autofocus = true
     show(
       h(
         'div',
         { class: 'pf-panel' },
-        h('p', { class: 'pf-headline', textContent: outcome ? outcome.headline : 'Game over' }),
+        h('p', { class: 'pf-headline', textContent: outcome ? outcome.headline : t('Game over') }),
         s.state && opts.summary && summaryGrid(opts.summary(s.state, s.selfId)),
         again,
-        button('Back to menu', leave, 'quiet'),
+        button(t('Back to menu'), leave, 'quiet'),
       ),
       `solo-result-${s.lobby.round}`,
     )
   }
 
   function showPaused(s: Session<S, I>) {
-    const resume = button('Resume', () => s.setPaused(false), 'primary wide')
+    const resume = button(t('Resume'), () => s.setPaused(false), 'primary wide')
     resume.autofocus = true
     show(
       h(
         'div',
         { class: 'pf-panel' },
-        h('h2', { class: 'pf-heading', textContent: 'Paused' }),
+        h('h2', { class: 'pf-heading', textContent: t('Paused') }),
         opts.controls && h('p', { class: 'pf-lede', textContent: opts.controls }),
         resume,
-        button('Quit to menu', leave, 'quiet'),
+        button(t('Quit to menu'), leave, 'quiet'),
       ),
       'paused',
     )
   }
 
   function showMessage(title: string, text: string) {
-    const back = button('Back to menu', leave, 'primary wide')
+    const back = button(t('Back to menu'), leave, 'primary wide')
     back.autofocus = true
     show(
       h(
@@ -934,7 +941,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   const hashRoom = /room=([A-Z0-9]+)/i.exec(location.hash)?.[1]?.toUpperCase()
   if (isReload && saved && saved.room === hashRoom) {
     room = saved.room
-    toast(saved.host ? `Reopening room ${room}` : `Rejoining room ${room}`)
+    toast(saved.host ? t('Reopening room {room}', { room }) : t('Rejoining room {room}', { room }))
     begin(createTransport(appId, room), saved.host, { restore: saved.host ? saved.snapshot : undefined })
   } else {
     store.save(null)
@@ -960,5 +967,7 @@ function summaryGrid(rows: SummaryRow[]): HTMLElement | null {
 
 function listNames(players: PlayerInfo[]): string {
   const names = players.map((p) => p.name)
-  return names.length <= 2 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`
+  if (names.length <= 1) return names.join('')
+  const a = names.slice(0, -1).join(', ')
+  return t('{a} and {b}', { a, b: names.at(-1)! })
 }

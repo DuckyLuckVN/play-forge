@@ -41,6 +41,7 @@ import { damp, Gait, GaitEvent } from './locomotion'
 import { leapAtHit, leapStartAge, lookAround, SMASH, smashJump, SWING, type Hop } from './moves'
 import { COURT, predictLanding, type Vec3 } from './physics'
 import { SpringPunch } from './punch'
+import { SURROUND } from './props'
 import { Park } from './scenery'
 import type { SpEvent, SpState } from './sim'
 import { eventSound, SHUTTLE_SOUNDS } from './sounds'
@@ -60,8 +61,8 @@ import {
 } from './world'
 
 const PALETTE = {
-  /** Light border around the court (the park grass is scenery.ts). */
-  surround: '#bcd09a',
+  /** Warm clay border around the court (the park grass is scenery.ts). */
+  surround: '#c9a487',
   court: '#3f9a86',
   line: '#ffffff',
   net: '#ffffff',
@@ -119,9 +120,8 @@ const DUST = {
 const LOCAL_SWING_GRACE = 0.4
 /** Chibis are ~1.3 m in model space; drawn a bit larger so they read from the far camera. */
 const CHIBI_SCALE = 1.15
-/** Court surface and its light border, beyond the lines (m). */
+/** Court surface beyond the lines (m); the warm border (SURROUND) is props.ts. */
 const COURT_RUNOFF = { x: 0.35, z: 0.45 }
-const SURROUND = { x: 1.3, z: 1.6 }
 /** Quality level (QualityGovernor) from which players stop casting real shadows. */
 const SHADOWS_OFF_LEVEL = 1
 /** Seconds after attach the shadow governor ignores (first frames hitch: buffers, textures, GC). */

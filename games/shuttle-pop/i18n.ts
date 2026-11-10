@@ -76,6 +76,9 @@ export const VI: Dictionary = {
   '{n} shots': '{n} cú đánh',
   'Your Perfect hits': 'Cú Hoàn hảo của bạn',
   'Perfect hits': 'Cú Hoàn hảo',
+
+  // Camera menu (camera-menu.ts, prefs.ts)
+  Default: 'Mặc định',
 }
 
 export const t = translator(VI)

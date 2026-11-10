@@ -99,7 +99,7 @@ import { SURROUND } from './props'
 import { SP_QUALITY } from './quality'
 import { Park } from './scenery'
 import { TAPPED, type SpEvent, type SpState } from './sim'
-import { chargeSound, eventSound, SHUTTLE_SOUNDS, swingSound } from './sounds'
+import { chargeSound, eventSound, type LastShot, SHUTTLE_SOUNDS, swingSound } from './sounds'
 import { newTrailStyle, RibbonTrail, trailStyle } from './trail'
 import { haloOpacity, haloPixels, occlusion, stepFades, VIS, type ScreenRect } from './visibility'
 import {
@@ -351,6 +351,9 @@ export class Court3D {
   private ringLandTick = Infinity
   /** Newest hit/serve event id already turned into a landing ring. */
   private lastShotId = 0
+  /** The last hit's shot + power (a smash's landing thumps); null from a serve / reset. One reused object. */
+  private lastShot: LastShot | null = null
+  private readonly lastShotBuf: LastShot = { shot: 'drive', power: 0 }
   private lastHitter = -2
   private lastTick = -1
   /** Newest event id already turned into a pose (smash leap, point mood). */
@@ -653,6 +656,7 @@ export class Court3D {
     this.guest?.shuttle.reset()
     this.guest?.remotes.reset()
     this.lastShotId = 0
+    this.lastShot = null
     this.lastHitter = -2
     this.lastTick = -1
     this.lastEventId = 0
@@ -1116,8 +1120,13 @@ export class Court3D {
           if (splitsOn(e.k, e.side, s.players[n].side) && canSplit(v.gait.speed, v.foot.lunge, airborne))
             v.foot.splitStep()
         }
-      const sound = eventSound(e, this.side)
+      const sound = eventSound(e, this.side, this.lastShot)
       if (sound) playSound(sound.sound, sound.vol)
+      if (e.k === 'hit') {
+        this.lastShotBuf.shot = e.shot
+        this.lastShotBuf.power = e.power ?? 0
+        this.lastShot = this.lastShotBuf
+      } else if (e.k === 'serve') this.lastShot = null
       // Into the net: it ripples out from the shuttle, pushed away from whoever hit it (near = +z).
       if (e.k === 'net') this.net.hit(this.shuttle.position.x, s.shuttle.lastHitter === this.side ? 1 : -1)
       if (e.k === 'point') {

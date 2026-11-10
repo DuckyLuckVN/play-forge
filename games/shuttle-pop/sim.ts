@@ -1108,6 +1108,15 @@ export const shuttlePopGame: GameDefinition<SpState, SpInput> = {
   tickRate: TICK_RATE,
   options: [
     {
+      id: 'mode',
+      label: t('Match'),
+      default: '1v1',
+      choices: [
+        { value: '1v1', label: t('1 vs 1') },
+        { value: '2v2', label: t('2 vs 2') },
+      ],
+    },
+    {
       id: 'solo',
       label: t('Computer level'),
       aloneOnly: true,

@@ -4,6 +4,9 @@ import { translator, type Dictionary } from '@forge/core/i18n'
 
 export const VI: Dictionary = {
   // Options
+  Match: 'Trận',
+  '1 vs 1': '1 đấu 1',
+  '2 vs 2': '2 đấu 2',
   'Computer level': 'Trình độ máy',
   'Easy AI': 'Máy dễ',
   'Normal AI': 'Máy vừa',
@@ -15,6 +18,7 @@ export const VI: Dictionary = {
 
   // Players
   Computer: 'Máy',
+  '{a} & {b}': '{a} & {b}',
 
   // Start screen
   'Chibi badminton. Time your swing for a Perfect, smash on high balls. Play the computer or a friend online.':
@@ -34,6 +38,9 @@ export const VI: Dictionary = {
   'High shuttle: jump smash. Low and far: dive. Then a short cooldown.':
     'Cầu cao: bật nhảy đập. Cầu thấp và xa: bổ nhào cứu cầu. Sau đó chờ hồi chiêu một chút.',
   'small button': 'nút nhỏ',
+  'Doubles (2 vs 2)': 'Đánh đôi (2 đấu 2)',
+  'The team that wins a point serves. When your team wins the serve back, your other teammate serves. Serve from the right on an even score, the left on odd. Bonks hit teammates too!':
+    'Đội thắng điểm được giao cầu. Khi đội bạn giành lại quyền giao, đồng đội còn lại giao. Điểm chẵn giao bên phải, điểm lẻ bên trái. Cốc vợt trúng cả đồng đội đấy!',
   Reactions: 'Biểu cảm',
   'Online: move toward an emoji, let go to send': 'Chơi online: hướng về một biểu cảm, thả ra để gửi',
   'emoji button': 'nút biểu cảm',
@@ -84,11 +91,15 @@ export const VI: Dictionary = {
   'You win {score}!': 'Bạn thắng {score}!',
   'The computer wins {score}. Rematch?': 'Máy thắng {score}. Đấu lại nhé?',
   '{name} wins {score}.': '{name} thắng {score}.',
+  'Your team wins {score}!': 'Đội bạn thắng {score}!',
+  '{names} win {score}.': '{names} thắng {score}.',
+  '{names} win!': '{names} thắng!',
   'Final score': 'Tỉ số chung cuộc',
   'Longest rally': 'Pha cầu dài nhất',
   '{n} shot': '{n} cú đánh',
   '{n} shots': '{n} cú đánh',
   'Your Perfect hits': 'Cú Hoàn hảo của bạn',
+  "Your team's Perfect hits": 'Cú Hoàn hảo của đội bạn',
   'Perfect hits': 'Cú Hoàn hảo',
 
   // View settings button and panel (camera-menu.ts, prefs.ts)

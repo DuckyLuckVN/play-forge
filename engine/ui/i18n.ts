@@ -20,6 +20,7 @@ export const VI: Dictionary = {
   'Team {n}': 'Đội {n}',
   'Sit here': 'Ngồi đây',
   'Computer plays': 'Máy chơi',
+  '{choice}: {n} players at most.': '{choice}: tối đa {n} người chơi.',
   'Remove {name}': 'Mời {name} ra',
   'Remove {name} from the room?': 'Mời {name} ra khỏi phòng?',
   Remove: 'Mời ra',

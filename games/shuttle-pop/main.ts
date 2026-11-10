@@ -14,8 +14,7 @@ import { GuestPredictor } from './predict'
 import { RemoteTracks } from './remotes'
 import { Court3D, type LocalSwing } from './render3d'
 import { RenderClock } from './renderclock'
-import { scoreText, summaryRows } from './results'
-import { winner } from './rules'
+import { outcomeOf, scoreChips, summaryRows } from './results'
 import {
   canAct,
   canCharge,
@@ -23,7 +22,6 @@ import {
   createState,
   gradesAtPress,
   seedPreset,
-  shownName,
   shuttlePopGame,
   TAPPED,
   type SpInput,
@@ -299,6 +297,13 @@ createGameApp<SpState, SpInput>({
       touchLabel: t('small button'),
     },
     {
+      action: t('Doubles (2 vs 2)'),
+      note: t(
+        'The team that wins a point serves. When your team wins the serve back, your other teammate serves. Serve from the right on an even score, the left on odd. Bonks hit teammates too!',
+      ),
+      tip: true,
+    },
+    {
       action: t('Racket bonk'),
       note: t(
         "Swing your racket into another player and they see stars for a moment. Then they can't be bonked for 2 s.",
@@ -342,27 +347,9 @@ createGameApp<SpState, SpInput>({
   mount,
   menuExtras: pickerStrip,
   roomExtras: pickerStrip,
-  // Both seats; `name` labels the computer's chip, translated at display time (lobby players keep their lobby name).
-  // The computer's chip gets its own colour slot and the robot avatar (it isn't in the lobby).
-  scores: (s) =>
-    s.players.map((p) =>
-      p.kind === 'ai'
-        ? { id: p.id, score: s.score[p.side], name: shownName(p), slot: 1, avatar: 'robot' }
-        : { id: p.id, score: s.score[p.side], name: p.name },
-    ),
-  outcome(s, selfId) {
-    const score = scoreText(s, selfId)
-    const me = s.players.find((p) => p.id === selfId)
-    const won = s.players[s.winner === 1 ? 1 : 0]
-    if (!me) return { headline: t('{name} wins!', { name: shownName(won) }), result: 'done' }
-    if (won === me) {
-      // Over without a winning score: removePlayer ended it because the other side left.
-      if (winner(s.score) === null) return { headline: t('Your opponent left. You win!'), result: 'win' }
-      return { headline: t('You win {score}!', { score }), result: 'win' }
-    }
-    if (won.kind === 'ai')
-      return { headline: t('The computer wins {score}. Rematch?', { score }), result: 'lose' }
-    return { headline: t('{name} wins {score}.', { name: shownName(won), score }), result: 'lose' }
-  },
+  // Humans' chips plus a computer chip for a side with no human (robot avatar, its seat's colour slot);
+  // `name` labels the computer's chip, translated at display time (lobby players keep their lobby name).
+  scores: scoreChips,
+  outcome: outcomeOf,
   summary: summaryRows,
 })

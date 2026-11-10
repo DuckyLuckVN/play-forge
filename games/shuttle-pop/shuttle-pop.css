@@ -216,6 +216,10 @@
   font-weight: 700;
   opacity: 0.92;
 }
+/* 2v2: "Ann & Bo" per side; a long pair still ends in "…" (full names in the tooltip). */
+.sp-board.pairs .sp-team-name {
+  max-width: 20ch;
+}
 .sp-team-serve {
   flex: none;
   width: 16px;
@@ -330,6 +334,9 @@
   .sp-team-name {
     max-width: 8ch;
     font-size: 12px;
+  }
+  .sp-board.pairs .sp-team-name {
+    max-width: 13ch;
   }
   .sp-team-serve {
     width: 13px;

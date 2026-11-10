@@ -6,6 +6,7 @@
 // DOM only for what changed. The point pop is a CSS animation (time-based, frame-rate independent).
 
 import { h } from '@forge'
+import { sideName } from './doubles'
 import { t } from './i18n'
 import { PRESETS } from './presets'
 import { CAP, matchPoint, TARGET, winner } from './rules'
@@ -29,6 +30,8 @@ export interface BoardView {
   /** Whose match point, from the left player's view (null = none / not live). */
   match: MatchWho
   note: BoardNote
+  /** 2v2: each side names a team ("Ann & Bo"), so the names get more room. */
+  pairs: boolean
 }
 
 export const tintCss = (n: number) => `#${n.toString(16).padStart(6, '0')}`
@@ -45,9 +48,11 @@ export function boardNote(score: readonly [number, number]): BoardNote {
 export function boardView(s: SpState, leftSide: 0 | 1): BoardView {
   const live = s.phase === 'serve' || s.phase === 'rally'
   const sideOf = (side: 0 | 1): BoardSide => {
-    const p = s.players[0].side === side ? s.players[0] : s.players[1]
+    // A team (2v2) shows both names; its colour is its first player's.
+    const team = s.players.filter((q) => q.side === side)
+    const p = team[0]
     return {
-      name: shownName(p),
+      name: sideName(team.map(shownName)),
       score: s.score[side],
       tint: tintCss(PRESETS[p.preset]?.tint ?? PRESETS[side].tint),
       serving: s.phase !== 'over' && s.server === side,
@@ -64,7 +69,7 @@ export function boardView(s: SpState, leftSide: 0 | 1): BoardView {
         : right.matchPoint
           ? 'theirs'
           : null
-  return { left, right, match, note: boardNote(s.score) }
+  return { left, right, match, note: boardNote(s.score), pairs: s.players.length > 2 }
 }
 
 /** How long a won point lights its side (ms): the pop's length (shuttle-pop.css sp-score-pop). */
@@ -173,6 +178,7 @@ export class Scoreboard {
   private noteEl: HTMLElement
   private match: MatchWho = null
   private note: BoardNote = null
+  private pairs = false
 
   constructor() {
     this.tagEl = h('div', { class: 'sp-board-tag' })
@@ -188,6 +194,10 @@ export class Scoreboard {
   }
 
   update(v: BoardView) {
+    if (v.pairs !== this.pairs) {
+      this.pairs = v.pairs
+      this.root.classList.toggle('pairs', v.pairs)
+    }
     this.left.update(v.left)
     this.right.update(v.right)
     if (v.match !== this.match) {

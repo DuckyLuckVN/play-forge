@@ -10,6 +10,7 @@ import { createBroadcastTransport } from './net/broadcast'
 import {
   resolveOptions,
   seatingOf,
+  seatsIf,
   Session,
   type GameDefinition,
   type GameOptions,
@@ -1153,6 +1154,11 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
             saveOptions(s.lobby.options)
           }
         : null,
+      // A choice with fewer seats than are taken would be refused (setOption): grey it out and say why.
+      (id, value, label) => {
+        const max = seatsIf(def, s.lobby.options, id, value)
+        return seated > max ? t('{choice}: {n} players at most.', { choice: label, n: max }) : null
+      },
     )
     show(
       h(

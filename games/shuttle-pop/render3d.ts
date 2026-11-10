@@ -687,12 +687,13 @@ export class Court3D {
     this.ring.visible = true
     this.trail.mesh.visible = true
     this.dust.mesh.visible = true
-    // Every view's fade materials (per chibi, one toy program), and the twin outline + kit materials (both
-    // shades) on every view but the first, so no material compiles mid-match, 1v1 or 2v2.
+    // Every view's fade materials (per chibi, one toy program) and its twin outline + kit materials (both
+    // shades), so no material is made mid-match, 1v1 or 2v2. View 0 starts on its twin shade (a spectator
+    // or a later seat can tint it) and its normal fade is drawn just after the compile.
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i]
       p.chibi.setOpacity(0.5)
-      if (i > 0) p.chibi.setPreset(i, true)
+      p.chibi.setPreset(i, true)
       p.chibi.root.traverse((o) => (o.visible = true))
       p.ring.shown = true
       p.cd.shown = true
@@ -701,6 +702,8 @@ export class Court3D {
     // Scenery, crowd and the shadow variants of every lit material are all in the scene by now (the
     // chibis' slow-device shading is uniforms only: the same programs).
     await this.view.renderer.compileAsync(this.view.scene, this.view.camera)
+    this.view.render(0)
+    this.players[0].chibi.setPreset(0)
     this.view.render(0)
     for (const p of this.players) p.chibi.setOpacity(1)
     // Upload every look's merged geometries now (a first-time preset would otherwise upload mid-match).

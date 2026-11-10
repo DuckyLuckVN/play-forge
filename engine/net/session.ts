@@ -112,6 +112,16 @@ export function seatingOf(def: GameDefinition<any, any>, options: GameOptions): 
   return { ...s, seats: Math.min(Math.max(s.seats, def.minPlayers), def.maxPlayers) }
 }
 
+/** The seats the room would open with option `id` set to `value` (setOption refuses fewer than are seated). */
+export function seatsIf(
+  def: GameDefinition<any, any>,
+  options: GameOptions,
+  id: string,
+  value: string,
+): number {
+  return seatingOf(def, resolveOptions(def.options, { ...options, [id]: value })).seats
+}
+
 /**
  * lobby → countdown → playing → finished → (countdown → playing → …)
  * `finished` doubles as the lobby for a rematch.

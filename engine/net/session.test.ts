@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createBroadcastTransport } from './broadcast'
-import { cleanAvatar, seatingOf, Session, type GameDefinition, type SessionOptions } from './session'
+import { cleanAvatar, seatingOf, seatsIf, Session, type GameDefinition, type SessionOptions } from './session'
 import { createOfflineTransport } from './transport'
 
 // A tiny counter game: each input adds to the player's total.
@@ -517,6 +517,14 @@ describe('Session', () => {
       host.moveSeat(2)
       await settle()
       expect(slots(host)).toEqual({ host: 0, a: 1 })
+    })
+
+    it('seatsIf: the seats a choice would open (the room greys out choices with too few)', () => {
+      expect(seatsIf(teams, { mode: 'b' }, 'mode', 'a')).toBe(2)
+      expect(seatsIf(teams, { mode: 'a' }, 'mode', 'b')).toBe(4)
+      // Unknown values fall back to the default, like setOption.
+      expect(seatsIf(teams, { mode: 'b' }, 'mode', 'zzz')).toBe(2)
+      expect(seatsIf(counter, {}, 'mode', 'calm')).toBe(3)
     })
 
     it('setOption to fewer seats is refused while more are seated', async () => {

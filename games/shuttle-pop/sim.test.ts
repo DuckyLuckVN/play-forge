@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { InputEvent, PlayerInfo } from '@forge/net/session'
+import { resolveOptions, type InputEvent, type PlayerInfo } from '@forge/net/session'
 import { ABILITY, acting, actReady, type Act } from './ability'
 import { CHARGE, chargeOf } from './charge'
 import { COURT_SIZES, courtDims } from './courtsize'
@@ -114,7 +114,11 @@ describe('setup', () => {
   })
   it('defaults to normal and has no local option', () => {
     expect(game.setup(players(1), 3, {}).players[1].level).toBe('normal')
-    expect(game.options![0].choices.map((c) => c.value)).toEqual(['easy', 'normal', 'hard'])
+    expect(game.options!.find((o) => o.id === 'solo')!.choices.map((c) => c.value)).toEqual([
+      'easy',
+      'normal',
+      'hard',
+    ])
   })
   it('two humans, server in right service box, receiver diagonal', () => {
     const s = duel()
@@ -2016,6 +2020,21 @@ describe('doubles', () => {
     expect(solo.shownWhen!(2, {})).toBe(false)
     expect(solo.shownWhen!(3, { mode: '2v2' })).toBe(true)
     expect(solo.shownWhen!(4, { mode: '2v2' })).toBe(false)
+  })
+  it('the mode option defaults to 1v1', () => {
+    expect(game.options![0].id).toBe('mode')
+    expect(game.options![0].choices.map((c) => c.value)).toEqual(['1v1', '2v2'])
+    expect(resolveOptions(game.options)).toMatchObject({ mode: '1v1', solo: 'normal', court: 'normal' })
+    expect(resolveOptions(game.options, { mode: '2v2' }).mode).toBe('2v2')
+    expect(resolveOptions(game.options, { mode: '3v3' }).mode).toBe('1v1')
+  })
+  it('seating opens 4 seats in 2v2', () => {
+    expect(game.seating!(resolveOptions(game.options)).seats).toBe(2)
+    expect(game.seating!(resolveOptions(game.options, { mode: '2v2' }))).toEqual({
+      seats: 4,
+      teams: 2,
+      botFill: true,
+    })
   })
   it('2v2 alone: 1 human + 3 computers, seats A,B,A,B', () => {
     const s = game.setup(players(1), 7, { mode: '2v2', solo: 'hard' })

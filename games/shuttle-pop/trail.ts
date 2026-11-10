@@ -1,7 +1,14 @@
-// Shuttle trail: dots spread along the shuttle's recent path, tapering to the tail.
-// TrailSampler (pure) keeps the path on a fixed time grid, so the trail spans the same flight time at any
-// frame rate; ShuttleTrail draws it as one InstancedMesh. Neither allocates per frame.
-import { Color, InstancedMesh, MeshBasicMaterial, Object3D, SphereGeometry } from 'three'
+// Shuttle trail: ONE smooth tapered ribbon along the shuttle's recent path. It starts a gap behind the skirt
+// mouth (the shuttlecock also draws after it, render3d), widest near its start and thinning to nothing at the
+// tail, with soft edges. Its look tells the shot (trailStyle): the kind sets the shape and base colour
+// (drop thin / short / quick to fade, clear long and gentle, drive straight cyan, smash wide and bright), the
+// grade tunes it (late dull and smaller, Perfect gold with a sparkle at the tip), power makes it wider,
+// longer and orange-red, Perfect + power the widest gold ribbon with a red edge. Length also follows speed.
+// TrailSampler keeps the path on a fixed time grid (frame-rate independent); RibbonTrail draws the ribbon as
+// ONE mesh whose buffers are rewritten in place. Nothing allocates per frame.
+import { BufferAttribute, BufferGeometry, Color, DoubleSide, Mesh, MeshBasicMaterial } from 'three'
+import { isPowerHit } from './power'
+import type { Grade, ShotKind } from './shots'
 
 /**
  * Path samples every `step` s (time grid), newest first, plus the head (index 0) that always tracks the
@@ -39,11 +46,9 @@ export class TrailSampler {
     }
     const t0 = this.time
     this.time += dt
-    // Previous head = where the shuttle was at t0.
     const px = p[0]
     const py = p[1]
     const pz = p[2]
-    // Strictly before now (a sample exactly at now would duplicate the head).
     while (this.next < this.time - 1e-9) {
       const u = (this.next - t0) / dt
       p.copyWithin(6, 3, (this.samples - 1) * 3)
@@ -59,73 +64,352 @@ export class TrailSampler {
   }
 }
 
-export interface TrailLook {
-  color: Color
+/** The trail's look this frame (trailStyle). Colours are linear (three.js Color). */
+export interface TrailStyle {
+  /** Widest ribbon width (m). */
+  width: number
+  /** Ribbon length (m) behind the gap; 0 = hidden. */
+  length: number
+  colorHead: Color
+  colorTail: Color
+  /** Soft outer edge colour, used when `edged` (Perfect + power: red); else the edges match the core. */
+  colorEdge: Color
+  edged: boolean
+  /** Peak opacity (near the start). */
   opacity: number
-  /** Head dot radius (m). */
-  size: number
+  /** How fast the opacity falls toward the tail (exponent; drop fades fastest). */
+  fade: number
+  /** Perfect: a small sparkle at the trail's tip (near its tail end). */
+  sparkle: boolean
 }
 
-export class ShuttleTrail {
-  readonly mesh: InstancedMesh
-  private mat: MeshBasicMaterial
-  private sampler: TrailSampler
-  private dummy = new Object3D()
-  private look: TrailLook
+export const newTrailStyle = (): TrailStyle => ({
+  width: 0,
+  length: 0,
+  colorHead: new Color(),
+  colorTail: new Color(),
+  colorEdge: new Color(),
+  edged: false,
+  opacity: 0,
+  fade: 1,
+  sparkle: false,
+})
 
+/** Base look per shot kind (good grade, no power), tuned to read apart at a glance. */
+export const TRAIL_KINDS = {
+  drop: { width: 0.12, length: 0.85, head: '#ffffff', tail: '#eef1f6', opacity: 0.78, fade: 1.8 },
+  clear: { width: 0.15, length: 1.7, head: '#f4faff', tail: '#a9d8ff', opacity: 0.7, fade: 1.2 },
+  drive: { width: 0.15, length: 1.15, head: '#d8fdff', tail: '#2fd3ec', opacity: 0.78, fade: 1.3 },
+  smash: { width: 0.24, length: 1.9, head: '#ffffff', tail: '#ffa860', opacity: 0.88, fade: 1.1 },
+} as const
+export type TrailKind = keyof typeof TRAIL_KINDS
+
+export const TRAIL_MODS = {
+  late: { width: 0.7, length: 0.7, opacity: 0.75, dull: '#c4c4c8', dullMix: 0.6 },
+  perfect: { gold: '#ffd166', goldHead: '#fff2b8', goldMix: 0.6 },
+  power: { width: 1.5, length: 1.3, head: '#ffc79a', tail: '#ff4a2e', opacity: 0.9 },
+  perfectPower: {
+    width: 1.75,
+    length: 1.45,
+    head: '#ffe27a',
+    tail: '#ffb020',
+    edge: '#ff3b3b',
+    opacity: 0.95,
+  },
+} as const
+
+export const TRAIL_SPEED = {
+  /** Below this speed (m/s) no trail. */
+  min: 1.5,
+  /** Length scale = clamp(lo + speed / ref, lo, hi). */
+  ref: 14,
+  lo: 0.4,
+  hi: 1.4,
+} as const
+
+/** The kind of a hit / serve for the trail (a short serve shapes like a drop, a long one like a clear). */
+export function trailKind(kind: ShotKind | null): TrailKind {
+  if (kind === 'serveShort' || kind === 'drop') return 'drop'
+  if (kind === 'smash' || kind === 'drive') return kind
+  return 'clear'
+}
+
+/** Length scale for `speed` (m/s): 0 when (nearly) still, else lo..hi. */
+export function speedScale(speed: number): number {
+  if (!(speed >= TRAIL_SPEED.min)) return 0
+  return Math.min(TRAIL_SPEED.hi, Math.max(TRAIL_SPEED.lo, TRAIL_SPEED.lo + speed / TRAIL_SPEED.ref))
+}
+
+const tmpA = new Color()
+const tmpB = new Color()
+
+/**
+ * The trail's look for a shot: kind × grade × power, at `speed`. `grade` null = a serve (good). Writes into
+ * `out` (allocation-free when one is passed; per frame, pass one).
+ */
+export function trailStyle(
+  kind: ShotKind | null,
+  grade: Grade | null,
+  power: number,
+  speed: number,
+  out: TrailStyle = newTrailStyle(),
+): TrailStyle {
+  const K = TRAIL_KINDS[trailKind(kind)]
+  let width = K.width
+  let length = K.length
+  out.opacity = K.opacity
+  out.fade = K.fade
+  out.colorHead.set(K.head)
+  out.colorTail.set(K.tail)
+  out.sparkle = false
+  out.edged = false
+  const big = isPowerHit(power)
+  if (grade === 'perfect' && big) {
+    const M = TRAIL_MODS.perfectPower
+    width *= M.width
+    length *= M.length
+    out.opacity = M.opacity
+    out.colorHead.set(M.head)
+    out.colorTail.set(M.tail)
+    out.colorEdge.set(M.edge)
+    out.edged = true
+    out.sparkle = true
+  } else {
+    if (big) {
+      const M = TRAIL_MODS.power
+      width *= M.width
+      length *= M.length
+      out.opacity = Math.max(out.opacity, M.opacity)
+      out.colorHead.set(M.head)
+      out.colorTail.set(M.tail)
+    }
+    if (grade === 'perfect') {
+      const M = TRAIL_MODS.perfect
+      out.colorHead.lerp(tmpA.set(M.goldHead), M.goldMix)
+      out.colorTail.lerp(tmpB.set(M.gold), M.goldMix)
+      out.sparkle = true
+    } else if (grade === 'late') {
+      const M = TRAIL_MODS.late
+      width *= M.width
+      length *= M.length
+      out.opacity *= M.opacity
+      tmpA.set(M.dull)
+      out.colorHead.lerp(tmpA, M.dullMix)
+      out.colorTail.lerp(tmpA, M.dullMix)
+    }
+  }
+  out.width = width
+  out.length = length * speedScale(speed)
+  return out
+}
+
+/** Ribbon shape along t ∈ [0, 1] (0 = start, behind the mouth; 1 = tail): width and alpha factors 0..1. */
+export function ribbonWidth(t: number): number {
+  if (t <= 0 || t >= 1) return 0
+  const rise = Math.min(1, t / 0.12)
+  return rise * rise * (3 - 2 * rise) * Math.pow(1 - t, 0.8)
+}
+export function ribbonAlpha(t: number, fade: number): number {
+  if (t <= 0 || t >= 1) return 0
+  const rise = Math.min(1, t / 0.1)
+  return rise * Math.pow(1 - t, fade)
+}
+
+/** Across the ribbon: offsets (× half-width) and alpha (× the centre's): soft edges, no hard banding. */
+const ACROSS = [-1, -0.45, 0, 0.45, 1] as const
+const ACROSS_ALPHA = [0, 0.6, 1, 0.6, 0] as const
+
+/**
+ * Screen-space floor on the ribbon's half-width: MIN_HALF_PX pixels per REF_WIDTH metres of style width, so a
+ * far or foreshortened trail never thins to a hairline (a drop stays thinner than a smash on screen too).
+ */
+export const MIN_HALF_PX = 3
+export const REF_WIDTH = 0.15
+
+/** Half-width (m) at a point `dist` m from the camera: the style's, or at least the screen floor. */
+export function halfWidthAt(width: number, dist: number, pxScale: number): number {
+  return Math.max(width / 2, MIN_HALF_PX * (width / REF_WIDTH) * dist * pxScale)
+}
+
+/** Ribbon points along the path. */
+export const RIBBON_POINTS = 28
+
+/**
+ * Lay `n` ribbon centre points along the sampled path `pts` (len points, head = the shuttle first), from
+ * `gap` metres behind the head to `gap + length` (cut at the path's end), evenly by arc length. Writes
+ * x, y, z, t (0..1 along the ribbon) per point into `out` (n * 4). Returns the ribbon's actual length (0 =
+ * nothing to draw yet).
+ */
+export function layRibbon(
+  pts: Float32Array,
+  len: number,
+  gap: number,
+  length: number,
+  n: number,
+  out: Float32Array,
+): number {
+  let total = 0
+  for (let i = 0; i < len - 1; i++) total += seg(pts, i)
+  const span = Math.min(length, total - gap)
+  if (n < 2 || !(span > 0.02)) return 0
+  let i = 0
+  let at = 0
+  let l = seg(pts, 0)
+  for (let j = 0; j < n; j++) {
+    const t = j / (n - 1)
+    const d = gap + t * span
+    while (at + l < d && i < len - 2) {
+      at += l
+      i++
+      l = seg(pts, i)
+    }
+    const u = l > 0 ? Math.min(1, (d - at) / l) : 0
+    const a = i * 3
+    out[j * 4] = pts[a] + (pts[a + 3] - pts[a]) * u
+    out[j * 4 + 1] = pts[a + 1] + (pts[a + 4] - pts[a + 1]) * u
+    out[j * 4 + 2] = pts[a + 2] + (pts[a + 5] - pts[a + 2]) * u
+    out[j * 4 + 3] = t
+  }
+  return span
+}
+
+function seg(p: Float32Array, i: number): number {
+  const a = i * 3
+  return Math.hypot(p[a + 3] - p[a], p[a + 4] - p[a + 1], p[a + 5] - p[a + 2])
+}
+
+/** The ribbon as one camera-facing mesh. */
+export class RibbonTrail {
+  readonly mesh: Mesh
+  /** World position of the ribbon's tip (near its tail end; Perfect sparkles), valid while `shown`. */
+  readonly tip = new Float32Array(3)
+  shown = false
+  private sampler: TrailSampler
+  private laid = new Float32Array(RIBBON_POINTS * 4)
+  private pos: Float32Array
+  private col: Float32Array
+  private c = new Color()
+
+  /** `gap` = metres of path left empty behind the shuttle's origin (behind its skirt mouth). */
   constructor(
-    private dots: number,
     samples: number,
     step: number,
-    look: TrailLook,
+    private gap: number,
   ) {
-    this.look = look
     this.sampler = new TrailSampler(samples, step)
-    // Always transparent (no recompiles); colour/opacity follow the look.
-    this.mat = new MeshBasicMaterial({ color: look.color, transparent: true, depthWrite: false })
-    this.mesh = new InstancedMesh(new SphereGeometry(1, 8, 6), this.mat, dots)
+    const verts = RIBBON_POINTS * ACROSS.length
+    this.pos = new Float32Array(verts * 3)
+    this.col = new Float32Array(verts * 4)
+    const idx: number[] = []
+    const W = ACROSS.length
+    for (let i = 0; i < RIBBON_POINTS - 1; i++)
+      for (let c = 0; c < W - 1; c++) {
+        const a = i * W + c
+        const b = a + W
+        idx.push(a, a + 1, b, a + 1, b + 1, b)
+      }
+    const g = new BufferGeometry()
+    g.setAttribute('position', new BufferAttribute(this.pos, 3))
+    g.setAttribute('color', new BufferAttribute(this.col, 4))
+    g.setIndex(idx)
+    // Always transparent with per-vertex alpha (no recompiles).
+    const mat = new MeshBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      depthWrite: false,
+      side: DoubleSide,
+    })
+    this.mesh = new Mesh(g, mat)
     this.mesh.frustumCulled = false
     this.mesh.visible = false
   }
 
-  setLook(look: TrailLook) {
-    this.look = look
+  /** A new hit / serve: the ribbon regrows from the contact (no bend back along the old path). */
+  restart() {
+    this.sampler.reset()
+    this.hide()
   }
 
   reset() {
-    this.sampler.reset()
-    this.mesh.visible = false
+    this.restart()
   }
 
-  /** `flying` false hides it and forgets the path. `x,y,z` = the shuttle in render coords. */
-  update(flying: boolean, x: number, y: number, z: number, dt: number) {
+  private hide() {
+    this.mesh.visible = false
+    this.shown = false
+  }
+
+  /**
+   * `flying` false hides it and forgets the path. (x, y, z) = the shuttle's origin, `style` this frame's look
+   * (trailStyle), (cx, cy, cz) the camera (the ribbon faces it), `pxScale` = metres per pixel per metre of
+   * distance (2·tan(fov/2) / viewport height px; 0 = no screen floor).
+   */
+  update(
+    flying: boolean,
+    x: number,
+    y: number,
+    z: number,
+    dt: number,
+    style: TrailStyle,
+    cx: number,
+    cy: number,
+    cz: number,
+    pxScale = 0,
+  ) {
     if (!flying) return this.reset()
     const s = this.sampler
     s.update(dt, x, y, z)
-    if (s.len < 3) {
-      this.mesh.visible = false
-      return
+    if (style.length <= 0 || layRibbon(s.pts, s.len, this.gap, style.length, RIBBON_POINTS, this.laid) === 0)
+      return this.hide()
+    const q = this.laid
+    const W = ACROSS.length
+    const P = RIBBON_POINTS
+    for (let i = 0; i < P; i++) {
+      const a = Math.max(0, i - 1) * 4
+      const b = Math.min(P - 1, i + 1) * 4
+      const px = q[i * 4]
+      const py = q[i * 4 + 1]
+      const pz = q[i * 4 + 2]
+      const t = q[i * 4 + 3]
+      // Side = tangent × (to camera), scaled to the half-width here.
+      const tx = q[b] - q[a]
+      const ty = q[b + 1] - q[a + 1]
+      const tz = q[b + 2] - q[a + 2]
+      const ex = cx - px
+      const ey = cy - py
+      const ez = cz - pz
+      let sx = ty * ez - tz * ey
+      let sy = tz * ex - tx * ez
+      let sz = tx * ey - ty * ex
+      const hw = halfWidthAt(style.width, Math.hypot(ex, ey, ez), pxScale) * ribbonWidth(t)
+      const sl = (Math.hypot(sx, sy, sz) || 1) / Math.max(hw, 1e-6)
+      sx /= sl
+      sy /= sl
+      sz /= sl
+      const alpha = style.opacity * ribbonAlpha(t, style.fade)
+      this.c.copy(style.colorHead).lerp(style.colorTail, t)
+      for (let c = 0; c < W; c++) {
+        const v = i * W + c
+        const o = ACROSS[c]
+        this.pos[v * 3] = px + sx * o
+        this.pos[v * 3 + 1] = py + sy * o
+        this.pos[v * 3 + 2] = pz + sz * o
+        const col = o !== 0 && style.edged ? style.colorEdge : this.c
+        this.col[v * 4] = col.r
+        this.col[v * 4 + 1] = col.g
+        this.col[v * 4 + 2] = col.b
+        this.col[v * 4 + 3] = alpha * ACROSS_ALPHA[c]
+      }
     }
-    this.mat.color.copy(this.look.color)
-    this.mat.opacity = this.look.opacity
-    const p = s.pts
-    const d = this.dummy
-    for (let j = 0; j < this.dots; j++) {
-      const f = (j / (this.dots - 1)) * (s.len - 1)
-      const k = Math.min(Math.floor(f), s.len - 2)
-      const u = f - k
-      const a = k * 3
-      const b = a + 3
-      d.position.set(
-        p[a] + (p[b] - p[a]) * u,
-        p[a + 1] + (p[b + 1] - p[a + 1]) * u,
-        p[a + 2] + (p[b + 2] - p[a + 2]) * u,
-      )
-      d.scale.setScalar(this.look.size * (1 - j / this.dots))
-      d.updateMatrix()
-      this.mesh.setMatrixAt(j, d.matrix)
-    }
-    this.mesh.instanceMatrix.needsUpdate = true
+    // Sparkle tip: 85% along the ribbon.
+    const k = Math.round(0.85 * (P - 1)) * 4
+    this.tip[0] = q[k]
+    this.tip[1] = q[k + 1]
+    this.tip[2] = q[k + 2]
+    const geo = this.mesh.geometry
+    geo.getAttribute('position').needsUpdate = true
+    geo.getAttribute('color').needsUpdate = true
     this.mesh.visible = true
+    this.shown = true
   }
 }

@@ -347,6 +347,45 @@ describe('fade (local player covering the shuttle)', () => {
     expect(((twin.root.getObjectByName('head') as Mesh).material as Material).transparent).toBe(false)
   })
 
+  it('fade is pure opacity: same colour / emissive / shading as the normal materials, no tint', () => {
+    const { chibi } = rig(0)
+    const byName = (n: string) => (chibi.root.getObjectByName(n) as Mesh).material as MeshPhysicalMaterial
+    const normal = { head: byName('head'), face: byName('face') }
+    chibi.setOpacity(0.5)
+    const faded = { head: byName('head'), face: byName('face') }
+    for (const k of ['head', 'face'] as const) {
+      const a = normal[k]
+      const b = faded[k]
+      expect(b).not.toBe(a)
+      expect(b.type).toBe(a.type)
+      expect(b.color.getHex()).toBe(a.color.getHex())
+      expect(b.vertexColors).toBe(a.vertexColors)
+      if ('emissive' in a) expect(b.emissive.getHex()).toBe(a.emissive.getHex())
+      for (const p of ['roughness', 'metalness', 'clearcoat', 'sheen', 'envMapIntensity'] as const)
+        if (p in a) expect(b[p], p).toBe(a[p])
+      expect(b.transparent).toBe(true)
+      expect(b.opacity).toBe(0.5)
+    }
+    chibi.setOpacity(1)
+  })
+
+  it('two chibis (same look) fade independently: own opacity each, either restores on its own', () => {
+    const a = rig(0).chibi
+    const b = rig(0).chibi
+    const head = (c: typeof a) => (c.root.getObjectByName('head') as Mesh).material as Material
+    const original = head(a)
+    a.setOpacity(0.4)
+    b.setOpacity(0.7)
+    expect(head(a)).not.toBe(head(b))
+    expect(head(a).opacity).toBe(0.4)
+    expect(head(b).opacity).toBe(0.7)
+    a.setOpacity(1)
+    expect(head(a)).toBe(original)
+    expect(head(b).opacity).toBe(0.7)
+    b.setOpacity(1)
+    expect(head(b)).toBe(original)
+  })
+
   it('fade variants reuse the toy program key (no new shader family) and keep the draw-call count', () => {
     const { chibi } = rig(0)
     const calls = drawn(chibi.root).length

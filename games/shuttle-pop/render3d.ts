@@ -7,7 +7,8 @@
 // only and stop (between rallies) once the engine's quality ladder (quality.ts) drops them.
 // Net: net.ts (mesh, tapes, posts; a ripple when the shuttle hits it). Scoreboard: scoreboard.ts (DOM, top
 // centre) + the live score on the flip board by the net (boardprop.ts).
-// Juice: timing pops + badges (hud.ts), Perfect sparkles, a shuttle trail (hot after a smash), a sprung
+// Juice: timing pops + badges (hud.ts), Perfect sparkles, a trail ribbon behind the shuttle styled by the
+// shot's kind, grade and power (trail.ts), a sprung
 // camera punch on smashes and the sounds (sounds.ts), all driven by new sim events. Hold-to-charge: a
 // charge ring at the feet (chargering.ts) with rising sounds, the racket held loaded until the release,
 // and punch / burst / trail / streak scaled by the charge (a full-charge Perfect is the biggest).
@@ -16,29 +17,26 @@
 // Online guests: the own chibi comes from GuestPredictor (predict.ts: moves the frame the input does,
 // gait fed by the predicted velocity); the shuttle comes from GuestShuttle (guestshuttle.ts: a smooth RenderClock + local deterministic flight
 // between host states, so jitter never rubber-bands it); remote players on guests are drawn from RemoteTracks (remotes.ts).
-// Findability (visibility.ts): a soft halo on the shuttle, an x-ray core while any player covers it on screen,
-// and the local player fades while covering it mid-rally (Chibi.setOpacity).
+// Findability (visibility.ts): a soft halo on the shuttle, and any player whose body covers it on screen fades
+// (Chibi.setOpacity, each chibi independently, in any phase: a server's own body too).
 
 import {
   BackSide,
   CircleGeometry,
   Color,
   DataTexture,
-  FrontSide,
-  Group,
   LinearFilter,
   Mesh,
   PMREMGenerator,
   MeshBasicMaterial,
   PlaneGeometry,
   ShadowMaterial,
-  SphereGeometry,
+  Quaternion,
   Sprite,
   SpriteMaterial,
   TorusGeometry,
   Vector3,
   type BufferGeometry,
-  type Side,
 } from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { startRenderLoop } from '@forge/core/loop'
@@ -85,13 +83,25 @@ import { COURT, predictLanding, type Vec3 } from './physics'
 import type { GuestView } from './guestshuttle'
 import type { GuestPredictor } from './predict'
 import { SpringPunch } from './punch'
+import type { Grade, ShotKind } from './shots'
+import { SHUTTLECOCK, shuttlecockGeometry, SHUTTLECOCK_COLORS } from './model/shuttlecock'
+import {
+  corkAxis,
+  floorClearance,
+  ORIENT,
+  restingDir,
+  shuttleMode,
+  shuttleOrientation,
+  turnToward,
+  type ShuttleMode,
+} from './orient'
 import { SURROUND } from './props'
 import { SP_QUALITY } from './quality'
 import { Park } from './scenery'
 import { TAPPED, type SpEvent, type SpState } from './sim'
 import { chargeSound, eventSound, SHUTTLE_SOUNDS, swingSound } from './sounds'
-import { ShuttleTrail, type TrailLook } from './trail'
-import { fadeTarget, fadeTo, haloPixels, occlusion, VIS, type ScreenRect } from './visibility'
+import { newTrailStyle, RibbonTrail, trailStyle } from './trail'
+import { haloOpacity, haloPixels, occlusion, stepFades, VIS, type ScreenRect } from './visibility'
 import {
   CAMERA,
   CHEER,
@@ -116,18 +126,16 @@ const PALETTE = {
   surround: '#c9a487',
   court: '#3f9a86',
   line: '#ffffff',
-  shuttle: '#ffffff',
-  /** Dark rim so the white shuttle reads against the pale sky (same idea as the twin outline). */
-  shuttleRim: '#3b2f4a',
+  /** Dark outline so the white shuttlecock reads against the pale sky (same idea as the twin outline). */
+  shuttleRim: SHUTTLECOCK_COLORS.outline,
   ringMine: '#ffd166',
   ringTheirs: '#ffffff',
 }
 
 const LINE_W = 0.05
 const POST_OUT = 0.25
-const SHUTTLE_R = 0.08
-/** Rim shell radius over the shuttle's. */
-const SHUTTLE_RIM = 1.35
+/** Cork-down in the server's hand (model +Y = cork, model/shuttlecock.ts). */
+const CORK_DOWN = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), Math.PI)
 /**
  * Motion feel. Weight damping rates (1/s) for the ready stance, the smash crouch and moods; squash and
  * lean springs (stiffness, damping ratio, sub-step) and their kicks (velocity): + squash / − stretch,
@@ -176,18 +184,27 @@ const COURT_RUNOFF = { x: 0.35, z: 0.45 }
 const TOY_ENV = 0.55
 const SHADOW_OPACITY = 0.26
 
-/** Shuttle trail: TRAIL_DOTS spheres spread along the last TRAIL_SAMPLES positions, one every TRAIL_STEP s. */
-const TRAIL_DOTS = 18
-const TRAIL_SAMPLES = 7
+/**
+ * Trail path: TRAIL_SAMPLES positions one every TRAIL_STEP s (enough path for the longest ribbon), and the
+ * empty gap (m) behind the shuttle's origin: its skirt plus a little, so the ribbon never touches it.
+ */
+const TRAIL_SAMPLES = 40
 const TRAIL_STEP = 1 / 60
-/** Trail look per shot: colour, opacity, head dot radius (m). Smash = hot and thick. */
-const TRAIL: Record<'plain' | 'perfect' | 'smash' | 'power', TrailLook> = {
-  plain: { color: new Color('#f4efff'), opacity: 0.6, size: 0.07 },
-  perfect: { color: new Color('#ffd166'), opacity: 0.8, size: 0.075 },
-  smash: { color: new Color('#ff4d6d'), opacity: 0.85, size: 0.1 },
-  /** A full-charge hit: hot orange and thickest. */
-  power: { color: new Color('#ff7a45'), opacity: 0.95, size: 0.12 },
+const TRAIL_GAP = SHUTTLECOCK.length + 0.05
+/** Perfect-trail sparkles (trail.ts): a tiny gold twinkle at the ribbon's tip every `every` s. */
+const TRAIL_SPARK = {
+  every: 0.07,
+  burst: { count: 2, color: ['#ffd166', '#fff3b0'], speed: 0.6, life: 0.32, size: 0.12 },
 }
+/** Draw order (transparent pass): net 1 → trail / sparkles 2 → shuttlecock 3 → halo 4 → chibis (CHIBI_ORDER). */
+const SHUTTLE_ORDER = 3
+const HALO_ORDER = 4
+/**
+ * Every chibi object (meshes and their nested Groups: a Group's renderOrder becomes its subtree's group order)
+ * draws after the shuttlecock, so a faded (covering) chibi blends over it instead of hiding it. The rig is
+ * built once (setPreset only re-parents), so setting it at construction covers every look.
+ */
+const CHIBI_ORDER = 5
 
 /**
  * Camera punch on a smash: a damped spring (stiffness, damping ratio) kicked with a velocity (m/s);
@@ -299,12 +316,24 @@ export class Court3D {
   private smooth: Smoothed<SpState> | null = null
   private selfId = ''
   private players: [PlayerView, PlayerView]
+  /** The shuttlecock (model/shuttlecock.ts), its quaternion posed by orient.ts. */
   private shuttle: Mesh
-  /** X-ray core: the shuttle drawn through whoever stands in front of it (only while covered). */
-  private ghost = new Group()
-  /** Local player's opacity while covering the shuttle (visibility.ts), and the chibi it is applied to. */
-  private localFade = 1
-  private fadedIdx = -1
+  /** Last drawn (render-space, unclamped) shuttle position: the per-frame delta is the velocity it turns to. */
+  private drawn = new Vector3()
+  private drawnOk = false
+  /** Scratch velocity, cork axis and resting direction (no allocation in the loop). */
+  private shVel: Vec3 = { x: 0, y: 0, z: 0 }
+  private shAxis = new Vector3()
+  private restDir: Vec3 = { x: 0, y: 0, z: 0 }
+  /** Last horizontal heading in flight: a landed shuttle lies cork-forward along it. */
+  private headX = 0
+  private headZ = 1
+  /** The shuttle's glow (visibility.ts haloOpacity) and how the shuttle is posed this frame (orient.ts). */
+  private halo!: Sprite
+  private shMode: ShuttleMode = 'hand'
+  /** Each player's opacity while covering the shuttle (visibility.ts stepFades), and this frame's cover. */
+  private fades = [1, 1]
+  private occ = [0, 0]
   /** Per-frame scratch for updateVisibility (no allocation in the loop). */
   private visP = new Vector3()
   private visRect: ScreenRect = { x0: 0, y0: 0, x1: 0, y1: 0, depth: 0 }
@@ -380,7 +409,17 @@ export class Court3D {
   /** Both seats' looks (preset0 * 64 + preset1): the board's colour dots. */
   private hudLooks = -1
   private fx = new Particles3D(160)
-  private trail = new ShuttleTrail(TRAIL_DOTS, TRAIL_SAMPLES, TRAIL_STEP, TRAIL.plain)
+  /** The trail ribbon, styled by the last hit's kind / grade / power (null = a serve) (trail.ts). */
+  private trail = new RibbonTrail(TRAIL_SAMPLES, TRAIL_STEP, TRAIL_GAP)
+  private trailShot: { kind: ShotKind | null; grade: Grade | null; power: number } = {
+    kind: null,
+    grade: null,
+    power: 0,
+  }
+  /** This frame's trail look (reused). */
+  private trailLook = newTrailStyle()
+  /** Next time (s) a Perfect trail twinkles. */
+  private sparkAt = 0
   private proj = new Vector3()
   /** When each player's latest pop showed (for stacking). */
   private lastPop: [number, number] = [-Infinity, -Infinity]
@@ -425,23 +464,31 @@ export class Court3D {
     })
 
     this.players = [makePlayer(0), makePlayer(1)]
-    for (const p of this.players) scene.add(p.chibi.root, p.ring.root)
+    this.fades = this.players.map(() => 1)
+    this.occ = this.players.map(() => 0)
+    for (const p of this.players) {
+      p.chibi.root.traverse((o) => (o.renderOrder = CHIBI_ORDER))
+      scene.add(p.chibi.root, p.ring.root)
+    }
 
-    this.shuttle = new Mesh(
-      new SphereGeometry(SHUTTLE_R, 14, 10),
-      new MeshBasicMaterial({ color: PALETTE.shuttle }),
-    )
+    // Shuttlecock: vertex-coloured unlit body + dark back-side outline (2 draw calls, as the old ball + rim).
+    const cock = shuttlecockGeometry()
+    // Transparent at opacity 1 (looks opaque) only to draw in the transparent pass after the wind streaks, so
+    // streaks in front of it (flying away) never veil it; it still writes depth.
+    this.shuttle = new Mesh(cock.body, new MeshBasicMaterial({ vertexColors: true, transparent: true }))
     const rim = new Mesh(
-      new SphereGeometry(SHUTTLE_R * SHUTTLE_RIM, 12, 8),
-      new MeshBasicMaterial({ color: PALETTE.shuttleRim, side: BackSide }),
+      cock.outline,
+      new MeshBasicMaterial({ color: PALETTE.shuttleRim, side: BackSide, transparent: true }),
     )
+    this.shuttle.renderOrder = rim.renderOrder = SHUTTLE_ORDER
     this.shuttle.add(rim)
-    // Soft glow around the shuttle: depth-tested (never through posts / court), after the net (renderOrder 1)
-    // and the trail (2) so neither blends over it.
+    // Soft glow around the shuttle: depth-tested (never through posts / court), after the net, the wind and
+    // the shuttlecock (HALO_ORDER) so none of them blends over it. Never on a player: hidden while the
+    // shuttle is held and faded out wherever it overlaps any player on screen (updateVisibility).
     const haloTex = new DataTexture(haloPixels(), VIS.halo.px, VIS.halo.px)
     haloTex.magFilter = haloTex.minFilter = LinearFilter
     haloTex.needsUpdate = true
-    const halo = new Sprite(
+    const halo = (this.halo = new Sprite(
       new SpriteMaterial({
         map: haloTex,
         color: VIS.halo.color,
@@ -449,31 +496,10 @@ export class Court3D {
         transparent: true,
         depthWrite: false,
       }),
-    )
+    ))
     halo.scale.setScalar(VIS.halo.size)
-    halo.renderOrder = 3
-    // X-ray: the same core + rim shapes, unlit and drawn over everything (rim first, core on top).
-    const xray = (geo: BufferGeometry, color: string, order: number, side: Side) => {
-      const m = new Mesh(
-        geo,
-        new MeshBasicMaterial({
-          color,
-          side,
-          depthTest: false,
-          depthWrite: false,
-          transparent: true,
-          opacity: 0.9,
-        }),
-      )
-      m.renderOrder = order
-      return m
-    }
-    this.ghost.add(
-      xray(rim.geometry, PALETTE.shuttleRim, 4, BackSide),
-      xray(this.shuttle.geometry, PALETTE.shuttle, 5, FrontSide),
-    )
-    this.ghost.visible = false
-    this.shuttle.add(halo, this.ghost)
+    halo.renderOrder = HALO_ORDER
+    this.shuttle.add(halo)
     this.shadow = new Mesh(
       new CircleGeometry(0.12, 16),
       new MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.22, depthWrite: false }),
@@ -548,9 +574,9 @@ export class Court3D {
     this.ring.visible = true
     this.trail.mesh.visible = true
     this.dust.mesh.visible = true
-    // The x-ray core and the fade variants of the (non-twin) chibi materials.
-    this.ghost.visible = true
+    // The fade variants of the (non-twin) chibi materials (one toy program: every chibi's fade reuses it).
     this.players[0].chibi.setOpacity(0.5)
+    this.players[1].chibi.setOpacity(0.5)
     // The twin outline + kit materials (both shades), so no material compiles mid-match.
     this.players[1].chibi.setPreset(1, true)
     for (const p of this.players) {
@@ -562,8 +588,8 @@ export class Court3D {
     // chibis' slow-device shading is uniforms only: the same programs).
     await this.view.renderer.compileAsync(this.view.scene, this.view.camera)
     this.view.render(0)
-    this.ghost.visible = false
     this.players[0].chibi.setOpacity(1)
+    this.players[1].chibi.setOpacity(1)
     // Upload every look's merged geometries now (a first-time preset would otherwise upload mid-match).
     for (const k of AVAILABLE_IDS) {
       this.players[0].chibi.setPreset(k)
@@ -638,13 +664,13 @@ export class Court3D {
     this.net.reset()
     this.hudPhase = ''
     this.trail.reset()
-    this.trail.setLook(TRAIL.plain)
+    this.setTrailShot(null, null, 0)
     this.punch.reset()
     this.dust.reset()
     this.lastPop[0] = this.lastPop[1] = -Infinity
-    this.ghost.visible = false
-    this.localFade = 1
-    this.fadedIdx = -1
+    this.drawnOk = false
+    this.fades.fill(1)
+    this.occ.fill(0)
     for (const p of this.players) {
       p.chibi.setOpacity(1)
       p.swing.reset()
@@ -882,14 +908,26 @@ export class Court3D {
     } else {
       snap = interpShuttle(ps, cs, a, this.tmp).snap
     }
-    this.shuttle.position.set(pos.x * flip, Math.max(SHUTTLE_R, pos.y), pos.z * flip)
+    this.poseShuttle(curr.phase, pos.x * flip, pos.y, pos.z * flip, snap, dt)
     this.shadow.position.x = pos.x * flip
     this.shadow.position.z = pos.z * flip
     // After players + shuttle are placed: pops and bursts anchor on this frame's positions.
     this.scanEvents(curr)
     const flying = curr.phase === 'rally' && curr.shuttle.lastHitter !== -1 && !snap
     const sp = this.shuttle.position
-    this.trail.update(flying, sp.x, sp.y, sp.z, dt)
+    const cp = this.view.camera.position
+    const v = this.shVel
+    const ts = this.trailShot
+    const look = trailStyle(ts.kind, ts.grade, ts.power, Math.hypot(v.x, v.y, v.z), this.trailLook)
+    const tr = this.trail
+    const cam = this.view.camera
+    const pxScale = (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, this.view.height)
+    tr.update(flying, sp.x, sp.y, sp.z, dt, look, cp.x, cp.y, cp.z, pxScale)
+    // Perfect trails twinkle at the ribbon's tip (the lowest quality rung skips it).
+    if (tr.shown && look.sparkle && this.view.quality.dpr > 1 && this.time >= this.sparkAt) {
+      this.sparkAt = this.time + TRAIL_SPARK.every
+      this.fx.burst(tr.tip[0], tr.tip[1], tr.tip[2], TRAIL_SPARK.burst)
+    }
     this.fx.update(dt)
     this.net.update(dt)
     this.updateHud(curr)
@@ -907,6 +945,37 @@ export class Court3D {
     this.updateVisibility(curr, dt)
     if (import.meta.env.DEV && !this.callsLogged && curr.phase === 'rally') this.logDrawCalls(dt)
     else this.view.render(dt)
+  }
+
+  /**
+   * Place and orient the shuttlecock (orient.ts) at render-space (x, y, z): cork-down in the server's hand,
+   * cork-first along the drawn per-frame movement in flight (what is shown, host or guest alike), tipping
+   * onto its side once a point's shuttle is on the floor. A teleport (snap) keeps the last orientation.
+   * Lifted just enough that neither cork nor rim goes through the floor. Allocates nothing.
+   */
+  private poseShuttle(phase: SpState['phase'], x: number, y: number, z: number, snap: boolean, dt: number) {
+    const q = this.shuttle.quaternion
+    const mode = (this.shMode = shuttleMode(phase, y))
+    const moved = this.drawnOk && !snap && dt > 1e-4
+    if (mode === 'hand') q.copy(CORK_DOWN)
+    else if (mode === 'rest') {
+      const d = restingDir(this.headX, this.headZ, this.restDir)
+      // Already on the floor when first drawn (joined mid-point): lie down at once.
+      turnToward(q, d.x, d.y, d.z, ORIENT.restRate, moved ? dt : this.drawnOk ? 0 : 1, q)
+    } else if (moved) {
+      const v = this.shVel
+      v.x = (x - this.drawn.x) / dt
+      v.y = (y - this.drawn.y) / dt
+      v.z = (z - this.drawn.z) / dt
+      if (Math.hypot(v.x, v.z) >= ORIENT.minSpeed) {
+        this.headX = v.x
+        this.headZ = v.z
+      }
+      shuttleOrientation(v, q, dt, q)
+    }
+    this.drawn.set(x, y, z)
+    this.drawnOk = true
+    this.shuttle.position.set(x, Math.max(y, floorClearance(corkAxis(q, this.shAxis).y)), z)
   }
 
   /**
@@ -1048,11 +1117,22 @@ export class Court3D {
       if (e.k === 'point') {
         this.pointSide = e.side
         if (this.pointHits >= CHEER.rally) playSound(SHUTTLE_SOUNDS.cheer)
-      } else if (e.k === 'hit') this.onHit(s, e.side, e.grade, e.shot === 'smash', e.power ?? 0)
-      else if (e.k === 'serve') this.trail.setLook(TRAIL.plain)
+      } else if (e.k === 'hit') {
+        this.onHit(s, e.side, e.grade, e.shot === 'smash', e.power ?? 0)
+        this.setTrailShot(e.shot, e.grade, e.power ?? 0)
+      } else if (e.k === 'serve') this.setTrailShot(null, null, 0)
       else if (e.k === 'whiff' && !this.spectating && e.side === this.side)
         this.popAt(this.localIdx, 'miss', false)
     }
+  }
+
+  /** A new shot: the trail regrows from the contact in that shot's look (kind null = a serve). */
+  private setTrailShot(kind: ShotKind | null, grade: Grade | null, power: number) {
+    const t = this.trailShot
+    t.kind = kind
+    t.grade = grade
+    t.power = power
+    this.trail.restart()
   }
 
   private onHit(
@@ -1066,9 +1146,6 @@ export class Court3D {
     const mine = this.spectating || side === this.side
     const big = isPowerHit(power)
     this.popAt(j, big ? 'power' : grade, smash)
-    this.trail.setLook(
-      big ? TRAIL.power : smash ? TRAIL.smash : grade === 'perfect' ? TRAIL.perfect : TRAIL.plain,
-    )
     // The hit is happening now: a racket still on its way to contact hurries to meet it (a press seen
     // later this frame catches up too: hitAt).
     const view = this.players[j]
@@ -1171,24 +1248,25 @@ export class Court3D {
   }
 
   /**
-   * Keep the shuttle findable (after placeCamera): the x-ray core shows while any player's body box covers
-   * it on screen; the local player fades while covering it during a rally (visibility.ts). Works for any
-   * number of players; allocates nothing.
+   * Keep the shuttle findable (after placeCamera): every player whose body box covers it on screen fades
+   * toward see-through, each by its own cover, in any phase (a server's own body hides the serve), local,
+   * opponent or spectated alike (visibility.ts). Works for any number of players; allocates nothing.
    */
   private updateVisibility(curr: SpState, dt: number) {
     const cam = this.view.camera
     cam.updateMatrixWorld()
     const v = this.visP
+    const occ = this.occ
+    occ.fill(0)
+    /** Most any player's screen box overlaps the shuttle, in front or behind (the halo's no-go zone). */
+    let overlap = 0
     // Shuttle: camera-space depth, then NDC.
     v.copy(this.shuttle.position).applyMatrix4(cam.matrixWorldInverse)
     const sDepth = -v.z
     v.applyMatrix4(cam.projectionMatrix)
     const sx = v.x
     const sy = v.y
-    const fadeOn = !this.spectating && this.localIdx < this.players.length
-    let maxOcc = 0
-    let occLocal = 0
-    if (sDepth > 0) {
+    if (sDepth > 0 && this.shuttle.visible) {
       const r = this.visRect
       const tanY = Math.tan((cam.fov * Math.PI) / 360)
       for (let i = 0; i < Math.min(curr.players.length, this.players.length); i++) {
@@ -1214,22 +1292,18 @@ export class Court3D {
           r.y0 = r.y1
           r.y1 = t
         }
-        const occ = occlusion(sx, sy, sDepth, r)
-        if (occ > maxOcc) maxOcc = occ
-        if (fadeOn && i === this.localIdx) occLocal = occ
+        occ[i] = occlusion(sx, sy, sDepth, r)
+        overlap = Math.max(overlap, occlusion(sx, sy, Infinity, r))
       }
     }
-    this.ghost.visible = maxOcc >= VIS.ghostAt && this.shuttle.visible
-    // Only the local player fades (the fade materials are shared); a stale one (side / seat change) restores.
-    const want = fadeOn ? this.localIdx : -1
-    if (this.fadedIdx !== want) {
-      if (this.fadedIdx >= 0) this.players[this.fadedIdx]?.chibi.setOpacity(1)
-      this.fadedIdx = want
-      this.localFade = 1
+    const haloMat = this.halo.material
+    haloMat.opacity = haloOpacity(overlap, this.shMode === 'hand')
+    this.halo.visible = haloMat.opacity > 0.01
+    stepFades(occ, this.fades, dt)
+    for (let i = 0; i < this.players.length; i++) {
+      const f = this.fades[i]
+      this.players[i].chibi.setOpacity(f > 0.995 ? 1 : f)
     }
-    if (want < 0) return
-    this.localFade = fadeTo(this.localFade, fadeTarget(occLocal, curr.phase === 'rally'), Math.max(0, dt))
-    this.players[want].chibi.setOpacity(this.localFade > 0.995 ? 1 : this.localFade)
   }
 
   /** Clamps the wanted tweak to what keeps the court framed. Allocates: call on change only, never per frame. */

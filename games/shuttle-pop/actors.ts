@@ -128,10 +128,10 @@ export interface Chibi {
   /** Swap the look. `alt` = the far twin when both sides wear the same preset (tinted + outlined). */
   setPreset(preset: number, alt?: boolean): void
   /**
-   * Fade the whole chibi (the local player covering the shuttle, render3d.ts). `a >= 1` = the normal shared
-   * materials; `a < 1` = the look's shared fade variants at opacity `a` (same toy program family, so warm()
-   * compiles them once). The fade variants are shared by every chibi: only ONE chibi (the local player) may
-   * be faded at a time. Independent of head size / pose; setPreset keeps the current opacity.
+   * Fade the whole chibi (any player covering the shuttle, render3d.ts). `a >= 1` = the normal shared
+   * materials; `a < 1` = this chibi's own fade variants at opacity `a` (same toy program family, so warm()
+   * compiles them once and every chibi reuses the program). Each chibi fades independently. Independent of
+   * head size / pose; setPreset keeps the current opacity.
    */
   setOpacity(a: number): void
   /** Rig-space y of the top of this look's head at rest (occlusion box, see visibility.ts). */
@@ -251,8 +251,8 @@ function cached<M extends Material>(key: string, make: () => M): M {
  * The unlit face / light material; the far twin's face dims with its body. `blend`: the toy faces' blush
  * fades out at its edge (vertex alpha, ModelGeos.faceBlend); every other face and the lights draw opaque.
  */
-function faceMat(alt: boolean, blend: boolean, fade = false): MeshBasicMaterial {
-  return cached(`face${alt ? 'Alt' : ''}${blend ? 'Blend' : ''}${fade ? 'Fade' : ''}`, () => {
+function faceMat(alt: boolean, blend: boolean, fade = false, owner = 0): MeshBasicMaterial {
+  return cached(`face${alt ? 'Alt' : ''}${blend ? 'Blend' : ''}${fade ? `Fade${owner}` : ''}`, () => {
     const color = new Color(0xffffff)
     if (alt) color.lerp(ALT_SHADE_COLOR, ALT_SHADE)
     return new MeshBasicMaterial({ color, vertexColors: true, transparent: blend || fade })
@@ -319,9 +319,10 @@ let toyEnv: { env: Texture | null; intensity: number } = { env: null, intensity:
 /**
  * Toy vertex-colour material (the far twin's is shaded toward ALT_SHADE_COLOR). `fade`: the see-through
  * variant (Chibi.setOpacity): transparent but still depth-writing, so the faded body hides its own far side.
+ * Fade variants are per `owner` chibi (own opacity), sharing the one toy program.
  */
-function kitMat(alt: boolean, fade = false): MeshPhysicalMaterial {
-  return cached(`kit${alt ? 'Alt' : ''}${fade ? 'Fade' : ''}`, () => {
+function kitMat(alt: boolean, fade = false, owner = 0): MeshPhysicalMaterial {
+  return cached(`kit${alt ? 'Alt' : ''}${fade ? `Fade${owner}` : ''}`, () => {
     const color = new Color(0xffffff)
     if (alt) color.lerp(ALT_SHADE_COLOR, ALT_SHADE)
     const m = new MeshPhysicalMaterial({
@@ -368,6 +369,8 @@ export function createChibi(preset: number): Chibi {
     bones.push(m)
     return m
   }
+  /** This chibi's own fade materials key (setOpacity). */
+  const owner = built
   const blinkSeed = (built++ * 1.37) % 3.4
 
   const root = new Group()
@@ -509,9 +512,9 @@ export function createChibi(preset: number): Chibi {
   /** Kit / face / light materials for the current shade + opacity (normal, or the shared fade variants). */
   function applyMaterials() {
     const fade = opacity < 1
-    const mat = kitMat(isAlt, fade)
-    const glow = faceMat(isAlt, false, fade)
-    const faceM = faceMat(isAlt, faceBlend, fade)
+    const mat = kitMat(isAlt, fade, owner)
+    const glow = faceMat(isAlt, false, fade, owner)
+    const faceM = faceMat(isAlt, faceBlend, fade, owner)
     if (fade) {
       mat.opacity = glow.opacity = faceM.opacity = opacity
       fadeMats = [mat, glow, faceM]

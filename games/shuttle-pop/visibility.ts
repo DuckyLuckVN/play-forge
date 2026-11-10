@@ -20,10 +20,9 @@ export const VIS = {
   fadeIn: 14,
   /** Per second, recovery. */
   fadeOut: 5,
-  ghostAt: 0.5,
   /** Metres, for the render projection of the player's body box (the top is the look's head, Chibi.top). */
   body: { bottom: 0.15, halfW: 0.32 },
-  halo: { size: 0.34, color: '#fff1a8', opacity: 0.55, px: 32 },
+  halo: { size: 0.38, color: '#fff1a8', opacity: 0.55, px: 32 },
 } as const
 
 /** 0..1 how much the shuttle at NDC (px,py) is covered by the player's box. */
@@ -43,14 +42,33 @@ export function occlusion(
   return 1 - d / edge
 }
 
-export function fadeTarget(occ: number, rally: boolean): number {
-  return rally ? 1 - occ * (1 - VIS.minOpacity) : 1
+/** Opacity a player covering the shuttle by `occ` (0..1) fades toward, in any phase (a serve too). */
+export function fadeTarget(occ: number): number {
+  return 1 - occ * (1 - VIS.minOpacity)
 }
 
 /** Frame-rate independent exponential approach. */
 export function fadeTo(current: number, target: number, dt: number): number {
   const rate = target < current ? VIS.fadeIn : VIS.fadeOut
   return target + (current - target) * Math.exp(-rate * dt)
+}
+
+/**
+ * Every player's fade, one step: player i eases (fadeTo) toward fadeTarget(occ[i]). Any number of players
+ * fade at once, each by how much it covers the shuttle. `fades` is updated in place; dt < 0 counts as 0.
+ */
+export function stepFades(occ: ArrayLike<number>, fades: number[], dt: number): void {
+  const t = Math.max(0, dt)
+  for (let i = 0; i < fades.length; i++) fades[i] = fadeTo(fades[i], fadeTarget(occ[i] ?? 0), t)
+}
+
+/**
+ * Halo opacity: none while the shuttle is held (before a serve it sits at a player's chest), and faded out
+ * by `overlap` (0..1: how much any player's screen box overlaps the shuttle, in front or behind), so the
+ * glow never shows on or through a player.
+ */
+export function haloOpacity(overlap: number, held: boolean): number {
+  return held ? 0 : VIS.halo.opacity * (1 - Math.min(1, Math.max(0, overlap)))
 }
 
 /** RGBA white disc, alpha = 255*(1-r)^2, 0 at the rim. */

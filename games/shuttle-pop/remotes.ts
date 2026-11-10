@@ -1,7 +1,6 @@
 // Remote players on the guest's jitter-tolerant render clock: each id keeps a short ring of host
 // samples, and `sample` shows them at clock.tick (lerp between neighbours, capped extrapolation past
 // the newest, snap across a placement). Pure, no three.js; ids are free-form so any player count works.
-import { TICK_RATE } from './court'
 import { CLOCK, type RenderClock } from './renderclock'
 import type { SpPlayer } from './sim'
 import { PLAYER_SNAP } from './world'
@@ -47,7 +46,7 @@ export class RemoteTracks {
     const k = this.clock.tick
     const last = ring[ring.length - 1]
     if (k >= last.tick) {
-      const dt = Math.min(k - last.tick, CLOCK.maxAhead) / TICK_RATE
+      const dt = Math.min(k - last.tick, CLOCK.maxAhead) / this.clock.tickRate
       out.x = last.x + last.vx * dt
       out.z = last.z + last.vz * dt
       out.vx = last.vx

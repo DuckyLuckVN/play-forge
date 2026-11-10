@@ -368,7 +368,7 @@ function coSim(o: {
   const own = (k: 'hit' | 'whiff') =>
     host[host.length - 1].events.find((e) => e.k === k && 'side' in e && e.side === 1) ??
     host.flatMap((h) => h.events).find((e) => e.k === k && 'side' in e && e.side === 1)
-  return { frames, host, base, hostAt, own, swingFrame, predicted, arrivedAt }
+  return { frames, host, base, hostAt, own, swingFrame, predicted, arrivedAt, gs }
 }
 
 /** First state tick the closest approach of the shuttle to seat b (history tick = state tick + 1). */
@@ -466,6 +466,13 @@ describe('GuestShuttle own-hit prediction', () => {
       }
     },
   )
+
+  it('a confirmed prediction is dropped once the clock passes its hit tick', () => {
+    const C = closest(incoming(), ON)
+    const r = coSim({ state: incoming(), guestAt: ON, held: { x: 0.4, z: -1 }, when: (k) => k >= C })
+    expect(r.own('hit')).toBeTruthy()
+    expect((r.gs as unknown as { pred: unknown }).pred).toBeNull()
+  })
 
   /** Every frame after the host's answer moves ≤ maxStep + the host's own step; on the host path within 30 ticks. */
   function expectConverges(r: ReturnType<typeof coSim>, answerTick: number) {

@@ -366,6 +366,21 @@ export function rewindTicks(hostTick: number, inputTick: number): number {
   return Math.min(MAX_REWIND, Math.max(0, Math.round(hostTick - inputTick)))
 }
 
+/** A press `sincePress` ticks old is graded at its press: a tap (charge 0) within MAX_REWIND of now. */
+export function gradesAtPress(sincePress: number, charge: number): boolean {
+  return charge === 0 && sincePress >= 0 && sincePress <= MAX_REWIND
+}
+
+/** A press at `pressTick` swings at once as a tap when the contact comes within CHARGE.start ticks of it. */
+export function tapContact(contactTick: number, pressTick: number): boolean {
+  return contactTick <= pressTick + CHARGE.start
+}
+
+/** The tick a hit launches from: the contact, or the swinger's screen tick if that is later. */
+export function launchTick(contactTick: number, screenTick: number): number {
+  return Math.max(contactTick, screenTick)
+}
+
 /**
  * Ticks back a release is graded: a tap (charge 0) at its press, if that is within MAX_REWIND of now
  * (else, and for a charged swing, at the release, `releaseRewind` ticks back). Never more than
@@ -378,7 +393,7 @@ export function gradeRewind(
   charge: number,
 ): number {
   const sincePress = hostTick - pressAt
-  if (pressAt >= 0 && charge === 0 && sincePress >= 0 && sincePress <= MAX_REWIND) return sincePress
+  if (pressAt >= 0 && gradesAtPress(sincePress, charge)) return sincePress
   return Math.min(MAX_REWIND, releaseRewind)
 }
 
@@ -389,7 +404,7 @@ function humanRewind(state: SpState, p: SpPlayer, tick: number | undefined): num
 
 /**
  * Resolve a rally swing. `rewind` = ticks the swing happened before now (a guest's lag, rewindTicks;
- * the host's own interpolation; 0 for the computer's swings). Candidates: in-reach shuttle positions on the swinger's half from `history` (the past)
+ * the host's own interpolation; a tap rewinds by sincePress; 0 for the computer's swings). Candidates: in-reach shuttle positions on the swinger's half from `history` (the past)
  * and the forward scan (the future, up to WINDOW.late after the swing). The closest one wins (the past
  * only when strictly closer); dt = contact tick − swing tick, graded by gradeOf (|dt| bands, dt <
  * −pastGrace → whiff). A contact at or before now hits at once; a future one is scheduled as `pending`.
@@ -421,7 +436,7 @@ export function resolveSwing(
     grade: c.grade,
     aimX: held.x,
     charge,
-    fromTick: Math.max(c.tick, state.tick - Math.min(MAX_REWIND, Math.max(0, lag))),
+    fromTick: launchTick(c.tick, state.tick - Math.min(MAX_REWIND, Math.max(0, lag))),
   }
   if (s.pending.atTick === state.tick) hit(state)
 }
@@ -482,7 +497,7 @@ function tapOnPress(state: SpState, p: SpPlayer): boolean {
   if (p.chargeAt < 0 || !canSwing(state, p) || s.lastHitter === p.side || s.pending) return false
   const rewind = state.tick - p.pressAt
   const c = contactFor(state, p, rewind)
-  if (!c || c.tick > p.pressAt + CHARGE.start) return false
+  if (!c || !tapContact(c.tick, p.pressAt)) return false
   p.swingAt = state.tick
   p.chargeAt = TAPPED
   resolveSwing(state, p, p.move, rewind, 0, rewind) // the press arrived now: its rewind is its lag
@@ -529,6 +544,7 @@ function hit(state: SpState) {
   state.stats.shots++
   if (pend.grade === 'perfect') state.stats.perfect[pend.side]++
   emit(state, { k: 'hit', side: pend.side, grade: pend.grade, shot: pend.kind, charge: pend.charge })
+  // Fast-forwarded ticks are not written to history: the opponent cannot rewind-hit on them (rare, accepted).
   if (from) for (let t = from.tick; t < state.tick && state.phase === 'rally'; t++) flightStep(state)
 }
 

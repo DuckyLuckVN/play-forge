@@ -15,7 +15,7 @@
 // player animates exactly like the local one; swing / leap curves are moves.ts; dust puffs are dust.ts.
 // Online guests: the own chibi comes from GuestPredictor (predict.ts: moves the frame the input does,
 // gait fed by the predicted velocity); the shuttle comes from GuestShuttle (guestshuttle.ts: a smooth RenderClock + local deterministic flight
-// between host states, so jitter never rubber-bands it); the opponent stays pure interpolation.
+// between host states, so jitter never rubber-bands it); remote players on guests are drawn from RemoteTracks (remotes.ts).
 
 import {
   BackSide,
@@ -661,7 +661,7 @@ export class Court3D {
     }
 
     let localX = 0
-    for (let i = 0; i < curr.players.length; i++) {
+    for (let i = 0; i < Math.min(curr.players.length, this.players.length); i++) {
       const cp = curr.players[i]
       const pp = prev.players[i]
       const view = this.players[i]

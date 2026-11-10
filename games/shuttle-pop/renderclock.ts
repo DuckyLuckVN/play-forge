@@ -22,7 +22,7 @@ export class RenderClock {
   private since = 0
   private started = false
 
-  constructor(private readonly tickRate: number) {}
+  constructor(readonly tickRate: number) {}
 
   /** A host state arrived. Stale or repeated ticks are ignored. */
   onState(tick: number): void {

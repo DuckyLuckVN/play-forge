@@ -6,8 +6,11 @@ import { AVAILABLE_IDS, isAvailable } from './presets'
 import {
   canSwing,
   gradeRewind,
+  gradesAtPress,
+  launchTick,
   MAX_REWIND,
   MOVE_SPEED,
+  tapContact,
   NET_MARGIN,
   POINT_TICKS,
   PRESETS,
@@ -1168,5 +1171,24 @@ describe('hold-to-charge', () => {
     game.tick(s, [charge('p1')])
     const v = game.netView!(s) as SpState
     expect(v.players[1].chargeAt).toBe(s.tick)
+  })
+})
+
+describe('shared lag predicates', () => {
+  it('gradesAtPress: charge 0 and 0..MAX_REWIND ticks since the press', () => {
+    expect(gradesAtPress(0, 0)).toBe(true)
+    expect(gradesAtPress(MAX_REWIND, 0)).toBe(true)
+    expect(gradesAtPress(MAX_REWIND + 1, 0)).toBe(false)
+    expect(gradesAtPress(-1, 0)).toBe(false)
+    expect(gradesAtPress(3, 1)).toBe(false)
+  })
+  it('tapContact: contact within CHARGE.start ticks of the press', () => {
+    expect(tapContact(10 + CHARGE.start, 10)).toBe(true)
+    expect(tapContact(10 + CHARGE.start + 1, 10)).toBe(false)
+    expect(tapContact(5, 10)).toBe(true)
+  })
+  it('launchTick: the later of contact and screen tick', () => {
+    expect(launchTick(10, 12)).toBe(12)
+    expect(launchTick(14, 12)).toBe(14)
   })
 })

@@ -18,7 +18,7 @@ import {
   canCharge,
   canSwing,
   createState,
-  MAX_REWIND,
+  gradesAtPress,
   seedPreset,
   shownName,
   shuttlePopGame,
@@ -108,7 +108,7 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
         // The hold is the charge (the sim counts it in arrival ticks); a short tap is graded at its press.
         const ticks = press ? ((performance.now() - press.ms) / 1000) * session.tickRate : 0
         const charge = chargeOf(ticks)
-        const atPress = press && charge === 0 && ticks <= MAX_REWIND ? press.tick : undefined
+        const atPress = press && gradesAtPress(ticks, charge) ? press.tick : undefined
         predictHit({ x: input.x, z: input.z }, false, charge, atPress)
       }
       press = null

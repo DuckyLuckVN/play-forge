@@ -3,12 +3,11 @@
 // lurches the shuttle. A hit / serve event starts a new flight, so a sample is never run past one.
 // The guest's own hit is predicted with the sim's contact rules (predictHit) and shown at once; the
 // host's answer then replaces it through the same capped, never-snapping correction offset.
-import { CHARGE } from './charge'
 import { settleOnFloor, stepShuttle, type Flight, type Vec3 } from './physics'
 import type { RemoteTracks } from './remotes'
-import { RenderClock } from './renderclock'
+import type { RenderClock } from './renderclock'
 import { chooseShot, launchFor, pickContact, shotTarget, WINDOW, type ContactCandidate } from './shots'
-import { clampDir, MAX_REWIND, type SpState } from './sim'
+import { clampDir, launchTick, MAX_REWIND, tapContact, type SpState } from './sim'
 import { interpShuttle } from './world'
 
 export type ShuttleSample = Pick<SpState, 'tick' | 'phase' | 'shuttle' | 'events'>
@@ -74,7 +73,7 @@ interface Stored {
   breaks: number[]
 }
 
-/** What an online guest's render loop owns beyond the interpolated state . */
+/** What an online guest's render loop owns beyond the interpolated state. */
 export interface GuestView {
   clock: RenderClock
   shuttle: GuestShuttle
@@ -134,6 +133,8 @@ export class GuestShuttle {
     const k = this.clock.tick
     const jumped = Number.isNaN(this.shown) || Math.abs(k - this.shown) > CLOCK_JUMP
     this.shown = k
+    // A confirmed prediction ends at the host's hit tick: past it the host flight is shown, so drop it.
+    if (this.pred && k > this.pred.until) this.pred = null
     if (!isFlight(newest.phase)) {
       Object.assign(this.pos, newest.pos)
       this.clearErr(true)
@@ -195,8 +196,8 @@ export class GuestShuttle {
     }
     this.at(seen - 1, this.a)
     const c = pickContact(past, this.a, seen, sw.player, sw.side, newest.lastHitter, swingTick, seen)
-    if (!c || (sw.tap && c.tick > swingTick + CHARGE.start)) return false
-    const from = Math.max(c.tick, seen)
+    if (!c || (sw.tap && !tapContact(c.tick, swingTick))) return false
+    const from = launchTick(c.tick, seen)
     const flight: Flight = { pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 } }
     this.at(from - 1, flight)
     const held = clampDir(sw.held.x, sw.held.z)

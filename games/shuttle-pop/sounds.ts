@@ -251,12 +251,14 @@ export function chargeSound(stage: number): Sound | null {
 
 /**
  * The sound for one new sim event, from `localSide`'s point of view (spectators: side 0), with its
- * volume. Null = silent (a whiff: the swing already whooshed).
+ * volume. Null = silent (a whiff: the swing already whooshed). `localId` = the local player's id (a
+ * bonk is full volume when they bonked or were bonked; none = spectator, quieter).
  */
 export function eventSound(
   e: SpEvent,
   localSide: 0 | 1,
   last?: LastShot | null,
+  localId?: string,
 ): { sound: Sound; vol: number } | null {
   switch (e.k) {
     case 'hit':
@@ -275,6 +277,8 @@ export function eventSound(
     case 'act':
     case 'actLand':
       return abilitySound(e.k, e.act, e.side === localSide)
+    case 'bonk':
+      return actionSound('bonk', localId !== undefined && (e.who === localId || e.by === localId))
     case 'whiff':
       return null
   }

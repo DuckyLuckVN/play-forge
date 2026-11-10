@@ -67,6 +67,16 @@ describe('eventSound', () => {
       actionSound('jump', false).vol * 0.5,
     )
   })
+
+  it('bonk: full volume when I bonk or am bonked, quieter for others, silent id-less spectator gets THEIRS', () => {
+    const e: SpEvent = { ...at, k: 'bonk', side: 0, who: 'a', by: 'b' }
+    const theirs = actionSound('bonk', false).vol
+    expect(theirs).toBeLessThan(1)
+    expect(eventSound(e, 0, null, 'a')).toEqual({ sound: SHUTTLE_SOUNDS.bonk, vol: 1 })
+    expect(eventSound(e, 1, null, 'b')).toEqual({ sound: SHUTTLE_SOUNDS.bonk, vol: 1 })
+    expect(eventSound(e, 0, null, 'c')).toEqual({ sound: SHUTTLE_SOUNDS.bonk, vol: theirs })
+    expect(eventSound(e, 0)).toEqual({ sound: SHUTTLE_SOUNDS.bonk, vol: theirs })
+  })
 })
 
 describe('power sounds (hold-to-charge)', () => {

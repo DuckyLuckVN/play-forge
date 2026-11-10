@@ -24,6 +24,7 @@ import { COURT, DT, settleOnFloor, stepShuttle, type CourtDims, type Flight, typ
 import { hitPower, perfectWindowOf, POWER_SWING, pressureOf, recoveryAfter } from './power'
 import { isAvailable, nextAvailable, PRESETS as PRESET_TABLE } from './presets'
 import { award, serveBox, winner } from './rules'
+import { bonkVictims, stunned } from './stun'
 import {
   chooseShot,
   launchFor,
@@ -117,6 +118,11 @@ export interface SpPlayer {
    * derive from it and the tick. null = none since the serve set-up.
    */
   act: Act | null
+  /**
+   * Host tick of the last racket bonk on this player (stun.ts); −1 = none since the serve set-up. The
+   * lock (no move / swing / ability) and the immunity after it derive from it and the tick.
+   */
+  stunAt: number
   preset: number
   level?: Level
   /** AI seats: the bot's cached plan (see ai.ts). */
@@ -132,6 +138,11 @@ export type SpEvent = { id: number; tick: number } &
     /** The feet are back on the floor (ability.ts landTick). */
     | { k: 'actLand'; side: 0 | 1; act: AbilityKind }
     | { k: 'whiff'; side: 0 | 1 }
+    /**
+     * A racket swing stunned a player: `side` / `who` = the stunned one's side / player id, `by` = the
+     * swinger's player id (`id` is the event's own).
+     */
+    | { k: 'bonk'; side: 0 | 1; who: string; by: string }
     | { k: 'land'; x: number; z: number; in: boolean }
     | { k: 'net' }
     | { k: 'point'; side: 0 | 1 }
@@ -213,13 +224,15 @@ export function clampDir(x: unknown, z: unknown): { x: number; z: number } {
 }
 
 /**
- * Run speed share for a player: recoveryMoveMul after a full-charge swing, CHARGE.moveMul while charging;
- * during an ability's air / floor lock the lower of that and actMoveMul (a lock always wins).
+ * Run speed share for a player: 0 while stunned (stun.ts, wins over everything); recoveryMoveMul after a
+ * full-charge swing, CHARGE.moveMul while charging; during an ability's air / floor lock the lower of
+ * that and actMoveMul (a lock always wins).
  */
 export const speedMulOf = (
-  p: Pick<SpPlayer, 'chargeAt' | 'recoverUntil'> & { act?: Act | null },
+  p: Pick<SpPlayer, 'chargeAt' | 'recoverUntil'> & { act?: Act | null; stunAt?: number },
   tick: number,
 ): number => {
+  if (stunned(p.stunAt ?? -1, tick)) return 0
   const base = tick < p.recoverUntil ? POWER_SWING.recoveryMoveMul : p.chargeAt >= 0 ? CHARGE.moveMul : 1
   const act = p.act ?? null
   return acting(act, tick) ? Math.min(base, actMoveMul(act, tick)) : base
@@ -279,6 +292,7 @@ function resetForServe(state: SpState) {
     p.vz = 0
     p.recoverUntil = -1
     p.act = null
+    p.stunAt = -1
   }
   state.phase = 'serve'
   state.phaseT = 0
@@ -322,6 +336,7 @@ const makePlayer = (
   recoverUntil: -1,
   pressAt: -1,
   act: null,
+  stunAt: -1,
   preset: side,
   ...(level ? { level } : {}),
 })
@@ -699,21 +714,26 @@ function recordHistory(state: SpState) {
 
 /**
  * May `p` start charging now: in a rally, or the server in the serve (the cooldown may still run), and
- * not held by a jump / lunge (ability.ts acting).
+ * not held by a jump / lunge (ability.ts acting) or a racket stun (stun.ts).
  */
 export function canCharge(state: SpState, p: SpPlayer): boolean {
   return (
     (state.phase === 'rally' || (state.phase === 'serve' && p.side === state.server)) &&
-    !acting(p.act, state.tick)
+    !acting(p.act, state.tick) &&
+    !stunned(p.stunAt, state.tick)
   )
 }
 
-/** May `p` press the ability now: in a rally or the serve, not charging, not held by a move, off cooldown. */
+/**
+ * May `p` press the ability now: in a rally or the serve, not charging, not held by a move or a stun,
+ * off cooldown.
+ */
 export function canAct(state: SpState, p: SpPlayer): boolean {
   return (
     (state.phase === 'rally' || state.phase === 'serve') &&
     p.chargeAt === -1 &&
     !acting(p.act, state.tick) &&
+    !stunned(p.stunAt, state.tick) &&
     actReady(p.act, state.tick)
   )
 }
@@ -734,7 +754,8 @@ export function canStrike(
     s.lastHitter === hitter &&
     s.lastHitter !== p.side &&
     !s.pending &&
-    state.tick - p.swingAt >= SWING_COOLDOWN
+    state.tick - p.swingAt >= SWING_COOLDOWN &&
+    !stunned(p.stunAt, state.tick)
   )
 }
 
@@ -743,6 +764,7 @@ export function canStrike(
  * presser saw it (`history` at now − rewind, else now) from its own spot (seenAt). A jump / lunge commits
  * (lock + cooldown, even when it whiffs) and swings with its reach box; a hop does nothing else.
  * `hitter` = lastHitter before this tick's swings (a shuttle hit this tick can't be struck back).
+ * Returns whether it struck (a jump / lunge swings its racket: it can bonk; a hop never does).
  */
 function resolveAct(
   state: SpState,
@@ -750,7 +772,7 @@ function resolveAct(
   held: { x: number; z: number },
   rewind: number,
   hitter: -1 | 0 | 1,
-): void {
+): boolean {
   const s = state.shuttle
   const hist = state.history
   const i = rewind > 0 ? hist.findIndex((h) => h.tick === state.tick - rewind) : -1
@@ -760,9 +782,31 @@ function resolveAct(
   const pick = pickAbility(flight, at, p.side, s.lastHitter, canHit)
   p.act = { k: pick.k, at: state.tick, dx: pick.dx, dz: pick.dz }
   emit(state, { k: 'act', side: p.side, act: pick.k })
-  if (pick.k === 'hop') return
+  if (pick.k === 'hop') return false
   p.swingAt = state.tick
   resolveSwing(state, p, held, rewind, 0, rewind, pick.k)
+  return true
+}
+
+/**
+ * Racket bonks (rally only): each of this tick's swingers, in order, stuns every other player in reach
+ * now (stun.ts bonkVictims: no rewind, friendly fire on, matched by id) who isn't immune. Runs after all
+ * of the tick's swings, so same-tick swings are simultaneous (a mutual bonk stuns both) and a victim
+ * stunned this tick is immune to a second swinger. The victim freezes (velocity 0); a held charge is
+ * dropped (TAPPED: its button-up never swings). Its act, swingAt and any pending contact are untouched.
+ */
+function bonks(state: SpState, swung: readonly SpPlayer[]): void {
+  for (const p of swung)
+    for (const q of bonkVictims(p, state.players, state.tick)) {
+      q.stunAt = state.tick
+      q.vx = 0
+      q.vz = 0
+      if (q.chargeAt >= 0) {
+        q.chargeAt = TAPPED
+        q.pressAt = -1
+      }
+      emit(state, { k: 'bonk', side: q.side, who: q.id, by: p.id })
+    }
 }
 
 /** Would a swing by `p` resolve now: a rally swing or the server's serve, off cooldown. */
@@ -880,14 +924,20 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
     // 3. Swings: who can hit is decided by lastHitter + the shuttle's half, so at most one schedules.
     // A shuttle hit this tick can't be hit back on the same tick (else input order would decide).
     const hitter = s.lastHitter
+    // Every racket that swung this tick (whiffs too); bonks are applied once all of them resolved.
+    const swung: SpPlayer[] = []
     for (const { p, held, rewind, charge, lag } of swings) {
+      swung.push(p)
       if (s.lastHitter !== hitter) emit(state, { k: 'whiff', side: p.side })
       else resolveSwing(state, p, held, rewind, charge, lag)
     }
     for (const p of presses)
-      if (s.lastHitter === hitter && !swings.some((w) => w.p === p)) tapOnPress(state, p)
+      if (s.lastHitter === hitter && !swings.some((w) => w.p === p) && tapOnPress(state, p)) swung.push(p)
     // After swings and taps (a charge pressed this tick wins: canAct re-checked), before a scheduled hit fires.
-    for (const a of acts) if (canAct(state, a.p)) resolveAct(state, a.p, a.held, a.rewind, hitter)
+    for (const a of acts)
+      if (canAct(state, a.p) && resolveAct(state, a.p, a.held, a.rewind, hitter)) swung.push(a.p)
+    // A contact already made (pending) still fires below, even if its swinger was just bonked.
+    if (swung.length > 0) bonks(state, swung)
     if (s.pending && s.pending.atTick <= state.tick) firePending(state)
   }
 

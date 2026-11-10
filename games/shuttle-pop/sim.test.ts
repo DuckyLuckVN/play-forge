@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { InputEvent, PlayerInfo } from '@forge/net/session'
-import { ABILITY, acting, type Act } from './ability'
+import { ABILITY, acting, actReady, type Act } from './ability'
 import { CHARGE, chargeOf } from './charge'
 import { COURT_SIZES, courtDims } from './courtsize'
 import { COURT, DT, predictLanding } from './physics'
 import { POWER_SWING } from './power'
 import { AVAILABLE_IDS, isAvailable } from './presets'
 import { launchShot, shotTarget } from './shots'
+import { STUN } from './stun'
 import {
+  AI_ID,
   canAct,
   canStrike,
   canSwing,
@@ -33,6 +35,7 @@ import {
   toWorld,
   type SpEvent,
   type SpInput,
+  type SpPlayer,
   type SpState,
 } from './sim'
 
@@ -1666,5 +1669,279 @@ describe('jump / lunge ability', () => {
     const act: Act = s.players[0].act!
     expect(act).toMatchObject({ k: 'jump', at: s.tick })
     expect((game.netView!(s) as SpState).players[0].act).toEqual(act)
+  })
+})
+
+describe('racket stun', () => {
+  const bonksOf = (seen: SpEvent[]) => seen.filter((e) => e.k === 'bonk')
+  const ability = (player: string, x = 0, z = 0): InputEvent<SpInput> => ev(player, { t: 'ability', x, z })
+  /** High over side 1's back court: nobody near the net can reach it. */
+  const HIGH = { x: 0, y: 4, z: 5.5 }
+  /** Keeps the shuttle hanging at HIGH (rally never ends). */
+  const pin = (s: SpState) => {
+    s.shuttle.pos = { ...HIGH }
+    s.shuttle.vel = { x: 0, y: 0, z: 0 }
+  }
+  /** A pinned rally (last hit by side 0), p0 / p1 face to face across the net (`x` apart from the centre). */
+  function face(x = 0): SpState {
+    const s = duel()
+    rally(s, HIGH, { x: 0, y: 0, z: 0 }, 0)
+    const [a, b] = s.players
+    a.x = x
+    a.z = -0.35
+    b.x = x
+    b.z = 0.35
+    return s
+  }
+  /** One tick with `inputs`, the shuttle pinned first. */
+  function tick(s: SpState, inputs: InputEvent<SpInput>[] = [], seen: SpEvent[] = []) {
+    pin(s)
+    game.tick(s, inputs)
+    allEvents(s, seen)
+    return seen
+  }
+  /** Pinned ticks until s.tick === `to` − 1. */
+  const idle = (s: SpState, to: number, seen: SpEvent[] = []) => {
+    while (s.tick < to - 1) tick(s, [], seen)
+    return seen
+  }
+
+  it('a swing at an opponent across the net stuns them: bonk event, no move, no swing, no ability for 48 ticks', () => {
+    expect(STUN.ticks).toBe(48)
+    const s = face()
+    const [a, b] = s.players
+    const seen = tick(s, [swing('p1')])
+    const T = s.tick
+    expect(bonksOf(seen)).toEqual([
+      expect.objectContaining({ k: 'bonk', side: 0, who: 'p0', by: 'p1', tick: T }),
+    ])
+    expect(a.stunAt).toBe(T)
+    expect(b.stunAt).toBe(-1)
+    const start = { x: a.x, z: a.z }
+    const swingAt = a.swingAt
+    const during: SpEvent[] = []
+    tick(s, [ev('p0', { t: 'move', x: 0, z: -1 })], during)
+    tick(s, [ev('p0', { t: 'charge' })], during)
+    expect(a.chargeAt).toBe(-1)
+    tick(s, [swing('p0')], during)
+    tick(s, [ability('p0')], during)
+    expect(a.act).toBeNull()
+    idle(s, T + 48, during)
+    expect(s.tick).toBe(T + 47)
+    expect(during.filter((e) => e.tick > T)).toEqual([])
+    expect(a.swingAt).toBe(swingAt)
+    expect({ x: a.x, z: a.z }).toEqual(start)
+    const after = tick(s, [swing('p0')])
+    expect(Math.hypot(a.x - start.x, a.z - start.z)).toBeGreaterThan(0)
+    expect(a.swingAt).toBe(T + 48)
+    expect(after.some((e) => e.k === 'whiff' && e.side === 0)).toBe(true)
+  })
+
+  it('out of reach or a serve: no bonk', () => {
+    const far = face(0.9)
+    far.players[1].x = -0.9 // 1.8 m apart across the net
+    expect(bonksOf(tick(far, [swing('p1')]))).toEqual([])
+    // The serve: p0 serves standing next to the receiver.
+    const sv = duel()
+    sv.players[0].x = 0
+    sv.players[0].z = -0.35
+    sv.players[1].x = 0
+    sv.players[1].z = 0.35
+    const seen = run(sv, 1, () => [swing('p0')])
+    expect(seen.some((e) => e.k === 'serve')).toBe(true)
+    expect(bonksOf(seen)).toEqual([])
+    expect(sv.players[1].stunAt).toBe(-1)
+    // A hop (nothing to strike) in reach never bonks.
+    const hop = face()
+    const h = tick(hop, [ability('p1')])
+    expect(hop.players[1].act).toMatchObject({ k: 'hop' })
+    expect(bonksOf(h)).toEqual([])
+  })
+
+  it('the swinger pays only the normal cooldown', () => {
+    const s = face()
+    const b = s.players[1]
+    tick(s, [swing('p1')])
+    const T = s.tick
+    expect(b.swingAt).toBe(T)
+    expect(b.recoverUntil).toBe(-1)
+    expect(b.stunAt).toBe(-1)
+    idle(s, T + SWING_COOLDOWN)
+    const seen = tick(s, [swing('p1')])
+    expect(b.swingAt).toBe(T + SWING_COOLDOWN)
+    expect(seen.some((e) => e.k === 'whiff' && e.side === 1)).toBe(true)
+  })
+
+  it('immunity: no second stun for 120 ticks after the stun ends', () => {
+    expect(STUN.immune).toBe(120)
+    const s = face()
+    tick(s, [swing('p1')])
+    const T = s.tick
+    const seen: SpEvent[] = []
+    // The swinger's own cooldown (SWING_COOLDOWN) spaces the tries; the last immune one is 20 ticks early.
+    for (const k of [20, 60, 120, 168 - SWING_COOLDOWN]) {
+      idle(s, T + k, seen)
+      tick(s, [swing('p1')], seen)
+    }
+    const later = (e: SpEvent) => e.tick > T
+    expect(bonksOf(seen).filter(later)).toEqual([])
+    idle(s, T + 168, seen)
+    tick(s, [swing('p1')], seen)
+    expect(bonksOf(seen).filter(later)).toEqual([
+      expect.objectContaining({ who: 'p0', by: 'p1', tick: T + 168 }),
+    ])
+  })
+
+  it('a contact already made still resolves', () => {
+    const s = duel()
+    rally(s, { x: 0, y: 1.2, z: -0.6 }, { x: 0, y: 0, z: 0 }, 1)
+    const [a, b] = s.players
+    a.x = 0
+    a.z = -0.35
+    b.x = 0
+    b.z = 0.35
+    const T = s.tick + 1
+    s.shuttle.pending = {
+      atTick: T + 3,
+      side: 0,
+      kind: 'clear',
+      grade: 'good',
+      aimX: 0,
+      charge: 0,
+      fromTick: T + 3,
+    }
+    const seen = run(s, 1, () => [swing('p1')])
+    expect(bonksOf(seen)).toEqual([expect.objectContaining({ who: 'p0', by: 'p1' })])
+    run(s, 3, () => [], seen)
+    expect(seen.find((e) => e.k === 'hit')).toMatchObject({ side: 0, tick: T + 3 })
+  })
+
+  it('a held charge is dropped: its button-up after the stun does not swing', () => {
+    const s = face()
+    const a = s.players[0]
+    tick(s, [ev('p0', { t: 'charge' })])
+    expect(a.chargeAt).toBe(s.tick)
+    tick(s, [swing('p1')])
+    const T = s.tick
+    expect(a.chargeAt).toBe(TAPPED)
+    expect(a.pressAt).toBe(-1)
+    const swingAt = a.swingAt
+    const seen = idle(s, T + 50)
+    tick(s, [swing('p0')], seen)
+    expect(seen.some((e) => (e.k === 'hit' || e.k === 'whiff') && e.side === 0)).toBe(false)
+    expect(a.swingAt).toBe(swingAt)
+    expect(a.chargeAt).toBe(-1)
+  })
+
+  it('same-tick swings: mutual bonk stuns both, two swingers stun a victim once', () => {
+    const s = face()
+    const seen = tick(s, [swing('p0'), swing('p1')])
+    const T = s.tick
+    expect(bonksOf(seen)).toEqual([
+      expect.objectContaining({ who: 'p1', by: 'p0' }),
+      expect.objectContaining({ who: 'p0', by: 'p1' }),
+    ])
+    expect(s.players.map((p) => p.stunAt)).toEqual([T, T])
+
+    // Three bodies (friendly fire, matched by id): p1 and p2 both reach p0 and each other.
+    const t3 = face()
+    const p2: SpPlayer = { ...t3.players[1], id: 'p2', name: 'P2', x: 0.3, move: { x: 0, z: 0 } }
+    t3.players[1].x = -0.3
+    ;(t3.players as SpPlayer[]).push(p2)
+    const three = tick(t3, [swing('p1'), swing('p2')])
+    expect(bonksOf(three).map((e) => e.k === 'bonk' && [e.who, e.by])).toEqual([
+      ['p0', 'p1'],
+      ['p2', 'p1'],
+      ['p1', 'p2'],
+    ])
+
+    // A bonk and a hit on the same tick: the hit still happens.
+    const h = duel()
+    rally(h, { x: 0, y: 1.0, z: -0.6 }, { x: 0, y: 0, z: 0 }, 1)
+    h.players[0].x = 0
+    h.players[0].z = -0.35
+    h.players[1].x = 0
+    h.players[1].z = 0.35
+    const hs = run(h, 1, () => [swing('p0'), swing('p1')])
+    expect(hs.some((e) => e.k === 'hit' && e.side === 0)).toBe(true)
+    expect(bonksOf(hs)).toHaveLength(2)
+  })
+
+  it('a stunned jump keeps its arc and cooldown but cannot move', () => {
+    const LOB = { pos: { x: 0, y: 4.2, z: -2.6 }, vel: { x: 0, y: -1, z: -5 }, at: { x: 0, z: -4 }, idx: 19 }
+    const s = duel()
+    const [a, b] = s.players
+    a.x = LOB.at.x
+    a.z = LOB.at.z
+    rally(s, LOB.pos, LOB.vel, 1)
+    const press = s.tick + 1 + LOB.idx - ABILITY.jump.lead
+    run(s, press - 1 - s.tick)
+    run(s, 1, () => [ev('p0', { t: 'move', x: 1, z: 0 }), ability('p0', 0, 1)])
+    const act = { ...a.act! }
+    expect(act).toMatchObject({ k: 'jump', at: press })
+    // Mid-air, at the net (teleported) and bonked by p1.
+    a.x = 0
+    a.z = -0.35
+    a.vx = a.vz = 0
+    b.x = 0
+    b.z = 0.35
+    run(s, 4, () => (pin(s), []))
+    const seen = run(s, 1, () => (pin(s), [swing('p1')]))
+    expect(s.tick).toBe(press + 5)
+    expect(bonksOf(seen)).toEqual([expect.objectContaining({ who: 'p0', by: 'p1' })])
+    const at = { x: a.x, z: a.z }
+    while (s.tick < press + 30) {
+      tick(s)
+      expect(a.act).toEqual(act)
+      expect({ x: a.x, z: a.z }).toEqual(at)
+    }
+    // Locked until the stun is over and the cooldown is ready (the cooldown runs on).
+    idle(s, press + 5 + STUN.ticks + 1)
+    expect(canAct(s, a)).toBe(false)
+    while (!actReady(a.act, s.tick)) {
+      expect(canAct(s, a)).toBe(false)
+      tick(s)
+    }
+    expect(canAct(s, a)).toBe(true)
+    expect(a.act).toEqual(act)
+  })
+
+  it('a lagged swing bonks from now: the victim who already walked away is safe', () => {
+    const s = face()
+    idle(s, s.tick + 10)
+    const near = tick(s, [ev('p1', { t: 'swing', x: 0, z: 0, tick: s.tick + 1 - 5 })])
+    expect(bonksOf(near)).toEqual([expect.objectContaining({ who: 'p0', by: 'p1' })])
+
+    const gone = face()
+    idle(gone, gone.tick + 10) // in reach for the last ticks (history has it there) …
+    gone.players[0].x = 1.5 // … now out of reach
+    const g = tick(gone, [ev('p1', { t: 'swing', x: 0, z: 0, tick: gone.tick + 1 - 5 })])
+    expect(bonksOf(g)).toEqual([])
+    expect(gone.players[0].stunAt).toBe(-1)
+  })
+
+  it('resetForServe clears stunAt; netView carries it', () => {
+    const s = face()
+    tick(s, [swing('p1')])
+    const v = game.netView!(s) as SpState
+    expect(v.players.map((p) => p.stunAt)).toEqual(s.players.map((p) => p.stunAt))
+    expect(v.players[0].stunAt).toBe(s.tick)
+    // Let the shuttle fall: point, then the next serve.
+    let guard = 0
+    while (s.phase !== 'serve' && guard++ < 2000) game.tick(s, [])
+    expect(s.phase).toBe('serve')
+    expect(s.players.map((p) => p.stunAt)).toEqual([-1, -1])
+  })
+
+  it('a computer swing bonks like any swing', () => {
+    const s = game.setup(players(1), 5, { solo: 'normal' })
+    rally(s, HIGH, { x: 0, y: 0, z: 0 }, 0)
+    const [h, ai] = s.players
+    h.x = 0
+    h.z = -0.35
+    ai.x = 0
+    ai.z = 0.35
+    const seen = tick(s, [ev(AI_ID, { t: 'swing', x: 0, z: 0 })])
+    expect(bonksOf(seen)).toEqual([expect.objectContaining({ who: 'p0', by: AI_ID })])
   })
 })

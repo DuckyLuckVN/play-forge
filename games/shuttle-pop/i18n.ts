@@ -31,6 +31,9 @@ export const VI: Dictionary = {
   'High shuttle: jump smash. Low and far: dive. Then a short cooldown.':
     'Cầu cao: bật nhảy đập. Cầu thấp và xa: bổ nhào cứu cầu. Sau đó chờ hồi chiêu một chút.',
   'small button': 'nút nhỏ',
+  Reactions: 'Biểu cảm',
+  'Online: move toward an emoji, let go to send': 'Chơi online: hướng về một biểu cảm, thả ra để gửi',
+  'emoji button': 'nút biểu cảm',
   'Smash or drive': 'Đập cầu hoặc tạt cầu',
   'as you swing': 'khi vung vợt',
   'Clear (high and deep)': 'Đánh cầu cao sâu',

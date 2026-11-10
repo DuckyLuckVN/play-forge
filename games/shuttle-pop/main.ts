@@ -1,9 +1,10 @@
-import { createGameApp, h, landscapeGuard, smoothState, type Session } from '@forge'
+import { createGameApp, h, landscapeGuard, smoothState, type MountContext, type Session } from '@forge'
 import { ARCADE } from '@forge/audio/tracks'
 import { webglAvailable } from '@forge/render3d'
 import './shuttle-pop.css'
 import type { Strike } from './ability'
 import { chargeOf } from './charge'
+import { mountEmotes } from './emotes'
 import { t } from './i18n'
 import { TouchPad } from './hud'
 import { bindInput } from './input'
@@ -41,7 +42,7 @@ async function preload(): Promise<void> {
   court = view
 }
 
-function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => void {
+function mount(session: Session<SpState, SpInput>, stage: HTMLElement, ctx: MountContext): () => void {
   if (!court) {
     const note = h('p', { class: 'sp-nogl', textContent: t('Shuttle Pop needs WebGL to run.') })
     stage.append(note)
@@ -65,6 +66,8 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
   const detach = court.attach(stage, smooth, session.selfId, (cb) => (onSwing = cb), predictor, live, guest)
   court.surface.setAttribute('role', 'img')
   court.surface.setAttribute('aria-label', t('Badminton court'))
+  // Online only: hold T / tap the button to send an emoji; bubbles show over the sender's chibi.
+  const offEmotes = mountEmotes(court.surface, session, ctx.reactions, court)
 
   // The last state's view of our seat: may it charge (rally / own serve), would a swing count (also off
   // cooldown)? Else the sim ignores it.
@@ -225,6 +228,7 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
     input.stop()
     if (court) court.onCooldown = null
     pad.root.remove()
+    offEmotes()
     detach()
     smooth.dispose()
   }
@@ -280,6 +284,14 @@ createGameApp<SpState, SpInput>({
       mouse: 'right',
       touch: 'button',
       touchLabel: t('small button'),
+    },
+    {
+      action: t('Reactions'),
+      note: t('Online: move toward an emoji, let go to send'),
+      hold: true,
+      keys: [['T']],
+      touch: 'button',
+      touchLabel: t('emoji button'),
     },
     { action: t('Smash or drive'), note: t('as you swing'), hold: true, keys: [['W'], ['Up']] },
     { action: t('Clear (high and deep)'), note: t('as you swing'), hold: true, keys: [['S'], ['Down']] },

@@ -75,7 +75,7 @@ function puffCheeks(parts: Part[]): Part[] {
 export const HEAD_SCALE: Record<HeadKind, number> = { round: 1, chibi: 0.95, box: 1 }
 
 /** Owner-tuned head size for every look (1 = the size before the smaller-heads change). One place to tune. */
-export const HEAD_SIZE = 0.75
+export const HEAD_SIZE = 0.6
 
 /**
  * Head rest placement for a rig (head-bone y in rig space, uniform scale). The head shrinks toward its

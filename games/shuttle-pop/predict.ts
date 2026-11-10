@@ -1,7 +1,7 @@
 // Guest-side prediction of the local player: the own chibi moves the frame the stick / key moves,
 // instead of a round trip later. Pure (no three.js); render3d feeds it each frame.
 //
-// It integrates the sent move (and the charging slowdown) with the sim's own stepPlayer at the tick
+// It integrates the sent move (and the charging slowdown, the ability lock) with the sim's own stepPlayer at the tick
 // rate, and reconciles with the host time-aligned: the host's state for tick T is compared with the prediction from `lag` local
 // steps ago (where it stood when the host made that state), not with where it is now. `lag` (the
 // round trip in ticks) is measured from the host echoing a sent move back in the player's `move`:
@@ -9,6 +9,7 @@
 // (or, with nothing queued, the one the host has) is not queued, so value-equal echoes (a tap shorter
 // than the round trip, a resync of a stop) can't fake a zero lag.
 // The error found there is closed with `correct` (keep / blend / snap) and shifts the whole prediction.
+import { actMoveMul, type AbilityKind, type Act } from './ability'
 import { CHARGE, chargeOf } from './charge'
 import { COURT, DT, type CourtDims } from './physics'
 import { POWER_SWING, recoveryAfter } from './power'
@@ -65,6 +66,18 @@ export class GuestPredictor {
   private holdFrom = -1
   /** Recovery slowdown steps still to integrate after a full-charge swing. */
   private recover = 0
+  /** The local ability press (`at` in local steps): its air / floor lock slows the run like the sim's. */
+  private localAct: Act | null = null
+
+  /** The local ability press as just sent, null = none since the last placement. */
+  get act(): Act | null {
+    return this.localAct
+  }
+
+  /** The ability button was pressed and the move `k` picked: its lock starts with the next step, like the host's. */
+  startAct(k: AbilityKind): void {
+    this.localAct = { k, at: this.steps, dx: 0, dz: 0 }
+  }
 
   /** Press (true) or cancel (false: no recovery). A repeat press keeps the first start. */
   setCharging(on: boolean): void {
@@ -115,6 +128,7 @@ export class GuestPredictor {
       p.move.z = auth.move.z
       this.acc = 0
       this.recover = 0
+      this.localAct = null
       this.sampleStep = -1
       this.pendN = 0
       this.ackX = auth.move.x
@@ -133,7 +147,8 @@ export class GuestPredictor {
     this.acc += dt
     let n = 0
     while (this.acc >= DT - EPS && n < MAX_STEPS) {
-      const mul = this.recover > 0 ? POWER_SWING.recoveryMoveMul : this.charging ? CHARGE.moveMul : 1
+      const base = this.recover > 0 ? POWER_SWING.recoveryMoveMul : this.charging ? CHARGE.moveMul : 1
+      const mul = Math.min(base, actMoveMul(this.localAct, this.steps))
       if (this.recover > 0) this.recover--
       stepPlayer(p, DT, mul, this.court)
       this.steps++

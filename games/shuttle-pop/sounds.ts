@@ -256,7 +256,10 @@ export function eventSound(
       }
     case 'point':
       return { sound: e.side === localSide ? SHUTTLE_SOUNDS.pointWin : SHUTTLE_SOUNDS.pointLose, vol: 1 }
+    // Jump / lunge sounds are not in yet: silent.
     case 'whiff':
+    case 'act':
+    case 'actLand':
       return null
   }
 }

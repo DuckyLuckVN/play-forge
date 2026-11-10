@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import { ABILITY, type Act } from './ability'
 import { COURT, DT } from './physics'
 import { GuestPredictor, type AuthPlayer } from './predict'
 import { CHARGE } from './charge'
 import { courtDims } from './courtsize'
 import { POWER_SWING } from './power'
-import { MOVE_SPEED, stepPlayer } from './sim'
+import { MOVE_SPEED, speedMulOf, stepPlayer } from './sim'
 import { CORRECT } from './world'
 
 const auth = (x: number, z: number, move = { x: 0, z: 0 }): AuthPlayer => ({
@@ -273,5 +274,45 @@ describe('guest prediction recovery after a full-charge swing', () => {
     big.court = courtDims('xl')
     expect(runRight(big)).toBeGreaterThan(COURT.halfWidth + 0.8 + 0.1)
     expect(runRight(new GuestPredictor())).toBeLessThanOrEqual(COURT.halfWidth + 0.8)
+  })
+})
+
+describe('guest prediction of the ability lock', () => {
+  it('mirrors the host lock: no drift while the host is locked', () => {
+    for (const k of ['lunge', 'jump', 'hop'] as const) {
+      const pred = new GuestPredictor()
+      const a = auth(-2, 3)
+      pred.update(DT, a, 1, true)
+      pred.setMove(1, 0) // side 1: view-right is world +x (room to run)
+      const host = { ...body(-2, 3), chargeAt: -1, recoverUntil: -1, act: null as Act | null }
+      host.move = { x: 1, z: 0 }
+      let stopped = false
+      for (let tick = 1; tick <= 80; tick++) {
+        if (tick === 10) {
+          pred.startAct(k) // pressed on the same tick the host takes it
+          host.act = { k, at: tick, dx: 0, dz: 0 }
+        }
+        stepPlayer(host, DT, speedMulOf(host, tick))
+        pred.update(DT, a, 1, false) // no new state: pure integration
+        expect(pred.x, `${k} tick ${tick}`).toBeCloseTo(host.x, 9)
+        expect(pred.z, `${k} tick ${tick}`).toBeCloseTo(host.z, 9)
+        if (k === 'lunge' && tick === 10 + ABILITY.lunge.dive + ABILITY.lunge.floor - 1)
+          stopped = pred.vx === 0
+      }
+      if (k === 'lunge') expect(stopped).toBe(true) // the lock really held it
+      expect(pred.act).toMatchObject({ k })
+    }
+  })
+  it('snap clears the act', () => {
+    const pred = new GuestPredictor()
+    const a = auth(-2, 3, { x: 1, z: 0 })
+    pred.update(DT, a, 1, true)
+    pred.setMove(1, 0)
+    pred.startAct('lunge')
+    expect(pred.act).toMatchObject({ k: 'lunge' })
+    pred.update(DT, a, 2, true)
+    expect(pred.act).toBeNull()
+    for (let i = 0; i < 12; i++) pred.update(DT, a, 2, false)
+    expect(Math.hypot(pred.vx, pred.vz)).toBeCloseTo(MOVE_SPEED, 6)
   })
 })

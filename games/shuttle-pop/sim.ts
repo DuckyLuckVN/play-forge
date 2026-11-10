@@ -2,6 +2,19 @@
 // Side 0 owns z < 0, side 1 owns z > 0. Inputs are view-relative (x = screen right, z = toward the net).
 import { random } from '@forge/core/rng'
 import type { GameDefinition, GameOptions, InputEvent, PlayerInfo } from '@forge/net/session'
+import {
+  abilityShot,
+  acting,
+  actMoveMul,
+  actReady,
+  landTick,
+  leadOf,
+  pickAbility,
+  reachOf,
+  type AbilityKind,
+  type Act,
+  type Strike,
+} from './ability'
 import { botStep, newBotMemory, type BotMemory } from './ai'
 import { CHARGE, chargeOf } from './charge'
 import { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld } from './court'
@@ -16,7 +29,6 @@ import {
   launchFor,
   launchShot,
   pickContact,
-  REACH,
   shotTarget,
   type ContactCandidate,
   type Grade,
@@ -36,7 +48,7 @@ export const POINT_TICKS = 72
 export const SWING_COOLDOWN = 20
 /** Ticks in the serve phase before the server short-serves automatically (idle player / AI). */
 export const SERVE_TIMEOUT = 300
-/** A scheduled hit whiffs if the swinger is further than REACH.radius + this from the shuttle. */
+/** A scheduled hit whiffs if the swinger is further than its reach radius (REACH / ability.ts reachOf) + this from the shuttle. */
 const PENDING_SLACK = 0.3
 const EVENT_TICKS = 60
 /** Lag fairness: a guest's swing is judged up to this many ticks back (~117 ms). */
@@ -71,6 +83,11 @@ export type SpInput =
    */
   | { t: 'charge'; cancel?: boolean; tick?: number }
   | { t: 'pick'; preset: number }
+  /**
+   * The ability button (ability.ts): the shuttle picks a jump smash, a lunge or a hop. `x, z` = held
+   * direction (aims the strike, like a swing's); `tick` = the presser's screen tick (rewind-clamped like a swing's).
+   */
+  | { t: 'ability'; x: number; z: number; tick?: number }
 
 export interface SpPlayer {
   id: string
@@ -95,6 +112,11 @@ export interface SpPlayer {
   recoverUntil: number
   /** The press's tick on the presser's screen (rewind-clamped): where a tap is graded. −1 = none. */
   pressAt: number
+  /**
+   * The last ability press (ability.ts): the air / floor lock, the cooldown and the body's arc all
+   * derive from it and the tick. null = none since the serve set-up.
+   */
+  act: Act | null
   preset: number
   level?: Level
   /** AI seats: the bot's cached plan (see ai.ts). */
@@ -104,7 +126,11 @@ export interface SpPlayer {
 export type SpEvent = { id: number; tick: number } &
   /** charge: the swing's hold-to-charge power 0..1 (absent = 0). */
   (
-    | { k: 'hit'; side: 0 | 1; grade: Grade; shot: ShotKind; charge?: number; power?: number }
+    | { k: 'hit'; side: 0 | 1; grade: Grade; shot: ShotKind; charge?: number; power?: number; act?: Strike }
+    /** An ability press took effect (a jump / lunge also swings: a hit or whiff follows). */
+    | { k: 'act'; side: 0 | 1; act: AbilityKind }
+    /** The feet are back on the floor (ability.ts landTick). */
+    | { k: 'actLand'; side: 0 | 1; act: AbilityKind }
     | { k: 'whiff'; side: 0 | 1 }
     | { k: 'land'; x: number; z: number; in: boolean }
     | { k: 'net' }
@@ -142,6 +168,8 @@ export interface SpState {
        * from history there and fast-forwarded; = atTick for every computer / unlagged / future contact.
        */
       fromTick: number
+      /** Struck by a jump / lunge (its reach box; absent = a plain swing). */
+      act?: Strike
     }
   }
   score: [number, number]
@@ -184,9 +212,18 @@ export function clampDir(x: unknown, z: unknown): { x: number; z: number } {
   return len > 1 ? { x: fx / len, z: fz / len } : { x: fx, z: fz }
 }
 
-/** Run speed share for a player: recoveryMoveMul after a full-charge swing, CHARGE.moveMul while charging. */
-export const speedMulOf = (p: Pick<SpPlayer, 'chargeAt' | 'recoverUntil'>, tick: number): number =>
-  tick < p.recoverUntil ? POWER_SWING.recoveryMoveMul : p.chargeAt >= 0 ? CHARGE.moveMul : 1
+/**
+ * Run speed share for a player: recoveryMoveMul after a full-charge swing, CHARGE.moveMul while charging;
+ * during an ability's air / floor lock the lower of that and actMoveMul (a lock always wins).
+ */
+export const speedMulOf = (
+  p: Pick<SpPlayer, 'chargeAt' | 'recoverUntil'> & { act?: Act | null },
+  tick: number,
+): number => {
+  const base = tick < p.recoverUntil ? POWER_SWING.recoveryMoveMul : p.chargeAt >= 0 ? CHARGE.moveMul : 1
+  const act = p.act ?? null
+  return acting(act, tick) ? Math.min(base, actMoveMul(act, tick)) : base
+}
 
 /**
  * Movement integration: velocity eases toward move × MOVE_SPEED × speedMul (full speed in ~ACCEL_TICKS
@@ -241,6 +278,7 @@ function resetForServe(state: SpState) {
     p.vx = 0
     p.vz = 0
     p.recoverUntil = -1
+    p.act = null
   }
   state.phase = 'serve'
   state.phaseT = 0
@@ -283,6 +321,7 @@ const makePlayer = (
   chargeAt: -1,
   recoverUntil: -1,
   pressAt: -1,
+  act: null,
   preset: side,
   ...(level ? { level } : {}),
 })
@@ -449,34 +488,43 @@ export function resolveSwing(
   rewind = 0,
   charge = 0,
   lag = 0,
+  act?: Strike,
 ) {
   const s = state.shuttle
-  const c = s.lastHitter === p.side || s.pending ? null : contactFor(state, p, rewind)
+  const c = s.lastHitter === p.side || s.pending ? null : contactFor(state, p, rewind, act)
   if (!c) {
     emit(state, { k: 'whiff', side: p.side })
     return
   }
-  const kind = chooseShot(held, c.y, c.grade)
+  // A jump / lunge plays its own shot (ability.ts abilityShot) instead of the held direction's.
+  const shot = act
+    ? abilityShot(act, held, c.grade)
+    : { kind: chooseShot(held, c.y, c.grade), grade: c.grade, charge }
   s.pending = {
     atTick: Math.max(c.tick, state.tick),
     side: p.side,
-    kind,
-    grade: c.grade,
+    kind: shot.kind,
+    grade: shot.grade,
     aimX: held.x,
-    charge,
+    charge: shot.charge,
     fromTick: launchTick(c.tick, state.tick - Math.min(MAX_REWIND, Math.max(0, lag))),
+    ...(act ? { act } : {}),
   }
   if (s.pending.atTick === state.tick) hit(state)
 }
 
-/** The contact a swing `rewind` ticks ago would make (resolveSwing's rules), or null = a whiff. */
+/**
+ * The contact a swing `rewind` ticks ago would make (resolveSwing's rules), or null = a whiff. A jump /
+ * lunge (`act`) uses its reach box and is graded `leadOf(act)` ticks after the press (its wind-up).
+ */
 function contactFor(
   state: SpState,
   p: SpPlayer,
   rewind: number,
+  act?: Strike,
 ): { tick: number; y: number; grade: Grade } | null {
   const s = state.shuttle
-  const swingTick = state.tick - rewind
+  const swingTick = state.tick - rewind + leadOf(act)
   return pickContact(
     contactCandidates(state, p, rewind),
     s,
@@ -487,6 +535,7 @@ function contactFor(
     swingTick,
     state.tick,
     perfectWindowOf(s.pressured),
+    reachOf(act),
   )
 }
 
@@ -538,7 +587,7 @@ function firePending(state: SpState) {
   const s = state.shuttle
   const pend = s.pending!
   const p = state.players[pend.side]
-  if (sq(s.pos.x - p.x) + sq(s.pos.z - p.z) > sq(REACH.radius + PENDING_SLACK)) {
+  if (sq(s.pos.x - p.x) + sq(s.pos.z - p.z) > sq(reachOf(pend.act).radius + PENDING_SLACK)) {
     s.pending = null
     emit(state, { k: 'whiff', side: pend.side })
     return
@@ -583,7 +632,15 @@ function hit(state: SpState) {
   state.history.length = 0
   state.stats.shots++
   if (pend.grade === 'perfect') state.stats.perfect[pend.side]++
-  emit(state, { k: 'hit', side: pend.side, grade: pend.grade, shot: pend.kind, charge: pend.charge, power })
+  emit(state, {
+    k: 'hit',
+    side: pend.side,
+    grade: pend.grade,
+    shot: pend.kind,
+    charge: pend.charge,
+    power,
+    ...(pend.act ? { act: pend.act } : {}),
+  })
   // Fast-forwarded ticks are not written to history: the opponent cannot rewind-hit on them (rare, accepted).
   if (from) for (let t = from.tick; t < state.tick && state.phase === 'rally'; t++) flightStep(state)
 }
@@ -640,9 +697,57 @@ function recordHistory(state: SpState) {
   if (state.history.length > HISTORY_TICKS) state.history.splice(0, state.history.length - HISTORY_TICKS)
 }
 
-/** May `p` start charging now: in a rally, or the server in the serve (the cooldown may still run). */
+/**
+ * May `p` start charging now: in a rally, or the server in the serve (the cooldown may still run), and
+ * not held by a jump / lunge (ability.ts acting).
+ */
 export function canCharge(state: SpState, p: SpPlayer): boolean {
-  return state.phase === 'rally' || (state.phase === 'serve' && p.side === state.server)
+  return (
+    (state.phase === 'rally' || (state.phase === 'serve' && p.side === state.server)) &&
+    !acting(p.act, state.tick)
+  )
+}
+
+/** May `p` press the ability now: in a rally or the serve, not charging, not held by a move, off cooldown. */
+export function canAct(state: SpState, p: SpPlayer): boolean {
+  return (
+    (state.phase === 'rally' || state.phase === 'serve') &&
+    p.chargeAt === -1 &&
+    !acting(p.act, state.tick) &&
+    actReady(p.act, state.tick)
+  )
+}
+
+/**
+ * Resolve an ability press `rewind` ticks old (≤ MAX_REWIND): the move is picked on the flight as the
+ * presser saw it (`history` at now − rewind, else now) from its own spot (seenAt). A jump / lunge commits
+ * (lock + cooldown, even when it whiffs) and swings with its reach box; a hop does nothing else.
+ * `hitter` = lastHitter before this tick's swings (a shuttle hit this tick can't be struck back).
+ */
+function resolveAct(
+  state: SpState,
+  p: SpPlayer,
+  held: { x: number; z: number },
+  rewind: number,
+  hitter: -1 | 0 | 1,
+): void {
+  const s = state.shuttle
+  const hist = state.history
+  const i = rewind > 0 ? hist.findIndex((h) => h.tick === state.tick - rewind) : -1
+  const flight = i >= 0 ? hist[i] : s
+  const at = i >= 0 ? seenAt(hist, i, rewind, state.tick, p) : p
+  const canHit =
+    state.phase === 'rally' &&
+    s.lastHitter === hitter &&
+    s.lastHitter !== p.side &&
+    !s.pending &&
+    state.tick - p.swingAt >= SWING_COOLDOWN
+  const pick = pickAbility(flight, at, p.side, s.lastHitter, canHit)
+  p.act = { k: pick.k, at: state.tick, dx: pick.dx, dz: pick.dz }
+  emit(state, { k: 'act', side: p.side, act: pick.k })
+  if (pick.k === 'hop') return
+  p.swingAt = state.tick
+  resolveSwing(state, p, held, rewind, 0, rewind, pick.k)
 }
 
 /** Would a swing by `p` resolve now: a rally swing or the server's serve, off cooldown. */
@@ -696,6 +801,7 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
     lag: number
   }[] = []
   const presses: SpPlayer[] = []
+  const acts: { p: SpPlayer; held: { x: number; z: number }; rewind: number }[] = []
   for (const { player, input } of [...inputs, ...botInputs(state)]) {
     const p = state.players.find((q) => q.id === player)
     if (!p || !input) continue
@@ -729,9 +835,14 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
       const recovery = state.phase === 'rally' ? recoveryAfter(charge) : 0
       if (recovery > 0) p.recoverUntil = state.tick + recovery
       swings.push({ p, held: clampDir(input.x, input.z), rewind, charge, lag: released })
+    } else if (input.t === 'ability') {
+      // One per player per tick; while charging / held / on cooldown / between points: ignored.
+      if (acts.some((a) => a.p === p) || !canAct(state, p)) continue
+      acts.push({ p, held: clampDir(input.x, input.z), rewind: humanRewind(state, p, input.tick) })
     }
   }
   for (const p of state.players) {
+    if (p.act && state.tick === landTick(p.act)) emit(state, { k: 'actLand', side: p.side, act: p.act.k })
     if (state.phase === 'serve' && p.side === state.server) {
       // The server stands still in the box until the serve.
       p.vx = 0
@@ -742,11 +853,14 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
   const s = state.shuttle
   // 2. Serve.
   if (state.phase === 'serve') {
+    const before = s.lastHitter
     holdShuttle(state)
     const sw = swings.find((w) => w.p.side === state.server)
     if (sw) serve(state, sw.p, sw.held)
     // Nobody stalls the match: an idle server short-serves automatically.
     else if (state.phaseT >= SERVE_TIMEOUT) serve(state, state.players[state.server], { x: 0, z: 0 })
+    // Presses in the serve hop (nothing to strike yet; a serve this tick is the server's own hit).
+    for (const a of acts) if (canAct(state, a.p)) resolveAct(state, a.p, a.held, a.rewind, before)
   } else if (state.phase === 'rally') {
     // 3. Swings: who can hit is decided by lastHitter + the shuttle's half, so at most one schedules.
     // A shuttle hit this tick can't be hit back on the same tick (else input order would decide).
@@ -757,6 +871,8 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
     }
     for (const p of presses)
       if (s.lastHitter === hitter && !swings.some((w) => w.p === p)) tapOnPress(state, p)
+    // After swings and taps (a charge pressed this tick wins: canAct re-checked), before a scheduled hit fires.
+    for (const a of acts) if (canAct(state, a.p)) resolveAct(state, a.p, a.held, a.rewind, hitter)
     if (s.pending && s.pending.atTick <= state.tick) firePending(state)
   }
 

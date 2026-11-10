@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { random } from '@forge/core/rng'
 import type { InputEvent } from '@forge/net/session'
 import { COURT, isIn, predictLanding, stepShuttle, type Flight } from './physics'
-import { findContact, REACH, type ShotKind } from './shots'
+import { findContact, launchFor, REACH, shotTarget, type ShotKind } from './shots'
 import {
   createState,
   shuttlePopGame as game,
@@ -302,7 +302,8 @@ function gauge(H: Profile, level: Level, n: number, speeds: Partial<Record<ShotK
  */
 const N = 80
 
-// Measured at 973e671 before slice 10 (power swing), N = 80; Task 6 asserts bands around these.
+// Measured at 973e671 before slice 10 (power swing), N = 80; the power-swing balance band
+// ('power swing balance' below) holds every row near these.
 // `tap` = casual who never charges.
 export const BASELINE = {
   'casual v easy': { win: 0.9875, share: 0.763 },
@@ -369,4 +370,98 @@ describe('balance vs scripted players (tuning gauges)', () => {
     },
     120_000,
   )
+})
+
+/** A skilled defender: reacts this many ticks after the hit, plus this much accel slack. */
+const DEF_REACT = 15
+const DEF_SLACK = 6
+
+/** Smash contacts (side 0 hitter) × aims: perfect timing, rng zero. */
+const SMASH_GRID = [-1.5, 0, 1.5].flatMap((x) =>
+  [-1.5, -2.5, -3.5].flatMap((z) =>
+    [2.2, 2.6].flatMap((y) => [-1, 0, 1].map((heldX) => ({ from: { x, y, z }, heldX }))),
+  ),
+)
+
+/** The defender at ready (0, +BASE_Z) can get within reach of some in-reach tick of the flight. */
+function reachable(f: Flight): boolean {
+  const g: Flight = { pos: { ...f.pos }, vel: { ...f.vel } }
+  for (let t = 1; t < 600; t++) {
+    if (stepShuttle(g).netHit || g.pos.y <= 0) return false
+    const { x, y, z } = g.pos
+    if (z <= 0 || y < REACH.minY || y > REACH.maxY) continue
+    const run = (MOVE_SPEED * Math.max(0, t - DEF_REACT - DEF_SLACK)) / TICK_RATE
+    if (Math.hypot(x, z - BASE_Z) - REACH.radius <= run) return true
+  }
+  return false
+}
+
+/** Ticks until the flight passes the defender's depth (or lands). */
+function ticksToDefender(f: Flight): number {
+  const g: Flight = { pos: { ...f.pos }, vel: { ...f.vel } }
+  let t = 0
+  while (t < 600 && g.pos.y > 0 && g.pos.z < BASE_Z) {
+    if (stepShuttle(g).netHit) break
+    t++
+  }
+  return t
+}
+
+const smashFlights = (charge: number): Flight[] =>
+  SMASH_GRID.map(({ from, heldX }) => ({
+    pos: { ...from },
+    vel: launchFor('smash', 'perfect', from, shotTarget('smash', 0, heldX), () => 0, charge),
+  }))
+
+/** Gauge rows, computed once per profile × level (deterministic). */
+const rowCache = new Map<string, Row>()
+const rowOf = (name: keyof typeof PROFILES, level: Level): Row => {
+  const key = `${name} v ${level}`
+  let r = rowCache.get(key)
+  if (!r) rowCache.set(key, (r = gauge(PROFILES[name], level, N)))
+  return r
+}
+const LEVELS = ['easy', 'normal', 'hard'] as const
+
+describe('power swing balance', () => {
+  it('a full-charge Perfect smash is returnable by a well-placed defender (not an auto-win)', () => {
+    const full = smashFlights(1)
+    const tap = smashFlights(0)
+    const share = (fs: Flight[]) => fs.filter(reachable).length / fs.length
+    if (process.env.BALANCE_LOG)
+      console.warn(
+        JSON.stringify({
+          returnable: { full: share(full), tap: share(tap) },
+          ticksToDefender: { full: mean(full.map(ticksToDefender)), tap: mean(tap.map(ticksToDefender)) },
+        }),
+      )
+    // A flat 0.6 bar fails even a tap (wide aims beat a reacting defender), so: a smash at the
+    // defender is always reachable, and power costs at most 40% of the tap's reachable cases.
+    const centre = full.filter((_, i) => SMASH_GRID[i].heldX === 0)
+    expect(share(centre)).toBe(1)
+    expect(share(full)).toBeGreaterThanOrEqual(0.6 * share(tap))
+    expect(share(tap)).toBeGreaterThanOrEqual(share(full))
+    expect(mean(full.map(ticksToDefender))).toBeLessThan(mean(tap.map(ticksToDefender)) - 2)
+  })
+
+  it('tap-only play stays viable vs every level', () => {
+    const b = (l: Level) => BASELINE[`tap v ${l}`]
+    const r = Object.fromEntries(LEVELS.map((l) => [l, rowOf('tap', l)])) as Record<Level, Row>
+    if (process.env.BALANCE_LOG) console.warn(JSON.stringify({ tap: r }))
+    expect(r.easy.win).toBeGreaterThanOrEqual(Math.max(0.85, b('easy').win - 0.1))
+    expect(r.normal.win).toBeGreaterThanOrEqual(b('normal').win - 0.1)
+    expect(r.hard.win).toBeGreaterThanOrEqual(b('hard').win - 0.05)
+    for (const l of LEVELS) expect(Math.abs(r[l].share - b(l).share)).toBeLessThanOrEqual(0.05)
+  }, 60_000)
+
+  it('AI win rate per difficulty stays in today’s band (casual + skilled)', () => {
+    for (const name of ['casual', 'skilled'] as const)
+      for (const l of LEVELS) {
+        const r = rowOf(name, l)
+        const b = BASELINE[`${name} v ${l}`]
+        if (process.env.BALANCE_LOG) console.warn(JSON.stringify({ [`${name} v ${l}`]: r }))
+        expect(Math.abs(r.win - b.win), `${name} v ${l} win`).toBeLessThanOrEqual(0.1)
+        expect(Math.abs(r.share - b.share), `${name} v ${l} share`).toBeLessThanOrEqual(0.05)
+      }
+  }, 90_000)
 })

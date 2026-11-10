@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { ABILITY, type Act } from './ability'
+import type { InputEvent } from '@forge/net/session'
+import { ABILITY, actMoveMul } from './ability'
 import { COURT, DT } from './physics'
 import { GuestPredictor, type AuthPlayer } from './predict'
 import { CHARGE } from './charge'
 import { courtDims } from './courtsize'
 import { POWER_SWING } from './power'
-import { MOVE_SPEED, speedMulOf, stepPlayer } from './sim'
+import { MOVE_SPEED, shuttlePopGame as game, speedMulOf, stepPlayer, type SpInput } from './sim'
 import { CORRECT } from './world'
 
 const auth = (x: number, z: number, move = { x: 0, z: 0 }): AuthPlayer => ({
@@ -278,28 +279,62 @@ describe('guest prediction recovery after a full-charge swing', () => {
 })
 
 describe('guest prediction of the ability lock', () => {
-  it('mirrors the host lock: no drift while the host is locked', () => {
-    for (const k of ['lunge', 'jump', 'hop'] as const) {
+  /** A rally where the host's p1 (side 1) presses the ability on `press`: the shuttle picks `k`. */
+  const SCENES = {
+    // A lob dropping over p1 at y ≈ 3.4 (jump), a drive 1.8 m wide at y ≈ 0.7 (lunge), the shuttle away (hop).
+    jump: { pos: { x: 0, y: 4.2, z: 2.6 }, vel: { x: 0, y: -1, z: 5 }, at: { x: 0, z: 4 }, press: 8 },
+    lunge: { pos: { x: 1.8, y: 0.9, z: 1 }, vel: { x: 0, y: 0.6, z: 8 }, at: { x: 0, z: 2.83 }, press: 9 },
+    hop: { pos: { x: 0, y: 3, z: -3 }, vel: { x: 0, y: 4, z: 0 }, at: { x: 0, z: 3 }, press: 8 },
+  }
+  it('mirrors the host lock: same locked steps, no drift (host driven through step())', () => {
+    for (const k of ['jump', 'lunge', 'hop'] as const) {
+      const sc = SCENES[k]
+      const s = game.setup(
+        [0, 1].map((i) => ({ id: `p${i}`, name: `P${i}`, slot: i, ready: true, connected: true })),
+        1,
+        {},
+      )
+      const host = s.players[1]
+      host.x = sc.at.x
+      host.z = sc.at.z
+      s.phase = 'rally'
+      s.shuttle.pos = { ...sc.pos }
+      s.shuttle.vel = { ...sc.vel }
+      s.shuttle.lastHitter = 0
+      s.shuttle.pending = null
       const pred = new GuestPredictor()
-      const a = auth(-2, 3)
+      const a = auth(host.x, host.z)
       pred.update(DT, a, 1, true)
-      pred.setMove(1, 0) // side 1: view-right is world +x (room to run)
-      const host = { ...body(-2, 3), chargeAt: -1, recoverUntil: -1, act: null as Act | null }
-      host.move = { x: 1, z: 0 }
-      let stopped = false
-      for (let tick = 1; tick <= 80; tick++) {
-        if (tick === 10) {
-          pred.startAct(k) // pressed on the same tick the host takes it
-          host.act = { k, at: tick, dx: 0, dz: 0 }
+      let hostLocked = 0
+      let predLocked = 0
+      for (let i = 1; i <= 90; i++) {
+        const inputs: InputEvent<SpInput>[] = []
+        if (i === sc.press) {
+          // Run right from the press on (side 1: view-right is world +x).
+          inputs.push({ player: 'p1', input: { t: 'move', x: 1, z: 0 } })
+          inputs.push({ player: 'p1', input: { t: 'ability', x: 0, z: 1 } })
+          pred.setMove(1, 0)
         }
-        stepPlayer(host, DT, speedMulOf(host, tick))
+        if (speedMulOf(host, s.tick + 1) < 1) hostLocked++ // the mul this tick's player step uses
+        game.tick(s, inputs)
+        if (i === sc.press) {
+          expect(s.events.find((e) => e.k === 'act' && e.tick === s.tick)).toMatchObject({ act: k })
+          pred.startAct(k) // the same tick the host takes it
+        }
+        // Local step i (steps = i − 1 before it) is locked past the press step, at actMoveMul(act, i − 1).
+        if (pred.act && i - 1 > pred.act.at && actMoveMul(pred.act, i - 1) < 1) predLocked++
         pred.update(DT, a, 1, false) // no new state: pure integration
-        expect(pred.x, `${k} tick ${tick}`).toBeCloseTo(host.x, 9)
-        expect(pred.z, `${k} tick ${tick}`).toBeCloseTo(host.z, 9)
-        if (k === 'lunge' && tick === 10 + ABILITY.lunge.dive + ABILITY.lunge.floor - 1)
-          stopped = pred.vx === 0
+        expect(pred.x, `${k} tick ${i}`).toBeCloseTo(host.x, 9)
+        expect(pred.z, `${k} tick ${i}`).toBeCloseTo(host.z, 9)
       }
-      if (k === 'lunge') expect(stopped).toBe(true) // the lock really held it
+      const busy =
+        k === 'jump'
+          ? ABILITY.jump.air + ABILITY.jump.lock
+          : k === 'lunge'
+            ? ABILITY.lunge.dive + ABILITY.lunge.floor
+            : 0
+      expect(hostLocked, k).toBe(Math.max(0, busy - 1))
+      expect(predLocked, k).toBe(hostLocked)
       expect(pred.act).toMatchObject({ k })
     }
   })

@@ -74,7 +74,11 @@ export class GuestPredictor {
     return this.localAct
   }
 
-  /** The ability button was pressed and the move `k` picked: its lock starts with the next step, like the host's. */
+  /**
+   * The ability button was pressed (sent) and the move `k` picked. `at` = the next step, the twin of the
+   * host's arrival tick. The host steps its players before it resolves the press (act.at = that tick), so
+   * that step runs free and the lock holds from the one after (e ≥ 1): busy − 1 locked steps, here too.
+   */
   startAct(k: AbilityKind): void {
     this.localAct = { k, at: this.steps, dx: 0, dz: 0 }
   }
@@ -148,7 +152,9 @@ export class GuestPredictor {
     let n = 0
     while (this.acc >= DT - EPS && n < MAX_STEPS) {
       const base = this.recover > 0 ? POWER_SWING.recoveryMoveMul : this.charging ? CHARGE.moveMul : 1
-      const mul = Math.min(base, actMoveMul(this.localAct, this.steps))
+      // The press's own step (e = 0) runs free, like the host's arrival tick (see startAct).
+      const act = this.localAct && this.steps > this.localAct.at ? this.localAct : null
+      const mul = Math.min(base, actMoveMul(act, this.steps))
       if (this.recover > 0) this.recover--
       stepPlayer(p, DT, mul, this.court)
       this.steps++

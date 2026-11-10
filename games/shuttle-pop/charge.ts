@@ -2,10 +2,11 @@
 // the sim, the computer, the view and the sounds).
 
 /**
- * Ticks held before the charge starts (a tap stays a plain swing), ticks held for a full charge, the
- * run speed share while charging, and the levels the charge sounds step at (the last one = full).
+ * Ticks held before the charge starts (a tap, ≤ 0.15 s, stays a plain swing graded at the press),
+ * ticks held for a full charge, the run speed share while charging, and the levels the charge sounds
+ * step at (the first above a short hold, so taps stay silent; the last one = full).
  */
-export const CHARGE = { start: 6, full: 30, moveMul: 0.7, steps: [0.01, 0.5, 1] } as const
+export const CHARGE = { start: 9, full: 30, moveMul: 0.7, steps: [0.15, 0.5, 1] } as const
 
 /** Charge for a hold of `ticks` ticks: 0 up to CHARGE.start, linear to 1 at CHARGE.full, then 1. */
 export function chargeOf(ticks: number): number {

@@ -106,8 +106,7 @@ describe('computer opponent', () => {
       let wins0 = 0
       let points = 0
       let points0 = 0
-      // Mirror-exact sim (mirror.test.ts): a side gap is sampling noise. Win rates swing ~±5.6% (1σ) at
-      // 80 matches (other seed ranges: 42–50%), so the win band is wider than the point-share band.
+      // Mirror-exact sim (mirror.test.ts): a side gap is sampling noise; 80 matches keep it ~±5.6% (1σ).
       const n = 80
       for (const seed of seeds(n, 300)) {
         const m = play('hard', 'hard', seed, HARD_CAP)
@@ -125,8 +124,8 @@ describe('computer opponent', () => {
         console.warn(JSON.stringify({ wins0: wins0 / n, share0: points0 / points }))
       expect(total).toBeGreaterThanOrEqual(500)
       expect((total - (tally.perfect ?? 0)) / total).toBeGreaterThanOrEqual(0.03)
-      expect(wins0 / n).toBeGreaterThanOrEqual(0.35)
-      expect(wins0 / n).toBeLessThanOrEqual(0.65)
+      expect(wins0 / n).toBeGreaterThanOrEqual(0.4)
+      expect(wins0 / n).toBeLessThanOrEqual(0.6)
       expect(points0 / points).toBeGreaterThanOrEqual(0.45)
       expect(points0 / points).toBeLessThanOrEqual(0.55)
     },
@@ -139,7 +138,8 @@ describe('computer opponent', () => {
       let hits = 0
       let points = 0
       let wins0 = 0
-      const n = 40
+      // Mirror-exact: a side gap is sampling noise (n as in hard v hard).
+      const n = 80
       for (const seed of seeds(n, 100)) {
         const m = play('normal', 'normal', seed)
         expect(m.winner, `seed ${seed} ended`).not.toBe(-1)

@@ -111,9 +111,11 @@ describe('mirror invariance', () => {
       for (const seed of [11, 12]) {
         const a = setupBots('hard', 'normal', seed)
         const b = mirror(a)
+        let charged = 0
         while (a.phase !== 'over' && a.tick < 20000) {
           game.tick(a, [])
           game.tick(b, [])
+          if (a.players.some((p) => p.chargeAt === a.tick)) charged++
           if (a.tick % 10 === 0 || game.isFinished(a)) {
             const diff = close(canon(mirror(a)), canon(b))
             if (diff) throw new Error(`seed ${seed} tick ${a.tick}: ${diff}`)
@@ -121,6 +123,7 @@ describe('mirror invariance', () => {
         }
         expect(a.phase).toBe('over')
         expect(b.winner).toBe(flip(a.winner as 0 | 1))
+        expect(charged, 'the bots charged (hold-to-charge is covered)').toBeGreaterThan(5)
       }
     },
     SLOW,

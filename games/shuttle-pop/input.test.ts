@@ -252,7 +252,7 @@ describe('hold-to-charge swing button', () => {
     const { got, keys } = setup()
     keys.press('KeyW')
     expect(keys.swingDown('Space')).toBe(true)
-    expect(got.at(-1)).toEqual({ t: 'charge' })
+    expect(got.at(-1)).toEqual({ t: 'charge', tick: 7 })
     expect(keys.charging).toBe(true)
     expect(keys.swingUp('Space')).toBe(true)
     expect(got.at(-1)).toEqual({ t: 'swing', x: 0, z: 1, tick: 7 })
@@ -297,6 +297,9 @@ describe('hold-to-charge swing button', () => {
     got.length = 0
     keys.swingDown('Space')
     keys.resync()
-    expect(got.filter((i) => i.t === 'charge')).toEqual([{ t: 'charge' }, { t: 'charge' }])
+    expect(got.filter((i) => i.t === 'charge')).toEqual([
+      { t: 'charge', tick: 7 },
+      { t: 'charge', tick: 7 },
+    ])
   })
 })

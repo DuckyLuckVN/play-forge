@@ -17,6 +17,7 @@ import {
   seedPreset,
   shownName,
   shuttlePopGame,
+  TAPPED,
   type SpInput,
   type SpState,
 } from './sim'
@@ -67,10 +68,12 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
       } else if (live() && seatCan(canCharge)) {
         predictor?.setCharging(true)
         onSwing?.('charge')
-      }
+      } else return // the host would ignore it: don't send (no slow-down disagreement with the prediction)
     } else if (input.t === 'swing') {
       predictor?.setCharging(false)
-      onSwing?.(live() && seatCan(canSwing) ? 'swing' : 'cancel')
+      // A press that already swung as a tap (sim tapOnPress): its button-up is no second swing.
+      const counts = live() && seatCan((s, me) => canSwing(s, me) && me.chargeAt !== TAPPED)
+      onSwing?.(counts ? 'swing' : 'cancel')
     } else if (input.t === 'move' && live()) predictor?.setMove(input.x, input.z)
     session.sendInput(input)
   }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { Sound } from '@forge/audio/sound'
 import { chargeSound, eventSound, SHUTTLE_SOUNDS, swingSound } from './sounds'
 import type { SpEvent } from './sim'
 
@@ -83,5 +84,28 @@ describe('power sounds (hold-to-charge)', () => {
     }
     expect(pitch(2)).toBeGreaterThan(pitch(1))
     expect(chargeSound(3)).toBe(SHUTTLE_SOUNDS.chargeFull)
+  })
+})
+
+describe('sound headroom', () => {
+  /** engine/audio/sound.ts applyLevels: the sfx bus gain at sfx 1.0 is curve(1) × 0.5. */
+  const SFX_BUS = 0.5
+  /** Loudest moment: the tones sounding together right at the onset (start within 50 ms). */
+  const onsetPeak = (s: Sound) =>
+    (Array.isArray(s) ? s : [s]).filter((t) => (t.at ?? 0) <= 0.05).reduce((a, t) => a + (t.vol ?? 0.6), 0)
+
+  it('every hit, at any grade / shot / charge, peaks at most 1.0 at full effects volume', () => {
+    for (const grade of ['perfect', 'good', 'late'] as const)
+      for (const shot of ['smash', 'drive', 'clear', 'drop'] as const)
+        for (const charge of [0, 0.5, 1]) {
+          const r = eventSound({ ...at, k: 'hit', side: 0, grade, shot, charge }, 0)!
+          expect(onsetPeak(r.sound) * r.vol * SFX_BUS, `${grade} ${shot} ${charge}`).toBeLessThanOrEqual(1)
+        }
+  })
+
+  it('the power smash is not boosted on top (its layers are the boost)', () => {
+    expect(eventSound({ ...at, k: 'hit', side: 0, grade: 'perfect', shot: 'smash', charge: 1 }, 0)!.vol).toBe(
+      1,
+    )
   })
 })

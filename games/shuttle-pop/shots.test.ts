@@ -274,18 +274,19 @@ describe('launchFor charge (hold-to-charge power)', () => {
       SLOW,
     )
 
-  it('a full-charge Perfect gets there sooner (smash / clear) or comes off faster (drive / drop), and lands in', () => {
+  it('a full-charge Perfect gets there sooner (smash / clear) or comes off faster (a high drive), and lands in', () => {
     // gain: 'sooner' = ≥ 10% fewer ticks to land; 'faster' = ≥ 5% more launch speed; 'same' = the net
-    // already caps how flat it can go (a smash from the back court): never worse than the tap.
+    // already caps how flat it can go (a smash from the back court, a low drive, a drop): never worse.
     const spots = [
       { kind: 'smash', from: { x: 0, y: 2.5, z: -3 }, gain: 'sooner' },
       { kind: 'smash', from: { x: 0, y: 2.2, z: -1.5 }, gain: 'sooner' },
       { kind: 'smash', from: { x: 1, y: 2.3, z: -5 }, gain: 'same' },
       { kind: 'clear', from: { x: 0, y: 1.5, z: -5 }, gain: 'sooner' },
       { kind: 'clear', from: { x: 0, y: 1.3, z: -2 }, gain: 'sooner' },
-      { kind: 'drive', from: { x: 0, y: 1.3, z: -3.5 }, gain: 'faster' },
-      { kind: 'drive', from: { x: 0, y: 1.0, z: -5.5 }, gain: 'faster' },
-      { kind: 'drop', from: { x: 0, y: 2.2, z: -5 }, gain: 'faster' },
+      { kind: 'drive', from: { x: 0, y: 2.0, z: -3.5 }, gain: 'faster' },
+      { kind: 'drive', from: { x: 0, y: 2.5, z: -5.5 }, gain: 'faster' },
+      { kind: 'drive', from: { x: 0, y: 1.0, z: -5.5 }, gain: 'same' },
+      { kind: 'drop', from: { x: 0, y: 2.5, z: -1.5 }, gain: 'same' },
     ] as const
     for (const { kind, from, gain } of spots) {
       const t = shotTarget(kind, 0, 0.5)
@@ -300,6 +301,43 @@ describe('launchFor charge (hold-to-charge power)', () => {
       expect(b.pos.z, tag).toBeGreaterThanOrEqual(a.pos.z - 1e-6)
       expect(isIn(b.pos, 1), tag).toBe(true)
     }
+  })
+
+  for (const side of [0, 1] as const)
+    it(
+      `side ${side}: a full-charge Perfect never takes longer to land than the tap, from anywhere on the own half`,
+      () => {
+        for (const kind of kinds)
+          for (const z of [-6.5, -5, -3.5, -2, -0.8])
+            for (const x of [-2.2, 0, 2.2])
+              for (const y of [0.6, 1.5, 2.6]) {
+                const from = { x, y, z: side === 0 ? z : -z }
+                const t = shotTarget(kind, side, x / 2.4)
+                const a = predictLanding({ pos: from, vel: launchFor(kind, 'perfect', from, t, zero, 0) })
+                const b = predictLanding({ pos: from, vel: launchFor(kind, 'perfect', from, t, zero, 1) })
+                expect(b.ticks, `${kind} side${side} ${x} ${y} ${z}`).toBeLessThanOrEqual(a.ticks)
+              }
+      },
+      SLOW,
+    )
+
+  it('both ends play the same charged shot, mirrored', () => {
+    for (const kind of kinds)
+      for (const grade of grades) {
+        const from = { x: 0.7, y: 1.6, z: -3.2 }
+        const a = launchFor(kind, grade, from, shotTarget(kind, 0, 0.4), rngOf(0.3, 0.7), 1)
+        const b = launchFor(
+          kind,
+          grade,
+          { x: -0.7, y: 1.6, z: 3.2 },
+          shotTarget(kind, 1, 0.4),
+          rngOf(0.3, 0.7),
+          1,
+        )
+        expect(b.x).toBeCloseTo(-a.x, 9)
+        expect(b.y).toBeCloseTo(a.y, 9)
+        expect(b.z).toBeCloseTo(-a.z, 9)
+      }
   })
 
   it(

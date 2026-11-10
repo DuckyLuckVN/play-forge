@@ -16,6 +16,7 @@ import {
   setupBots,
   SWING_COOLDOWN,
   shuttlePopGame as game,
+  TAPPED,
   toWorld,
   type SpEvent,
   type SpInput,
@@ -618,11 +619,11 @@ describe('bookkeeping', () => {
     const ids = s.events.map((e) => e.id)
     expect(new Set(ids).size).toBe(ids.length)
   })
-  it('history keeps the last 24 ticks', () => {
+  it('history keeps the last 32 ticks', () => {
     const s = duel()
     run(s, 40)
-    expect(s.history).toHaveLength(24)
-    expect(s.history[23].tick).toBe(s.tick)
+    expect(s.history).toHaveLength(32)
+    expect(s.history[31].tick).toBe(s.tick)
   })
   it('netView strips history and rng', () => {
     const s = duel()
@@ -691,7 +692,7 @@ describe('hold-to-charge', () => {
   const charge = (player: string, cancel = false): InputEvent<SpInput> =>
     ev(player, cancel ? { t: 'charge', cancel: true } : { t: 'charge' })
   /** Shuttle passes right through p1 (as in 'swing timing'); p1 starts charging `hold` ticks before. */
-  function chargedHit(hold: number, rewindTick?: number) {
+  function chargedHit(hold: number, rewindTick?: number, heldZ = 0) {
     const s = duel()
     s.players[1].x = 0
     s.players[1].z = 3
@@ -701,7 +702,9 @@ describe('hold-to-charge', () => {
     rally(s, { x: 0, y: 1.5, z: 3 }, { x: 1.2, y: 1, z: 0 }, 0)
     s.history.length = 0
     const sw: SpInput =
-      rewindTick === undefined ? { t: 'swing', x: 0, z: 0 } : { t: 'swing', x: 0, z: 0, tick: rewindTick }
+      rewindTick === undefined
+        ? { t: 'swing', x: 0, z: heldZ }
+        : { t: 'swing', x: 0, z: heldZ, tick: rewindTick }
     game.tick(s, [ev('p1', sw)])
     return { s, hit: s.events.find((e) => e.k === 'hit' && e.tick === s.tick) }
   }
@@ -724,13 +727,16 @@ describe('hold-to-charge', () => {
 
   it('a full hold hits with charge 1; a half hold in between', () => {
     expect(chargedHit(40).hit).toMatchObject({ grade: 'perfect', charge: 1 })
-    const half = chargedHit(18).hit as { charge: number }
-    expect(half.charge).toBeCloseTo(0.5, 9)
+    const half = chargedHit(20).hit as { charge: number }
+    expect(half.charge).toBeCloseTo((20 - CHARGE.start) / (CHARGE.full - CHARGE.start), 9)
   })
 
-  it('a charged hit is faster off the racket than a tap from the same spot', () => {
-    const speed = (s: SpState) => Math.hypot(s.shuttle.vel.x, s.shuttle.vel.y, s.shuttle.vel.z)
-    expect(speed(chargedHit(40).s)).toBeGreaterThan(speed(chargedHit(1).s))
+  it('a charged clear gets to the far end sooner than a tapped one from the same spot', () => {
+    const full = chargedHit(40, undefined, -1)
+    const tap = chargedHit(1, undefined, -1)
+    expect(full.hit).toMatchObject({ shot: 'clear', charge: 1 })
+    expect(tap.hit).toMatchObject({ shot: 'clear', charge: 0 })
+    expect(predictLanding(full.s.shuttle).ticks).toBeLessThan(predictLanding(tap.s.shuttle).ticks)
   })
 
   it('timing is graded at the release tick (rewound for a lagged guest), the charge from the hold', () => {
@@ -739,6 +745,66 @@ describe('hold-to-charge', () => {
     const tick = chargedHit(40).s.tick
     expect(chargedHit(40, tick - 7).hit).toMatchObject({ grade: 'good', charge: 1 })
     expect(chargedHit(40, tick - 3).hit).toMatchObject({ grade: 'perfect', charge: 1 })
+  })
+
+  describe('a tap is graded at the press (the swing goes out on the button-up)', () => {
+    it('a press with the contact on it swings at once, graded at the press; the release only ends it', () => {
+      for (const hold of [5, 8, CHARGE.start, 25]) {
+        const s = duel()
+        s.players[1].x = 0
+        s.players[1].z = 3
+        rally(s, { x: 0, y: 1.5, z: 3 }, { x: 1.2, y: 1, z: 0 }, 0)
+        game.tick(s, [ev('p1', { t: 'charge' })])
+        const pressTick = s.tick
+        const seen = run(s, hold - 1)
+        game.tick(s, [swing('p1')])
+        allEvents(s, seen)
+        const hits = seen.concat(s.events).filter((e) => e.k === 'hit')
+        expect(hits[0], `hold ${hold}`).toMatchObject({ grade: 'perfect', charge: 0, tick: pressTick })
+        expect(
+          s.events.some((e) => e.k === 'whiff'),
+          `hold ${hold}`,
+        ).toBe(false)
+        expect(s.players[1].chargeAt).toBe(-1)
+      }
+    })
+
+    it('a short hold released before a later contact is a tap graded at the press; a longer one at the release', () => {
+      // Pressed while the shuttle is still far (no contact soon), the passing shuttle placed at the release.
+      expect(chargedHit(5).hit).toMatchObject({ grade: 'perfect', charge: 0 }) // dt 5 from the press
+      expect(chargedHit(8).hit).toMatchObject({ grade: 'good', charge: 0 }) // dt 8 from the press
+      expect(chargedHit(12).hit).toMatchObject({ grade: 'perfect' }) // charged: graded at the release
+      expect((chargedHit(12).hit as { charge: number }).charge).toBeGreaterThan(0)
+    })
+
+    it("a guest's press carries its screen tick (rewind-clamped like a swing)", () => {
+      // The press reaches the host 7 ticks after the closest approach, stamped at it: Perfect.
+      const s = duel()
+      s.players[1].x = 0
+      s.players[1].z = 3
+      rally(s, { x: 0, y: 1.5, z: 3 }, { x: 1.2, y: 1, z: 0 }, 0)
+      const closest = s.tick + 1
+      run(s, 7)
+      game.tick(s, [ev('p1', { t: 'charge', tick: closest })])
+      expect(s.players[1].chargeAt).toBe(TAPPED) // swung at once, graded at the stamped press
+      expect(s.events.find((e) => e.k === 'hit')).toMatchObject({ grade: 'perfect', charge: 0 })
+      // A tick far in the past is clamped to MAX_REWIND.
+      const t = duel()
+      t.phase = 'rally'
+      game.tick(t, [ev('p1', { t: 'charge', tick: -500 })])
+      expect(t.players[1].chargeAt).toBe(t.tick - MAX_REWIND)
+    })
+  })
+
+  it('a charge press during the swing cooldown is accepted; a release the cooldown rejects still ends it', () => {
+    const s = duel()
+    rally(s, { x: 0, y: 3, z: -3 }, { x: 0, y: 5, z: 0 }, 1)
+    game.tick(s, [swing('p1')]) // whiff: cooldown starts
+    game.tick(s, [charge('p1')])
+    expect(s.players[1].chargeAt).toBe(s.tick)
+    game.tick(s, [swing('p1')]) // still cooling down: ignored as a swing
+    expect(s.players[1].chargeAt).toBe(-1)
+    expect(s.players[1].swingAt).toBe(s.tick - 2)
   })
 
   it('cancel ends a charge without swinging', () => {

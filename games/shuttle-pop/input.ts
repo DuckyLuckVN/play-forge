@@ -123,7 +123,7 @@ export class HeldKeys {
   swingDown(src: string): boolean {
     if (this.chargeSrc !== null) return false
     this.chargeSrc = src
-    this.send({ t: 'charge' })
+    this.sendPress()
     return true
   }
 
@@ -155,7 +155,14 @@ export class HeldKeys {
   resync(): void {
     this.sendMove()
     // The swing button too: a press made, or a let-go lost, while inputs were dropped (paused).
-    this.send(this.chargeSrc !== null ? { t: 'charge' } : { t: 'charge', cancel: true })
+    if (this.chargeSrc !== null) this.sendPress()
+    else this.send({ t: 'charge', cancel: true })
+  }
+
+  /** The press, with the tick on screen (a tap is graded at it). */
+  private sendPress() {
+    const tick = this.nowTick()
+    this.send(tick === undefined ? { t: 'charge' } : { t: 'charge', tick })
   }
 
   private sendMove() {

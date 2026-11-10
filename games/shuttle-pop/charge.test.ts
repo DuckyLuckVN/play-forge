@@ -18,6 +18,7 @@ describe('chargeOf (hold → power)', () => {
 
   it('stages step up to full; isFull only at 1', () => {
     expect(chargeStage(0)).toBe(0)
+    expect(chargeStage(0.1)).toBe(0) // a short hold stays silent
     expect(chargeStage(0.2)).toBe(1)
     expect(chargeStage(0.6)).toBe(2)
     expect(chargeStage(1)).toBe(CHARGE.steps.length)

@@ -21,7 +21,7 @@ export const LEVELS = {
   normal: {
     reactTicks: 14,
     speedMul: 0.88,
-    grade: { perfect: 0.28, good: 0.5, late: 0.13, whiff: 0.09 },
+    grade: { perfect: 0.34, good: 0.5, late: 0.1, whiff: 0.06 },
     smash: 0.4,
     misjudge: 0,
     charge: 0.25,
@@ -29,7 +29,7 @@ export const LEVELS = {
   hard: {
     reactTicks: 10,
     speedMul: 0.93,
-    grade: { perfect: 0.59, good: 0.27, late: 0.06, whiff: 0.08 },
+    grade: { perfect: 0.62, good: 0.25, late: 0.06, whiff: 0.07 },
     smash: 0.85,
     misjudge: 0,
     charge: 0.7,

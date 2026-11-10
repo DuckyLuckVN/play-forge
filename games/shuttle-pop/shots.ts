@@ -29,12 +29,12 @@ const JITTER: Record<Grade, number> = { perfect: 0.2, good: 0.6, late: 1.2 }
 /**
  * Hold-to-charge power (charge 0..1, charge.ts), per shot kind: the aim goes up to `depth` share deeper
  * (never past `maxDepth`) and the flight flattens by up to `flatten` degrees. The solver then needs more
- * speed: a smash / clear gets there much sooner, a drive / drop comes off the racket faster and pushes
- * deeper. Good / Late aim error grows up to `jitter` share (power costs control unless the timing is
- * Perfect). Serves ignore it.
+ * speed: a smash / clear gets there much sooner, a drive / drop comes off the racket faster (a drop
+ * pushes deeper). Above half charge, Good / Late aim error grows, up to `jitter` share at full (big
+ * power costs a little control unless the timing is Perfect). Serves ignore it.
  */
 export const POWER = {
-  depth: { smash: 0, drive: 0.08, clear: 0.05, drop: 0.3, serveShort: 0, serveLong: 0 } as Record<
+  depth: { smash: 0, drive: 0, clear: 0.05, drop: 0, serveShort: 0, serveLong: 0 } as Record<
     ShotKind,
     number
   >,
@@ -43,7 +43,7 @@ export const POWER = {
     number
   >,
   maxDepth: COURT.halfLen - 0.35,
-  jitter: 0.8,
+  jitter: 0.4,
 }
 const SPEED_FACTOR: Record<Grade, number> = { perfect: 1.0, good: 0.85, late: 0.7 }
 
@@ -147,7 +147,8 @@ export function launchFor(
   const tz =
     c > 0 ? dir * Math.max(depth, Math.min(POWER.maxDepth, depth * (1 + POWER.depth[kind] * c))) : target.z
   const ang = rng() * Math.PI * 2
-  const r = JITTER[grade] * (grade === 'perfect' ? 1 : 1 + POWER.jitter * c) * Math.sqrt(rng())
+  const spray = grade === 'perfect' ? 0 : POWER.jitter * Math.max(0, 2 * c - 1)
+  const r = JITTER[grade] * (1 + spray) * Math.sqrt(rng())
   // Jitter in the hitter's frame (rotated 180° for side 1) so both ends play exactly mirrored.
   const aim = { x: target.x + dir * Math.cos(ang) * r, z: tz + dir * Math.sin(ang) * r }
   if (aim.z * dir < MIN_DEPTH + AIM_MARGIN) aim.z = dir * (MIN_DEPTH + AIM_MARGIN)

@@ -77,6 +77,8 @@ interface HumanMem {
   /** Ticks to hold the swing button before the release (0 = a tap); pressed = charge sent. */
   hold: number
   pressed: boolean
+  /** A tap in progress: the tick its button comes up (−1 = none). */
+  releaseAt: number
   rng: { seed: number }
 }
 
@@ -89,6 +91,7 @@ const newHuman = (seed: number): HumanMem => ({
   swung: false,
   hold: 0,
   pressed: false,
+  releaseAt: -1,
   rng: { seed: seed ^ 0x5bd1e995 },
 })
 
@@ -148,11 +151,25 @@ function humanStep(s: SpState, side: 0 | 1, m: HumanMem, H: Profile): SpInput[] 
   const base = { x: 0, z: back * BASE_Z }
   if (s.phase === 'serve') {
     m.planFor = -1
+    m.releaseAt = -1
     if (s.server === side && s.phaseT === SERVE_AT)
       return [{ t: 'swing', x: 0, z: random(m.rng) < 0.4 ? -1 : 0, tick: s.tick }]
+    // A press the rally ended on: let go (no swing).
+    if (s.players[side].chargeAt >= 0)
+      return [
+        { t: 'move', x: 0, z: 0 },
+        { t: 'charge', cancel: true },
+      ]
     return [{ t: 'move', x: 0, z: 0 }]
   }
   if (s.phase !== 'rally') return [{ t: 'move', x: 0, z: 0 }]
+  // A tap's button-up (graded at its press).
+  if (m.releaseAt >= 0 && s.tick >= m.releaseAt) {
+    m.releaseAt = -1
+    const kinds = [-1, 0, 1]
+    const z = kinds[Math.floor(random(m.rng) * 3)]
+    return [moveTo(s, side, m.target), { t: 'swing', x: random(m.rng) * 2 - 1, z, tick: s.tick + 1 }]
+  }
   const opp = side === 0 ? 1 : 0
   if (s.shuttle.lastHitter !== opp) return [moveTo(s, side, base)]
   let shot = -1
@@ -174,6 +191,7 @@ function humanStep(s: SpState, side: 0 | 1, m: HumanMem, H: Profile): SpInput[] 
     m.contactAt = -1
     m.swung = false
     m.pressed = false
+    m.releaseAt = -1
     // Hold-to-charge: a held press of ~0.2–0.6 s, more often on a high ball.
     m.hold =
       random(m.rng) < (spot.high ? H.chargeHigh : H.chargeLow) ? 12 + Math.floor(random(m.rng) * 24) : 0
@@ -189,10 +207,16 @@ function humanStep(s: SpState, side: 0 | 1, m: HumanMem, H: Profile): SpInput[] 
   }
   if (m.hold > 0 && !m.pressed && m.contactAt >= 0 && s.tick + 1 >= m.contactAt - m.err - m.hold) {
     m.pressed = true
-    out.push({ t: 'charge' })
+    out.push({ t: 'charge', tick: s.tick + 1 })
   }
   if (m.contactAt >= 0 && s.tick + 1 >= m.contactAt - m.err) {
     m.swung = true
+    if (m.hold === 0) {
+      // A tap: the button goes down on time and comes up 4–7 ticks (~65–115 ms) later.
+      out.push({ t: 'charge', tick: s.tick + 1 })
+      m.releaseAt = s.tick + 4 + Math.floor(random(m.rng) * 4)
+      return out
+    }
     const kinds = [-1, 0, 1]
     const z = kinds[Math.floor(random(m.rng) * 3)]
     out.push({ t: 'swing', x: random(m.rng) * 2 - 1, z, tick: s.tick + 1 })
@@ -274,10 +298,10 @@ function gauge(H: Profile, level: Level, n: number, speeds: Partial<Record<ShotK
  */
 const N = 80
 
-// Tuning gauges, not truths: measured values at N (task-12 report): casual wins Easy 96%, Normal 49%,
-// Hard 9%; skilled wins Hard 61% (100 matches: 94 / 46 / 8 / 62). The two Hard targets pull apart (casual ≥ 8% vs skilled ≤ 60%):
-// point shares 34% / 53% sit 19 points apart for every Hard tried, so the bands below leave room at
-// that edge (casual ≥ 5%, skilled ≤ 65%) instead of pinning a value that sits on the boundary.
+// Tuning gauges, not truths. Measured at N (task-14 fix 1, proxies charging, taps 4–7 ticks long): casual
+// wins Easy 99%, Normal 56%, Hard 6%; skilled wins Hard 65%. The two Hard targets pull apart: point
+// shares sit ~22 points apart (casual ~31–38%, skilled ~55–61%) for every Hard grade mix tried
+// (task-14 report), so the Hard bands (casual ≥ 5%, skilled ≤ 65%) can't both have margin.
 describe('balance vs scripted players (tuning gauges)', () => {
   it('casual: beats Easy, about even with Normal, wins vs Hard now and then; even rallies stay short', () => {
     const r = {
@@ -286,7 +310,7 @@ describe('balance vs scripted players (tuning gauges)', () => {
       hard: gauge(PROFILES.casual, 'hard', N),
     }
     expect(r.easy.win).toBeGreaterThanOrEqual(0.9)
-    expect(r.normal.win).toBeGreaterThanOrEqual(0.35)
+    expect(r.normal.win).toBeGreaterThanOrEqual(0.45)
     expect(r.normal.win).toBeLessThanOrEqual(0.65)
     expect(r.hard.win).toBeGreaterThanOrEqual(0.05)
     expect(r.hard.win).toBeLessThan(r.normal.win)

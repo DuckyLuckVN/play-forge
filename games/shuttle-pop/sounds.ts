@@ -11,8 +11,8 @@ const SMASH: Tone[] = [
 ]
 /** A charged hit's body: a low thwack under the strings' pop. */
 const THWACK: Tone[] = [
-  { freq: 180, to: 70, dur: 0.13, wave: 'sine', vol: 0.5 },
-  { freq: 1400, to: 300, dur: 0.07, wave: 'noise', vol: 0.3 },
+  { freq: 180, to: 70, dur: 0.13, wave: 'sine', vol: 0.4 },
+  { freq: 1400, to: 300, dur: 0.07, wave: 'noise', vol: 0.2 },
 ]
 
 export const SHUTTLE_SOUNDS = {
@@ -60,7 +60,7 @@ export const SHUTTLE_SOUNDS = {
   /** Full-charge Perfect smash: the crack, a punchy low boom and the crowd's "ooh". */
   powerSmash: [
     ...SMASH,
-    { freq: 95, to: 38, dur: 0.38, wave: 'sine', vol: 0.6 },
+    { freq: 95, to: 38, dur: 0.38, wave: 'sine', vol: 0.45 },
     { freq: 260, to: 60, dur: 0.12, wave: 'square', vol: 0.18 },
     { freq: 700, to: 1000, dur: 0.55, wave: 'noise', vol: 0.2, at: 0.12 },
     { freq: 380, to: 300, dur: 0.5, wave: 'triangle', vol: 0.05, at: 0.14 },
@@ -89,9 +89,12 @@ export const SHUTTLE_SOUNDS = {
 
 /** The opponent's racket sounds are a little further away. */
 const THEIRS = 0.7
-/** A hit charged at least this much adds the thwack; volume grows by up to POWER_VOL share. */
+/**
+ * A hit charged at least this much adds the thwack; volume grows by up to POWER_VOL share (not the power
+ * smash: its layers are the boost). Every hit stays ≤ 1.0 at its onset at full effects volume.
+ */
 const THWACK_FROM = 0.34
-const POWER_VOL = 0.3
+const POWER_VOL = 0.15
 
 /** The grade's pop with the thwack under it (built once). */
 const CHARGED: Record<Grade, Sound> = {
@@ -134,7 +137,8 @@ export function eventSound(e: SpEvent, localSide: 0 | 1): { sound: Sound; vol: n
           : c >= THWACK_FROM
             ? CHARGED[e.grade]
             : SHUTTLE_SOUNDS[e.grade]
-      return { sound, vol: (e.side === localSide ? 1 : THEIRS) * (1 + POWER_VOL * c) }
+      const boost = sound === SHUTTLE_SOUNDS.powerSmash ? 1 : 1 + POWER_VOL * c
+      return { sound, vol: (e.side === localSide ? 1 : THEIRS) * boost }
     }
     case 'serve':
       return { sound: SHUTTLE_SOUNDS.serve, vol: e.side === localSide ? 1 : THEIRS }

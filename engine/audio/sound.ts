@@ -2,18 +2,22 @@
  * Tiny Web Audio synthesiser. Sounds and music are generated, not loaded, so
  * games stay single-file and work offline.
  *
- * Signal path: sources → sfx / music bus → master → speakers.
+ * Signal path: sources → sfx bus → limiter → master → speakers (music bus → master).
  * Volume settings are shared by every game and remembered in localStorage.
  */
 
 export interface Tone {
-  /** Start frequency in Hz (for 'noise', the low-pass cutoff). */
+  /** Start frequency in Hz (for 'noise', the filter cutoff / centre). */
   freq: number
   /** Slide to this frequency over the tone's duration. */
   to?: number
   /** Seconds. */
   dur: number
   wave?: OscillatorType | 'noise'
+  /** 'noise' only: filter type. Default 'lowpass'. */
+  filter?: 'lowpass' | 'bandpass' | 'highpass'
+  /** 'noise' only: filter Q. Default is WebAudio's. */
+  q?: number
   /** 0..1, before the effects volume. */
   vol?: number
   /** Start offset in seconds, for building short phrases. */
@@ -30,6 +34,17 @@ export interface AudioSettings {
   muted: boolean
 }
 
+/** Most effect tones sounding at once; extra tones are dropped (layers are listed most important first). */
+export const MAX_VOICES = 24
+
+/** Safety-net limiter on the effects bus: transparent below the threshold (dBFS). */
+export const SFX_LIMITER = { threshold: -6, knee: 4, ratio: 12, attack: 0.002, release: 0.12 }
+
+/** How many of `wanted` new tones may start with `active` already sounding. */
+export function voicesAllowed(active: number, wanted: number, cap = MAX_VOICES): number {
+  return Math.max(0, Math.min(wanted, cap - active))
+}
+
 const SETTINGS_KEY = 'play-forge:audio'
 const DEFAULTS: AudioSettings = { music: 0.45, sfx: 0.8, muted: false }
 
@@ -39,6 +54,7 @@ let sfxBus: GainNode | null = null
 let musicBus: GainNode | null = null
 let settings = readSettings()
 let unlocked = false
+let activeVoices = 0
 const settingsListeners = new Set<(s: AudioSettings) => void>()
 const unlockListeners = new Set<() => void>()
 
@@ -90,7 +106,15 @@ export function audioContext(): AudioContext | null {
     master = ctx.createGain()
     sfxBus = ctx.createGain()
     musicBus = ctx.createGain()
-    sfxBus.connect(master)
+    if (typeof ctx.createDynamicsCompressor === 'function') {
+      const limiter = ctx.createDynamicsCompressor()
+      for (const k of Object.keys(SFX_LIMITER) as (keyof typeof SFX_LIMITER)[]) {
+        limiter[k].value = SFX_LIMITER[k]
+      }
+      sfxBus.connect(limiter).connect(master)
+    } else {
+      sfxBus.connect(master)
+    }
     musicBus.connect(master)
     master.connect(ctx.destination)
     applyLevels()
@@ -149,7 +173,10 @@ export function playSound(sound: Sound, volume = 1): void {
   const ac = audioContext()
   if (!ac || !sfxBus) return
   const now = ac.currentTime + 0.01
-  for (const t of Array.isArray(sound) ? sound : [sound]) {
+  const tones = Array.isArray(sound) ? sound : [sound]
+  const count = voicesAllowed(activeVoices, tones.length)
+  for (let i = 0; i < count; i++) {
+    const t = tones[i]
     const start = now + (t.at ?? 0)
     const end = start + t.dur
     const gain = ac.createGain()
@@ -162,7 +189,8 @@ export function playSound(sound: Sound, volume = 1): void {
     if (t.wave === 'noise') {
       const n = noiseSource(ac)
       const filter = ac.createBiquadFilter()
-      filter.type = 'lowpass'
+      filter.type = t.filter ?? 'lowpass'
+      if (t.q !== undefined) filter.Q.value = t.q
       filter.frequency.setValueAtTime(t.freq, start)
       if (t.to) filter.frequency.exponentialRampToValueAtTime(t.to, end)
       n.connect(filter).connect(gain)
@@ -174,6 +202,10 @@ export function playSound(sound: Sound, volume = 1): void {
       if (t.to) osc.frequency.exponentialRampToValueAtTime(t.to, end)
       osc.connect(gain)
       src = osc
+    }
+    activeVoices++
+    src.onended = () => {
+      activeVoices--
     }
     src.start(start)
     src.stop(end + 0.02)

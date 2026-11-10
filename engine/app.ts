@@ -1,5 +1,6 @@
 import { formatNumber } from './core/i18n'
 import { preloadGate } from './core/preload'
+import { dismissSplash } from './ui/splash'
 import './ui/base.css'
 import { playMusic, type Track } from './audio/music'
 import { playSound, UI_SOUNDS } from './audio/sound'
@@ -1240,6 +1241,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       const code = /room=([A-Z0-9]+)/i.exec(location.hash)?.[1]?.toUpperCase()
       if (code?.length === 5 && !session && room !== code) joinFromLink(code)
     })
+  // The first screen is up: fade out the page's loading splash.
+  dismissSplash()
 }
 
 function summaryGrid(rows: SummaryRow[]): HTMLElement | null {

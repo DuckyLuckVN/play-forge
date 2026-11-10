@@ -20,6 +20,7 @@ export const VI: Dictionary = {
   '{n} player': '{n} người chơi',
   '{n} players': '{n} người chơi',
   Play: 'Chơi',
+  'Loading…': 'Đang tải…',
   'Pick a game': 'Chọn một trò chơi',
   'Everything runs in your browser. Nothing to install, no accounts.':
     'Mọi thứ chạy ngay trên trình duyệt. Không cần cài đặt, không cần tài khoản.',

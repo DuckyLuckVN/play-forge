@@ -87,7 +87,7 @@ Landscape-only games call `landscapeGuard(stage, onChange)` (`engine/ui/landscap
 
 Controls go in `createGameApp({ guide })` as `GuideStep`s (`engine/ui/guide.ts`): rows of keycaps (`keys: [['W', 'A', 'S', 'D'], ['Up', 'Left', 'Down', 'Right']]`, arrows print as glyphs), a mouse icon (`mouse: 'click'`) and a touch icon (`touch: 'button'`), each device seeing only its own rows. The shell adds a Pause (Esc / P) row, a "How to play" button on the start, pause and room screens, and pops the card up once before a player's first match (`play-forge:guide-seen:<id>`; solo waits for "Got it", online opens it over the room and closes it when the match starts, so it never holds up a match). The older `controls` text still works for games without a guide (see `games/shuttle-pop`).
 
-Heavy setup (building a 3D scene, compiling shaders) goes in `createGameApp({ preload })`: it starts at page load and the start button shows "Loading…" until it's done, so play never freezes on start. Rejoining after a reload and joining from an invite link wait for it too.
+Heavy setup (building a 3D scene, compiling shaders) goes in `createGameApp({ preload })`: it starts at page load and the start button shows "Loading…" until it's done, so play never freezes on start. Rejoining after a reload and joining from an invite link wait for it too. Before any of that, every built game page paints a splash (its `cover.svg`, title and a loading bar; `scripts/splash.mjs`) while the single-file bundle downloads, and the shell fades it out once its first screen is up. The hub prefetches a game when you hover or touch its card.
 
 ## Deploy
 

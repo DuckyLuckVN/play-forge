@@ -5,12 +5,13 @@
 //
 // Each game file works when opened straight from disk (file://) or from any
 // static host such as GitHub Pages.
-import { readdirSync, existsSync, readFileSync } from 'node:fs'
+import { readdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build } from 'vite'
 import { viteSingleFile } from 'vite-plugin-singlefile'
 import { updateReadme } from './readme.mjs'
+import { withSplash } from './splash.mjs'
 import { appVersion } from './version.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
@@ -62,6 +63,13 @@ for (const t of targets) {
       rollupOptions: { input: `${t.dir}/index.html` },
     },
   })
+  if (t.name !== 'launcher') {
+    // First paint: the game's cover + a loading bar while the inlined bundle downloads.
+    const file = `${root}/${t.out}/index.html`
+    const coverFile = `${t.dir}/cover.svg`
+    const cover = existsSync(coverFile) ? readFileSync(coverFile, 'utf8').trim() : ''
+    writeFileSync(file, withSplash(readFileSync(file, 'utf8'), { cover }))
+  }
   console.log(`  ✓ ${t.out}/index.html`)
 }
 

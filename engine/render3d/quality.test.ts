@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PIXEL_BUDGET, pickDpr, QUALITY_LEVELS, QualityGovernor } from './quality'
+import { PIXEL_BUDGET, RECOVER_WINDOWS, pickDpr, QUALITY_LEVELS, QualityGovernor } from './quality'
 
 describe('pickDpr', () => {
   it('keeps full density on small views', () => {
@@ -27,10 +27,17 @@ describe('pickDpr', () => {
 const feed = (g: QualityGovernor, dts: number[]) =>
   dts.reduce((dropped, dt) => g.sample(dt) || dropped, false)
 const repeat = (n: number, f: (i: number) => number) => Array.from({ length: n }, (_, i) => f(i))
+// 2 s of clean frames: only burns the post-attach settle time.
+const settled = (g: QualityGovernor) =>
+  feed(
+    g,
+    repeat(120, () => 1 / 60),
+  )
 
 describe('QualityGovernor', () => {
   it('stays at full quality on a steady 60 Hz screen', () => {
     const g = new QualityGovernor()
+    settled(g)
     expect(
       feed(
         g,
@@ -42,6 +49,7 @@ describe('QualityGovernor', () => {
 
   it('stays put on a steady 120 Hz screen with rare hiccups', () => {
     const g = new QualityGovernor()
+    settled(g)
     feed(
       g,
       repeat(600, (i) => (i % 30 === 0 ? 1 / 30 : 1 / 120)),
@@ -52,10 +60,11 @@ describe('QualityGovernor', () => {
   it('steps down when 120 Hz frames judder between 8 and 17 ms', () => {
     // The measured case: 66 fps on 120 Hz was judged "fine" by the old probe.
     const g = new QualityGovernor()
+    settled(g)
     expect(
       feed(
         g,
-        repeat(60, (i) => (i % 2 ? 1 / 60 : 1 / 120)),
+        repeat(120, (i) => (i % 2 ? 1 / 60 : 1 / 120)),
       ),
     ).toBe(true)
     expect(g.level).toBe(1)
@@ -63,15 +72,17 @@ describe('QualityGovernor', () => {
 
   it('steps down when steadily slow (40 fps, no judder)', () => {
     const g = new QualityGovernor()
+    settled(g)
     feed(
       g,
-      repeat(60, () => 1 / 40),
+      repeat(120, () => 1 / 40),
     )
     expect(g.level).toBe(1)
   })
 
   it('walks down to the floor and stops there', () => {
     const g = new QualityGovernor()
+    settled(g)
     feed(
       g,
       repeat(1200, (i) => (i % 2 ? 1 / 30 : 1 / 60)),
@@ -92,6 +103,7 @@ describe('QualityGovernor', () => {
 
   it('ignores tab-switch gaps', () => {
     const g = new QualityGovernor()
+    settled(g)
     feed(
       g,
       repeat(600, (i) => (i % 5 === 0 ? 0.1 : 1 / 60)),
@@ -101,6 +113,7 @@ describe('QualityGovernor', () => {
 
   it('restart drops a half-filled window', () => {
     const g = new QualityGovernor()
+    settled(g)
     feed(
       g,
       repeat(59, () => 1 / 10.5),
@@ -111,5 +124,101 @@ describe('QualityGovernor', () => {
       repeat(59, () => 1 / 60),
     )
     expect(g.level).toBe(0)
+  })
+
+  it('ignores a hitchy start (attach) and stays sharp', () => {
+    const g = new QualityGovernor()
+    feed(
+      g,
+      repeat(30, () => 0.05),
+    ) // 1.5 s of hitches right after attach
+    feed(
+      g,
+      repeat(600, () => 1 / 60),
+    )
+    expect(g.level).toBe(0)
+  })
+
+  it('one slow window is not sustained', () => {
+    const g = new QualityGovernor()
+    settled(g)
+    feed(
+      g,
+      repeat(60, () => 1 / 40),
+    )
+    feed(
+      g,
+      repeat(600, () => 1 / 60),
+    )
+    expect(g.level).toBe(0)
+  })
+
+  it('two slow windows in a row drop one level', () => {
+    const g = new QualityGovernor()
+    settled(g)
+    expect(
+      feed(
+        g,
+        repeat(120, () => 1 / 40),
+      ),
+    ).toBe(true)
+    expect(g.level).toBe(1)
+  })
+
+  it('recovers one level after RECOVER_WINDOWS clean windows (+ settle)', () => {
+    const g = new QualityGovernor()
+    settled(g)
+    feed(
+      g,
+      repeat(120, () => 1 / 40),
+    )
+    g.restart() // scene refits on a change
+    feed(
+      g,
+      repeat(120 + 60 * RECOVER_WINDOWS, () => 1 / 60),
+    )
+    expect(g.level).toBe(0)
+  })
+
+  it('a failed probe locks the ceiling: no flapping', () => {
+    const g = new QualityGovernor()
+    settled(g)
+    let changes = 0
+    // Level 0 is too heavy for this device (40 fps); level 1+ runs at 60 fps.
+    for (let i = 0; i < 6000; i++) {
+      if (g.sample(g.level === 0 ? 1 / 40 : 1 / 60)) {
+        changes++
+        g.restart() // the scene refits on a change
+      }
+    }
+    expect(g.level).toBe(1)
+    expect(changes).toBeLessThanOrEqual(3) // down, probe up, down - then never again
+  })
+
+  it('never probes above a context-loss stepDown', () => {
+    const g = new QualityGovernor()
+    g.stepDown()
+    settled(g)
+    feed(
+      g,
+      repeat(1200, () => 1 / 60),
+    )
+    expect(g.level).toBe(1)
+  })
+
+  it('follows a custom ladder and its floor', () => {
+    const ladder = [
+      { dpr: Infinity, bloom: false, shadows: true },
+      { dpr: 1, bloom: false, shadows: false },
+    ]
+    const g = new QualityGovernor(ladder)
+    settled(g)
+    feed(
+      g,
+      repeat(1200, () => 1 / 25),
+    )
+    expect(g.level).toBe(1)
+    expect(g.current).toBe(ladder[1])
+    expect(g.stepDown()).toBe(false)
   })
 })

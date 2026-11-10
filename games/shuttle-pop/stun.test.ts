@@ -75,6 +75,8 @@ describe('stun rules', () => {
     const off = stunLook(100, 148)
     expect(off.on).toBe(false)
     expect(off.spin).toBe(0)
+    const out = { on: false, spin: 0, flinch: 0 }
+    expect(stunLook(100, 100, out)).toBe(out)
     expect(stunLook(100, 130).spin).toBeGreaterThan(stunLook(100, 110).spin)
   })
 })

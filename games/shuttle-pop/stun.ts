@@ -51,9 +51,21 @@ export function bonkVictims<T extends Body & { stunAt: number }>(
   return players.filter((q) => racketHits(swinger, q) && !stunImmune(q.stunAt, tick))
 }
 
-export function stunLook(stunAt: number, tick: number): { on: boolean; spin: number; flinch: number } {
-  const on = stunned(stunAt, tick)
-  const spin = on ? ((tick - stunAt) / TICK_HZ) * Math.PI * 2 * 1.5 : 0
+export interface StunLook {
+  on: boolean
+  spin: number
+  flinch: number
+}
+
+/** Render look at `tick`; pass a reusable `out` to allocate nothing per frame. */
+export function stunLook(
+  stunAt: number,
+  tick: number,
+  out: StunLook = { on: false, spin: 0, flinch: 0 },
+): StunLook {
+  out.on = stunned(stunAt, tick)
+  out.spin = out.on ? ((tick - stunAt) / TICK_HZ) * Math.PI * 2 * 1.5 : 0
   const f = stunAt >= 0 && tick >= stunAt ? 1 - (tick - stunAt) / STUN.flinch : 0
-  return { on, spin, flinch: Math.min(1, Math.max(0, f)) }
+  out.flinch = Math.min(1, Math.max(0, f))
+  return out
 }

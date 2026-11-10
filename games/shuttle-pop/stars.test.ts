@@ -30,11 +30,18 @@ describe('StunStars', () => {
     expect(s.group.visible).toBe(false)
   })
 
-  it('stars share one geometry and one material; dispose frees them', () => {
+  it('a set shares one material across its stars; sets keep their own opacity', () => {
     const s = new StunStars()
     const [a, b] = s.group.children as Mesh[]
     expect(a.geometry).toBe(b.geometry)
     expect(a.material).toBe(b.material)
+    const o = new StunStars()
+    expect((o.group.children[0] as Mesh).geometry).toBe(a.geometry)
+    s.update({ on: true, spin: 0 }, 0, 0, 0, 0.3)
+    o.update({ on: true, spin: 0 }, 0, 0, 0, 1)
+    expect((a.material as MeshBasicMaterial).opacity).toBeCloseTo(0.3)
+    expect(((o.group.children[0] as Mesh).material as MeshBasicMaterial).opacity).toBe(1)
     s.dispose()
+    o.dispose()
   })
 })

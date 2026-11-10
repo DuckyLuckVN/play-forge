@@ -63,7 +63,7 @@ import { TICK_RATE } from './court'
 import { courtScale } from './courtsize'
 import { DustPuffs } from './dust'
 import { StunStars } from './stars'
-import { stunLook } from './stun'
+import { stunLook, type StunLook } from './stun'
 import { canSplit, Footwork, lungeWanted, splitHop, splitsOn } from './footwork'
 import { Hud, newEvents, newestShotId, trackerAction, type PopKind } from './hud'
 import { ScoreCards } from './boardprop'
@@ -326,6 +326,8 @@ interface PlayerView {
   arc: ActArc
   /** Stun stars over the head (hidden unless stunned). */
   stars: StunStars
+  /** Reused each frame by stunLook. */
+  stunLook: StunLook
 }
 
 function makePlayer(preset: number): PlayerView {
@@ -354,6 +356,7 @@ function makePlayer(preset: number): PlayerView {
     cd: new ChargeRing(COOLDOWN_LOOK),
     arc: { lift: 0, dive: 0 },
     stars: new StunStars(),
+    stunLook: { on: false, spin: 0, flinch: 0 },
   }
 }
 
@@ -1026,7 +1029,7 @@ export class Court3D {
       pose.look = lookAround(this.time, view.seed)
       // Bonked: dizzy and still, a recoil at the hit, stars over the head. Ours is known when the host's state
       // is (the predictor froze us then), a remote's on the render clock.
-      const stun = stunLook(cp.stunAt ?? -1, pred ? renderTick : shownTick)
+      const stun = stunLook(cp.stunAt ?? -1, pred ? renderTick : shownTick, view.stunLook)
       if (stun.on) {
         pose.stance = 0
         pose.sad = Math.max(pose.sad, STUN_SAD)

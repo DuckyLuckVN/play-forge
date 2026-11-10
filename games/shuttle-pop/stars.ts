@@ -1,5 +1,5 @@
 // Stun stars: three small unlit five-point stars orbiting a stunned player's head (render only).
-// One shared geometry + material, so a pool of them costs 3 draw calls per player; update() allocates nothing.
+// One geometry shared by every set, one material per set (its opacity is that player's fade); update() allocates nothing.
 import { DoubleSide, Group, Mesh, MeshBasicMaterial, Shape, ShapeGeometry } from 'three'
 
 const COUNT = 3
@@ -22,9 +22,10 @@ function starGeometry(): ShapeGeometry {
   return new ShapeGeometry(sh)
 }
 
+const GEO = starGeometry()
+
 export class StunStars {
   readonly group = new Group()
-  private geo = starGeometry()
   private mat = new MeshBasicMaterial({
     color: '#ffd84a',
     transparent: true,
@@ -34,7 +35,7 @@ export class StunStars {
 
   constructor() {
     for (let i = 0; i < COUNT; i++) {
-      const m = new Mesh(this.geo, this.mat)
+      const m = new Mesh(GEO, this.mat)
       m.renderOrder = 6
       this.group.add(m)
     }
@@ -57,8 +58,8 @@ export class StunStars {
     }
   }
 
+  /** Frees this set's material; the shared geometry lives for the page. */
   dispose(): void {
-    this.geo.dispose()
     this.mat.dispose()
   }
 }

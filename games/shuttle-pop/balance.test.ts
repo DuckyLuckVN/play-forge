@@ -7,7 +7,16 @@ import { random } from '@forge/core/rng'
 import type { InputEvent } from '@forge/net/session'
 import { isIn, predictLanding, stepShuttle, type Flight } from './physics'
 import { readyDepth } from './ai'
-import { ABILITY, abilityShot, actReady, leadOf, pickAbility, reachOf, type Strike } from './ability'
+import {
+  ABILITY,
+  abilityShot,
+  actReady,
+  horizonOf,
+  leadOf,
+  pickAbility,
+  reachOf,
+  type Strike,
+} from './ability'
 import { type CourtSize } from './courtsize'
 import { findContact, launchFor, REACH, shotTarget, type ShotKind } from './shots'
 import {
@@ -260,6 +269,26 @@ function humanStep(s: SpState, side: 0 | 1, m: HumanMem, H: Profile): SpInput[] 
 }
 
 /**
+ * What the button would offer from where `me` stands, looked for up to ABILITY.horizon ahead (the player
+ * sees the shuttle coming: ability.ts pickAbility itself only offers a move that can still grade):
+ * the first tick ahead it is a jump / lunge, and that move's contact `dt` ticks from now; null = a hop.
+ */
+function foresee(s: SpState, me: { x: number; z: number }, side: 0 | 1): { pick: Strike; dt: number } | null {
+  const f: Flight = { pos: { ...s.shuttle.pos }, vel: { ...s.shuttle.vel } }
+  const last = ABILITY.horizon - horizonOf('lunge')
+  for (let ahead = 0; ahead <= last; ahead++) {
+    const pick = pickAbility(f, me, side, s.shuttle.lastHitter, !s.shuttle.pending).k
+    if (pick !== 'hop') {
+      // Aim at the contact's closest approach (the sim grades it once the press is in range).
+      const c = findContact(f, me, 0, ABILITY.horizon - ahead, reachOf(pick))
+      return c && { pick, dt: ahead + c.dt }
+    }
+    if (stepShuttle(f).netHit || f.pos.y <= 0) break
+  }
+  return null
+}
+
+/**
  * The ability press, if due this tick, timed at the strike's contact − its lead with the profile's timing
  * error. Scheduled when the button (ability.ts pickAbility, off cooldown) offers a jump / lunge from where
  * I stand. Smart: only its planned move, and it looks again at the press (the button would hop now, or is
@@ -271,12 +300,11 @@ function abilityStep(s: SpState, side: 0 | 1, m: HumanMem, H: Profile): SpInput 
   if (m.actAt < 0) {
     if (H.ability === 'smart' && !m.act) return null
     if (me.chargeAt !== -1 || !actReady(me.act, s.tick + 1)) return null
-    const pick = pickAbility(s.shuttle, me, side, s.shuttle.lastHitter, !s.shuttle.pending).k
-    if (pick === 'hop' || (H.ability === 'smart' && pick !== m.act)) return null
-    const c = findContact(s.shuttle, me, 0, ABILITY.horizon, reachOf(pick))
-    if (!c) return null
+    const seen = foresee(s, me, side)
+    if (!seen || (H.ability === 'smart' && seen.pick !== m.act)) return null
+    const { pick } = seen
     m.act = pick
-    m.actAt = s.tick + 1 + c.dt - leadOf(pick) - m.err
+    m.actAt = s.tick + 1 + seen.dt - leadOf(pick) - m.err
     m.hold = 0
   }
   if (s.tick + 1 < m.actAt) return null

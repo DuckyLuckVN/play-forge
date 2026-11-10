@@ -9,6 +9,7 @@ import {
   actMoveMul,
   actReady,
   cooldownLeft,
+  horizonOf,
   landTick,
   leadOf,
   pickAbility,
@@ -16,7 +17,7 @@ import {
   type Act,
   type AbilityKind,
 } from './ability'
-import type { Flight } from './physics'
+import { stepShuttle, type Flight } from './physics'
 import { REACH } from './shots'
 
 const act = (k: AbilityKind, at: number): Act => ({ k, at, dx: 0, dz: 0 })
@@ -67,6 +68,20 @@ describe('ability', () => {
     expect(pickAbility(drive(), { x: 1.0, z: -5.4 }, 0, 1, true)).toEqual(hop)
     // nothing in any box: hop
     expect(pickAbility(lob(), { x: 2.5, z: -6 }, 0, 1, true)).toEqual(hop)
+  })
+
+  it('never picks a move that cannot grade: the horizon is lead + the late window per kind', () => {
+    expect(horizonOf('jump')).toBe(30)
+    expect(horizonOf('lunge')).toBe(26)
+    // The jump box is first entered 31 ticks out: a press now would whiff for sure (lock + cooldown) = hop.
+    const early = (): Flight => ({ pos: { x: 0, y: 4.1, z: -0.95 }, vel: { x: 0, y: 1.9, z: -6.4 } })
+    const at = { x: 0, z: -4 }
+    expect(pickAbility(early(), at, 0, 1, true).k).toBe('hop')
+    // Two ticks on (29 out): it grades (Late at worst), so the button jumps.
+    const f = early()
+    stepShuttle(f)
+    stepShuttle(f)
+    expect(pickAbility(f, at, 0, 1, true).k).toBe('jump')
   })
 
   it('timeline: jump locks air + 0.4 s, lunge 0.9 s, hop never', () => {

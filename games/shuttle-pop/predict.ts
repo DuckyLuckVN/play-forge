@@ -17,7 +17,8 @@ import { stepPlayer, type SpPlayer } from './sim'
 import { correct, CORRECT } from './world'
 
 /** The fields of the authoritative player the predictor reads. */
-export type AuthPlayer = Pick<SpPlayer, 'side' | 'x' | 'z' | 'vx' | 'vz' | 'move'>
+export type AuthPlayer = Pick<SpPlayer, 'side' | 'x' | 'z' | 'vx' | 'vz' | 'move'> &
+  Partial<Pick<SpPlayer, 'act'>>
 
 /** Local steps of prediction kept (~1 s): the longest round trip it can line up. */
 const HIST = 64
@@ -28,6 +29,8 @@ const PENDING = 8
 /** A sent move counts as echoed when the host's `move` matches it this closely (it normalises). */
 const ECHO_EPS = 1e-6
 const EPS = 1e-9
+/** A host press answers the local one when it lines up with its step within this many steps (echo jitter). */
+const ACT_MATCH = 8
 
 export class GuestPredictor {
   /** Render position + velocity (world metres, m/s), extrapolated within the current step. */
@@ -179,6 +182,7 @@ export class GuestPredictor {
       this.sampleStep = this.lag >= 0 ? this.steps - this.lag : -1
       this.sample.x = auth.x
       this.sample.z = auth.z
+      this.adoptHostAct(auth.act, tick)
     }
 
     // 3. Correct: the past prediction toward the host's state of that moment, shifting the present.
@@ -194,6 +198,18 @@ export class GuestPredictor {
       this.shift(auth.x - p.x, auth.z - p.z)
     }
     this.publish()
+  }
+
+  /**
+   * The host's press that answers the local one (same step, lined up through the echo) wins when it made a
+   * different move (hop vs jump / lunge, or the reverse): take it, so the lock and slowdown match.
+   */
+  private adoptHostAct(host: Act | null | undefined, tick: number): void {
+    const mine = this.localAct
+    if (!host || !mine || host.k === mine.k || this.sampleStep < 0) return
+    const at = this.sampleStep - (tick - host.at)
+    if (Math.abs(at - mine.at) > ACT_MATCH) return
+    this.localAct = { k: host.k, at: mine.at, dx: host.dx, dz: host.dz }
   }
 
   private echo(move: { x: number; z: number }) {

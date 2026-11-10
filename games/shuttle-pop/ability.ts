@@ -1,6 +1,6 @@
 // Jump / lunge / hop: one button, the shuttle picks the move. Pure rules shared by the host sim, the
 // guest's prediction, the AI and the renderer (ticks at 60 Hz; `tick` may be fractional for render).
-import { onHalf, findContact, REACH, type Grade, type Reach, type ShotKind } from './shots'
+import { onHalf, findContact, REACH, WINDOW, type Grade, type Reach, type ShotKind } from './shots'
 import type { Flight } from './physics'
 
 export type AbilityKind = 'jump' | 'lunge' | 'hop'
@@ -23,6 +23,7 @@ export interface Act {
  * (balance.test.ts 'jump / lunge balance': a smart jumper must gain on a never-jumper).
  */
 export const ABILITY = {
+  /** Plain-swing look-ahead (ticks); a strike's own is horizonOf. */
   horizon: 36,
   jump: {
     lead: 12,
@@ -59,9 +60,17 @@ export function leadOf(k?: Strike): number {
 }
 
 /**
+ * How far ahead (ticks) a press of `k` can still grade: its lead + WINDOW.late. A contact further out is
+ * a certain whiff (committed lock + cooldown for nothing), so the pick never chooses it.
+ */
+export function horizonOf(k: Strike): number {
+  return ABILITY[k].lead + WINDOW.late
+}
+
+/**
  * The move a press makes from `at`: a jump when the shuttle passes in the jump box on my half within
- * ABILITY.horizon and a plain swing can't reach it (or the jump contact is above REACH.maxY), else a lunge
- * when it passes in the lunge box and a plain swing can't reach it, else (or when not mine to hit) a hop.
+ * horizonOf('jump') and a plain swing can't reach it (or the jump contact is above REACH.maxY), else a lunge
+ * (within horizonOf('lunge')) when it passes in the lunge box and a plain swing can't reach it, else (or when not mine to hit) a hop.
  * Never an always-correct button: anything a plain swing reaches hops.
  * Direction = unit (contact − at), 0/0 when on top of it. `f` is not mutated.
  */
@@ -77,7 +86,7 @@ export function pickAbility(
     // A plain swing reaches it: the button only jumps for what is above the plain box, never lunges.
     const plain = mine(findContact(f, at, 0, ABILITY.horizon))
     for (const k of ['jump', 'lunge'] as const) {
-      const c = findContact(f, at, 0, ABILITY.horizon, reachOf(k))
+      const c = findContact(f, at, 0, horizonOf(k), reachOf(k))
       if (!c || !mine(c)) continue
       if (plain && (k === 'lunge' || c.pos.y <= REACH.maxY)) continue
       const x = c.pos.x - at.x

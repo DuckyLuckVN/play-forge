@@ -4,10 +4,10 @@
 import { random } from '@forge/core/rng'
 import { COURT, isIn, predictLanding, stepShuttle, type CourtDims, type Flight } from './physics'
 import { findContact, REACH, WINDOW, type Grade } from './shots'
-import { ABILITY, acting, actReady, leadOf, pickAbility, reachOf, type Strike } from './ability'
+import { ABILITY, actReady, leadOf, pickAbility, reachOf, type Strike } from './ability'
 import { CHARGE } from './charge'
 import { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld } from './court'
-import type { SpInput, SpState } from './sim'
+import { canAct, canStrike, type SpInput, type SpState } from './sim'
 
 type GradeRoll = Grade | 'whiff'
 
@@ -127,8 +127,8 @@ export const newBotMemory = (seed: number, side: 0 | 1): BotMemory => ({
 
 /** The ability stream of `mem` (BotMemory.actRng) as an rng. */
 function actRngOf(mem: BotMemory): () => number {
+  const r = { seed: mem.actRng ?? (mem.rng ^ 0x5bd1e995) | 0 }
   return () => {
-    const r = { seed: mem.actRng ?? (mem.rng ^ 0x5bd1e995) | 0 }
     const v = random(r)
     mem.actRng = r.seed
     return v
@@ -232,9 +232,11 @@ function plan(
   level: BotLevel,
   mem: BotMemory,
   rng: () => number,
-  actRng: () => number,
+  injected?: () => number,
 ) {
   const L = LEVELS[level]
+  // Made here (once per shot), not per tick: an AI seat that isn't planning allocates nothing.
+  const actRng = injected ?? actRngOf(mem)
   const land = predictLanding(s.shuttle)
   const back = side === 0 ? -1 : 1 // world z sign of "away from the net"
   mem.plannedSwingTick = -1
@@ -326,9 +328,8 @@ function planAct(
  */
 function actNow(s: SpState, side: 0 | 1, act: Strike): boolean {
   const me = s.players[side]
-  if (s.phase !== 'rally' || me.chargeAt !== -1 || acting(me.act, s.tick) || !actReady(me.act, s.tick))
-    return false
-  return pickAbility(s.shuttle, me, side, s.shuttle.lastHitter, !s.shuttle.pending).k === act
+  if (!canAct(s, me) || !canStrike(s, me)) return false
+  return pickAbility(s.shuttle, me, side, s.shuttle.lastHitter, true).k === act
 }
 
 /** Move input (view-relative, length = speedMul when far) toward a world-space point. */
@@ -357,7 +358,7 @@ const UNCHARGE: SpInput = { t: 'charge', cancel: true }
 
 /**
  * The AI seat's inputs for this tick. Mutates `mem` (the plan cache). `actRng` = the ability rolls
- * (default: mem's own ability stream; tests inject it).
+ * (default: mem's own ability stream, made when a plan is; tests inject it).
  */
 export function botStep(
   s: SpState,
@@ -365,7 +366,7 @@ export function botStep(
   level: BotLevel,
   mem: BotMemory,
   rng: () => number,
-  actRng: () => number = actRngOf(mem),
+  actRng?: () => number,
 ): SpInput[] {
   // A charge left over (the rally ended before the planned swing) would slow the next rally: drop it.
   const charging = s.players[side].chargeAt >= 0

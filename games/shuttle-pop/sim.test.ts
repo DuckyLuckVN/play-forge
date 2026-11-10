@@ -9,6 +9,7 @@ import { AVAILABLE_IDS, isAvailable } from './presets'
 import { launchShot, shotTarget } from './shots'
 import {
   canAct,
+  canStrike,
   canSwing,
   gradeRewind,
   gradesAtPress,
@@ -1378,7 +1379,7 @@ describe('jump / lunge ability', () => {
     at: { x: 0, z: -2.83 },
     idx: 16,
   } // 1.8 m wide at y ≈ 0.7
-  /** The jump box is first entered at index 31 (in the 36-tick horizon, out of a press-at-index-0's window). */
+  /** The jump box is first entered at index 31: out of a press-at-index-0's window (horizonOf('jump') = 30). */
   const EARLY = {
     pos: { x: 0, y: 4.1, z: -0.95 },
     vel: { x: 0, y: 1.9, z: -6.4 },
@@ -1503,12 +1504,21 @@ describe('jump / lunge ability', () => {
     expect(w.p.x).not.toBe(from.x)
   })
 
-  it('mistimed jump commits: whiff, full lock and 3 s cooldown', () => {
+  it('a press before the jump box is in range is a hop (no committed whiff)', () => {
     const { s, p, T0 } = scene(EARLY)
-    const press = T0 + 1 // ~25 ticks before the right moment; the shuttle enters the jump box 31 ticks on
+    const seen = at(s, T0 + 1, [ability('p0', 0, 1)]) // the box is 31 ticks on: out of the 30-tick window
+    expect(seen.find((e) => e.k === 'act')).toMatchObject({ act: 'hop' })
+    expect(seen.some((e) => e.k === 'whiff')).toBe(false)
+    expect(acting(p.act, T0 + 2)).toBe(false)
+  })
+
+  it('mistimed jump commits: a Late clear, full lock and 3 s cooldown', () => {
+    const { s, p, T0 } = scene(EARLY)
+    const press = T0 + 3 // the box is 29 ticks on: the edge of the window, graded Late at best
     const seen = at(s, press, [ability('p0', 0, 1)])
     expect(seen.find((e) => e.k === 'act')).toMatchObject({ act: 'jump' })
-    expect(seen.find((e) => e.k === 'whiff')).toMatchObject({ side: 0, tick: press })
+    untilStrike(s, seen)
+    expect(seen.find((e) => e.k === 'hit')).toMatchObject({ side: 0, grade: 'late' })
     for (let k = 0; k < ABILITY.jump.air + ABILITY.jump.lock; k++) expect(acting(p.act, press + k)).toBe(true)
     expect(acting(p.act, press + ABILITY.jump.air + ABILITY.jump.lock)).toBe(false)
     // Keep a rally going (a far-side high shuttle) so only the cooldown can refuse the press.
@@ -1520,6 +1530,32 @@ describe('jump / lunge ability', () => {
     expect(canAct(s, p)).toBe(false)
     at(s, press + ABILITY.jump.cooldown, [ability('p0')], seen)
     expect(seen.slice(n).find((e) => e.k === 'act')).toMatchObject({ tick: press + ABILITY.jump.cooldown })
+  })
+
+  it('canStrike: the one rule for a strike (host press and AI): rally, not my own hit, swing cooldown, not mid-hit', () => {
+    const { s, p } = scene(LOB)
+    expect(canStrike(s, p)).toBe(true)
+    p.swingAt = s.tick - SWING_COOLDOWN + 1
+    expect(canStrike(s, p)).toBe(false)
+    p.swingAt = s.tick - SWING_COOLDOWN
+    expect(canStrike(s, p)).toBe(true)
+    expect(canStrike(s, p, -1)).toBe(false) // a shuttle hit this tick can't be struck back
+    s.shuttle.lastHitter = 0
+    expect(canStrike(s, p)).toBe(false) // my own last hit
+    s.shuttle.lastHitter = 1
+    s.shuttle.pending = {
+      atTick: s.tick + 1,
+      side: 0,
+      kind: 'clear',
+      grade: 'good',
+      aimX: 0,
+      charge: 0,
+      fromTick: s.tick,
+    }
+    expect(canStrike(s, p)).toBe(false)
+    s.shuttle.pending = null
+    s.phase = 'serve'
+    expect(canStrike(s, p)).toBe(false)
   })
 
   it('no target → hop: act event, no swing, 1 s cooldown, no lock', () => {

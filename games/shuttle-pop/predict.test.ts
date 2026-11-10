@@ -351,6 +351,37 @@ describe('guest prediction of the ability lock', () => {
     pred.startAct('hop')
     expect(pred.act).toMatchObject({ k: 'hop', dx: 0, dz: 0 })
   })
+  describe('the host answers the press with another move', () => {
+    /** Echo lined up (lag 5): host tick T = local step T. Press `k` at local step 6; returns the predictor. */
+    function pressed(k: 'jump' | 'lunge' | 'hop') {
+      const pred = new GuestPredictor()
+      const a = auth(-2, 3, { x: 1, z: 0 })
+      pred.update(DT, { ...a, move: { x: 0, z: 0 } }, 0, true)
+      pred.setMove(1, 0)
+      pred.update(DT * 6, a, 1, false) // the host's echo of the move
+      pred.startAct(k, 0.6, -0.8)
+      expect(pred.act).toMatchObject({ k, at: 6 })
+      pred.update(DT * 5, a, 1, false) // no fresh state yet
+      return { pred, a }
+    }
+    it('replaces a predicted jump by the host hop (no lock), keeping the local clock', () => {
+      const { pred, a } = pressed('jump')
+      pred.update(DT, { ...a, act: { k: 'hop', at: 6, dx: 0, dz: 0 } }, 6, false)
+      expect(pred.act).toEqual({ k: 'hop', at: 6, dx: 0, dz: 0 })
+    })
+    it('replaces a predicted hop by the host lunge and takes its direction', () => {
+      const { pred, a } = pressed('hop')
+      pred.update(DT, { ...a, act: { k: 'lunge', at: 6, dx: 0.6, dz: -0.8 } }, 6, false)
+      expect(pred.act).toEqual({ k: 'lunge', at: 6, dx: 0.6, dz: -0.8 })
+    })
+    it('keeps the local act when the kinds agree, or the host press is another (older) one', () => {
+      const { pred, a } = pressed('jump')
+      pred.update(DT, { ...a, act: { k: 'jump', at: 6, dx: 0, dz: 1 } }, 6, false)
+      expect(pred.act).toMatchObject({ k: 'jump', dx: 0.6, dz: -0.8 })
+      pred.update(DT, { ...a, act: { k: 'hop', at: 6 - 20, dx: 0, dz: 0 } }, 7, false)
+      expect(pred.act).toMatchObject({ k: 'jump' })
+    })
+  })
   it('snap clears the act', () => {
     const pred = new GuestPredictor()
     const a = auth(-2, 3, { x: 1, z: 0 })

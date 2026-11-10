@@ -719,6 +719,26 @@ export function canAct(state: SpState, p: SpPlayer): boolean {
 }
 
 /**
+ * May `p` strike the shuttle now (a jump / lunge, as opposed to a hop): a rally shuttle that is not its
+ * own last hit (`hitter` = lastHitter before this tick's swings: one hit this tick can't be struck back),
+ * not mid-hit, and past the swing cooldown. The one rule the host's press and the AI's check share.
+ */
+export function canStrike(
+  state: SpState,
+  p: SpPlayer,
+  hitter: -1 | 0 | 1 = state.shuttle.lastHitter,
+): boolean {
+  const s = state.shuttle
+  return (
+    state.phase === 'rally' &&
+    s.lastHitter === hitter &&
+    s.lastHitter !== p.side &&
+    !s.pending &&
+    state.tick - p.swingAt >= SWING_COOLDOWN
+  )
+}
+
+/**
  * Resolve an ability press `rewind` ticks old (≤ MAX_REWIND): the move is picked on the flight as the
  * presser saw it (`history` at now − rewind, else now) from its own spot (seenAt). A jump / lunge commits
  * (lock + cooldown, even when it whiffs) and swings with its reach box; a hop does nothing else.
@@ -736,12 +756,7 @@ function resolveAct(
   const i = rewind > 0 ? hist.findIndex((h) => h.tick === state.tick - rewind) : -1
   const flight = i >= 0 ? hist[i] : s
   const at = i >= 0 ? seenAt(hist, i, rewind, state.tick, p) : p
-  const canHit =
-    state.phase === 'rally' &&
-    s.lastHitter === hitter &&
-    s.lastHitter !== p.side &&
-    !s.pending &&
-    state.tick - p.swingAt >= SWING_COOLDOWN
+  const canHit = canStrike(state, p, hitter)
   const pick = pickAbility(flight, at, p.side, s.lastHitter, canHit)
   p.act = { k: pick.k, at: state.tick, dx: pick.dx, dz: pick.dz }
   emit(state, { k: 'act', side: p.side, act: pick.k })

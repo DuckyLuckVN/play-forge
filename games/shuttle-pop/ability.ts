@@ -141,24 +141,61 @@ export function cooldownLeft(act: Act | null, tick: number): number {
   return Math.min(1, Math.max(0, (act.at + cd - tick) / cd))
 }
 
+/** A body offset for the renderer (actArc). */
+export interface ActArc {
+  lift: number
+  dive: number
+}
+
 /**
  * Body offsets for the renderer: `lift` (m) = a jump / hop parabola peaking at its height mid-air;
  * `dive` (0..1) = a lunge ramping in over its dive, held on the floor, easing back over the last 12 ticks.
+ * A fresh object: the per-frame render path uses actArcInto.
  */
-export function actArc(act: Act | null, tick: number): { lift: number; dive: number } {
-  if (!act) return { lift: 0, dive: 0 }
+export function actArc(act: Act | null, tick: number): ActArc {
+  return actArcInto(act, tick, { lift: 0, dive: 0 })
+}
+
+/** actArc written into `out` (returned): allocates nothing. */
+export function actArcInto(act: Act | null, tick: number, out: ActArc): ActArc {
+  out.lift = 0
+  out.dive = 0
+  if (!act) return out
   const e = tick - act.at
   if (act.k === 'lunge') {
     const { dive, floor } = ABILITY.lunge
     const end = dive + floor
-    if (e <= 0 || e >= end) return { lift: 0, dive: 0 }
-    if (e < dive) return { lift: 0, dive: e / dive }
-    if (e < end - RECOVER) return { lift: 0, dive: 1 }
-    const u = (end - e) / RECOVER
-    return { lift: 0, dive: u * u * (3 - 2 * u) }
+    if (e <= 0 || e >= end) return out
+    if (e < dive) out.dive = e / dive
+    else if (e < end - RECOVER) out.dive = 1
+    else {
+      const u = (end - e) / RECOVER
+      out.dive = u * u * (3 - 2 * u)
+    }
+    return out
   }
   const { air, height } = ABILITY[act.k]
   const u = e / air
-  if (u <= 0 || u >= 1) return { lift: 0, dive: 0 }
-  return { lift: height * 4 * u * (1 - u), dive: 0 }
+  if (u > 0 && u < 1) out.lift = height * 4 * u * (1 - u)
+  return out
+}
+
+/**
+ * The seat (index into `players`) whose press made an `act` / `actLand` event: same side and kind, with
+ * its press at the event tick (act) or landing on it (actLand); else the first player on that side
+ * (the state moved on to a newer press); −1 = none. Any number of players (2v2: two per side).
+ */
+export function actorIndex(
+  players: readonly { side: 0 | 1; act: Act | null }[],
+  e: { k: 'act' | 'actLand'; side: 0 | 1; act: AbilityKind; tick: number },
+): number {
+  let first = -1
+  for (let i = 0; i < players.length; i++) {
+    const p = players[i]
+    if (p.side !== e.side) continue
+    if (first < 0) first = i
+    const a = p.act
+    if (a && a.k === e.act && (e.k === 'act' ? a.at : landTick(a)) === e.tick) return i
+  }
+  return first
 }

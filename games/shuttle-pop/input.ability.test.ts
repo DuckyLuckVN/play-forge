@@ -84,6 +84,16 @@ describe('ability bindings', () => {
     expect(s.kinds()).toEqual(['ability'])
   })
 
+  it('a right-button release never lets go of a held left-button charge', () => {
+    const s = setup()
+    cleanup = s.b.stop
+    pointer(s.target, 'pointerdown', { button: 0 })
+    pointer(s.target, 'pointerup', { button: 2 })
+    expect(s.kinds()).toEqual(['charge'])
+    pointer(s.target, 'pointerup', { button: 0 })
+    expect(s.kinds()).toEqual(['charge', 'swing'])
+  })
+
   it('the context menu is suppressed on the court even without a pad', () => {
     const s = setup(false)
     cleanup = s.b.stop

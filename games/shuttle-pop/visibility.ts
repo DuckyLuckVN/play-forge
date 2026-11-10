@@ -25,6 +25,33 @@ export const VIS = {
   halo: { size: 0.38, color: '#fff1a8', opacity: 0.55, px: 32 },
 } as const
 
+/** World-y extent of a player's body box. */
+export interface BodyBox {
+  y0: number
+  y1: number
+  mid: number
+}
+
+/**
+ * The body box's world y: bottom `rootY + lift + VIS.body.bottom·scale`, top `rootY + lift + top·scale`
+ * (`top` = the look's head top, Chibi.top, in rig metres; `lift` = the rig's height in world metres,
+ * Chibi.lift × scale: a jump carries the box up), and the centre.
+ * Pass `out` to fill it in place (the per-frame render path allocates nothing).
+ */
+export function bodyBox(
+  rootY: number,
+  lift: number,
+  top: number,
+  scale: number,
+  out: BodyBox = { y0: 0, y1: 0, mid: 0 },
+): BodyBox {
+  const base = rootY + lift
+  out.y0 = base + VIS.body.bottom * scale
+  out.y1 = base + top * scale
+  out.mid = (out.y0 + out.y1) / 2
+  return out
+}
+
 /** 0..1 how much the shuttle at NDC (px,py) is covered by the player's box. */
 export function occlusion(
   px: number,

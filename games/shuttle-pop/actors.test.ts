@@ -8,7 +8,7 @@ import {
   Vector3,
   type Material,
 } from 'three'
-import { createChibi, PRESETS, restPose, setToyShading } from './actors'
+import { createChibi, JUMP_H, PRESETS, restPose, setToyShading } from './actors'
 import { STRIKE_END } from './arm'
 import { SwingDriver } from './moves'
 import { BOX_HEAD, HEAD_R } from './model/dims'
@@ -34,6 +34,17 @@ function drawn(root: Object3D): Mesh[] {
 }
 
 describe('chibi rig', () => {
+  it('lift = the rig height setPose left it at: a jump share above 1 (the ability arc) lifts it that far', () => {
+    const { chibi } = rig()
+    const p = restPose()
+    chibi.setPose(p, 0)
+    const ground = chibi.lift
+    expect(Math.abs(ground)).toBeLessThan(0.1)
+    p.jump = 0.75 / JUMP_H
+    chibi.setPose(p, 0)
+    expect(chibi.lift - ground).toBeCloseTo(0.75, 1)
+  })
+
   it('limbs are jointed chains: shoulder → upper arm → elbow → forearm → wrist → hand, hip → thigh → knee → shin', () => {
     const { chibi } = rig()
     const parentName = (m: Object3D) => m.parent!

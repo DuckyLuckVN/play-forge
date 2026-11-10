@@ -3,6 +3,8 @@ import {
   ABILITY,
   abilityShot,
   actArc,
+  actArcInto,
+  actorIndex,
   acting,
   actMoveMul,
   actReady,
@@ -144,5 +146,34 @@ describe('ability', () => {
     expect(actArc(l, 54).dive).toBe(0)
     expect(actArc(l, 30).lift).toBe(0)
     expect(actArc(null, 3)).toEqual({ lift: 0, dive: 0 })
+  })
+
+  it('actArcInto fills one object in place, the same as actArc', () => {
+    const out = { lift: 9, dive: 9 }
+    for (const [a, t] of [
+      [act('jump', 0), 15],
+      [act('lunge', 0), 6],
+      [act('hop', 0), 9],
+      [null, 3],
+    ] as const) {
+      expect(actArcInto(a, t, out)).toBe(out)
+      expect(out).toEqual(actArc(a, t))
+    }
+  })
+
+  it('actorIndex: the seat of an act / actLand event (by side, kind and tick; any number of players)', () => {
+    const players = [
+      { side: 0 as const, act: act('jump', 10) },
+      { side: 1 as const, act: act('lunge', 12) },
+      { side: 1 as const, act: act('hop', 20) },
+      { side: 0 as const, act: null },
+    ]
+    expect(actorIndex(players, { k: 'act', side: 0, act: 'jump', tick: 10 })).toBe(0)
+    expect(actorIndex(players, { k: 'act', side: 1, act: 'hop', tick: 20 })).toBe(2)
+    expect(actorIndex(players, { k: 'actLand', side: 1, act: 'lunge', tick: 24 })).toBe(1)
+    expect(actorIndex(players, { k: 'actLand', side: 0, act: 'jump', tick: 40 })).toBe(0)
+    // No exact match (state moved on): the first player on that side.
+    expect(actorIndex(players, { k: 'act', side: 1, act: 'jump', tick: 99 })).toBe(1)
+    expect(actorIndex([], { k: 'act', side: 1, act: 'jump', tick: 99 })).toBe(-1)
   })
 })

@@ -338,6 +338,19 @@ describe('guest prediction of the ability lock', () => {
       expect(pred.act).toMatchObject({ k })
     }
   })
+  it('the act keeps its direction; stepNow = local steps run + the frame share (the act arc clock)', () => {
+    const pred = new GuestPredictor()
+    const a = auth(-2, 3)
+    pred.update(DT, a, 1, true)
+    pred.startAct('lunge', 0.6, -0.8)
+    expect(pred.act).toMatchObject({ k: 'lunge', dx: 0.6, dz: -0.8 })
+    const at = pred.act!.at
+    expect(pred.stepNow).toBeCloseTo(at)
+    pred.update(DT * 3.5, a, 1, false)
+    expect(pred.stepNow).toBeCloseTo(at + 3.5)
+    pred.startAct('hop')
+    expect(pred.act).toMatchObject({ k: 'hop', dx: 0, dz: 0 })
+  })
   it('snap clears the act', () => {
     const pred = new GuestPredictor()
     const a = auth(-2, 3, { x: 1, z: 0 })

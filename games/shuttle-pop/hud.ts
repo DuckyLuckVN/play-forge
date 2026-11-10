@@ -174,6 +174,8 @@ export class TouchPad {
   readonly actEl: HTMLElement
   private stickEl: HTMLElement
   private knobEl: HTMLElement
+  /** The cooldown step last drawn (setAbility; −1 = none yet). */
+  private cdStep = -1
 
   constructor() {
     this.knobEl = h('div', { class: 'sp-knob' })
@@ -220,10 +222,15 @@ export class TouchPad {
     this.actEl.classList.toggle('down', on)
   }
 
-  /** Ability cooldown left 0..1 (0 = ready): the button dims clockwise by it. */
+  /**
+   * Ability cooldown left 0..1 (0 = ready): the button dims clockwise by it. Called every frame: the DOM is
+   * touched only when the shown step (1 / 100) changes.
+   */
   setAbility(cooldown: number) {
-    const cd = Math.min(1, Math.max(0, cooldown))
-    this.actEl.style.setProperty('--sp-cd', cd.toFixed(2))
-    this.actEl.classList.toggle('cooling', cd > 0)
+    const step = Math.round(Math.min(1, Math.max(0, cooldown || 0)) * 100)
+    if (step === this.cdStep) return
+    this.cdStep = step
+    this.actEl.style.setProperty('--sp-cd', (step / 100).toFixed(2))
+    this.actEl.classList.toggle('cooling', step > 0)
   }
 }

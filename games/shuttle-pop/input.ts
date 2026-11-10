@@ -342,6 +342,8 @@ export function bindInput(
       pad?.hideStick()
     }
     if (e.pointerType === 'mouse') {
+      // The right button is the ability (one press): its release never lets go of a left-button charge.
+      if (swing && e.button === 2) return
       if (swing) keys.swingUp('mouse')
       else keys.cancelSwing('mouse')
     } else if (e.pointerId === actPointer) {

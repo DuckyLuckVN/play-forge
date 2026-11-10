@@ -44,8 +44,10 @@ import type { Smoothed } from '@forge/net/smoothing'
 import { playSound } from '@forge/audio/sound'
 import { createScene3D, Particles3D, type Scene3D } from '@forge/render3d'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
+import { actArcInto, actorIndex, cooldownLeft, ABILITY, type AbilityKind, type ActArc } from './ability'
 import {
   createChibi,
+  JUMP_H,
   PRESETS,
   restPose,
   setToyEnvironment,
@@ -56,7 +58,7 @@ import {
 import { AVAILABLE_IDS } from './presets'
 import { chargeOf, chargeStage, CHARGE } from './charge'
 import { isPowerHit } from './power'
-import { ChargeRing } from './chargering'
+import { ChargeRing, COOLDOWN_LOOK } from './chargering'
 import { TICK_RATE } from './court'
 import { courtScale } from './courtsize'
 import { DustPuffs } from './dust'
@@ -101,9 +103,26 @@ import { BOARD, surroundOf } from './props'
 import { SP_QUALITY } from './quality'
 import { Park } from './scenery'
 import { TAPPED, type SpEvent, type SpState } from './sim'
-import { chargeSound, eventSound, hitSound, type LastShot, SHUTTLE_SOUNDS, swingSound } from './sounds'
+import {
+  abilitySound,
+  chargeSound,
+  eventSound,
+  hitSound,
+  type LastShot,
+  SHUTTLE_SOUNDS,
+  swingSound,
+} from './sounds'
 import { newTrailStyle, RibbonTrail, trailStyle } from './trail'
-import { haloOpacity, haloPixels, occlusion, stepFades, VIS, type ScreenRect } from './visibility'
+import {
+  bodyBox,
+  haloOpacity,
+  haloPixels,
+  occlusion,
+  stepFades,
+  VIS,
+  type BodyBox,
+  type ScreenRect,
+} from './visibility'
 import {
   CAMERA,
   CHEER,
@@ -169,6 +188,8 @@ const DUST = {
   step: { size: 0.16, life: 0.32, throw: -0.12 },
   burst: { size: 0.26, life: 0.42, throw: -0.35 },
   land: { size: 0.3, life: 0.45, speed: 1.6, count: 4 },
+  /** A dive's landing puffs: this far apart along the dive (m, before CHIBI_SCALE). */
+  dive: 0.3,
   /** Foot offset from the root (m, before CHIBI_SCALE). */
   foot: 0.1,
 }
@@ -176,6 +197,12 @@ const DUST = {
 const LOCAL_SWING_GRACE = 0.4
 /** A swing pressed this soon after its hit event (same frame, any order) still catches up to it (s). */
 const HIT_GRACE = 0.25
+/** A guest's own predicted ability press: the host's matching `act` event this soon after stays silent (s). */
+const OWN_ACT_ECHO = 1
+/** Others' cooldown rings at this opacity (ours full). */
+const THEIR_CD_ALPHA = 0.5
+/** Jump-smash camera punch over a plain smash. */
+const JUMP_PUNCH = 1.2
 /** What the local player's swing button just did (main.ts → attach's callback). */
 export type LocalSwing = 'charge' | 'swing' | 'cancel'
 /** Chibis are ~1.3 m in model space; drawn a bit larger so they read from the far camera. */
@@ -285,6 +312,10 @@ interface PlayerView {
   /** chargeAt in the last state seen (a change to TAPPED = the press swung as a tap). */
   chargeAt: number
   ring: ChargeRing
+  /** Jump / lunge cooldown ring (just outside the charge ring). */
+  cd: ChargeRing
+  /** This frame's jump / lunge body offsets (ability.ts actArcInto; reused). */
+  arc: ActArc
 }
 
 function makePlayer(preset: number): PlayerView {
@@ -310,6 +341,8 @@ function makePlayer(preset: number): PlayerView {
     hitAt: -Infinity,
     chargeAt: -1,
     ring: new ChargeRing(),
+    cd: new ChargeRing(COOLDOWN_LOOK),
+    arc: { lift: 0, dive: 0 },
   }
 }
 
@@ -445,6 +478,12 @@ export class Court3D {
   private leap: Hop = { height: 0, squash: 0 }
   /** Split-step sample (reused). */
   private splitO: Hop = { height: 0, squash: 0 }
+  /** The local player's jump / lunge cooldown left 0..1 this frame (the phone button reads it). */
+  private localCd = 0
+  /** Online guest: when our own ability press was predicted and heard (s; its host `act` stays silent). */
+  private lastOwnActAt = -Infinity
+  /** Scratch body box for the occlusion pass. */
+  private body: BodyBox = { y0: 0, y1: 0, mid: 0 }
 
   constructor() {
     this.parking = document.createElement('div')
@@ -487,7 +526,7 @@ export class Court3D {
         // The swing streak and blob shadow keep their own order (the streak must not draw over the shuttle).
         if (o.name !== 'streak' && o.name !== 'shadow') o.renderOrder = CHIBI_ORDER
       })
-      scene.add(p.chibi.root, p.ring.root)
+      scene.add(p.chibi.root, p.ring.root, p.cd.root)
     }
 
     // Shuttlecock: vertex-coloured unlit body + dark back-side outline (2 draw calls, as the old ball + rim).
@@ -626,6 +665,7 @@ export class Court3D {
     for (const p of this.players) {
       p.chibi.root.traverse((o) => (o.visible = true))
       p.ring.shown = true
+      p.cd.shown = true
     }
     this.placeCamera(0, 1)
     // Scenery, crowd and the shadow variants of every lit material are all in the scene by now (the
@@ -646,6 +686,7 @@ export class Court3D {
     for (let i = 0; i < 2; i++) {
       this.players[i].chibi.setPreset(i)
       this.players[i].ring.shown = false
+      this.players[i].cd.shown = false
     }
   }
 
@@ -700,6 +741,8 @@ export class Court3D {
     this.pointSide = -1
     this.localPressAt = -Infinity
     this.localChargeAt = -1
+    this.localCd = 0
+    this.lastOwnActAt = -Infinity
     this.rally = 0
     this.pointHits = 0
     this.pointAt = -Infinity
@@ -815,6 +858,10 @@ export class Court3D {
     }
 
     let localX = 0
+    this.localCd = 0
+    // Host ticks on screen: a guest's render clock (remotes, the shuttle), else the interpolated tick.
+    const renderTick = prev.tick + (curr.tick - prev.tick) * a
+    const shownTick = g0 ? g0.clock.tick : renderTick
     for (let i = 0; i < Math.min(curr.players.length, this.players.length); i++) {
       const cp = curr.players[i]
       const pp = prev.players[i]
@@ -835,8 +882,15 @@ export class Court3D {
       const pz = pred ? pred.z : rem ? this.remote.z : pp.z + (cp.z - pp.z) * t
       const x = px * flip
       const z = pz * flip
+      // Jump / lunge: our predicted press on the predictor's step clock, else the state's on the shown tick.
+      const act = pred?.act ?? cp.act ?? null
+      const actTick = pred?.act ? pred.stepNow : shownTick
+      const arc = actArcInto(act, actTick, view.arc)
+      const cd = cooldownLeft(act, actTick)
+      // The dive slides the body toward the contact (render only; the sim's player stays put).
+      const slide = act ? ABILITY.lunge.slide * arc.dive * flip : 0
       const root = view.chibi.root
-      root.position.set(x, 0, z)
+      root.position.set(x + (act ? act.dx * slide : 0), 0, z + (act ? act.dz * slide : 0))
       if (i === this.localIdx) localX = x
       const alt = isTwinAlt(curr.players[0].preset, curr.players[1].preset, i, this.localIdx)
       if (cp.preset !== view.preset || alt !== view.alt) {
@@ -852,7 +906,6 @@ export class Court3D {
         this.predictor?.setCharging(false)
       }
       view.chargeAt = cp.chargeAt
-      const renderTick = prev.tick + (curr.tick - prev.tick) * a
       const charge = local
         ? this.localChargeAt >= 0
           ? chargeOf((this.time - this.localChargeAt) * TICK_RATE)
@@ -874,6 +927,14 @@ export class Court3D {
       // The opponent let go without a swing that counted (cancel / cooldown): drop the hold.
       if (!local && cp.chargeAt < 0 && view.swing.holding) view.swing.cancel()
       this.chargeFx(view, charge, x, z, local || this.spectating)
+      view.cd.update(
+        cd > 0 ? cd : -1,
+        root.position.x,
+        root.position.z,
+        this.time,
+        local ? 1 : THEIR_CD_ALPHA,
+      )
+      if (local) this.localCd = cd
       // A pending contact of mine (render time sits between the prev and curr ticks): the racket holds
       // its wind-up, or hurries, so the strike meets the shuttle on the contact tick (a hit that already
       // happened tells the driver in onHit). A smash also schedules the leap so its rise tops out there
@@ -923,12 +984,12 @@ export class Court3D {
       const leaping = view.jumpAge >= 0 && view.jumpAge < SMASH.land
       pose.smash = damp(pose.smash, loading || leaping ? 1 : 0, MOTION.smashRate, dt)
       smashJump(view.jumpAge, this.leap)
-      pose.jump = this.leap.height
+      pose.jump = Math.max(this.leap.height, arc.lift / JUMP_H)
       splitHop(view.foot.splitAge, this.splitO)
       pose.split = this.splitO.height
       pose.squash = view.squash.update(dt) + this.leap.squash + this.splitO.squash
       pose.lean = view.lean.update(dt)
-      pose.lunge = view.foot.lunge
+      pose.lunge = Math.max(view.foot.lunge, arc.dive)
       // Badminton ready stance whenever not celebrating / slumping.
       pose.stance = damp(pose.stance, mood === 'idle' ? 1 : 0, MOTION.readyRate, dt)
       // Ready stance while the shuttle comes my way; crouch while my smash is about to connect.
@@ -981,7 +1042,6 @@ export class Court3D {
     this.updateHud(curr)
 
     this.updateRing(curr, flip)
-    const shownTick = g0 ? g0.clock.tick : prev.tick + (curr.tick - prev.tick) * a
     this.ring.visible =
       this.ringOn &&
       curr.phase === 'rally' &&
@@ -1154,12 +1214,14 @@ export class Court3D {
       if (e.k === 'hit' || e.k === 'serve')
         for (let n = 0; n < 2; n++) {
           const v = this.players[n]
-          const airborne = v.jumpAge >= 0 && v.jumpAge < SMASH.end
+          const airborne = (v.jumpAge >= 0 && v.jumpAge < SMASH.end) || v.arc.lift > 0 || v.arc.dive > 0
           if (splitsOn(e.k, e.side, s.players[n].side) && canSplit(v.gait.speed, v.foot.lunge, airborne))
             v.foot.splitStep()
         }
-      // Every event feeds the echo (a serve / whiff / expiry forgets it); only the predicted hit is muted.
-      if (!this.echo.heard(e)) {
+      // Every event feeds the echo (a serve / whiff / expiry forgets it); only the predicted hit is muted,
+      // and our own predicted ability press (ownActPredicted).
+      const heard = this.echo.heard(e)
+      if (!heard && !(e.k === 'act' && this.ownActEcho(s, e))) {
         const sound = eventSound(e, this.side, this.lastShot)
         if (sound) playSound(sound.sound, sound.vol)
       }
@@ -1174,12 +1236,55 @@ export class Court3D {
         this.pointSide = e.side
         if (this.pointHits >= CHEER.rally) playSound(SHUTTLE_SOUNDS.cheer)
       } else if (e.k === 'hit') {
-        this.onHit(s, e.side, e.grade, e.shot === 'smash', e.power ?? 0)
+        this.onHit(s, e.side, e.grade, e.shot === 'smash', e.power ?? 0, e.act === 'jump')
         this.setTrailShot(e.shot, e.grade, e.power ?? 0)
       } else if (e.k === 'serve') this.setTrailShot(e.shot ?? null, null, 0)
       else if (e.k === 'whiff' && !this.spectating && e.side === this.side)
         this.popAt(this.localIdx, 'miss', false)
+      else if (e.k === 'actLand') this.onActLand(s, e.side, e.act, e.tick)
     }
+  }
+
+  /** True (once) when this `act` event is our own press already heard by ownActPredicted. */
+  private ownActEcho(s: SpState, e: { side: 0 | 1; act: AbilityKind; tick: number }): boolean {
+    if (this.spectating || this.time - this.lastOwnActAt >= OWN_ACT_ECHO) return false
+    if (actorIndex(s.players, { k: 'act', ...e }) !== this.localIdx) return false
+    this.lastOwnActAt = -Infinity
+    return true
+  }
+
+  /** Feet back on the floor: a dust ring (a dive: two puffs along it) and a landing squash. */
+  private onActLand(s: SpState, side: 0 | 1, k: AbilityKind, tick: number) {
+    const j = actorIndex(s.players, { k: 'actLand', side, act: k, tick })
+    if (j < 0 || j >= this.players.length) return
+    const view = this.players[j]
+    const { x, z } = view.chibi.root.position
+    const act = s.players[j].act
+    if (k === 'lunge' && act) {
+      const L = DUST.land
+      const dx = act.dx * this.flip
+      const dz = act.dz * this.flip
+      for (let n = 1; n <= 2; n++) {
+        const d = n * DUST.dive * CHIBI_SCALE
+        this.dust.spawn(x + dx * d, z + dz * d, dx * L.speed, dz * L.speed, L.life, L.size)
+      }
+    } else this.landPuff(x, z)
+    view.squash.kick(MOTION.kickPerfect * (k === 'hop' ? 0.5 : 1))
+  }
+
+  /**
+   * Online guest: our own ability press was just predicted (main.ts, the host's pick on the shown flight),
+   * so its jump / dive is heard now; the host's answering `act` event is then skipped (its landing is not).
+   */
+  ownActPredicted(k: AbilityKind): void {
+    const { sound, vol } = abilitySound('act', k, true)
+    playSound(sound, vol)
+    this.lastOwnActAt = this.time
+  }
+
+  /** The local player's jump / lunge cooldown left this frame, 0..1 (0 = ready; spectators 0). */
+  abilityCooldown(): number {
+    return this.localCd
   }
 
   /**
@@ -1207,6 +1312,7 @@ export class Court3D {
     grade: Exclude<PopKind, 'power' | 'miss'>,
     smash: boolean,
     power: number,
+    jump = false,
   ) {
     const j = s.players[0].side === side ? 0 : 1
     const mine = this.spectating || side === this.side
@@ -1231,7 +1337,11 @@ export class Court3D {
       view.jumpAge = leapAtHit(view.jumpAge)
       this.fx.burst(p.x, p.y, p.z, SMASH_BURST)
       if (big) this.fx.burst(p.x, p.y, p.z, POWER_BURST)
-      this.punch.kick((mine ? PUNCH.kickMine : PUNCH.kickTheirs) * (big ? POWER_FX.powerSmash : boost))
+      this.punch.kick(
+        (mine ? PUNCH.kickMine : PUNCH.kickTheirs) *
+          (big ? POWER_FX.powerSmash : boost) *
+          (jump ? JUMP_PUNCH : 1),
+      )
     } else if (power > 0) this.punch.kick(POWER_FX.hitKick * power * (mine ? 1 : 0.5))
     if (big && !this.spectating && side === this.side) {
       try {
@@ -1339,19 +1449,20 @@ export class Court3D {
         const chibi = this.players[i].chibi
         const root = chibi.root
         const k = root.scale.y
-        const top = chibi.top
         const { x, y, z } = root.position
+        // The box rides on the rig (a jump lifts it): Chibi.lift is in the root's scaled space.
+        const b = bodyBox(y, chibi.lift * k, chibi.top, k, this.body)
         // Body centre: depth + NDC x; bottom / top: NDC y.
-        v.set(x, y + ((VIS.body.bottom + top) / 2) * k, z).applyMatrix4(cam.matrixWorldInverse)
+        v.set(x, b.mid, z).applyMatrix4(cam.matrixWorldInverse)
         r.depth = -v.z
         if (r.depth <= 0) continue
         v.applyMatrix4(cam.projectionMatrix)
         const hw = (VIS.body.halfW * k) / (r.depth * tanY * cam.aspect)
         r.x0 = v.x - hw
         r.x1 = v.x + hw
-        v.set(x, y + VIS.body.bottom * k, z).project(cam)
+        v.set(x, b.y0, z).project(cam)
         r.y0 = v.y
-        v.set(x, y + top * k, z).project(cam)
+        v.set(x, b.y1, z).project(cam)
         r.y1 = v.y
         if (r.y1 < r.y0) {
           const t = r.y0

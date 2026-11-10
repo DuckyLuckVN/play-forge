@@ -48,6 +48,25 @@ describe('eventSound', () => {
     expect(eventSound({ ...at, k: 'serve', side: 0 }, 0)?.sound).toBe(SHUTTLE_SOUNDS.serve)
     expect(eventSound({ ...at, k: 'whiff', side: 0 }, 0)).toBeNull()
   })
+
+  it('ability events: jump/dive start and landing, hop softer, others quieter', () => {
+    const jump = eventSound({ ...at, k: 'act', side: 0, act: 'jump' }, 0)!
+    expect(jump.sound).toBe(SHUTTLE_SOUNDS.jump)
+    expect(jump.vol).toBe(1)
+    expect(eventSound({ ...at, k: 'act', side: 0, act: 'lunge' }, 0)?.sound).toBe(SHUTTLE_SOUNDS.dive)
+    expect(eventSound({ ...at, k: 'actLand', side: 0, act: 'lunge' }, 0)?.sound).toBe(SHUTTLE_SOUNDS.diveLand)
+    expect(eventSound({ ...at, k: 'actLand', side: 0, act: 'jump' }, 0)?.sound).toBe(SHUTTLE_SOUNDS.jumpLand)
+    const hop = eventSound({ ...at, k: 'act', side: 0, act: 'hop' }, 0)!
+    expect(hop.sound).toBe(SHUTTLE_SOUNDS.jump)
+    expect(hop.vol).toBe(0.5)
+    expect(eventSound({ ...at, k: 'actLand', side: 0, act: 'hop' }, 0)?.vol).toBe(0.5)
+    const theirs = eventSound({ ...at, k: 'act', side: 1, act: 'jump' }, 0)!
+    expect(theirs.vol).toBe(actionSound('jump', false).vol)
+    expect(theirs.vol).toBeLessThan(1)
+    expect(eventSound({ ...at, k: 'act', side: 1, act: 'hop' }, 0)?.vol).toBeCloseTo(
+      actionSound('jump', false).vol * 0.5,
+    )
+  })
 })
 
 describe('power sounds (hold-to-charge)', () => {

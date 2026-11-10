@@ -78,9 +78,15 @@ export class GuestPredictor {
    * The ability button was pressed (sent) and the move `k` picked. `at` = the next step, the twin of the
    * host's arrival tick. The host steps its players before it resolves the press (act.at = that tick), so
    * that step runs free and the lock holds from the one after (e ≥ 1): busy − 1 locked steps, here too.
+   * `dx, dz` = the picked contact's direction (the lunge slide; render only).
    */
-  startAct(k: AbilityKind): void {
-    this.localAct = { k, at: this.steps, dx: 0, dz: 0 }
+  startAct(k: AbilityKind, dx = 0, dz = 0): void {
+    this.localAct = { k, at: this.steps, dx, dz }
+  }
+
+  /** Local step time now (steps run + the share of the next one): the clock `act.at` counts in. */
+  get stepNow(): number {
+    return this.steps + this.acc / DT
   }
 
   /** Press (true) or cancel (false: no recovery). A repeat press keeps the first start. */

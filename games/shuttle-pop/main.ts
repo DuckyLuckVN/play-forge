@@ -1,6 +1,7 @@
 import { createGameApp, h, landscapeGuard, smoothState, type Session } from '@forge'
 import { ARCADE } from '@forge/audio/tracks'
 import { webglAvailable } from '@forge/render3d'
+import { startRenderLoop } from '@forge/core/loop'
 import './shuttle-pop.css'
 import type { Strike } from './ability'
 import { chargeOf } from './charge'
@@ -131,7 +132,9 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
       if (guest && predictor && me) {
         // Same pick as the host (ability.ts) on the flight shown: the body leaps now, a strike also shows its hit.
         const pick = guest.shuttle.pickAbility({ x: predictor.x, z: predictor.z }, me.side, seatCan(canSwing))
-        predictor.startAct(pick.k)
+        predictor.startAct(pick.k, pick.dx, pick.dz)
+        // Heard and seen at once; the host's answering `act` event then stays silent (Court3D).
+        court?.ownActPredicted(pick.k)
         if (pick.k !== 'hop') predictHit({ x: input.x, z: input.z }, false, 0, input.tick, pick.k)
       }
     } else if (input.t === 'move' && live()) {
@@ -144,6 +147,8 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
   // Touch: floating stick (left) + swing button (bottom-right), over the court.
   const pad = new TouchPad()
   court.surface.append(pad.root)
+  // The phone button's cooldown follows the local player's (Court3D draws the same on its feet ring).
+  const stopCd = startRenderLoop(() => pad.setAbility(court?.abilityCooldown() ?? 0))
   // Every human swing carries the tick on screen (the host rewinds up to MAX_REWIND): a guest's covers
   // its lag, the host's own its interpolation (0–1 ticks), so both sides get screen-aligned timing.
   // A guest's is the tick of the shuttle it sees (RenderClock), the same meaning as swingTick.
@@ -219,6 +224,7 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
     document.removeEventListener('gesturestart', noPinch)
     stage.classList.remove('sp-playing')
     input.stop()
+    stopCd()
     pad.root.remove()
     detach()
     smooth.dispose()

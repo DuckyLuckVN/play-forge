@@ -136,6 +136,8 @@ export interface Chibi {
   setOpacity(a: number): void
   /** Rig-space y of the top of this look's head at rest (occlusion box, see visibility.ts). */
   readonly top: number
+  /** Rig-space y the last setPose lifted the rig to (jump, hops, bob): the occlusion box rides on it. */
+  readonly lift: number
 }
 
 const OUTLINE = 0x3b2f4a
@@ -144,7 +146,8 @@ const ALT_SHADE = 0.32
 const ALT_SHADE_COLOR = new Color(0x4a3f5c)
 
 // Pose tuning (arm and torso angles are arm.ts, leg joints legs.ts).
-const JUMP_H = 0.55
+/** Rig lift (m, rig space) at pose.jump 1 (the ability arc shows as pose.jump = lift / JUMP_H, may pass 1). */
+export const JUMP_H = 0.55
 /** Point-won hop height (m); the match winner hops this much higher. */
 const HOP_H = 0.13
 const HOP_H_WIN = 0.12
@@ -508,6 +511,7 @@ export function createChibi(preset: number): Chibi {
   /** Fade materials in use since the last applyMaterials (opacity-only updates while fading). */
   let fadeMats: { opacity: number }[] = []
   let top = 0
+  let lift = 0
 
   /** Kit / face / light materials for the current shade + opacity (normal, or the shared fade variants). */
   function applyMaterials() {
@@ -678,7 +682,7 @@ export function createChibi(preset: number): Chibi {
     legIn.dir = p.side
     legIn.lunge = p.lunge
     legIn.leg = legDims
-    legIn.tuck = p.jump * 0.7 + hopO.height * happy * 0.4 + p.split * 0.3
+    legIn.tuck = Math.min(1, p.jump) * 0.7 + hopO.height * happy * 0.4 + p.split * 0.3
     legIn.splay = STANCE.splay * st + 0.2 * p.crouch + SPLIT_SPLAY * p.split
     legIn.bend =
       BEND_STANCE * st + BEND_READY * ready + BEND_CROUCH * p.crouch + BOUNCE.bend * (1 - bounce) * bounceW
@@ -706,6 +710,7 @@ export function createChibi(preset: number): Chibi {
       if (legKind === 'float') hips.rotation.set(0.35 * p.fwd * p.run, 0, -0.3 * p.side * p.run)
     }
     rig.position.y = y - drop
+    lift = rig.position.y
     rig.rotation.x =
       LEAN_FWD * p.fwd +
       p.lean +
@@ -787,6 +792,9 @@ export function createChibi(preset: number): Chibi {
     setOpacity,
     get top() {
       return top
+    },
+    get lift() {
+      return lift
     },
   }
 }

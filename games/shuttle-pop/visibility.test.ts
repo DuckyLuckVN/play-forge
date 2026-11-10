@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  bodyBox,
   fadeTarget,
   fadeTo,
   haloOpacity,
@@ -13,6 +14,18 @@ import {
 const R: ScreenRect = { x0: -0.1, y0: -0.5, x1: 0.1, y1: 0.2, depth: 6 }
 
 describe('shuttle visibility math', () => {
+  it('bodyBox lifts with the jump', () => {
+    const b = bodyBox(0, 0.75, 1.6, 1)
+    expect(b.y0).toBeCloseTo(0.9)
+    expect(b.y1).toBeCloseTo(2.35)
+    expect(b.mid).toBeCloseTo(1.625)
+    expect(bodyBox(0, 0, 1.6, 1).y1).toBeCloseTo(1.6)
+    const s = bodyBox(0, 0, 1.6, 1.2)
+    expect(s.y0).toBeCloseTo(VIS.body.bottom * 1.2)
+    expect(s.y1).toBeCloseTo(1.6 * 1.2)
+    expect(bodyBox(0.5, 0.75, 1.6, 1.2).y1).toBeCloseTo(0.5 + 0.75 + 1.6 * 1.2)
+  })
+
   it('inside + behind = 1; outside past the edge = 0; soft in between', () => {
     expect(occlusion(0, 0, 7, R)).toBe(1)
     expect(occlusion(0.3, 0, 7, R)).toBe(0)

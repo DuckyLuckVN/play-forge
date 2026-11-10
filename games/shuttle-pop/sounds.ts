@@ -5,6 +5,7 @@ import { CHARGE } from './charge'
 import { isPowerHit } from './power'
 import type { Grade, ShotKind } from './shots'
 import type { SpEvent } from './sim'
+import type { AbilityKind } from './ability'
 
 const SMASH: Tone[] = [
   { freq: 4000, to: 300, dur: 0.16, wave: 'noise', vol: 0.65 },
@@ -221,6 +222,21 @@ export function actionSound(kind: ActionSoundKind, mine: boolean): { sound: Soun
   return { sound: SHUTTLE_SOUNDS[kind], vol: mine ? 1 : THEIRS }
 }
 
+/** Hops (the button with no target) sound at this share of a jump. */
+const HOP_VOL = 0.5
+
+/** An ability start / landing (sim `act` / `actLand`): a lunge dives, a jump or hop jumps (a hop softer). */
+export function abilitySound(
+  k: 'act' | 'actLand',
+  act: AbilityKind,
+  mine: boolean,
+): { sound: Sound; vol: number } {
+  const lunge = act === 'lunge'
+  const s = actionSound(k === 'act' ? (lunge ? 'dive' : 'jump') : lunge ? 'diveLand' : 'jumpLand', mine)
+  if (act === 'hop') s.vol *= HOP_VOL
+  return s
+}
+
 const CHARGE_STAGES: readonly Sound[] = [
   SHUTTLE_SOUNDS.charge1,
   SHUTTLE_SOUNDS.charge2,
@@ -256,10 +272,10 @@ export function eventSound(
       }
     case 'point':
       return { sound: e.side === localSide ? SHUTTLE_SOUNDS.pointWin : SHUTTLE_SOUNDS.pointLose, vol: 1 }
-    // Jump / lunge sounds are not in yet: silent.
-    case 'whiff':
     case 'act':
     case 'actLand':
+      return abilitySound(e.k, e.act, e.side === localSide)
+    case 'whiff':
       return null
   }
 }

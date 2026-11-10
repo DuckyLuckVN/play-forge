@@ -9,6 +9,7 @@ import { celebrate } from './fx/confetti'
 import { createBroadcastTransport } from './net/broadcast'
 import {
   resolveOptions,
+  seatingOf,
   Session,
   type GameDefinition,
   type GameOptions,
@@ -933,69 +934,89 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   }
 
   function seats(s: Session<S, I>) {
-    const { players, hostId, phase } = s.lobby
+    const { players, hostId, phase, options } = s.lobby
+    const seating = seatingOf(def, options)
     const scores = phase === 'finished' && s.state && opts.scores ? opts.scores(s.state) : []
-    const count = Math.min(Math.max(def.maxPlayers, players.length), 8)
-    return h(
-      'div',
-      { class: 'pf-seats' },
-      ...Array.from({ length: count }, (_, slot) => {
-        const p = players.find((q) => q.slot === slot)
-        if (!p)
-          return h(
-            'div',
-            { class: 'pf-seat empty' },
-            h('div', { class: 'pf-token' }),
-            h('div', { class: 'pf-seat-name', textContent: t('Open') }),
-          )
-        const isHost = p.id === hostId
-        const isSelf = p.id === s.selfId
-        const score = scores.find((l) => l.id === p.id)
-        const token = h(
-          'div',
-          { class: `pf-token${seenTokens.has(p.id) ? '' : ' pop'}` },
-          avatarEl(avatarFor(p)),
-          score && h('span', { class: 'pf-token-score', textContent: String(score.score) }),
-        )
-        seenTokens.add(p.id)
-        token.dataset.player = p.id
-        if (social?.isSpeaking(p.id)) token.classList.add('speaking')
-        token.style.setProperty('--c', playerColor(p.slot))
-        if (isHost || p.ready) {
-          const badge = h('span', {
-            class: `pf-badge${isHost ? ' host' : ''}${seenReady.has(p.id) ? '' : ' pop'}`,
-          })
-          badge.append(icon(isHost ? icons.crown : icons.check))
-          token.append(badge)
-          seenReady.add(p.id)
-        } else seenReady.delete(p.id)
-        const status = !p.connected
-          ? t('Reconnecting…')
-          : isHost
-            ? t('Host')
-            : p.ready
-              ? t('Ready')
-              : t('Not ready')
+    const count = Math.min(Math.max(seating.seats, players.length), 8)
+    // With teams, a seated player may move to any empty seat between matches.
+    const canMove = seating.teams > 1 && !!s.self && (phase === 'lobby' || phase === 'finished')
+    const seat = (slot: number) => {
+      const p = players.find((q) => q.slot === slot)
+      if (!p)
         return h(
           'div',
-          {
-            class: `pf-seat${isSelf ? ' self' : ''}${p.connected ? '' : ' away'}`,
-            title: isSelf ? t('{name} (you)', { name: p.name }) : p.name,
-          },
-          token,
-          s.isHost &&
-            !isSelf &&
-            iconButton(icons.cross, t('Remove {name}', { name: p.name }), () => {
-              kickAsk = p.id
-              render()
-            }),
-          h('div', { class: 'pf-seat-name', textContent: p.name }),
-          h('div', {
-            class: `pf-seat-status${p.connected && (isHost || p.ready) ? ' ok' : ''}`,
-            textContent: status,
-          }),
+          { class: 'pf-seat empty' },
+          h('div', { class: 'pf-token' }),
+          canMove
+            ? button(t('Sit here'), () => s.moveSeat(slot), 'sm quiet')
+            : h('div', { class: 'pf-seat-name', textContent: t('Open') }),
+          seating.botFill && h('div', { class: 'pf-seat-status', textContent: t('Computer plays') }),
         )
-      }),
+      const isHost = p.id === hostId
+      const isSelf = p.id === s.selfId
+      const score = scores.find((l) => l.id === p.id)
+      const token = h(
+        'div',
+        { class: `pf-token${seenTokens.has(p.id) ? '' : ' pop'}` },
+        avatarEl(avatarFor(p)),
+        score && h('span', { class: 'pf-token-score', textContent: String(score.score) }),
+      )
+      seenTokens.add(p.id)
+      token.dataset.player = p.id
+      if (social?.isSpeaking(p.id)) token.classList.add('speaking')
+      token.style.setProperty('--c', playerColor(p.slot))
+      if (isHost || p.ready) {
+        const badge = h('span', {
+          class: `pf-badge${isHost ? ' host' : ''}${seenReady.has(p.id) ? '' : ' pop'}`,
+        })
+        badge.append(icon(isHost ? icons.crown : icons.check))
+        token.append(badge)
+        seenReady.add(p.id)
+      } else seenReady.delete(p.id)
+      const status = !p.connected
+        ? t('Reconnecting…')
+        : isHost
+          ? t('Host')
+          : p.ready
+            ? t('Ready')
+            : t('Not ready')
+      return h(
+        'div',
+        {
+          class: `pf-seat${isSelf ? ' self' : ''}${p.connected ? '' : ' away'}`,
+          title: isSelf ? t('{name} (you)', { name: p.name }) : p.name,
+        },
+        token,
+        s.isHost &&
+          !isSelf &&
+          iconButton(icons.cross, t('Remove {name}', { name: p.name }), () => {
+            kickAsk = p.id
+            render()
+          }),
+        h('div', { class: 'pf-seat-name', textContent: p.name }),
+        h('div', {
+          class: `pf-seat-status${p.connected && (isHost || p.ready) ? ' ok' : ''}`,
+          textContent: status,
+        }),
+      )
+    }
+    const slots = Array.from({ length: count }, (_, slot) => slot)
+    if (seating.teams <= 1) return h('div', { class: 'pf-seats' }, ...slots.map(seat))
+    // One column per team: seat s plays for team s % teams.
+    return h(
+      'div',
+      { class: 'pf-teams' },
+      ...Array.from({ length: seating.teams }, (_, team) =>
+        h(
+          'div',
+          { class: 'pf-team' },
+          h('h4', {
+            class: 'pf-team-title',
+            textContent: t('Team {n}', { n: String.fromCharCode(65 + team) }),
+          }),
+          h('div', { class: 'pf-seats' }, ...slots.filter((slot) => slot % seating.teams === team).map(seat)),
+        ),
+      ),
     )
   }
 
@@ -1117,8 +1138,12 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       action.autofocus = true
     }
 
-    // A lone host's options only (e.g. the computer's level) hide once a second player sits down.
-    const shownOptions = (def.options ?? []).filter((o) => !o.aloneOnly || s.lobby.players.length <= 1)
+    // A lone host's options only (e.g. the computer's level) hide once a second player sits down;
+    // a game's own `shownWhen` rule wins.
+    const seated = s.lobby.players.length
+    const shownOptions = (def.options ?? []).filter((o) =>
+      o.shownWhen ? o.shownWhen(seated, s.lobby.options) : !o.aloneOnly || seated <= 1,
+    )
     const settings = optionPickers(
       shownOptions,
       s.lobby.options,
@@ -1140,7 +1165,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         finished && s.state && opts.summary && summaryGrid(opts.summary(s.state, s.selfId)),
         roomCodeBox(),
         roomSection(
-          t('Players {n}/{max}', { n: s.lobby.players.length, max: def.maxPlayers }),
+          t('Players {n}/{max}', { n: s.lobby.players.length, max: seatingOf(def, s.lobby.options).seats }),
           seats(s),
           kickConfirm(s),
         ),

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createBroadcastTransport } from './broadcast'
-import { cleanAvatar, Session, type GameDefinition, type SessionOptions } from './session'
+import { cleanAvatar, seatingOf, Session, type GameDefinition, type SessionOptions } from './session'
 import { createOfflineTransport } from './transport'
 
 // A tiny counter game: each input adds to the player's total.
@@ -397,6 +397,146 @@ describe('Session', () => {
     expect((guest.state as unknown as { mode: string }).mode).toBe('wild')
     host.setOption('mode', 'calm') // locked during a match
     expect(host.lobby.options.mode).toBe('wild')
+  })
+
+  describe('seating', () => {
+    // Mode 'b' opens 4 seats in 2 teams; mode 'a' keeps 2.
+    const teams: GameDefinition<Counter, number> = {
+      ...counter,
+      maxPlayers: 4,
+      options: [
+        {
+          id: 'mode',
+          label: 'Mode',
+          default: 'a',
+          choices: [
+            { value: 'a', label: 'A' },
+            { value: 'b', label: 'B' },
+          ],
+        },
+      ],
+      seating: (o) => ({ seats: o.mode === 'b' ? 4 : 2, teams: 2, botFill: true }),
+    }
+    const slots = (s: Session<any, any>) => Object.fromEntries(s.lobby.players.map((p) => [p.id, p.slot]))
+    const settle = () => new Promise((res) => setTimeout(res, 50))
+    /** Host plus guests joined one after another (so seats go in join order). */
+    const fill = async (r: string, mode: string, ids: string[], def = teams) => {
+      const host = join(r, { host: true, playerId: 'host', options: { mode } }, def)
+      const guests: Session<any, any>[] = []
+      for (const id of ids) {
+        guests.push(join(r, { playerId: id }, def))
+        await until(() => host.lobby.players.some((p) => p.id === id))
+      }
+      return { host, guests }
+    }
+
+    it('a game without seating keeps maxPlayers as the cap', async () => {
+      expect(seatingOf(counter, {})).toEqual({ seats: 3, teams: 1, botFill: false })
+      const r = room()
+      const { host } = await fill(r, 'a', ['a', 'b'], counter)
+      const watcher = join(r, { playerId: 'c' })
+      await until(() => watcher.hostConnected)
+      await settle()
+      expect(host.lobby.players.map((p) => p.id)).toEqual(['host', 'a', 'b'])
+    })
+
+    it('clamps seats to [minPlayers, maxPlayers]', () => {
+      expect(seatingOf({ ...teams, seating: () => ({ seats: 9, teams: 2, botFill: true }) }, {}).seats).toBe(
+        4,
+      )
+      expect(seatingOf({ ...teams, seating: () => ({ seats: 0, teams: 2, botFill: true }) }, {}).seats).toBe(
+        2,
+      )
+    })
+
+    it('seats(options) caps joiners; extra joiners watch', async () => {
+      const r = room()
+      const { host } = await fill(r, 'a', ['a'])
+      const watcher = join(r, { playerId: 'b' }, teams)
+      await until(() => watcher.hostConnected)
+      await settle()
+      expect(host.lobby.players.map((p) => p.id)).toEqual(['host', 'a'])
+      expect(watcher.self).toBeUndefined()
+    })
+
+    it('joiners fill seats 0,1,2,3 in order (teams A,B,A,B)', async () => {
+      const { host } = await fill(room(), 'b', ['a', 'b', 'c'])
+      expect(slots(host)).toEqual({ host: 0, a: 1, b: 2, c: 3 })
+    })
+
+    it('moveSeat moves a guest to a free seat in the lobby', async () => {
+      const { host, guests } = await fill(room(), 'b', ['a'])
+      const [a] = guests
+      await until(() => a.lobby.players.length === 2)
+      a.moveSeat(3)
+      await until(() => a.self?.slot === 3)
+      expect(slots(host)).toEqual({ host: 0, a: 3 })
+      expect(host.lobby.players.map((p) => p.id)).toEqual(['host', 'a']) // sorted by seat
+      host.moveSeat(2) // the host moves itself directly
+      expect(slots(host)).toEqual({ host: 2, a: 3 })
+      await until(() => a.lobby.players[0].id === 'host' && a.lobby.players[0].slot === 2)
+    })
+
+    it('moveSeat refuses taken, out-of-range and non-integer seats', async () => {
+      const { host, guests } = await fill(room(), 'b', ['a', 'b'])
+      const [a] = guests
+      await until(() => a.lobby.players.length === 3)
+      a.moveSeat(0) // taken (host)
+      a.moveSeat(2) // taken (b)
+      a.moveSeat(4) // seats are 0..3
+      a.moveSeat(-1)
+      a.moveSeat(1.5)
+      a.moveSeat('3' as never)
+      a.moveSeat(3) // the one valid move, sent last: messages arrive in order
+      await until(() => slots(host).a === 3)
+      expect(slots(host)).toEqual({ host: 0, a: 3, b: 2 })
+      host.moveSeat(3) // taken
+      host.moveSeat(4)
+      expect(slots(host).host).toBe(0)
+    })
+
+    it('moveSeat is refused during a match', async () => {
+      const { host, guests } = await fill(room(), 'b', ['a'])
+      const [a] = guests
+      await until(() => a.lobby.players.length === 2)
+      a.setReady(true)
+      await until(() => host.canStart)
+      host.start()
+      await until(() => a.phase === 'playing')
+      a.moveSeat(3)
+      host.moveSeat(2)
+      await settle()
+      expect(slots(host)).toEqual({ host: 0, a: 1 })
+    })
+
+    it('moveSeat is refused in a game without teams', async () => {
+      const { host, guests } = await fill(room(), 'a', ['a'], counter)
+      const [a] = guests
+      await until(() => a.lobby.players.length === 2)
+      a.moveSeat(2)
+      host.moveSeat(2)
+      await settle()
+      expect(slots(host)).toEqual({ host: 0, a: 1 })
+    })
+
+    it('setOption to fewer seats is refused while more are seated', async () => {
+      const { host } = await fill(room(), 'b', ['a', 'b'])
+      host.setOption('mode', 'a')
+      expect(host.lobby.options.mode).toBe('b')
+      expect(slots(host)).toEqual({ host: 0, a: 1, b: 2 })
+    })
+
+    it('setOption to fewer seats compacts seat 3 into a free seat when it fits', async () => {
+      const { host, guests } = await fill(room(), 'b', ['a'])
+      const [a] = guests
+      await until(() => a.lobby.players.length === 2)
+      a.moveSeat(3)
+      await until(() => slots(host).a === 3)
+      host.setOption('mode', 'a')
+      expect(host.lobby.options.mode).toBe('a')
+      expect(slots(host)).toEqual({ host: 0, a: 1 })
+      await until(() => a.self?.slot === 1 && a.lobby.options.mode === 'a')
+    })
   })
 
   it('counts down before the match starts', async () => {

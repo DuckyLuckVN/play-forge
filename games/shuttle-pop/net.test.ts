@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { meshTile, NetRipple, RIPPLE, rippleOffset, sagAt, wobbleWeight } from './net'
+import {
+  meshTile,
+  NetRipple,
+  RIPPLE,
+  RIPPLE_GLSL,
+  rippleDisplace,
+  rippleOffset,
+  sagAt,
+  wobbleWeight,
+} from './net'
 
 describe('NetRipple', () => {
   it('rests flat until the shuttle hits the net', () => {
@@ -100,5 +109,41 @@ describe('meshTile', () => {
     let a = 0
     for (let i = 3; i < px.length; i += 4) a += px[i]
     expect(a / (size * size * 255)).toBeLessThan(0.3)
+  })
+})
+
+describe('shader parity', () => {
+  /** RIPPLE_GLSL run as JS (it only uses float maths: abs, sin, exp). */
+  const glsl = new Function(
+    'position',
+    'aWobble',
+    'uNetEnv',
+    'uNetPhase',
+    'uNetHitX',
+    'const { abs, sin, exp } = Math; const transformed = { x: 0, y: 0, z: 0 };' +
+      RIPPLE_GLSL.replace(/\bfloat\b/g, 'let') +
+      'return transformed;',
+  ) as (p: { x: number }, w: number, env: number, phase: number, hitX: number) => { y: number; z: number }
+
+  it('the vertex shader moves a vertex exactly as rippleDisplace says', () => {
+    const out = { y: 0, z: 0 }
+    for (const [x, w, env, phase, hitX] of [
+      [0.3, 1, 0.12, 0.5, 0],
+      [-2, 0.4, -0.08, 3.1, 1.2],
+      [1.5, 0.9, 0.05, 7.7, -0.6],
+    ]) {
+      const got = glsl({ x }, w, env, phase, hitX)
+      rippleDisplace(env, phase, x - hitX, w, out)
+      // The shader's constants are written to 4 decimals.
+      expect(got.z).toBeCloseTo(out.z, 4)
+      expect(got.y).toBeCloseTo(out.y, 4)
+    }
+  })
+
+  it('swinging either way lifts (never drops) the net', () => {
+    const out = { y: 0, z: 0 }
+    rippleDisplace(-0.1, 1, 0, 1, out)
+    expect(out.z).toBeLessThan(0)
+    expect(out.y).toBeGreaterThan(0)
   })
 })

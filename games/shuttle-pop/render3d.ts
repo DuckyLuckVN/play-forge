@@ -411,6 +411,8 @@ export class Court3D {
     this.ring.position.y = 0.03
     scene.add(this.shuttle, this.shadow, this.ring)
 
+    // Drawn after the net mesh (renderOrder 1), so it never blends over a trail / sparkle in front of it.
+    this.trail.mesh.renderOrder = this.fx.points.renderOrder = 2
     scene.add(this.trail.mesh, this.fx.points, this.dust.mesh)
     this.view.onResize((_w, h) => this.fx.setScale(h * this.view.renderer.getPixelRatio()))
     this.view.root.appendChild(this.hud.root)

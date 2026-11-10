@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { PlayerInfo } from '@forge/net/session'
 import { PRESETS } from './presets'
-import { boardNote, boardView, tintCss } from './scoreboard'
+import { boardNote, boardView, Flash, popsOn, SCORED_MS, tintCss } from './scoreboard'
 import { createState, type SpState } from './sim'
 
 const online: PlayerInfo[] = [0, 1].map((i) => ({
@@ -94,5 +94,54 @@ describe('tintCss', () => {
   it('formats a 24-bit colour as #rrggbb', () => {
     expect(tintCss(0xff8fab)).toBe('#ff8fab')
     expect(tintCss(0x00000f)).toBe('#00000f')
+  })
+})
+
+describe('point pop', () => {
+  it('pops only when a drawn score goes up', () => {
+    expect(popsOn(-1, 0)).toBe(false) // first draw
+    expect(popsOn(-1, 7)).toBe(false) // first draw mid-match (joined late / after reset)
+    expect(popsOn(3, 4)).toBe(true)
+    expect(popsOn(4, 4)).toBe(false)
+    expect(popsOn(11, 0)).toBe(false) // rematch
+  })
+})
+
+describe('Flash (scored highlight)', () => {
+  afterEach(() => vi.useRealTimers())
+
+  it('turns itself off after SCORED_MS without any animation event (reduced motion)', () => {
+    vi.useFakeTimers()
+    const seen: boolean[] = []
+    const f = new Flash((on) => seen.push(on))
+    f.trigger()
+    expect(seen).toEqual([true])
+    vi.advanceTimersByTime(SCORED_MS - 1)
+    expect(seen).toEqual([true])
+    vi.advanceTimersByTime(1)
+    expect(seen).toEqual([true, false])
+  })
+
+  it('a quick second point restarts the timer (one off, at the end)', () => {
+    vi.useFakeTimers()
+    const seen: boolean[] = []
+    const f = new Flash((on) => seen.push(on))
+    f.trigger()
+    vi.advanceTimersByTime(SCORED_MS / 2)
+    f.trigger()
+    vi.advanceTimersByTime(SCORED_MS - 1)
+    expect(seen).toEqual([true, true])
+    vi.advanceTimersByTime(1)
+    expect(seen).toEqual([true, true, false])
+  })
+
+  it('reset clears it at once and cancels the pending timer', () => {
+    vi.useFakeTimers()
+    const seen: boolean[] = []
+    const f = new Flash((on) => seen.push(on))
+    f.trigger()
+    f.reset()
+    vi.advanceTimersByTime(SCORED_MS * 2)
+    expect(seen).toEqual([true, false])
   })
 })

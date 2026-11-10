@@ -73,6 +73,35 @@ export function rippleOffset(env: number, phase: number, dx: number): number {
   return env * Math.sin(phase - RIPPLE.k * d) * Math.exp(-RIPPLE.fall * d)
 }
 
+/**
+ * Full vertex displacement for a point with wobble weight `w` at `dx` from the hit: z = the swing
+ * (rippleOffset × w), y = the pendulum lift. Written into `out`. RIPPLE_GLSL is the same in the shader.
+ */
+export function rippleDisplace(
+  env: number,
+  phase: number,
+  dx: number,
+  w: number,
+  out: { y: number; z: number },
+): { y: number; z: number } {
+  const off = w * rippleOffset(env, phase, dx)
+  out.z = off
+  out.y = RIPPLE.lift * Math.abs(off)
+  return out
+}
+
+const f = (n: number) => n.toFixed(4)
+/**
+ * The vertex shader's ripple (inputs: position, aWobble, uNetEnv, uNetPhase, uNetHitX; output:
+ * transformed). net.test.ts checks it against rippleDisplace.
+ */
+export const RIPPLE_GLSL = `
+float d = abs(position.x - uNetHitX);
+float off = aWobble * uNetEnv * sin(uNetPhase - ${f(RIPPLE.k)} * d) * exp(-${f(RIPPLE.fall)} * d);
+transformed.z += off;
+transformed.y += ${f(RIPPLE.lift)} * abs(off);
+`
+
 /** The ripple's state: kicked by a net hit, read every frame (env, phase). Pure. */
 export class NetRipple {
   /** Signed envelope (m): + pushes toward +z. 0 = at rest. */
@@ -146,8 +175,7 @@ interface RippleUniforms {
   uNetHitX: { value: number }
 }
 
-const f = (n: number) => n.toFixed(4)
-/** Patch a built-in material: z offset by the ripple (same maths as rippleOffset × aWobble). */
+/** Patch a built-in material with RIPPLE_GLSL (same maths as rippleDisplace). */
 function addRipple(mat: Material, uniforms: RippleUniforms) {
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uniforms)
@@ -156,17 +184,7 @@ function addRipple(mat: Material, uniforms: RippleUniforms) {
         '#include <common>',
         '#include <common>\nuniform float uNetEnv;\nuniform float uNetPhase;\nuniform float uNetHitX;\nattribute float aWobble;',
       )
-      .replace(
-        '#include <begin_vertex>',
-        `#include <begin_vertex>
-{
-  float d = abs(position.x - uNetHitX);
-  float off = aWobble * uNetEnv * sin(uNetPhase - ${f(RIPPLE.k)} * d) * exp(-${f(RIPPLE.fall)} * d);
-  transformed.z += off;
-  // Swinging out also lifts a little (a pendulum), so the wobble reads from behind the baseline too.
-  transformed.y += ${f(RIPPLE.lift)} * abs(off);
-}`,
-      )
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\n{${RIPPLE_GLSL}}`)
   }
   mat.customProgramCacheKey = () => 'sp-net-ripple'
 }

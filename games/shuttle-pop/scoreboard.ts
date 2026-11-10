@@ -8,9 +8,8 @@
 import { h } from '@forge'
 import { t } from './i18n'
 import { PRESETS } from './presets'
-import { CAP, TARGET, winner } from './rules'
+import { CAP, matchPoint, TARGET, winner } from './rules'
 import { shownName, type SpState } from './sim'
-import { matchPoint } from './hud'
 
 export type BoardNote = 'deuce' | 'cap' | null
 export type MatchWho = 'mine' | 'theirs' | 'both' | null
@@ -68,6 +67,40 @@ export function boardView(s: SpState, leftSide: 0 | 1): BoardView {
   return { left, right, match, note: boardNote(s.score) }
 }
 
+/** How long a won point lights its side (ms): the pop's length (shuttle-pop.css sp-score-pop). */
+export const SCORED_MS = 560
+
+/** A point pops only when a drawn score goes up (not the first draw: last = −1; not a rematch's 0). */
+export const popsOn = (last: number, next: number) => last >= 0 && next > last
+
+/**
+ * The "just scored" highlight: on for SCORED_MS, then off by a timer (not animationend, which never
+ * fires when reduced motion turns the animation off). A new point restarts it; reset clears it.
+ */
+export class Flash {
+  private timer: ReturnType<typeof setTimeout> | null = null
+  constructor(private set: (on: boolean) => void) {}
+
+  trigger() {
+    this.clear()
+    this.set(true)
+    this.timer = setTimeout(() => {
+      this.timer = null
+      this.set(false)
+    }, SCORED_MS)
+  }
+
+  reset() {
+    this.clear()
+    this.set(false)
+  }
+
+  private clear() {
+    if (this.timer !== null) clearTimeout(this.timer)
+    this.timer = null
+  }
+}
+
 const SVG_NS = 'http://www.w3.org/2000/svg'
 /** Shuttlecock glyph for the server (drawn once per side). */
 function shuttleIcon(): SVGSVGElement {
@@ -88,11 +121,17 @@ class Team {
   private nameEl: HTMLElement
   private numEl: HTMLElement
   private last: BoardSide = { name: '', score: -1, tint: '', serving: false, matchPoint: false }
+  private flash = new Flash((on) => {
+    this.el.classList.remove('scored')
+    if (!on) return
+    // Restart the pop on a reused node.
+    void this.el.offsetWidth
+    this.el.classList.add('scored')
+  })
 
   constructor(side: 'left' | 'right') {
     this.nameEl = h('span', { class: 'sp-team-name' })
     this.numEl = h('b', { class: 'sp-team-score' })
-    this.numEl.addEventListener('animationend', () => this.el.classList.remove('scored'))
     this.el = h(
       'div',
       { class: `sp-team ${side}` },
@@ -115,17 +154,13 @@ class Team {
     if (v.score !== was.score) {
       this.numEl.textContent = String(v.score)
       // A point won (not the first draw, not a rematch's 0): pop the number.
-      if (was.score >= 0 && v.score > was.score) {
-        this.el.classList.remove('scored')
-        void this.el.offsetWidth
-        this.el.classList.add('scored')
-      }
+      if (popsOn(was.score, v.score)) this.flash.trigger()
     }
     this.last = v
   }
 
   reset() {
-    this.el.classList.remove('scored')
+    this.flash.reset()
     this.last = { ...this.last, score: -1 }
   }
 }

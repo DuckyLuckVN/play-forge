@@ -21,6 +21,13 @@ export function winner(score: [number, number]): 0 | 1 | null {
   return null
 }
 
+/** `side` wins the match with the next point. */
+export function matchPoint(score: readonly [number, number], side: 0 | 1): boolean {
+  if (winner([score[0], score[1]]) !== null) return false
+  const next: [number, number] = side === 0 ? [score[0] + 1, score[1]] : [score[0], score[1] + 1]
+  return winner(next) === side
+}
+
 /** Even own score → right service box, odd → left. View-relative (screen right = +1) for the server. */
 export function serveBox(server: 0 | 1, serverScore: number): { xSign: 1 | -1 } {
   void server

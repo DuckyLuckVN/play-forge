@@ -5,7 +5,6 @@
 import { h } from '@forge'
 import { t } from './i18n'
 import { STICK_RADIUS } from './joystick'
-import { winner } from './rules'
 import type { SpEvent } from './sim'
 
 /**
@@ -45,12 +44,8 @@ export function newestShotId(events: readonly SpEvent[]): number {
   return newest
 }
 
-/** `side` wins the match with the next point. */
-export function matchPoint(score: readonly [number, number], side: 0 | 1): boolean {
-  if (winner([score[0], score[1]]) !== null) return false
-  const next: [number, number] = side === 0 ? [score[0] + 1, score[1]] : [score[0], score[1] + 1]
-  return winner(next) === side
-}
+/** Moved to rules.ts (re-exported for existing imports). */
+export { matchPoint } from './rules'
 
 /** 'power' = a full-charge Perfect. */
 export type PopKind = 'power' | 'perfect' | 'good' | 'late' | 'miss'

@@ -142,6 +142,12 @@ export interface GameAppOptions<S, I> {
    * so it may hold its own state; save choices where `mount` can read them.
    */
   roomExtras?(): HTMLElement | null
+  /**
+   * A game's own personal settings (saved in this browser, never sent to the room), e.g. Shuttle
+   * Pop's camera. Built once; shown in the top bar's settings group next to language and sound
+   * (behind ⋯ on phones), on menus and during play.
+   */
+  settings?(): HTMLElement | null
 }
 
 const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -257,9 +263,11 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   )
   fan.root.classList.add('pf-fan-anchor')
   fan.root.querySelector('button')!.classList.add('pf-fab')
+  const gameSettings = opts.settings?.() ?? null
   const more = popover(
     { button: iconButton(icons.more, ts('More')), label: ts('More'), class: 'pf-overflow' },
     settingsSlot,
+    ...(gameSettings ? [gameSettings] : []),
     langMenu(),
     audioMenu(),
     leaveBtn,

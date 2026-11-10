@@ -56,6 +56,7 @@ import { canSplit, Footwork, lungeWanted, splitHop, splitsOn } from './footwork'
 import { Hud, newEvents, newestShotId, trackerAction, type PopKind } from './hud'
 import { ScoreCards } from './boardprop'
 import { Net } from './net'
+import { prefs } from './prefs'
 import { boardView, Scoreboard } from './scoreboard'
 import { t } from './i18n'
 import { damp, Gait, GaitEvent } from './locomotion'
@@ -83,16 +84,19 @@ import {
   CAMERA,
   CHEER,
   cameraPose,
+  clampCameraTweak,
   cheerLevel,
   dampFocus,
   framingTightness,
   interpShuttle,
   isTwinAlt,
   moodOf,
+  NO_TWEAK,
   PLAYER_SNAP,
   rallyHits,
   viewOf,
   type CameraPose,
+  type CameraTweak,
 } from './world'
 
 const PALETTE = {
@@ -311,6 +315,9 @@ export class Court3D {
   private pose: CameraPose = { x: 0, y: 0, z: 0, lookX: 0, lookY: 0, lookZ: 0, fov: CAMERA.fov }
   /** Framing for the canvas shape (world.ts framingTightness): tight on phone landscape. */
   private tight = 0
+  /** The player's saved camera preference, and what actually applies at this canvas shape. */
+  private camWant: CameraTweak = prefs.get().camera
+  private camTweak: CameraTweak = NO_TWEAK
   private tmp: Vec3 = { x: 0, y: 0, z: 0 }
   private park: Park
   /** Takes the players' real shadows (the ground is unlit, so it can't). */
@@ -382,6 +389,12 @@ export class Court3D {
       // Snaps on purpose: a resize/rotate already redraws everything at a new size, so easing the
       // framing would only add a second, slower jump.
       this.tight = framingTightness(w, h)
+      this.refitCamera()
+    })
+    // Lives as long as the page: no unsubscribe.
+    prefs.onChange((p) => {
+      this.camWant = p.camera
+      this.refitCamera()
     })
 
     this.players = [makePlayer(0), makePlayer(1)]
@@ -1075,11 +1088,20 @@ export class Court3D {
     this.ringMat.opacity = mine ? 0.95 : 0.45
   }
 
+  /** Clamps the wanted tweak to what keeps the court framed. Allocates: call on change only, never per frame. */
+  private refitCamera() {
+    this.camTweak = clampCameraTweak(this.camWant, {
+      aspect: this.view.width / Math.max(1, this.view.height),
+      tight: this.tight,
+      court: COURT,
+    })
+  }
+
   /** Damped: x slides with the local player, the look-at rises with the shuttle (see world.ts). */
   private placeCamera(targetX: number, shuttleY: number, dt = 1) {
     this.camX += (targetX - this.camX) * (1 - Math.exp(-6 * dt))
     this.focus = dampFocus(this.focus, shuttleY, dt)
-    const p = cameraPose(this.camX, this.focus, this.pose, this.tight)
+    const p = cameraPose(this.camX, this.focus, this.pose, this.tight, this.camTweak)
     const cam = this.view.camera
     if (Math.abs(cam.fov - p.fov) > 1e-3) {
       cam.fov = p.fov

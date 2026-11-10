@@ -79,6 +79,13 @@ export const VI: Dictionary = {
 
   // Camera menu (camera-menu.ts, prefs.ts)
   Default: 'Mặc định',
+  'Camera view': 'Góc nhìn',
+  Height: 'Độ cao',
+  'Camera height': 'Độ cao camera',
+  Tilt: 'Độ nghiêng',
+  'Camera tilt': 'Độ nghiêng camera',
+  'Only changes your own screen.': 'Chỉ thay đổi trên màn hình của bạn.',
+  'Reset view': 'Đặt lại góc nhìn',
 }
 
 export const t = translator(VI)

@@ -1,5 +1,6 @@
 import { h, icon, setLabel } from '@forge/ui/dom'
 import { icons } from '@forge/ui/icons'
+import { guardGameKeys } from '@forge/ui/key-guard'
 import { popover } from '@forge/ui/popover'
 import { slider } from '@forge/ui/slider'
 import { t } from './i18n'
@@ -91,14 +92,7 @@ export function mountCameraButton(view: HTMLElement): { root: HTMLElement; destr
     e.stopPropagation()
     menu.close()
   }
-  // While open no key PRESS reaches the game (window listeners in input.ts), wherever
-  // focus is. Capture, no preventDefault: sliders and buttons keep their native keys; Esc/Tab stay for
-  // the popover. Never keyup: a key held before opening must still release (else stuck movement /
-  // charged swing / live push-to-talk mic).
-  const guardKeys = (e: KeyboardEvent) => {
-    if (e.key === 'Escape' || e.key === 'Tab') return
-    e.stopPropagation()
-  }
+  let unguard = () => {}
   // Tabbing out of the panel (e.g. to chat) closes it so the guard never blocks keys elsewhere.
   const onFocusOut = (e: FocusEvent) => {
     const to = e.relatedTarget as Node | null
@@ -114,11 +108,11 @@ export function mountCameraButton(view: HTMLElement): { root: HTMLElement; destr
       onToggle: (open) => {
         if (open) {
           document.addEventListener('pointerdown', swallowOutside, true)
-          window.addEventListener('keydown', guardKeys, true)
+          unguard = guardGameKeys()
           menu.root.addEventListener('focusout', onFocusOut)
         } else {
           document.removeEventListener('pointerdown', swallowOutside, true)
-          window.removeEventListener('keydown', guardKeys, true)
+          unguard()
           menu.root.removeEventListener('focusout', onFocusOut)
           blurIfHere()
         }
@@ -142,7 +136,7 @@ export function mountCameraButton(view: HTMLElement): { root: HTMLElement; destr
     root,
     destroy() {
       document.removeEventListener('pointerdown', swallowOutside, true)
-      window.removeEventListener('keydown', guardKeys, true)
+      unguard()
       document.removeEventListener('keydown', onEsc)
       menu.destroy()
       root.remove()

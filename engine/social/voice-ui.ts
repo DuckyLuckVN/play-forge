@@ -2,6 +2,7 @@ import './social.css'
 import { h, icon, iconButton, setLabel, toast, type Child } from '../ui/dom'
 import { countBadge } from '../ui/badge'
 import { icons } from '../ui/icons'
+import { isTyping } from '../ui/key-guard'
 import { optionPickers } from '../ui/options'
 import { popover } from '../ui/popover'
 import { slider } from '../ui/slider'
@@ -36,11 +37,6 @@ const JOIN_ERRORS: Record<Exclude<JoinResult, 'ok'>, string> = {
   error: "Couldn't start the microphone.",
 }
 
-/** True while typing in a field, where V is just a letter. */
-const typing = (target: EventTarget | null) =>
-  target instanceof HTMLElement &&
-  (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
-
 /**
  * Top-bar voice controls: a mic button (join / mute / hold to talk) and a
  * settings popover (mode, volumes, per-player volume and mute).
@@ -70,7 +66,7 @@ export function voiceControls(chat: VoiceChat, players: () => VoicePlayer[]): Vo
   mic.oncontextmenu = (e) => e.preventDefault() // long-press menu on phones
 
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.code !== PTT_KEY || e.repeat || typing(e.target) || !chat.joined || chat.mode !== 'ptt') return
+    if (e.code !== PTT_KEY || e.repeat || isTyping(e.target) || !chat.joined || chat.mode !== 'ptt') return
     chat.setHolding(true)
   }
   const onKeyUp = (e: KeyboardEvent) => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { BufferGeometry } from 'three'
+import { DoubleSide, Mesh, MeshBasicMaterial, Raycaster, Vector3, type BufferGeometry } from 'three'
 import { BODIES, FEET, HANDS } from './model/body'
 import { EXTRAS, extraMeshes, type ExtraSpec } from './model/extras'
 import { EARS, HEADS, MUZZLES, STYLES } from './model/head'
@@ -92,16 +92,47 @@ describe('preset table', () => {
       expect(tris(m.head), `${p.name} head`).toBeLessThan(BUDGET.head)
       const extras = m.extras.reduce((a, e) => a + extraMeshes(e.spec), 0)
       expect(extras, `${p.name} extra meshes`).toBeLessThanOrEqual(BUDGET.extraMeshes)
+      // The far twin also draws its outline shells (head hull + head extras' shells).
+      const shells =
+        tris(m.hull) + m.extras.reduce((a, e) => a + (e.hull ? tris(e.hull) * (e.spec.pair ? 2 : 1) : 0), 0)
+      expect(tris(m.hull), `${p.name} hull`).toBeLessThanOrEqual(BUDGET.hull)
+      expect(total + shells, `${p.name} far twin`).toBeLessThan(BUDGET.tris + BUDGET.hull)
+    }
+  })
+
+  it('the low-poly twin hull still wraps the whole head (hair, hats, bows) from every direction', () => {
+    const ray = new Raycaster()
+    // A hair off the centre: rays exactly along the shell's seam edges slip between its triangles.
+    const o = new Vector3(1e-4, 2e-4, 0)
+    const d = new Vector3()
+    for (const p of PRESETS) {
+      const m = modelOf(p)
+      const shell = new Mesh(m.hull, new MeshBasicMaterial({ side: DoubleSide }))
+      const P = m.head.getAttribute('position')
+      let inside = 0
+      let n = 0
+      for (let i = 0; i < P.count; i += 5) {
+        d.fromBufferAttribute(P, i).sub(o)
+        const r = d.length()
+        ray.set(o, d.normalize())
+        const hits = ray.intersectObject(shell)
+        const out = hits.length ? hits[hits.length - 1].distance : 0
+        n++
+        // Every head point sits inside the hull (a hair's breadth of slack on chords between samples).
+        if (out >= r - 0.006) inside++
+      }
+      expect(inside, p.name).toBe(n)
     }
   })
 })
 
 /**
- * Per look: triangles over every drawn bone, head mesh alone, extra meshes. The toy-style humans (Task 18:
- * sculpted hair clumps, knit ribs, kit stripes, chunky sneakers, pleated skirt) need ~22k, heads ~10k; draw calls, not
- * triangles, are the budget that matters on phones (two chibis ≈ 45k triangles).
+ * Per look: triangles over every drawn bone, head mesh alone, the far twin's head outline hull (model/hull.ts),
+ * extra meshes. The toy-style humans (Task 18: sculpted hair clumps, knit ribs, kit stripes, chunky sneakers,
+ * pleated skirt) need ~22k, heads ~10k; draw calls, not triangles, are the budget that matters on phones (two
+ * human chibis ≈ 46k triangles: ~22k each + the far twin's 1.4k hull).
  */
-const BUDGET = { tris: 22500, head: 10000, extraMeshes: 4 }
+const BUDGET = { tris: 22500, head: 10000, hull: 1500, extraMeshes: 4 }
 
 describe('availability flag', () => {
   it('only the four humans are available now', () => {

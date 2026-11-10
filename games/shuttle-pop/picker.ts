@@ -531,6 +531,11 @@ ${layer('back')}${layer('legs')}${layer('body')}${layer('head')}${layer('face')}
 </svg>`
 }
 
+/** Grid columns for `n` cards, at most `max` per row, rows balanced (4 → 4, 12 → 6 / 4, 5 → 3 / 3). */
+export function gridCols(n: number, max: number): number {
+  return n <= max ? Math.max(1, n) : Math.ceil(n / Math.ceil(n / max))
+}
+
 /** Preset cards; a click saves the choice (used from the next match start). */
 export function pickerStrip(): HTMLElement {
   let selected = loadPreset()
@@ -568,7 +573,15 @@ export function pickerStrip(): HTMLElement {
     'section',
     { class: 'sp-chars' },
     h('h3', { class: 'sp-chars-title', textContent: title }),
-    h('div', { class: 'sp-chars-grid' }, ...cards.map((c) => c.card)),
+    h(
+      'div',
+      {
+        class: 'sp-chars-grid',
+        // Columns follow the card count (presets.ts AVAILABLE_IDS): up to 6 per row, 4 on narrow screens.
+        style: `--sp-cols:${gridCols(cards.length, 6)};--sp-cols-narrow:${gridCols(cards.length, 4)}`,
+      },
+      ...cards.map((c) => c.card),
+    ),
   )
   root.setAttribute('aria-label', title)
   return root

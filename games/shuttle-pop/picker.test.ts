@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AVAILABLE_IDS, PRESETS } from './presets'
-import { loadPreset, portrait, savePreset } from './picker'
+import { gridCols, loadPreset, portrait, savePreset } from './picker'
 
 const KEY = 'play-forge:shuttle-pop:preset'
 
@@ -69,5 +69,17 @@ describe('portraits', () => {
       expect(s).not.toMatch(/undefined|NaN/)
     }
     expect(new Set(svgs).size).toBe(PRESETS.length)
+  })
+})
+
+describe('picker grid columns', () => {
+  it('follow the card count: one row up to the cap, then balanced rows', () => {
+    expect(gridCols(AVAILABLE_IDS.length, 6)).toBe(4)
+    expect(gridCols(AVAILABLE_IDS.length, 4)).toBe(4)
+    expect(gridCols(12, 6)).toBe(6)
+    expect(gridCols(12, 4)).toBe(4)
+    expect(gridCols(5, 4)).toBe(3)
+    expect(gridCols(1, 6)).toBe(1)
+    expect(gridCols(0, 6)).toBe(1)
   })
 })

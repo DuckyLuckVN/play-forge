@@ -6,12 +6,13 @@ import { foreArmParts, handParts, hipsParts, shinParts, thighParts, torsoParts, 
 import { EXTRAS, type ExtraSpec } from './extras'
 import { faceGeometry } from './face'
 import { headParts } from './head'
+import { radialHull } from './hull'
 import { legless, rigOf, type Look } from './look'
 import { mergeParts, part, type MergeOpts, type Part } from './merge'
 import { HEAD_R } from './dims'
 import { racketParts } from './racket'
 
-/** Twin outline width (m): the far twin's back-faced shell is the head pushed out this much. */
+/** Twin outline width (m): the far twin's back-faced shell sits this far outside the head. */
 export const OUTLINE_W = 0.022
 
 export interface ExtraGeo {
@@ -30,7 +31,9 @@ export interface ModelGeos {
   head: BufferGeometry
   /** Morphing face decals (face.ts MORPHS). */
   face: BufferGeometry
-  /** Twin outline: the head mesh (hair, hats, ears, horns) pushed out along its normals. */
+  /** The face has alpha-faded decals (toy blush): drawn blended; else opaque. */
+  faceBlend: boolean
+  /** Twin outline: a low-poly shell (hull.ts) just outside the head mesh (hair, hats, ears, horns). */
   hull: BufferGeometry
   upperArm: BufferGeometry
   foreArm: [BufferGeometry, BufferGeometry]
@@ -77,12 +80,21 @@ export function inflate(geo: BufferGeometry, w: number): BufferGeometry {
   return out
 }
 
+/** Any vertex colour alpha below 1 (an RGBA colour attribute). */
+function fades(geo: BufferGeometry): boolean {
+  const C = geo.getAttribute('color')
+  if (!C || C.itemSize < 4) return false
+  for (let i = 0; i < C.count; i++) if (C.getW(i) < 1) return true
+  return false
+}
+
 export function modelOf(src: ModelSource): ModelGeos {
   let m = cache.get(src.id)
   if (!m) {
     const l = src.look
     // Softer creases on the head: the face stays clean and bright.
     const head = mergeParts(headParts(l), { ao: { strength: 0.3 }, surf: 'skin' })
+    const face = faceGeometry(l)
     const rk = `${l.accent}:${l.grip}`
     let racket = rackets.get(rk)
     if (!racket) rackets.set(rk, (racket = mergeParts(racketParts(l), { surf: 'plastic' })))
@@ -93,8 +105,9 @@ export function modelOf(src: ModelSource): ModelGeos {
       // (Humans only: the animals' rounder torso sits inside their shorts and would blot them.)
       hips: mergeParts(hipsParts(l), { ao: { extra: l.body === 'human' ? torsoParts(l) : [] } }),
       head,
-      face: faceGeometry(l),
-      hull: inflate(head, OUTLINE_W),
+      face,
+      faceBlend: fades(face),
+      hull: radialHull(head, OUTLINE_W),
       upperArm: mergeParts(upperArmParts(l), SKIN),
       foreArm: [mergeParts(foreArmParts(l, -1), SKIN), mergeParts(foreArmParts(l, 1), SKIN)],
       hand: [mergeParts(handParts(l, -1), SKIN), mergeParts(handParts(l, 1), SKIN)],

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { BufferGeometry, Mesh, MeshBasicMaterial, Object3D, Vector3 } from 'three'
-import { createChibi, PRESETS, restPose } from './actors'
+import { BufferGeometry, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, Object3D, Vector3 } from 'three'
+import { createChibi, PRESETS, restPose, setToyShading } from './actors'
 import { STRIKE_END } from './arm'
 import { SwingDriver } from './moves'
 import { extraMeshes } from './model/extras'
@@ -223,5 +223,67 @@ describe('chibi rig', () => {
     const b = at(60)
     expect(a.length).toBeGreaterThan(30)
     for (let i = 0; i < a.length; i++) expect(b[i]).toBeCloseTo(a[i], 5)
+  })
+})
+
+describe('face material', () => {
+  it('only faces with faded decals (the toy blush) blend; the others draw opaque', () => {
+    const { chibi } = rig()
+    const face = chibi.root.getObjectByName('face') as Mesh
+    const blends: boolean[] = []
+    for (let n = 0; n < PRESETS.length; n++)
+      for (const alt of [false, true]) {
+        chibi.setPreset(n, alt)
+        const blend = modelOf(PRESETS[n]).faceBlend
+        expect((face.material as MeshBasicMaterial).transparent, PRESETS[n].name).toBe(blend)
+        blends.push(blend)
+      }
+    // The four humans' blush fades; some animal faces have none (or a hard-edged one).
+    expect(blends.slice(0, 8).every(Boolean)).toBe(true)
+    expect(blends.some((b) => !b)).toBe(true)
+  })
+})
+
+describe('toy shading toggle (governor)', () => {
+  /** What three.js keys a material's program on that the toggle could touch (clear coat / sheen defines). */
+  const programState = (m: MeshPhysicalMaterial) => ({
+    clearcoat: m.clearcoat > 0,
+    sheen: m.sheen > 0,
+    key: m.customProgramCacheKey(),
+    version: m.version,
+  })
+  /** The toy uniforms the material's patched shader reads (onBeforeCompile on a stub shader). */
+  function uniformsOf(m: MeshPhysicalMaterial): Record<string, { value: number }> {
+    const sh = { uniforms: {}, vertexShader: '', fragmentShader: '' }
+    m.onBeforeCompile(sh as never, null as never)
+    return sh.uniforms as Record<string, { value: number }>
+  }
+
+  it('off / on only moves uniforms: no program-affecting state changes (no recompile mid-match)', () => {
+    const { chibi } = rig()
+    chibi.setPreset(0, true)
+    const mats = new Set<MeshPhysicalMaterial>()
+    for (const alt of [false, true]) {
+      chibi.setPreset(0, alt)
+      chibi.root.traverse((o) => {
+        if (o instanceof Mesh && o.material instanceof MeshPhysicalMaterial) mats.add(o.material)
+      })
+    }
+    expect(mats.size).toBe(2)
+    const before = [...mats].map(programState)
+    setToyShading(false)
+    expect([...mats].map(programState)).toEqual(before)
+    for (const m of mats) {
+      const u = uniformsOf(m)
+      expect(u.toyRim.value).toBe(0)
+      expect(u.toyLobes.value).toBe(0)
+    }
+    setToyShading(true)
+    expect([...mats].map(programState)).toEqual(before)
+    for (const m of mats) {
+      const u = uniformsOf(m)
+      expect(u.toyRim.value).toBeGreaterThan(0)
+      expect(u.toyLobes.value).toBe(1)
+    }
   })
 })

@@ -368,7 +368,9 @@ export class Court3D {
     this.park = new Park(scene)
     // The chibis' soft reflections: a procedural studio room baked into a PMREM map (no asset files).
     const pmrem = new PMREMGenerator(renderer)
-    setToyEnvironment(pmrem.fromScene(new RoomEnvironment(), 0.04).texture, TOY_ENV)
+    const room = new RoomEnvironment()
+    setToyEnvironment(pmrem.fromScene(room, 0.04).texture, TOY_ENV)
+    room.dispose()
     pmrem.dispose()
 
     this.buildCourt()
@@ -491,12 +493,8 @@ export class Court3D {
       p.ring.shown = true
     }
     this.placeCamera(0, 1)
-    // Scenery, crowd and the shadow variants of every lit material are all in the scene by now. The
-    // chibis' slow-device variant (no clear coat / sheen) too, so the governor's switch never compiles.
-    setToyShading(false)
-    await this.view.renderer.compileAsync(this.view.scene, this.view.camera)
-    this.view.render(0)
-    setToyShading(true)
+    // Scenery, crowd and the shadow variants of every lit material are all in the scene by now (the
+    // chibis' slow-device shading is uniforms only: the same programs).
     await this.view.renderer.compileAsync(this.view.scene, this.view.camera)
     this.view.render(0)
     // Upload every look's merged geometries now (a first-time preset would otherwise upload mid-match).
@@ -806,8 +804,8 @@ export class Court3D {
   /**
    * Shadows off = the shadow pass stops rendering (no draw calls, no depth fill) and the catcher, its
    * only receiver, hides. The shadow map and light stay configured, so no material's program changes:
-   * nothing recompiles, and warm() already compiled the only variant ever used. The chibis' toy rim +
-   * gloss go with them (uniforms only: no recompile either).
+   * nothing recompiles, and warm() already compiled the only variant ever used. The chibis' toy rim,
+   * clear coat and sheen go with them (strength uniforms only, the programs stay: no recompile either).
    */
   private setShadows(on: boolean) {
     this.shadows = on

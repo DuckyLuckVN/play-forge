@@ -615,9 +615,9 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
     const p = state.players.find((q) => q.id === player)
     if (!p || !input) continue
     if (input.t === 'move') p.move = clampDir(input.x, input.z)
-    else if (input.t === 'pick') {
-      if (finite(input.preset)) seedPreset(state, p.id, input.preset)
-    } else if (input.t === 'charge') {
+    // seedPreset checks the (untrusted) preset itself.
+    else if (input.t === 'pick') seedPreset(state, p.id, input.preset)
+    else if (input.t === 'charge') {
       if (input.cancel === true) p.chargeAt = p.pressAt = -1
       // A repeat press keeps the first start (a press already TAPPED waits for its release); between
       // points / the receiver in the serve: ignored.

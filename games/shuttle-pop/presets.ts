@@ -298,7 +298,10 @@ export const PRESETS: readonly Preset[] = [
 
 /**
  * Presets players can pick and the computer wears. Only the four humans for now; the animals/creatures
- * (4..11) stay built and tested but hidden. To bring them back, add their ids here (one place, nothing else changes).
+ * (4..11) stay built and tested but hidden. To bring them back, add their ids here (one place: the picker
+ * grid's columns follow the card count, picker.ts gridCols). Cost per enabled look: Court3D.warm builds and
+ * uploads its merged geometries for both shades before the first match (up to ~24k triangles, tens of ms of
+ * build each), so the first load grows with every id added.
  */
 export const AVAILABLE_IDS: readonly number[] = [0, 1, 2, 3]
 

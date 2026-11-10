@@ -42,6 +42,7 @@ export interface BodyOut {
 }
 
 export const extraOut = (): ExtraOut => ({ rx: 0, ry: 0, rz: 0, glow: true })
+/** Wired when non-human presets are re-enabled (see AVAILABLE_IDS); tested meanwhile. */
 export const bodyOut = (): BodyOut => ({ ry: 0, rz: 0, lift: 0, squash: 0, headZ: 0 })
 
 const TAU = Math.PI * 2
@@ -118,7 +119,10 @@ export function extraPose(ch: Channel, k: 0 | 1, i: FlairIn, o: ExtraOut): Extra
   return o
 }
 
-/** Whole-body fidget (idle, fading out as the character moves) and celebration (happy), into `o`. */
+/**
+ * Whole-body fidget (idle, fading out as the character moves) and celebration (happy), into `o`. Wired when
+ * non-human presets are re-enabled (see AVAILABLE_IDS): the humans have no body flair.
+ */
 export function bodyFlair(f: BodyFlair, i: FlairIn, o: BodyOut): BodyOut {
   const t = i.t + i.seed
   const h = Math.min(1, i.happy)

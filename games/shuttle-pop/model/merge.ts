@@ -61,7 +61,7 @@ const tmpQ = new Quaternion()
 const tmpE = new Euler()
 
 /** The matrix of a placement. */
-export function placeMatrix(o: Place = {}): Matrix4 {
+function placeMatrix(o: Place = {}): Matrix4 {
   const p = o.p ?? [0, 0, 0]
   const s = o.s ?? 1
   if (o.r instanceof Quaternion) tmpQ.copy(o.r)

@@ -44,8 +44,8 @@
 }
 .sp-chars-grid {
   display: grid;
-  /* 4 available characters (presets.ts AVAILABLE_IDS); with all 12 back use 6 columns (4 on narrow screens). */
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* Column counts set from the card count (picker.ts gridCols). */
+  grid-template-columns: repeat(var(--sp-cols, 4), minmax(0, 1fr));
   gap: 8px;
 }
 .sp-char {
@@ -92,6 +92,7 @@
 }
 @media (max-width: 420px) {
   .sp-chars-grid {
+    grid-template-columns: repeat(var(--sp-cols-narrow, 4), minmax(0, 1fr));
     gap: 6px;
   }
   .sp-char-art svg {

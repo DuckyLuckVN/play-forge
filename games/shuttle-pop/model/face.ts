@@ -77,7 +77,7 @@ const ANIMAL_FACE: FaceStyle = {
   mouth: 'cat',
   lashes: true,
 }
-export const FACE_STYLES: Record<FaceKind, FaceStyle> = {
+const FACE_STYLES: Record<FaceKind, FaceStyle> = {
   chibi: CHIBI_FACE,
   chibiLash: { ...CHIBI_FACE, lashes: true },
   chibiBold: { ...CHIBI_FACE, browTilt: 0.012 },

@@ -238,13 +238,15 @@ function cached<M extends Material>(key: string, make: () => M): M {
   if (!m) materials.set(key, (m = make()))
   return m
 }
-/** The unlit face / light material; the far twin's face dims with its body. */
-function faceMat(alt: boolean): MeshBasicMaterial {
-  return cached(alt ? 'faceAlt' : 'face', () => {
+/**
+ * The unlit face / light material; the far twin's face dims with its body. `blend`: the toy faces' blush
+ * fades out at its edge (vertex alpha, ModelGeos.faceBlend); every other face and the lights draw opaque.
+ */
+function faceMat(alt: boolean, blend: boolean): MeshBasicMaterial {
+  return cached(`face${alt ? 'Alt' : ''}${blend ? 'Blend' : ''}`, () => {
     const color = new Color(0xffffff)
     if (alt) color.lerp(ALT_SHADE_COLOR, ALT_SHADE)
-    // Blended: the toy faces' blush fades out at its edge (vertex alpha); everything else is opaque.
-    return new MeshBasicMaterial({ color, vertexColors: true, transparent: true })
+    return new MeshBasicMaterial({ color, vertexColors: true, transparent: blend })
   })
 }
 /**
@@ -254,28 +256,30 @@ function faceMat(alt: boolean): MeshBasicMaterial {
  * environment map (setToyEnvironment: a procedural PMREM room) for soft reflections, and a fresnel rim
  * that lifts silhouettes off the court.
  *
- * Slow devices (setToyShading(false)): the clear-coat and sheen lobes and the rim drop. Both program
- * variants are compiled up front (Court3D.warm), so the switch never compiles mid-match.
+ * Slow devices (setToyShading(false)): the clear-coat and sheen lobes and the rim drop to zero strength.
+ * Uniforms only: the material's clearcoat / sheen stay on (they pick the USE_CLEARCOAT / USE_SHEEN
+ * program), so the switch never changes the program and never compiles mid-match.
  */
 const TOY = { rim: 0.22, clearcoat: 1, sheen: 1 }
-const toyUniforms = { toyRim: { value: TOY.rim } }
+const toyUniforms = { toyRim: { value: TOY.rim }, toyLobes: { value: 1 } }
 const TOY_VERTEX_HEAD = /* glsl */ `#include <common>
 attribute vec3 surf;
 varying vec3 vSurf;`
 const TOY_FRAGMENT_HEAD = /* glsl */ `#include <common>
 varying vec3 vSurf;
-uniform float toyRim;`
+uniform float toyRim;
+uniform float toyLobes;`
 /** Per vertex roughness. */
 const TOY_ROUGHNESS = /* glsl */ `#include <roughnessmap_fragment>
 roughnessFactor = vSurf.x;`
-/** Per vertex clear coat + sheen weights. */
+/** Per vertex clear coat + sheen weights, scaled by toyLobes (0 = both lobes off: plain PBR). */
 const TOY_LOBES = /* glsl */ `#include <lights_physical_fragment>
 #ifdef USE_CLEARCOAT
-  material.clearcoat *= vSurf.y;
+  material.clearcoat *= vSurf.y * toyLobes;
 #endif
 #ifdef USE_SHEEN
   // Fabric sheen takes the fabric's own colour (no white haze).
-  material.sheenColor *= vSurf.z * diffuseColor.rgb;
+  material.sheenColor *= vSurf.z * toyLobes * diffuseColor.rgb;
 #endif`
 const TOY_RIM = /* glsl */ `{
     vec3 toyN = normalize(normal);
@@ -286,14 +290,10 @@ const TOY_RIM = /* glsl */ `{
 
 const kits: MeshPhysicalMaterial[] = []
 
-/** Full toy lobes (clear coat, sheen, rim) on, or off for slow devices (no recompile once warmed). */
+/** Full toy lobes (clear coat, sheen, rim) on, or off for slow devices (uniforms only: no recompile). */
 export function setToyShading(on: boolean): void {
   toyUniforms.toyRim.value = on ? TOY.rim : 0
-  for (const m of kits) {
-    if (m.clearcoat > 0 === on && m.sheen > 0 === on) continue
-    m.clearcoat = on ? TOY.clearcoat : 0
-    m.sheen = on ? TOY.sheen : 0
-  }
+  toyUniforms.toyLobes.value = on ? 1 : 0
 }
 
 /** Environment map (a PMREM texture) for every chibi material, at `intensity`; null removes it. */
@@ -446,7 +446,7 @@ export function createChibi(preset: number): Chibi {
   // Head: shape + hair + headwear (one mesh), the morphing face, the twin outline.
   const head = new Group()
   const headMesh = bone('head')
-  const face = new Mesh(empty, faceMat(false))
+  const face = new Mesh(empty, faceMat(false, true))
   face.name = 'face'
   // Outline for the far twin: a back-faced shell around the head (per look: covers hair, hats, ears).
   const hullMat = cached('hull', () => new MeshBasicMaterial({ color: OUTLINE, side: BackSide }))
@@ -463,7 +463,7 @@ export function createChibi(preset: number): Chibi {
     const pivot = new Group()
     const mesh = new Mesh(empty, kit)
     mesh.name = 'extra'
-    const glow = new Mesh(empty, faceMat(false))
+    const glow = new Mesh(empty, faceMat(false, false))
     glow.name = 'glow'
     const shell = new Mesh(empty, hullMat)
     shell.name = 'hull'
@@ -520,7 +520,7 @@ export function createChibi(preset: number): Chibi {
       face.geometry = g.face
       face.updateMorphTargets()
     }
-    face.material = faceMat(alt)
+    face.material = faceMat(alt, g.faceBlend)
     hull.geometry = g.hull
     hull.visible = alt
     used = 0
@@ -538,7 +538,7 @@ export function createChibi(preset: number): Chibi {
         v.mesh.geometry = e.geo
         v.mesh.material = mat
         v.glow.geometry = e.glow ?? empty
-        v.glow.material = faceMat(alt)
+        v.glow.material = faceMat(alt, false)
         v.glow.visible = e.glow !== null
         v.shell.geometry = e.hull ?? empty
         v.shell.visible = alt && e.hull !== null

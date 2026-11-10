@@ -13,6 +13,7 @@ import {
   CORRECT,
   correct,
   dampFocus,
+  interpShuttle,
   isTwinAlt,
   lerpV,
   moodOf,
@@ -30,6 +31,19 @@ describe('view mapping', () => {
     const { flip } = viewOf(1)
     const p = { x: 1.2, z: 4.5 }
     expect([p.x * flip, p.z * flip]).toEqual([-1.2, -4.5])
+  })
+})
+
+describe('interpShuttle', () => {
+  it('lerps a flight step, snaps a placement', () => {
+    const out = { x: 0, y: 0, z: 0 }
+    const o = { x: 0, y: 0, z: 0 }
+    const a = interpShuttle(o, { x: 1, y: 0, z: 0 }, 0.25, out)
+    expect(a.pos.x).toBeCloseTo(0.25)
+    expect(a.snap).toBe(false)
+    const b = interpShuttle(o, { x: 2.5, y: 0, z: 0 }, 0.25, out)
+    expect(b.pos.x).toBe(2.5)
+    expect(b.snap).toBe(true)
   })
 })
 

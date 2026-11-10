@@ -82,8 +82,8 @@ import {
   cheerLevel,
   dampFocus,
   framingTightness,
+  interpShuttle,
   isTwinAlt,
-  lerpV,
   moodOf,
   rallyHits,
   viewOf,
@@ -109,8 +109,6 @@ const SHUTTLE_R = 0.08
 const SHUTTLE_RIM = 1.35
 /** A player jumping further than this between two ticks was placed (new serve): snap, don't glide. */
 const PLAYER_SNAP = 1.5
-/** Shuttle moves ≤ 0.75 m a tick in flight; more is a reset into the server's hand. */
-const SHUTTLE_SNAP = 2
 /**
  * Motion feel. Weight damping rates (1/s) for the ready stance, the smash crouch and moods; squash and
  * lean springs (stiffness, damping ratio, sub-step) and their kicks (velocity): + squash / − stretch,
@@ -765,8 +763,7 @@ export class Court3D {
     // Shuttle (+ its shadow for depth).
     const ps = prev.shuttle.pos
     const cs = curr.shuttle.pos
-    const snap = Math.abs(cs.x - ps.x) + Math.abs(cs.y - ps.y) + Math.abs(cs.z - ps.z) > SHUTTLE_SNAP
-    const pos = lerpV(ps, cs, snap ? 1 : a, this.tmp)
+    const { pos, snap } = interpShuttle(ps, cs, a, this.tmp)
     this.shuttle.position.set(pos.x * flip, Math.max(SHUTTLE_R, pos.y), pos.z * flip)
     this.shadow.position.x = pos.x * flip
     this.shadow.position.z = pos.z * flip

@@ -16,6 +16,21 @@ export function lerpV(a: Vec3, b: Vec3, t: number, out: Vec3): Vec3 {
   return out
 }
 
+/** Shuttle moves <= 0.75 m a tick in flight; more is a reset into the server's hand. */
+export const SHUTTLE_SNAP = 2
+
+/** Shuttle draw position between two states; a jump over SHUTTLE_SNAP (a placement) snaps to `curr`. */
+export function interpShuttle(
+  prev: Vec3,
+  curr: Vec3,
+  alpha: number,
+  out: Vec3,
+): { pos: Vec3; snap: boolean } {
+  const snap =
+    Math.abs(curr.x - prev.x) + Math.abs(curr.y - prev.y) + Math.abs(curr.z - prev.z) > SHUTTLE_SNAP
+  return { pos: lerpV(prev, curr, snap ? 1 : alpha, out), snap }
+}
+
 /**
  * Camera behind the near baseline, looking toward the net. Metres / degrees. Pulled back and a touch
  * wide so a Perfect clear (apex ~8.5 m) stays on screen with the look-at rising with the shuttle,

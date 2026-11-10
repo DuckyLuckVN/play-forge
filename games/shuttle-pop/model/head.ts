@@ -81,9 +81,15 @@ export const HEAD_SIZE = 0.6
  * Head rest placement for a rig (head-bone y in rig space, uniform scale). The head shrinks toward its
  * old bottom, so it stays seated on the shoulders (no neck gap). Hats, ears and antenna ride along.
  */
-export function headRest(rig: Rig, kind: HeadKind): { y: number; scale: number } {
+export function headRest(rig: Rig, kind: HeadKind, size: number = HEAD_SIZE): { y: number; scale: number } {
   const half = kind === 'box' ? BOX_HEAD.b : HEAD_R
-  return { y: rig.headY - half * HEAD_SCALE[kind] * (1 - HEAD_SIZE), scale: HEAD_SCALE[kind] * HEAD_SIZE }
+  return { y: rig.headY - half * HEAD_SCALE[kind] * (1 - size), scale: HEAD_SCALE[kind] * size }
+}
+
+/** Rig-space y of the top of the (bare) head at rest: the single source for the shuttle occlusion box. */
+export function headTop(rig: Rig, kind: HeadKind, size: number = HEAD_SIZE): number {
+  const half = kind === 'box' ? BOX_HEAD.b : HEAD_R
+  return headRest(rig, kind, size).y + half * HEAD_SCALE[kind] * size
 }
 
 export const HEADS: Record<HeadKind, (l: Look) => Part[]> = {

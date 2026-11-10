@@ -1192,11 +1192,13 @@ export class Court3D {
       const r = this.visRect
       const tanY = Math.tan((cam.fov * Math.PI) / 360)
       for (let i = 0; i < Math.min(curr.players.length, this.players.length); i++) {
-        const root = this.players[i].chibi.root
+        const chibi = this.players[i].chibi
+        const root = chibi.root
         const k = root.scale.y
+        const top = chibi.top
         const { x, y, z } = root.position
         // Body centre: depth + NDC x; bottom / top: NDC y.
-        v.set(x, y + ((VIS.body.bottom + VIS.body.top) / 2) * k, z).applyMatrix4(cam.matrixWorldInverse)
+        v.set(x, y + ((VIS.body.bottom + top) / 2) * k, z).applyMatrix4(cam.matrixWorldInverse)
         r.depth = -v.z
         if (r.depth <= 0) continue
         v.applyMatrix4(cam.projectionMatrix)
@@ -1205,7 +1207,7 @@ export class Court3D {
         r.x1 = v.x + hw
         v.set(x, y + VIS.body.bottom * k, z).project(cam)
         r.y0 = v.y
-        v.set(x, y + VIS.body.top * k, z).project(cam)
+        v.set(x, y + top * k, z).project(cam)
         r.y1 = v.y
         if (r.y1 < r.y0) {
           const t = r.y0

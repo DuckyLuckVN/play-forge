@@ -37,7 +37,7 @@ import { extraOut, extraPose, type FlairIn } from './flair'
 import type { ExtraSpec } from './model/extras'
 import { blinkAt, faceMix } from './model/face'
 import { legless, rigOf } from './model/look'
-import { headRest } from './model/head'
+import { headRest, headTop } from './model/head'
 import { modelOf } from './model/model'
 import { celebrateSpin, hop, type Hop } from './moves'
 import { PRESETS } from './presets'
@@ -134,6 +134,8 @@ export interface Chibi {
    * be faded at a time. Independent of head size / pose; setPreset keeps the current opacity.
    */
   setOpacity(a: number): void
+  /** Rig-space y of the top of this look's head at rest (occlusion box, see visibility.ts). */
+  readonly top: number
 }
 
 const OUTLINE = 0x3b2f4a
@@ -500,6 +502,9 @@ export function createChibi(preset: number): Chibi {
   let isAlt = false
   let faceBlend = false
   let opacity = 1
+  /** Fade materials in use since the last applyMaterials (opacity-only updates while fading). */
+  let fadeMats: { opacity: number }[] = []
+  let top = 0
 
   /** Kit / face / light materials for the current shade + opacity (normal, or the shared fade variants). */
   function applyMaterials() {
@@ -507,7 +512,10 @@ export function createChibi(preset: number): Chibi {
     const mat = kitMat(isAlt, fade)
     const glow = faceMat(isAlt, false, fade)
     const faceM = faceMat(isAlt, faceBlend, fade)
-    if (fade) mat.opacity = glow.opacity = faceM.opacity = opacity
+    if (fade) {
+      mat.opacity = glow.opacity = faceM.opacity = opacity
+      fadeMats = [mat, glow, faceM]
+    }
     for (const m of bones) m.material = mat
     face.material = faceM
     for (const v of pivots) {
@@ -519,7 +527,12 @@ export function createChibi(preset: number): Chibi {
   function setOpacity(a: number) {
     const next = a >= 1 ? 1 : Math.max(0, a)
     if (next === opacity) return
+    const wasFade = opacity < 1
     opacity = next
+    if (wasFade && next < 1) {
+      for (const m of fadeMats) m.opacity = next
+      return
+    }
     applyMaterials()
   }
 
@@ -535,6 +548,7 @@ export function createChibi(preset: number): Chibi {
     torso.position.y = r.hipY
     const rest = headRest(r, p.look.head)
     head.position.y = rest.y - r.hipY
+    top = headTop(r, p.look.head)
     for (let i = 0; i < 2; i++) {
       const s = i === 0 ? -1 : 1
       legs[i].hip.position.set(s * r.hipX, r.hipY, 0)
@@ -763,7 +777,15 @@ export function createChibi(preset: number): Chibi {
 
   setPreset(preset)
   setPose(restPose(), 0)
-  return { root, setPose, setPreset, setOpacity }
+  return {
+    root,
+    setPose,
+    setPreset,
+    setOpacity,
+    get top() {
+      return top
+    },
+  }
 }
 
 /**

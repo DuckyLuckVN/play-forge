@@ -314,6 +314,27 @@ describe('fade (local player covering the shuttle)', () => {
     for (let i = 0; i < meshes.length; i++) expect(meshes[i].material).toBe(before[i])
   })
 
+  it('opacity changes while fading only write .opacity (no material swap); crossing 1 restores originals', () => {
+    const { chibi } = rig(0)
+    const meshes: Mesh[] = []
+    chibi.root.traverse((o) => {
+      if (o instanceof Mesh && o.name !== 'hull') meshes.push(o)
+    })
+    const before = meshes.map((m) => m.material)
+    chibi.setOpacity(0.5)
+    const faded = meshes.map((m) => m.material)
+    for (const a of [0.6, 0.7, 0.55]) {
+      chibi.setOpacity(a)
+      expect(meshes.map((m) => m.material)).toEqual(faded)
+      for (let i = 0; i < meshes.length; i++) {
+        expect(meshes[i].material).toBe(faded[i])
+        if (faded[i] !== before[i]) expect((faded[i] as Material).opacity).toBe(a)
+      }
+    }
+    chibi.setOpacity(1)
+    for (let i = 0; i < meshes.length; i++) expect(meshes[i].material).toBe(before[i])
+  })
+
   it('a preset swap while faded stays faded; the far twin (alt) never fades by itself', () => {
     const { chibi } = rig(0)
     chibi.setOpacity(0.6)

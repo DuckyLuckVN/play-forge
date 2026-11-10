@@ -21,8 +21,8 @@ export const VIS = {
   /** Per second, recovery. */
   fadeOut: 5,
   ghostAt: 0.5,
-  /** Metres, for the render projection of the player's body box. */
-  body: { bottom: 0.15, top: 1.3, halfW: 0.32 },
+  /** Metres, for the render projection of the player's body box (the top is the look's head, Chibi.top). */
+  body: { bottom: 0.15, halfW: 0.32 },
   halo: { size: 0.34, color: '#fff1a8', opacity: 0.55, px: 32 },
 } as const
 

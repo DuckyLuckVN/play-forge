@@ -1,0 +1,69 @@
+@layer pf.components {
+  /* ---------- Rotate card (landscape.ts) ---------- */
+  /* Covers the game (not the top bar) while a touch phone is held upright. */
+
+  .pf-rotate {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: var(--pf-space-6);
+    background: var(--pf-night);
+    z-index: var(--pf-z-rotate);
+    touch-action: none;
+  }
+  .pf-rotate[hidden] {
+    display: none;
+  }
+  .pf-rotate-card {
+    display: grid;
+    justify-items: center;
+    gap: var(--pf-space-4);
+    width: min(320px, 100%);
+    padding: var(--pf-space-7);
+    background: var(--pf-felt);
+    border: 2px solid var(--pf-rim);
+    border-radius: var(--pf-radius-lg);
+    box-shadow: var(--pf-lift-lg), var(--pf-drop);
+    text-align: center;
+  }
+  .pf-rotate-icon {
+    display: block;
+    color: var(--pf-yolk);
+    animation: pf-rotate-turn 2.4s ease-in-out infinite;
+  }
+  .pf-rotate-icon svg {
+    display: block;
+  }
+  .pf-rotate-title {
+    margin: 0;
+    font-size: var(--pf-fs-xl);
+    font-weight: var(--pf-fw-bold);
+    color: var(--pf-chalk);
+  }
+  .pf-rotate-hint {
+    margin: 0;
+    font-size: var(--pf-fs-md);
+    color: var(--pf-haze);
+  }
+  /* Upright, a quarter turn to the side, hold, back. */
+  @keyframes pf-rotate-turn {
+    0%,
+    20% {
+      transform: rotate(0deg);
+    }
+    50%,
+    80% {
+      transform: rotate(-90deg);
+    }
+    100% {
+      transform: rotate(0deg);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pf-rotate-icon {
+      animation: none;
+      transform: rotate(-90deg);
+    }
+  }
+}

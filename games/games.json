@@ -34,5 +34,11 @@
     "title": "Synthstride",
     "description": "Dance across a neon grid to the beat. Read the warned tiles, dodge on the drop, grab the notes. Solo or with up to 4 friends.",
     "players": "1–4"
+  },
+  {
+    "id": "shuttle-pop",
+    "title": "Shuttle Pop",
+    "description": "Chibi badminton. Time your swing for a Perfect, smash on high balls. Play the computer or a friend online.",
+    "players": "1–2"
   }
 ]

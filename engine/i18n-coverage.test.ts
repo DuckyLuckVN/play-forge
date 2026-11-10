@@ -34,6 +34,7 @@ const SAME_EVERYWHERE = [
   'Caro',
   'Fuse',
   'Phantom Drift',
+  'Shuttle Pop',
   'Snake',
   'Synthstride',
   'English',

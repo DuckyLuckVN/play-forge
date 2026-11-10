@@ -1,0 +1,406 @@
+/* Shuttle Pop's own palette (pinks, golds, pop colours), named once here; everything else uses
+   the shared tokens (docs/styling.md). */
+:root {
+  --sp-white: #fff;
+  --sp-berry: #ff8fab;
+  --sp-pink: #ff6b8b;
+  --sp-pink-deep: #e63e6d;
+  --sp-pink-dark: #b42a55;
+  --sp-pink-light: #ff9db5;
+  --sp-blush: #ffe3ec;
+  --sp-blush-deep: #ffb3c7;
+  --sp-gold: #ffd166;
+  --sp-amber: #f4a52c;
+  --sp-orange: #ff9f1c;
+  --sp-cream: #fff6c9;
+  --sp-cocoa: #3b2400;
+  --sp-rust: #7a3d00;
+  --sp-mint: #9ff0c8;
+  --sp-peach: #ffd9a8;
+  --sp-rose: #ffb3c1;
+}
+
+/* Shuttle Pop: the no-WebGL note (the court itself is a three.js canvas). */
+.sp-nogl {
+  max-width: 32ch;
+  margin: auto;
+  padding: 16px 20px;
+  border-radius: 14px;
+  background: var(--pf-pit);
+  color: var(--pf-chalk);
+  text-align: center;
+}
+
+/* Character picker (start screen). */
+.sp-chars {
+  display: grid;
+  gap: 8px;
+}
+.sp-chars-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--pf-haze);
+}
+.sp-chars-grid {
+  display: grid;
+  /* Column counts set from the card count (picker.ts gridCols). */
+  grid-template-columns: repeat(var(--sp-cols, 4), minmax(0, 1fr));
+  gap: 8px;
+}
+.sp-char {
+  --sp-tint: var(--sp-berry);
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 6px 4px 8px;
+  border: 2px solid var(--pf-rim);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--sp-tint) 22%, transparent), transparent 70%),
+    var(--pf-pit);
+  color: var(--pf-chalk);
+  font: inherit;
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+.sp-char:hover {
+  transform: translateY(-2px);
+}
+.sp-char:focus-visible {
+  outline: 3px solid var(--pf-yolk);
+  outline-offset: 2px;
+}
+.sp-char.active {
+  border-color: var(--sp-tint);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--sp-tint) 45%, transparent),
+    0 0 18px color-mix(in srgb, var(--sp-tint) 35%, transparent);
+}
+.sp-char-art svg {
+  display: block;
+  width: 56px;
+  height: 63px;
+}
+.sp-char-name {
+  font-size: 14px;
+  font-weight: 700;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 420px) {
+  .sp-chars-grid {
+    grid-template-columns: repeat(var(--sp-cols-narrow, 4), minmax(0, 1fr));
+    gap: 6px;
+  }
+  .sp-char-art svg {
+    width: 46px;
+    height: 52px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sp-char {
+    transition: none;
+  }
+}
+
+/* ---------- In-match overlay (hud.ts) ---------- */
+.sp-hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  font-family: var(--pf-font, inherit);
+}
+.sp-badges {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+}
+.sp-badge {
+  padding: 4px 14px;
+  border-radius: 999px;
+  background: rgb(36 26 48 / 0.72);
+  color: var(--sp-white);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  box-shadow: 0 3px 10px rgb(0 0 0 / 0.18);
+}
+.sp-badge[hidden] {
+  display: none;
+}
+.sp-badge.in {
+  animation: sp-badge-in 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+/* Match point: hot pill that breathes; yellow when it's ours, pink when it's theirs. */
+.sp-match {
+  font-size: 17px;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, var(--sp-pink), var(--sp-pink-deep));
+}
+.sp-match[data-who='mine'] {
+  background: linear-gradient(180deg, var(--sp-gold), var(--sp-amber));
+  color: var(--sp-cocoa);
+}
+.sp-match[data-who='both'] {
+  background: linear-gradient(90deg, var(--sp-gold), var(--sp-pink));
+  color: var(--sp-cocoa);
+}
+.sp-match:not([hidden]) {
+  animation:
+    sp-badge-in 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both,
+    sp-breathe 1.4s ease-in-out 420ms infinite;
+}
+@keyframes sp-badge-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes sp-breathe {
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+/* Timing pop: overshoot pop-in, then an eased float up and fade (per-segment easing, time-based). */
+.sp-pop {
+  position: absolute;
+  left: 0;
+  top: 0;
+  opacity: 0;
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--sp-white);
+  -webkit-text-stroke: 1px rgb(40 24 56 / 0.55);
+  text-shadow:
+    0 2px 0 rgb(40 24 56 / 0.55),
+    0 4px 12px rgb(0 0 0 / 0.25);
+  transform: translate(-50%, -50%);
+  will-change: transform, opacity;
+}
+.sp-pop.show {
+  animation: sp-pop 900ms both;
+}
+.sp-pop-perfect {
+  font-size: 40px;
+  color: var(--sp-gold);
+  background: linear-gradient(180deg, var(--sp-cream) 10%, var(--sp-gold) 55%, var(--sp-orange));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 1.5px var(--sp-rust);
+  filter: drop-shadow(0 0 10px rgb(255 209 102 / 0.75)) drop-shadow(0 3px 0 rgb(122 61 0 / 0.5));
+  text-shadow: none;
+}
+.sp-pop-perfect.show {
+  animation-duration: 1000ms;
+}
+/* Full-charge Perfect: the Perfect pop, hotter and bigger. */
+.sp-pop-power {
+  font-size: 46px;
+  color: var(--sp-orange);
+  background: linear-gradient(
+    180deg,
+    var(--sp-cream) 5%,
+    var(--sp-gold) 40%,
+    var(--sp-orange) 70%,
+    var(--sp-rose)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 1.5px var(--sp-rust);
+  filter: drop-shadow(0 0 14px rgb(255 122 69 / 0.85)) drop-shadow(0 3px 0 rgb(122 0 30 / 0.5));
+  text-shadow: none;
+}
+.sp-pop-power.show {
+  animation-duration: 1100ms;
+}
+.sp-pop-good {
+  color: var(--sp-mint);
+}
+.sp-pop-late {
+  color: var(--sp-peach);
+  font-size: 26px;
+}
+.sp-pop-miss {
+  color: var(--sp-rose);
+  font-size: 24px;
+}
+.sp-pop.smash {
+  --tilt: -8deg;
+  filter: drop-shadow(0 0 10px rgb(255 77 109 / 0.8)) drop-shadow(0 2px 0 rgb(122 0 30 / 0.45));
+}
+.sp-pop.smash.sp-pop-perfect {
+  filter: drop-shadow(0 0 12px rgb(255 77 109 / 0.8)) drop-shadow(0 3px 0 rgb(122 0 30 / 0.5));
+}
+/* The opponent's: smaller and dimmer (both players still see every grade). */
+.sp-pop.theirs {
+  --size: 0.68;
+  --dim: 0.75;
+}
+@keyframes sp-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(var(--tilt, 0deg)) scale(calc(var(--size, 1) * 0.3));
+    animation-timing-function: cubic-bezier(0.34, 1.7, 0.64, 1);
+  }
+  22% {
+    opacity: var(--dim, 1);
+    transform: translate(-50%, -50%) rotate(var(--tilt, 0deg)) scale(var(--size, 1));
+    animation-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1);
+  }
+  60% {
+    opacity: var(--dim, 1);
+    transform: translate(-50%, calc(-50% - 18px)) rotate(var(--tilt, 0deg)) scale(var(--size, 1));
+    animation-timing-function: cubic-bezier(0.55, 0, 0.75, 0.4);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% - 34px)) rotate(var(--tilt, 0deg)) scale(calc(var(--size, 1) * 0.92));
+  }
+}
+@media (max-width: 600px) {
+  .sp-pop {
+    font-size: 24px;
+  }
+  .sp-pop-perfect {
+    font-size: 32px;
+  }
+  .sp-pop-power {
+    font-size: 36px;
+  }
+  .sp-badge {
+    font-size: 13px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sp-pop.show {
+    animation-name: sp-pop-calm;
+  }
+  .sp-match:not([hidden]),
+  .sp-badge.in {
+    animation: none;
+  }
+}
+@keyframes sp-pop-calm {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(var(--size, 1));
+  }
+  15%,
+  70% {
+    opacity: var(--dim, 1);
+    transform: translate(-50%, -50%) scale(var(--size, 1));
+  }
+}
+
+/* ---------- Touch controls (hud.ts TouchPad, input.ts) ---------- */
+/* While a match is playing (main.ts) the whole stage swallows touches, not just the court. */
+.pf-stage.sp-playing {
+  touch-action: none;
+}
+/* The court takes every touch: no scroll, pinch, double-tap zoom, long-press menu or selection. */
+.sp-touchable {
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.sp-touch {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.sp-touch[hidden] {
+  display: none;
+}
+/* Floating stick: positioned by its centre (left/top) while held; rests dim bottom-left. */
+.sp-stick {
+  --sp-stick-r: 48px;
+  position: absolute;
+  width: calc(var(--sp-stick-r) * 2);
+  height: calc(var(--sp-stick-r) * 2);
+  margin: calc(var(--sp-stick-r) * -1) 0 0 calc(var(--sp-stick-r) * -1);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(255 255 255 / 0.1) 40%, rgb(255 255 255 / 0.22));
+  border: 2px solid rgb(255 255 255 / 0.55);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
+  display: grid;
+  place-items: center;
+  transition: opacity 0.25s ease;
+}
+.sp-stick.idle {
+  left: calc(var(--sp-stick-r) + 22px + env(safe-area-inset-left, 0px));
+  top: calc(100% - var(--sp-stick-r) - 22px - env(safe-area-inset-bottom, 0px));
+  opacity: 0.35;
+}
+.sp-knob {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, var(--sp-white), var(--sp-blush) 55%, var(--sp-blush-deep));
+  box-shadow:
+    0 3px 8px rgb(0 0 0 / 0.25),
+    inset 0 -3px 0 rgb(230 62 109 / 0.25);
+}
+/* Swing: big round thumb button bottom-right; squashes and glows while pressed. */
+.sp-swing {
+  position: absolute;
+  right: calc(20px + env(safe-area-inset-right, 0px));
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+  color: var(--sp-white);
+  background: radial-gradient(
+    circle at 35% 28%,
+    var(--sp-pink-light),
+    var(--sp-pink) 55%,
+    var(--sp-pink-deep)
+  );
+  border: 3px solid rgb(255 255 255 / 0.85);
+  box-shadow:
+    0 6px 0 var(--sp-pink-dark),
+    0 10px 18px rgb(0 0 0 / 0.25);
+  opacity: 0.9;
+  transition:
+    transform 0.08s ease,
+    box-shadow 0.08s ease;
+}
+.sp-swing svg {
+  width: 48px;
+  height: 48px;
+}
+.sp-swing.down {
+  transform: translateY(5px) scale(0.94);
+  box-shadow:
+    0 1px 0 var(--sp-pink-dark),
+    0 0 22px rgb(255 209 102 / 0.75);
+}
+@media (prefers-reduced-motion: reduce) {
+  .sp-stick,
+  .sp-swing {
+    transition: none;
+  }
+}

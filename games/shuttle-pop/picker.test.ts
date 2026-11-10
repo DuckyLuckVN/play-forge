@@ -1,0 +1,85 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { AVAILABLE_IDS, PRESETS } from './presets'
+import { gridCols, loadPreset, portrait, savePreset } from './picker'
+
+const KEY = 'play-forge:shuttle-pop:preset'
+
+function memoryStorage(): Storage {
+  const data = new Map<string, string>()
+  return {
+    get length() {
+      return data.size
+    },
+    clear: () => data.clear(),
+    getItem: (k) => data.get(k) ?? null,
+    key: (i) => [...data.keys()][i] ?? null,
+    removeItem: (k) => void data.delete(k),
+    setItem: (k, v) => void data.set(k, String(v)),
+  }
+}
+
+afterEach(() => vi.unstubAllGlobals())
+
+describe('preset storage', () => {
+  it('defaults to 0 with nothing stored', () => {
+    vi.stubGlobal('localStorage', memoryStorage())
+    expect(loadPreset()).toBe(0)
+  })
+
+  it('round-trips a saved preset', () => {
+    vi.stubGlobal('localStorage', memoryStorage())
+    savePreset(2)
+    expect(loadPreset()).toBe(2)
+  })
+
+  it('returns 0 when storage throws', () => {
+    const boom = () => {
+      throw new Error('blocked')
+    }
+    vi.stubGlobal('localStorage', { getItem: boom, setItem: boom })
+    expect(() => savePreset(3)).not.toThrow()
+    expect(loadPreset()).toBe(0)
+  })
+
+  it('keeps every available saved choice (the four humans)', () => {
+    const store = memoryStorage()
+    vi.stubGlobal('localStorage', store)
+    for (const n of AVAILABLE_IDS) {
+      store.setItem(KEY, String(n))
+      expect(loadPreset()).toBe(n)
+    }
+  })
+
+  it.each(['4', '7', String(PRESETS.length - 1), String(PRESETS.length), '99', '-1', '1.5', 'abc', ''])(
+    'returns 0 for a hidden or invalid stored value %j',
+    (raw) => {
+      const store = memoryStorage()
+      store.setItem(KEY, raw)
+      vi.stubGlobal('localStorage', store)
+      expect(loadPreset()).toBe(0)
+    },
+  )
+})
+
+describe('portraits', () => {
+  it('every preset gets its own portrait SVG built from its look keys', () => {
+    const svgs = PRESETS.map((p) => portrait(p.look))
+    for (const s of svgs) {
+      expect(s.startsWith('<svg')).toBe(true)
+      expect(s).not.toMatch(/undefined|NaN/)
+    }
+    expect(new Set(svgs).size).toBe(PRESETS.length)
+  })
+})
+
+describe('picker grid columns', () => {
+  it('follow the card count: one row up to the cap, then balanced rows', () => {
+    expect(gridCols(AVAILABLE_IDS.length, 6)).toBe(4)
+    expect(gridCols(AVAILABLE_IDS.length, 4)).toBe(4)
+    expect(gridCols(12, 6)).toBe(6)
+    expect(gridCols(12, 4)).toBe(4)
+    expect(gridCols(5, 4)).toBe(3)
+    expect(gridCols(1, 6)).toBe(1)
+    expect(gridCols(0, 6)).toBe(1)
+  })
+})

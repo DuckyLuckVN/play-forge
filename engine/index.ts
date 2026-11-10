@@ -88,6 +88,7 @@ export {
   onFullscreenChange,
   toggleFullscreen,
 } from './ui/fullscreen'
+export { landscapeGuard, lockLandscape, needsRotate, unlockLandscape, watchPortrait } from './ui/landscape'
 export { popover, type Popover, type PopoverOptions } from './ui/popover'
 export { icons } from './ui/icons'
 export { applyTheme, FONT, PLAYER_COLORS, playerColor, theme } from './ui/theme'

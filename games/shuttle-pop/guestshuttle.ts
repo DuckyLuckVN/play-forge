@@ -52,6 +52,8 @@ export const PREDICT = {
 /** The guest's own swing, as just sent to the host (the sim's resolveSwing / tapOnPress inputs). */
 export interface OwnSwing {
   side: 0 | 1
+  /** The swinger's player id: a host `bonk` of this id drops the prediction (omitted: any bonk on `side`). */
+  id?: string
   /** Held direction, view-relative (the swing's x/z; a press: the current move). */
   held: { x: number; z: number }
   /** Hold-to-charge power 0..1 (chargeOf of the local hold, like the sim). */
@@ -97,6 +99,8 @@ interface Prediction extends PredictedHit {
   until: number
   /** Offset making the bridge meet the host flight at `until` (0 before confirmation). */
   shift: Vec3
+  /** The swinger's player id, as given in the OwnSwing. */
+  id?: string
 }
 
 /** Below this (m) a prediction-born offset counts as gone (normal reconcile rules again). */
@@ -311,6 +315,7 @@ export class GuestShuttle {
       flight,
       until: Infinity,
       shift: { x: 0, y: 0, z: 0 },
+      id: sw.id,
     }
     return true
   }
@@ -340,10 +345,26 @@ export class GuestShuttle {
       p.shift.y = this.b.pos.y - this.a.pos.y
       p.shift.z = this.b.pos.z - this.a.pos.z
       p.until = hit.tick
-    } else if (mine('whiff') || !isFlight(s.phase) || s.tick >= p.from + PREDICT.confirmTicks) {
+    } else if (
+      mine('whiff') ||
+      this.bonked(s, p) ||
+      !isFlight(s.phase) ||
+      s.tick >= p.from + PREDICT.confirmTicks
+    ) {
       this.pred = null
     } else return
     this.predErr = true
+  }
+
+  /**
+   * The own swinger was bonked at / after the swing and the host has no hit pending for it: the host drops
+   * the swing, so the prediction goes too (a pending contact still resolves: the host `hit` confirms it).
+   */
+  private bonked(s: ShuttleSample, p: Prediction): boolean {
+    if (s.shuttle.pending?.side === p.side) return false
+    return s.events.some(
+      (e) => e.k === 'bonk' && e.tick >= p.from && (p.id ? e.who === p.id : e.side === p.side),
+    )
   }
 
   private clearErr(snapped: boolean): void {

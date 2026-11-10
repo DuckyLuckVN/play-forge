@@ -14,11 +14,12 @@ import { CHARGE, chargeOf } from './charge'
 import { COURT, DT, type CourtDims } from './physics'
 import { POWER_SWING, recoveryAfter } from './power'
 import { stepPlayer, type SpPlayer } from './sim'
+import { STUN } from './stun'
 import { correct, CORRECT } from './world'
 
 /** The fields of the authoritative player the predictor reads. */
 export type AuthPlayer = Pick<SpPlayer, 'side' | 'x' | 'z' | 'vx' | 'vz' | 'move'> &
-  Partial<Pick<SpPlayer, 'act'>>
+  Partial<Pick<SpPlayer, 'act' | 'stunAt'>>
 
 /** Local steps of prediction kept (~1 s): the longest round trip it can line up. */
 const HIST = 64
@@ -58,6 +59,10 @@ export class GuestPredictor {
   private ackZ = 0
   private past = { x: 0, z: 0 }
   private fixed = { x: 0, z: 0 }
+  /** Local step twin of the host's `stunAt` (−1 = none): the stun lock is mirrored from the host's report. */
+  private stunFrom = -1
+  /** The last host `stunAt` seen (a change = a fresh bonk). */
+  private seenStun = -1
 
   /** The host's court (state.court from `st`; render sets it each frame): the run-out bounds. */
   court: CourtDims = COURT
@@ -71,6 +76,11 @@ export class GuestPredictor {
   private recover = 0
   /** The local ability press (`at` in local steps): its air / floor lock slows the run like the sim's. */
   private localAct: Act | null = null
+
+  /** The host-reported stun lock is active now (no move / swing / ability). */
+  get stunned(): boolean {
+    return this.stunFrom >= 0 && this.steps > this.stunFrom && this.steps < this.stunFrom + STUN.ticks
+  }
 
   /** The local ability press as just sent, null = none since the last placement. */
   get act(): Act | null {
@@ -142,6 +152,8 @@ export class GuestPredictor {
       this.acc = 0
       this.recover = 0
       this.localAct = null
+      this.stunFrom = -1
+      this.seenStun = -1
       this.sampleStep = -1
       this.pendN = 0
       this.ackX = auth.move.x
@@ -163,7 +175,8 @@ export class GuestPredictor {
       const base = this.recover > 0 ? POWER_SWING.recoveryMoveMul : this.charging ? CHARGE.moveMul : 1
       // The press's own step (e = 0) runs free, like the host's arrival tick (see startAct).
       const act = this.localAct && this.steps > this.localAct.at ? this.localAct : null
-      const mul = Math.min(base, actMoveMul(act, this.steps))
+      // The host's bonk tick itself ran free, like the press step: the lock holds from the next one.
+      const mul = this.stunned ? 0 : Math.min(base, actMoveMul(act, this.steps))
       if (this.recover > 0) this.recover--
       stepPlayer(p, DT, mul, this.court)
       this.steps++
@@ -183,6 +196,7 @@ export class GuestPredictor {
       this.sample.x = auth.x
       this.sample.z = auth.z
       this.adoptHostAct(auth.act, tick)
+      this.adoptHostStun(auth.stunAt ?? -1, tick)
     }
 
     // 3. Correct: the past prediction toward the host's state of that moment, shifting the present.
@@ -210,6 +224,14 @@ export class GuestPredictor {
     const at = this.sampleStep - (tick - host.at)
     if (Math.abs(at - mine.at) > ACT_MATCH) return
     this.localAct = { k: host.k, at: mine.at, dx: host.dx, dz: host.dz }
+  }
+
+  /** A new host stun: lock the local twin from the same step and drop the charge (the host did, no recovery). */
+  private adoptHostStun(stunAt: number, tick: number): void {
+    if (stunAt < 0 || stunAt === this.seenStun) return
+    this.seenStun = stunAt
+    this.stunFrom = (this.lag >= 0 ? this.steps - this.lag : this.steps) + (stunAt - tick)
+    this.setCharging(false)
   }
 
   private echo(move: { x: number; z: number }) {

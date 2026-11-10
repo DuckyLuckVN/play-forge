@@ -700,6 +700,81 @@ describe('GuestShuttle own-hit prediction', () => {
   })
 })
 
+describe('GuestShuttle own prediction vs a bonk', () => {
+  const ON = { x: 0.3, z: 4 }
+  const ME = 'b'
+
+  /** A guest that predicted its own hit on the `incoming()` rally; `feed` pushes later host states (events added). */
+  function predicted() {
+    const states = host(incoming(), 80)
+    const C = closest(incoming(), ON)
+    const clock = new RenderClock(60)
+    const gs = new GuestShuttle(clock)
+    let n = 0
+    const feed = (s: SpState) => {
+      clock.onState(s.tick)
+      gs.push(s)
+      clock.update(DT)
+      gs.update(DT)
+    }
+    while (clock.seenTick() < C && n < states.length) feed(structuredClone(states[n++]))
+    const sw: OwnSwing = { side: 1, id: ME, held: { x: 0, z: -1 }, charge: 0, player: ON, tap: false }
+    expect(gs.predictHit(sw)).toBe(true)
+    const from = gs.predicted()!.from
+    const next = (mut: (s: SpState) => void) => {
+      const s = structuredClone(states[n++])
+      mut(s)
+      feed(s)
+    }
+    return { gs, from, next }
+  }
+  const bonk = (tick: number, who: string): SpEvent => ({ id: 90, tick, k: 'bonk', side: 1, who, by: 'a' })
+
+  it('an own bonk drops an unanswered own prediction', () => {
+    const { gs, from, next } = predicted()
+    next((s) => s.events.push(bonk(from + 1, ME)))
+    expect(gs.predicted()).toBeNull()
+  })
+
+  it('a teammate bonk, an older bonk, or a confirmed pending keeps it', () => {
+    const a = predicted()
+    a.next((s) => s.events.push(bonk(a.from + 1, 'mate')))
+    expect(a.gs.predicted()).not.toBeNull()
+    const b = predicted()
+    b.next((s) => s.events.push(bonk(b.from - 1, ME)))
+    expect(b.gs.predicted()).not.toBeNull()
+    const c = predicted()
+    const pending = (s: SpState) => {
+      s.shuttle.pending = {
+        atTick: s.tick + 3,
+        side: 1,
+        kind: 'clear',
+        grade: 'good',
+        aimX: 0,
+        charge: 0,
+        fromTick: s.tick + 3,
+      }
+      s.events.push(bonk(c.from + 1, ME))
+    }
+    c.next(pending)
+    expect(c.gs.predicted()).not.toBeNull()
+    // The host's own hit then confirms it as usual.
+    c.next((s) => {
+      pending(s)
+      s.events.push({ id: 91, tick: c.from + 2, k: 'hit', side: 1, grade: 'good', shot: 'clear' })
+    })
+    expect(c.gs.predicted()).not.toBeNull()
+    expect((c.gs as unknown as { pred: { until: number } }).pred.until).toBe(c.from + 2)
+  })
+
+  it('without an id, a bonk on the swinger side drops it', () => {
+    const { gs, from, next } = predicted()
+    ;(gs as unknown as { pred: { id?: string } }).pred.id = undefined
+    next((s) => s.events.push(bonk(from + 1, 'mate')))
+    expect(gs.predicted()).toBeNull()
+  })
+})
+
 // ---- Own jump / lunge: the guest picks the host's move and predicts the host's shot. ----
 
 describe('GuestShuttle own jump / lunge prediction', () => {

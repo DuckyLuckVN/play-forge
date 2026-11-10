@@ -6,6 +6,7 @@ import { GuestPredictor, type AuthPlayer } from './predict'
 import { CHARGE } from './charge'
 import { courtDims } from './courtsize'
 import { POWER_SWING } from './power'
+import { STUN } from './stun'
 import { MOVE_SPEED, shuttlePopGame as game, speedMulOf, stepPlayer, type SpInput } from './sim'
 import { CORRECT } from './world'
 
@@ -393,5 +394,92 @@ describe('guest prediction of the ability lock', () => {
     expect(pred.act).toBeNull()
     for (let i = 0; i < 12; i++) pred.update(DT, a, 2, false)
     expect(Math.hypot(pred.vx, pred.vz)).toBeCloseTo(MOVE_SPEED, 6)
+  })
+})
+
+describe('guest prediction of the stun lock', () => {
+  const LAG = 4
+
+  /** A host sim (two humans, serve phase: the receiver runs free) + a predictor fed its states `LAG / 2` ticks late. */
+  function setup() {
+    const s = game.setup(
+      [0, 1].map((i) => ({ id: `p${i}`, name: `P${i}`, slot: i, ready: true, connected: true })),
+      1,
+      {},
+    )
+    s.phase = 'serve'
+    const me = s.players.find((p) => p.side !== s.server)!
+    const pred = new GuestPredictor()
+    pred.update(DT, { ...me, move: { ...me.move } }, s.tick, true)
+    const queue: { at: number; a: AuthPlayer; tick: number }[] = []
+    const moves: { at: number; x: number; z: number }[] = []
+    let last: { a: AuthPlayer; tick: number } = { a: { ...me, move: { ...me.move } }, tick: s.tick }
+    let k = 0
+    /** One step of both sides; `want` = a new held move; `bonk` = bonk the guest's player on the host this tick. */
+    const run = (want?: { x: number; z: number }, bonk = false) => {
+      k++
+      if (want) {
+        pred.setMove(want.x, want.z)
+        moves.push({ at: k + LAG / 2, ...want })
+      }
+      const inputs: InputEvent<SpInput>[] = moves
+        .filter((m) => m.at === k)
+        .map((m) => ({ player: me.id, input: { t: 'move', x: m.x, z: m.z } }))
+      game.tick(s, inputs)
+      if (bonk) me.stunAt = s.tick
+      queue.push({ at: k + LAG / 2, a: { ...me, move: { ...me.move } }, tick: s.tick })
+      for (const q of queue.filter((q) => q.at === k)) last = q
+      pred.update(DT, last.a, last.tick, false)
+    }
+    return { s, me, pred, run }
+  }
+
+  it('mirrors the host stun: no drift while stunned, free after', () => {
+    const { me, pred, run } = setup()
+    run({ x: 1, z: 0 })
+    for (let i = 0; i < 40; i++) run()
+    for (let i = 0; i < 6; i++) run(undefined, i === 0) // bonked; the report arrives LAG / 2 ticks later
+    for (let i = 0; i < STUN.ticks + 10; i++) {
+      run()
+      if (i >= LAG + 6) {
+        expect(pred.x, `x ${i}`).toBeCloseTo(me.x, 6)
+        expect(pred.z, `z ${i}`).toBeCloseTo(me.z, 6)
+      }
+    }
+    expect(pred.stunned).toBe(false)
+    expect(me.stunAt).toBeGreaterThanOrEqual(0)
+    const x = me.x
+    run({ x: -1, z: 0 }) // turn back
+    for (let i = 0; i < 20; i++) run()
+    expect(me.x).not.toBeCloseTo(x, 3) // free again: both run
+    run({ x: 0, z: 0 })
+    for (let i = 0; i < 30; i++) run()
+    expect(pred.x).toBeCloseTo(me.x, 6) // the same stop, once it reached the host
+  })
+
+  it('a new stun drops the local charge (no slowdown, no recovery)', () => {
+    const pred = new GuestPredictor()
+    pred.update(DT, auth(0, 3), 1, true)
+    pred.setCharging(true)
+    for (let i = 0; i < 80; i++) pred.update(DT, auth(0, 3), 1, false) // a full hold
+    pred.update(DT, { ...auth(0, 3), stunAt: 1 }, 2, false)
+    expect(pred.charging).toBe(false)
+    pred.release(true)
+    pred.setMove(1, 0)
+    // Past the lock: full speed, no recovery slowdown.
+    for (let i = 0; i < STUN.ticks + 30; i++) pred.update(DT, { ...auth(0, 3), stunAt: 1 }, 2, false)
+    expect(pred.stunned).toBe(false)
+    expect(Math.abs(pred.vx)).toBeCloseTo(MOVE_SPEED, 3)
+  })
+
+  it('snap clears the stun', () => {
+    const pred = new GuestPredictor()
+    pred.update(DT, auth(0, 3), 1, true)
+    pred.update(DT, { ...auth(0, 3), stunAt: 1 }, 2, false)
+    pred.update(DT, auth(0, 3), 3, false)
+    pred.update(DT, auth(0, 3), 3, false)
+    expect(pred.stunned).toBe(true)
+    pred.update(DT, auth(0, 3), 4, true)
+    expect(pred.stunned).toBe(false)
   })
 })

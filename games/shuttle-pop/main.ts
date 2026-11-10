@@ -70,8 +70,9 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement, ctx: Moun
   const offEmotes = mountEmotes(court.surface, session, ctx.reactions, court)
 
   // The last state's view of our seat: may it charge (rally / own serve), would a swing count (also off
-  // cooldown)? Else the sim ignores it.
+  // cooldown)? Else the sim ignores it. The predictor's stun lock (the newest host report) also refuses.
   const seatCan = (can: typeof canSwing) => {
+    if (predictor?.stunned) return false
     const s = smooth.curr
     const me = s?.players.find((p) => p.id === session.selfId)
     return !!s && !!me && can(s, me)
@@ -91,7 +92,19 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement, ctx: Moun
     if (!guest || !predictor || !me) return
     const player = { x: predictor.x, z: predictor.z }
     // Heard at once; the host's answering hit is then skipped (Court3D's echo).
-    if (!guest.shuttle.predictHit({ side: me.side, held, charge, player, tap, pressTick, act })) return
+    if (
+      !guest.shuttle.predictHit({
+        side: me.side,
+        id: session.selfId,
+        held,
+        charge,
+        player,
+        tap,
+        pressTick,
+        act,
+      })
+    )
+      return
     const hit = guest.shuttle.predicted()
     if (hit) court?.ownHitPredicted(hit)
   }

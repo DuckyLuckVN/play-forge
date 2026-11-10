@@ -51,10 +51,42 @@ const shelf = h(
       h('span', { class: 'pf-btn primary', textContent: t('Play') }),
     )
     card.style.setProperty('--i', String(i))
-    card.addEventListener('click', () => playSound(UI_SOUNDS.click))
+    const play = card.querySelector<HTMLElement>('.pf-btn')!
+    card.addEventListener('click', (e) => {
+      playSound(UI_SOUNDS.click)
+      // Opening in a new tab (ctrl/cmd/middle click) leaves this page as it is.
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
+      card.classList.add('loading')
+      play.classList.add('loading')
+      play.textContent = t('Loading…')
+    })
+    // Fetch the game while the pointer heads for it, so the click opens it faster.
+    const warm = () => prefetch(card.href)
+    card.addEventListener('pointerenter', warm, { once: true })
+    card.addEventListener('touchstart', warm, { once: true, passive: true })
+    card.addEventListener('focus', warm, { once: true })
     return card
   }),
 )
+
+const prefetched = new Set<string>()
+/** Hint the browser to download a game page ahead of the click (once per page). */
+function prefetch(href: string) {
+  if (prefetched.has(href)) return
+  prefetched.add(href)
+  document.head.append(h('link', { rel: 'prefetch', href }))
+}
+
+// Back from a game (page restored from the back/forward cache): drop the "Loading…" state.
+window.addEventListener('pageshow', (e) => {
+  if (!e.persisted) return
+  for (const card of document.querySelectorAll<HTMLElement>('.lc-game.loading')) {
+    card.classList.remove('loading')
+    const play = card.querySelector('.pf-btn')!
+    play.classList.remove('loading')
+    play.textContent = t('Play')
+  }
+})
 
 /** Card footer: the player count, one line, pinned above the button so every card lines up. */
 function gameMeta(players: string) {

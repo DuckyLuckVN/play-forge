@@ -225,6 +225,7 @@ export const caroGame: GameDefinition<CaroState, CaroInput> = {
     {
       id: 'solo',
       label: t('Playing alone'),
+      aloneOnly: true,
       default: 'normal',
       choices: [
         { value: 'easy', label: t('Easy AI') },

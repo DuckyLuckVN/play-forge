@@ -24,6 +24,8 @@
     gap: 10px;
     padding: 10px 16px;
     min-height: 60px;
+    /* Solid, so a scrolled room panel slides under the bar instead of showing through. */
+    background: var(--pf-night);
   }
   .pf-bar-title {
     font-size: 22px;

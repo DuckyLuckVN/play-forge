@@ -1,4 +1,6 @@
 import { formatNumber } from './core/i18n'
+import { preloadGate } from './core/preload'
+import { dismissSplash } from './ui/splash'
 import './ui/base.css'
 import { playMusic, type Track } from './audio/music'
 import { playSound, UI_SOUNDS } from './audio/sound'
@@ -40,7 +42,6 @@ import { h, icon, iconButton, toast } from './ui/dom'
 import { fullscreenButton } from './ui/fullscreen'
 import {
   guideButton,
-  guideCard,
   guideSeen,
   howToPlayMode,
   markGuideSeen,
@@ -132,6 +133,12 @@ export interface GameAppOptions<S, I> {
    * timing calibration button). Called each time the menu is drawn.
    */
   menuExtras?(): HTMLElement | null
+  /**
+   * Extra controls in an online room, under the player's name and avatar
+   * (e.g. a character picker). Built once per room and kept across redraws,
+   * so it may hold its own state; save choices where `mount` can read them.
+   */
+  roomExtras?(): HTMLElement | null
 }
 
 const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -288,6 +295,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   // ---------- Session lifecycle ----------
   let session: Session<S, I> | null = null
   let cleanup: (() => void) | null = null
+  /** The room's "you" controls (name, avatar, game extras): built once per session, kept across redraws. */
+  let roomSelf: { session: Session<S, I>; el: HTMLElement } | null = null
   let room = ''
   /** Guest: progress of joining the room, until the host's lobby arrives. */
   let joinTrack: JoinTrack | null = null
@@ -363,6 +372,12 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       s.on('hostGone', () => {
         store.save(null)
         showMessage(t('The room closed'), t('The host left the room. Create a new room to keep playing.'))
+      }),
+      s.on('kicked', () => {
+        // Leave first (the host keeps broadcasting lobbies that would redraw the room).
+        const code = room
+        leave()
+        showMessage(t('You were removed'), t('The host removed you from room {room}.', { room: code }))
       }),
     ]
     if (!extra.offline)
@@ -551,8 +566,11 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     if (!s.isHost && !s.hostConnected) return showHostLost()
     switch (s.phase) {
       case 'countdown':
+        // A room's first-time guide closes when the match starts (it would swallow game keys).
+        if (!s.offline) closeFirstGuide?.()
         return show(null)
       case 'playing':
+        if (!s.offline) closeFirstGuide?.()
         return s.lobby.paused ? showPaused(s) : show(null)
       case 'finished':
         return s.offline ? showSoloResult(s) : showRoom(s)
@@ -631,10 +649,10 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   }
 
   // Start buttons wait for the game's preload (see GameAppOptions.preload).
-  let loading = !!opts.preload
+  const preload = preloadGate(opts.preload ? () => opts.preload!() : undefined)
   const gated = new Map<HTMLButtonElement, string>()
   function gate(...buttons: HTMLButtonElement[]) {
-    if (!loading) return
+    if (!preload.pending) return
     for (const b of buttons) {
       gated.set(b, b.textContent ?? '')
       b.disabled = true
@@ -642,18 +660,14 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       b.textContent = t('Loading…')
     }
   }
-  opts
-    .preload?.()
-    .catch((err) => console.warn('Preload failed; starting anyway.', err))
-    .finally(() => {
-      loading = false
-      for (const [b, label] of gated) {
-        b.disabled = false
-        b.classList.remove('loading')
-        b.textContent = label
-      }
-      gated.clear()
-    })
+  void preload.whenReady().then(() => {
+    for (const [b, label] of gated) {
+      b.disabled = false
+      b.classList.remove('loading')
+      b.textContent = label
+    }
+    gated.clear()
+  })
 
   function showMenu(error = '') {
     render()
@@ -863,6 +877,40 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   const seenTokens = new Set<string>()
   const seenReady = new Set<string>()
 
+  /** Host: the player whose "remove?" confirmation is showing in the room. */
+  let kickAsk: string | null = null
+
+  /** Host: "Remove Ana from the room?" under the seats, or nothing. */
+  function kickConfirm(s: Session<S, I>) {
+    const target = s.isHost ? s.lobby.players.find((p) => p.id === kickAsk) : undefined
+    if (!target) {
+      kickAsk = null
+      return null
+    }
+    const yes = button(
+      t('Remove'),
+      () => {
+        kickAsk = null
+        s.kick(target.id)
+      },
+      'danger',
+    )
+    const no = button(
+      t('Cancel'),
+      () => {
+        kickAsk = null
+        render()
+      },
+      'quiet',
+    )
+    return h(
+      'div',
+      { class: 'pf-kick-ask', role: 'alertdialog' },
+      h('p', { textContent: t('Remove {name} from the room?', { name: target.name }) }),
+      h('div', { class: 'pf-row' }, no, yes),
+    )
+  }
+
   function seats(s: Session<S, I>) {
     const { players, hostId, phase } = s.lobby
     const scores = phase === 'finished' && s.state && opts.scores ? opts.scores(s.state) : []
@@ -914,6 +962,12 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
             title: isSelf ? t('{name} (you)', { name: p.name }) : p.name,
           },
           token,
+          s.isHost &&
+            !isSelf &&
+            iconButton(icons.cross, t('Remove {name}', { name: p.name }), () => {
+              kickAsk = p.id
+              render()
+            }),
           h('div', { class: 'pf-seat-name', textContent: p.name }),
           h('div', {
             class: `pf-seat-status${p.connected && (isHost || p.ready) ? ' ok' : ''}`,
@@ -946,7 +1000,64 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     )
   }
 
+  /** A titled block of the room panel (players / you / game settings). */
+  function roomSection(title: string, ...body: (HTMLElement | false | null)[]) {
+    return h(
+      'section',
+      { class: 'pf-room-sec' },
+      h('h3', { class: 'pf-room-sec-title', textContent: title }),
+      ...body,
+    )
+  }
+  const hint = (text: string) => h('p', { class: 'pf-room-sec-hint', textContent: text })
+
+  /** Name, avatar and the game's room extras for the local player; the same nodes every redraw. */
+  function roomSelfControls(s: Session<S, I>): HTMLElement {
+    if (roomSelf?.session === s) return roomSelf.el
+    const name = h('input', {
+      class: 'pf-input',
+      value: storedName() || t('Player'),
+      maxLength: 16,
+      id: 'pf-room-name',
+    })
+    // Sent on commit (Enter / leaving the field), not per key: each change redraws the room.
+    const commit = () => {
+      const value = name.value.trim() || t('Player')
+      name.value = value
+      storedName(value)
+      if (value !== s.self?.name) s.setProfile(value, storedAvatar())
+    }
+    name.onchange = commit
+    name.onkeydown = (e) => {
+      if (e.key === 'Enter') name.blur()
+    }
+    const el = h(
+      'div',
+      { class: 'pf-room-self' },
+      h(
+        'div',
+        { class: 'pf-identity' },
+        avatarPicker(
+          storedAvatar(),
+          (id) => {
+            storedAvatar(id)
+            s.setProfile(storedName() || t('Player'), id)
+          },
+          { closeOnPick: true },
+        ),
+        h('label', { class: 'pf-field', htmlFor: 'pf-room-name' }, t('Your name'), name),
+      ),
+      opts.roomExtras?.() ?? null,
+    )
+    roomSelf = { session: s, el }
+    return el
+  }
+
   function showRoom(s: Session<S, I>) {
+    // Our own controls survive the redraw; keep the field or card the player was using focused.
+    const focused = roomSelf?.el.contains(document.activeElement)
+      ? (document.activeElement as HTMLElement)
+      : null
     const finished = s.phase === 'finished'
     const outcome = finished && s.state && opts.outcome?.(s.state, s.selfId)
     const self = s.self
@@ -980,11 +1091,23 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
           playSound(ready ? UI_SOUNDS.unready : UI_SOUNDS.ready)
           s.setReady(!ready)
         },
-        ready ? 'wide' : 'primary wide',
+        ready ? 'wide' : 'go wide',
       )
       action.autofocus = true
     }
 
+    // A lone host's options only (e.g. the computer's level) hide once a second player sits down.
+    const shownOptions = (def.options ?? []).filter((o) => !o.aloneOnly || s.lobby.players.length <= 1)
+    const settings = optionPickers(
+      shownOptions,
+      s.lobby.options,
+      s.isHost
+        ? (id, value) => {
+            s.setOption(id, value)
+            saveOptions(s.lobby.options)
+          }
+        : null,
+    )
     show(
       h(
         'div',
@@ -995,26 +1118,39 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         finished && opts.ranking && rankList(s),
         finished && s.state && opts.summary && summaryGrid(opts.summary(s.state, s.selfId)),
         roomCodeBox(),
-        seats(s),
-        optionPickers(
-          def.options ?? [],
-          s.lobby.options,
-          s.isHost
-            ? (id, value) => {
-                s.setOption(id, value)
-                saveOptions(s.lobby.options)
-              }
-            : null,
+        roomSection(
+          t('Players {n}/{max}', { n: s.lobby.players.length, max: def.maxPlayers }),
+          seats(s),
+          kickConfirm(s),
         ),
-        h('p', { class: 'pf-note', textContent: note }),
-        offlineNote(),
-        action,
-        // First time in this game: the controls right here while waiting (seen once a match starts).
-        guide && !finished && (guideSeen(def.id) ? howToPlay() : guideCard(guide)),
-        button(t('Leave room'), leave, 'quiet'),
+        self && !s.offline && roomSection(t('You'), roomSelfControls(s)),
+        settings && roomSection(t('Game settings'), settings, !s.isHost && hint(t('Set by the host'))),
+        h(
+          'div',
+          { class: 'pf-room-actions' },
+          h('p', { class: 'pf-note', textContent: note }),
+          offlineNote(),
+          action,
+          h(
+            'div',
+            { class: 'pf-row' },
+            guide && !finished && howToPlay(),
+            button(t('Leave room'), leave, 'quiet'),
+          ),
+        ),
       ),
       finished ? `results-${s.lobby.round}` : 'room',
     )
+    if (focused?.isConnected) focused.focus({ preventScroll: true })
+    // First time in this game: the guide pops up once over the room (like solo's first play).
+    if (guide && !finished && !closeFirstGuide && !guideSeen(def.id)) {
+      closeFirstGuide = openGuide(guide, {
+        onClose() {
+          closeFirstGuide = null
+          markGuideSeen(def.id)
+        },
+      })
+    }
   }
 
   function showSoloResult(s: Session<S, I>) {
@@ -1071,12 +1207,42 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   const hashRoom = /room=([A-Z0-9]+)/i.exec(location.hash)?.[1]?.toUpperCase()
   if (isReload && saved && saved.room === hashRoom) {
     room = saved.room
-    toast(saved.host ? t('Reopening room {room}', { room }) : t('Rejoining room {room}', { room }))
-    begin(createTransport(appId, room), saved.host, { restore: saved.host ? saved.snapshot : undefined })
+    const label = saved.host ? t('Reopening room {room}', { room }) : t('Rejoining room {room}', { room })
+    // Mount only after the game's preload (e.g. Shuttle Pop's 3D court), like the start buttons do.
+    if (preload.pending) {
+      show(
+        h('div', { class: 'pf-panel' }, h('h2', { class: 'pf-heading', textContent: label }), waitingDots()),
+        'rejoining',
+      )
+    } else toast(label)
+    void preload.whenReady().then(() => {
+      begin(createTransport(appId, room), saved.host, { restore: saved.host ? saved.snapshot : undefined })
+    })
+  } else if (hashRoom?.length === 5 && def.maxPlayers > 1) {
+    store.save(null)
+    joinFromLink(hashRoom)
   } else {
     store.save(null)
     showMenu()
   }
+
+  /** Opened from an invite link: straight into the room (name, avatar and extras can change there). */
+  function joinFromLink(code: string) {
+    room = code
+    playerId = randomId()
+    showJoining()
+    void preload.whenReady().then(() => {
+      if (room === code && !session) begin(createTransport(appId, room), false)
+    })
+  }
+  // An invite link pasted into this already-open tab only changes the hash (no reload).
+  if (def.maxPlayers > 1)
+    window.addEventListener('hashchange', () => {
+      const code = /room=([A-Z0-9]+)/i.exec(location.hash)?.[1]?.toUpperCase()
+      if (code?.length === 5 && !session && room !== code) joinFromLink(code)
+    })
+  // The first screen is up: fade out the page's loading splash.
+  dismissSplash()
 }
 
 function summaryGrid(rows: SummaryRow[]): HTMLElement | null {

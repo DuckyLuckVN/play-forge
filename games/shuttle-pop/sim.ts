@@ -718,6 +718,7 @@ export const shuttlePopGame: GameDefinition<SpState, SpInput> = {
     {
       id: 'solo',
       label: t('Playing alone'),
+      aloneOnly: true,
       default: 'normal',
       choices: [
         { value: 'easy', label: t('Easy AI') },

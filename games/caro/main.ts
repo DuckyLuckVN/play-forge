@@ -425,9 +425,19 @@ createGameApp<CaroState, CaroInput>({
   def: caroGame,
   title: 'Caro',
   tagline: t('Five in a row on notebook paper. Beat the computer, a friend beside you, or anyone online.'),
-  controls: t(
-    'Click a square to play (on a phone, tap twice). Arrow keys and Enter work too. Press D to draw on the board, U to undo.',
-  ),
+  guide: [
+    {
+      action: t('Place a piece'),
+      note: t('On a phone, tap twice'),
+      keys: [['Enter']],
+      mouse: 'click',
+      touch: 'doubleTap',
+    },
+    { action: t('Move the cursor'), keys: [['Up', 'Left', 'Down', 'Right']] },
+    { action: t('Draw on the board'), keys: [['D']] },
+    { action: t('Undo'), keys: [['U']] },
+    { action: t('Five in a row wins'), note: t('Across, down or diagonal'), tip: true },
+  ],
   music: STUDY,
   mount,
   outcome(state, selfId) {

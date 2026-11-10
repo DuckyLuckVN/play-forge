@@ -78,6 +78,9 @@
 .lc-game:hover .lc-cover svg {
   transform: scale(1.03);
 }
+.lc-game.loading {
+  cursor: progress;
+}
 .lc-cover {
   overflow: hidden;
   border-radius: var(--pf-radius-md);

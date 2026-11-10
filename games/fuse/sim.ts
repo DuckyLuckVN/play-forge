@@ -352,6 +352,7 @@ export const fuseGame: GameDefinition<FuseState, FuseInput> = {
     {
       id: 'rival',
       label: t('Playing alone'),
+      aloneOnly: true,
       default: 'off',
       choices: [
         { value: 'off', label: t('Just me') },

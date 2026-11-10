@@ -11,6 +11,13 @@
     background: rgb(10 12 30 / 0.6);
     z-index: var(--pf-z-overlay);
     overflow-y: auto;
+    /* Clear the top bar (it sits above the overlay), so a tall panel never starts under it. */
+    padding-top: calc(var(--pf-space-6) + 64px + env(safe-area-inset-top));
+    /* Centred when it fits, top-aligned (scrollable from its first line) when it doesn't. */
+    align-items: flex-start;
+  }
+  .pf-overlay > * {
+    margin-block: auto;
   }
   .pf-overlay[hidden] {
     display: none;

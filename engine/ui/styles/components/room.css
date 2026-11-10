@@ -151,4 +151,81 @@
       font-size: 15px;
     }
   }
+
+  /* ---------- Room sections: players / you / game settings ---------- */
+
+  .pf-room-sec {
+    display: grid;
+    gap: var(--pf-space-5);
+    padding: var(--pf-space-5) var(--pf-space-6) var(--pf-space-6);
+    background: rgb(16 19 44 / 0.45);
+    border: 1px solid var(--pf-rim);
+    border-radius: var(--pf-radius-md);
+  }
+  .pf-room-sec-title {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--pf-haze);
+  }
+  .pf-room-sec-hint {
+    margin: 0;
+    font-size: 13px;
+    color: var(--pf-haze);
+  }
+  .pf-room-sec .pf-seats {
+    margin: 0;
+  }
+  /* Host: a small remove button on each other player's seat, confirmed under the seats. */
+  .pf-seat {
+    position: relative;
+  }
+  .pf-seat > .pf-btn.icon {
+    position: absolute;
+    top: -6px;
+    right: calc(50% - 46px);
+    width: 26px;
+    height: 26px;
+    padding: 4px;
+    border-radius: 50%;
+  }
+  .pf-kick-ask {
+    display: grid;
+    gap: var(--pf-space-4);
+    padding: var(--pf-space-5);
+    background: var(--pf-pit);
+    border-radius: var(--pf-radius);
+    text-align: center;
+  }
+  .pf-kick-ask p {
+    margin: 0;
+  }
+  .pf-kick-ask .pf-row {
+    justify-content: center;
+  }
+
+  /* Name + avatar, then the game's extras (e.g. a character strip). */
+  .pf-room-self {
+    display: grid;
+    gap: var(--pf-space-6);
+  }
+  .pf-room-actions {
+    display: grid;
+    gap: var(--pf-space-5);
+  }
+  .pf-room-actions > .pf-row {
+    justify-content: center;
+  }
+  /* Phones: one full-width button per row (the floating chat button sits at the right edge). */
+  @media (max-width: 520px) {
+    .pf-room-actions > .pf-row {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .pf-room-actions .pf-guide-btn {
+      justify-self: stretch;
+    }
+  }
 }

@@ -33,6 +33,8 @@ export interface GuideStep {
   hold?: boolean
   /** A smaller line under the action, e.g. "Let go to hit". */
   note?: string
+  /** A rule or hint rather than a control (e.g. "Step on the beat"): shown on every device, inputs or not. */
+  tip?: boolean
 }
 
 export interface Keycap {
@@ -87,7 +89,8 @@ export function guideRows(steps: readonly GuideStep[], touch: boolean): GuideRow
       }
       if (s.mouse) alts.push({ kind: 'mouse', action: s.mouse, hold: !!s.hold })
     }
-    if (!alts.length) continue
+    // A step whose inputs are all for the other device hides; a tip shows everywhere.
+    if (!alts.length && !s.tip) continue
     const inputs = alts.flatMap((a, i): GuideInput[] => (i ? [{ kind: 'or' }, a] : [a]))
     rows.push({ action: s.action, note: s.note, hold: !!s.hold, inputs })
   }

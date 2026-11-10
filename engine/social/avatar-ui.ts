@@ -15,7 +15,14 @@ export function avatarEl(id: string, cls = 'pf-avatar'): HTMLSpanElement {
  * The start-screen avatar control: a big button showing your avatar that
  * opens a grid of all of them. Calls `onPick` with the new id.
  */
-export function avatarPicker(current: string, onPick: (id: string) => void): HTMLElement {
+export function avatarPicker(
+  current: string,
+  onPick: (id: string) => void,
+  opts: {
+    /** Close the grid after a pick (rooms: an open grid hides the ready button on phones). */
+    closeOnPick?: boolean
+  } = {},
+): HTMLElement {
   let selected = current
   const face = avatarEl(selected, 'pf-avatar')
   const toggle = h('button', { class: 'pf-avatar-btn', type: 'button' }, face)
@@ -41,9 +48,10 @@ export function avatarPicker(current: string, onPick: (id: string) => void): HTM
       void face.offsetWidth // restart the pop animation
       face.classList.add('pop')
       mark()
-      // Stay open so players can browse and compare; the toggle or Esc closes it.
+      // Start screen: stay open so players can browse and compare; the toggle or Esc closes it.
+      if (opts.closeOnPick) grid.hidden = true
       label()
-      b.focus()
+      ;(opts.closeOnPick ? toggle : b).focus()
       onPick(a.id)
     }
     return b

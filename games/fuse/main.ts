@@ -256,9 +256,12 @@ createGameApp<FuseState, FuseInput>({
   def: fuseGame,
   title: 'Fuse',
   tagline: t('Slide, fuse, chase huge numbers. Smash rocks, chain combos, race your friends.'),
-  controls: t(
-    'Swipe or use the arrow keys to slide every tile. Two equal tiles fuse into one. Merges next to a rock crack it. B (or the bomb button) blasts one tile. U undoes.',
-  ),
+  guide: [
+    { action: t('Slide every tile'), keys: [['Up', 'Left', 'Down', 'Right']], touch: 'swipe' },
+    { action: t('Two equal tiles fuse into one'), note: t('Merges next to a rock crack it'), tip: true },
+    { action: t('Blast one tile'), keys: [['B']], touch: 'button', touchLabel: t('bomb') },
+    { action: t('Undo'), keys: [['U']], touch: 'button', touchLabel: t('undo') },
+  ],
   music: BOUNCE,
   mount,
   scores: (s) =>

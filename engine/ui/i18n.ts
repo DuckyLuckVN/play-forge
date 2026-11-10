@@ -12,6 +12,16 @@ export const VI: Dictionary = {
   Leave: 'Rời đi',
   'Quit to menu': 'Thoát ra menu',
   'Leave room': 'Rời phòng',
+  // Room sections
+  'Players {n}/{max}': 'Người chơi {n}/{max}',
+  You: 'Bạn',
+  'Game settings': 'Cài đặt trò chơi',
+  'Set by the host': 'Chủ phòng chọn',
+  'Remove {name}': 'Mời {name} ra',
+  'Remove {name} from the room?': 'Mời {name} ra khỏi phòng?',
+  Remove: 'Mời ra',
+  'You were removed': 'Bạn đã bị mời ra',
+  'The host removed you from room {room}.': 'Chủ phòng đã mời bạn ra khỏi phòng {room}.',
   'Full screen': 'Toàn màn hình',
   'Exit full screen': 'Thoát toàn màn hình',
   // Landscape guard (engine/ui/landscape.ts)

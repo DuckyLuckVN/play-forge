@@ -480,6 +480,8 @@ export class Court3D {
   private splitO: Hop = { height: 0, squash: 0 }
   /** The local player's jump / lunge cooldown left 0..1 this frame (the phone button reads it). */
   private localCd = 0
+  /** Called every frame with the local ability cooldown (the phone button follows it; set by main.ts). */
+  onCooldown: ((cd: number) => void) | null = null
   /** Online guest: when our own ability press was predicted and heard (s; its host `act` stays silent). */
   private lastOwnActAt = -Infinity
   /** Scratch body box for the occlusion pass. */
@@ -809,6 +811,7 @@ export class Court3D {
 
   private frame(dt: number) {
     this.time += dt
+    this.onCooldown?.(this.localCd)
     const curr = this.smooth?.curr
     if (!curr) return this.view.render(dt)
     const track = trackerAction(this.seeded, curr.nextEventId, this.lastEventId, curr.tick, this.lastTick)

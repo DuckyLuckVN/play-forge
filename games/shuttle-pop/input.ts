@@ -343,7 +343,9 @@ export function bindInput(
     }
     if (e.pointerType === 'mouse') {
       // The right button is the ability (one press): its release never lets go of a left-button charge.
-      if (swing && e.button === 2) return
+      // With both held, releasing one sends pointermove (not pointerup) in browsers, so the left button's
+      // state is read from `buttons` (onMouseMove), not `button`.
+      if (swing && (e.buttons & 1) === 1) return
       if (swing) keys.swingUp('mouse')
       else keys.cancelSwing('mouse')
     } else if (e.pointerId === actPointer) {
@@ -357,6 +359,10 @@ export function bindInput(
     }
   }
   const onPointerUp = (e: PointerEvent) => lift(e, true)
+  // Left released while the right is still held: browsers send pointermove (buttons without bit 0), no pointerup yet.
+  const onMouseMove = (e: PointerEvent) => {
+    if (e.pointerType === 'mouse' && (e.buttons & 1) === 0) keys.swingUp('mouse')
+  }
   // The browser took the pointer away (a system gesture, capture lost): no swing.
   const onPointerLost = (e: PointerEvent) => lift(e, false)
   const noMenu = (e: Event) => e.preventDefault()
@@ -374,6 +380,7 @@ export function bindInput(
   // lostpointercapture also follows every captured pointerup (already handled then): it only cancels
   // a pointer lost without one.
   target.addEventListener('pointerup', onPointerUp)
+  target.addEventListener('pointermove', onMouseMove)
   target.addEventListener('pointercancel', onPointerLost)
   target.addEventListener('lostpointercapture', onPointerLost)
   if (pad) {
@@ -394,6 +401,7 @@ export function bindInput(
       document.removeEventListener('visibilitychange', onHidden)
       target.removeEventListener('pointerdown', onPointer)
       target.removeEventListener('pointermove', onMove)
+      target.removeEventListener('pointermove', onMouseMove)
       target.removeEventListener('pointerup', onPointerUp)
       target.removeEventListener('pointercancel', onPointerLost)
       target.removeEventListener('lostpointercapture', onPointerLost)

@@ -1,7 +1,6 @@
 import { createGameApp, h, landscapeGuard, smoothState, type Session } from '@forge'
 import { ARCADE } from '@forge/audio/tracks'
 import { webglAvailable } from '@forge/render3d'
-import { startRenderLoop } from '@forge/core/loop'
 import './shuttle-pop.css'
 import type { Strike } from './ability'
 import { chargeOf } from './charge'
@@ -148,7 +147,7 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
   const pad = new TouchPad()
   court.surface.append(pad.root)
   // The phone button's cooldown follows the local player's (Court3D draws the same on its feet ring).
-  const stopCd = startRenderLoop(() => pad.setAbility(court?.abilityCooldown() ?? 0))
+  court.onCooldown = (cd) => pad.setAbility(cd)
   // Every human swing carries the tick on screen (the host rewinds up to MAX_REWIND): a guest's covers
   // its lag, the host's own its interpolation (0–1 ticks), so both sides get screen-aligned timing.
   // A guest's is the tick of the shuttle it sees (RenderClock), the same meaning as swingTick.
@@ -224,7 +223,7 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
     document.removeEventListener('gesturestart', noPinch)
     stage.classList.remove('sp-playing')
     input.stop()
-    stopCd()
+    if (court) court.onCooldown = null
     pad.root.remove()
     detach()
     smooth.dispose()

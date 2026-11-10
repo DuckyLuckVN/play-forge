@@ -36,11 +36,12 @@ const key = (code: string, extra: KeyboardEventInit = {}) =>
 function pointer(
   el: Element,
   type: string,
-  init: { pointerId?: number; button?: number; pointerType?: string },
+  init: { pointerId?: number; button?: number; buttons?: number; pointerType?: string },
 ) {
   const e = new Event(type, { bubbles: true, cancelable: true }) as Event & Record<string, unknown>
   e.pointerId = init.pointerId ?? 1
   e.button = init.button ?? 0
+  e.buttons = init.buttons ?? 0
   e.pointerType = init.pointerType ?? 'mouse'
   e.clientX = 0
   e.clientY = 0
@@ -88,10 +89,30 @@ describe('ability bindings', () => {
     const s = setup()
     cleanup = s.b.stop
     pointer(s.target, 'pointerdown', { button: 0 })
-    pointer(s.target, 'pointerup', { button: 2 })
-    expect(s.kinds()).toEqual(['charge'])
+    pointer(s.target, 'pointerdown', { button: 2, buttons: 3 })
+    pointer(s.target, 'pointerup', { button: 2, buttons: 1 })
+    expect(s.kinds()).toEqual(['charge', 'ability'])
     pointer(s.target, 'pointerup', { button: 0 })
-    expect(s.kinds()).toEqual(['charge', 'swing'])
+    expect(s.kinds()).toEqual(['charge', 'ability', 'swing'])
+  })
+
+  it('hold left, press right, release left (a pointermove in browsers) still swings', () => {
+    const s = setup()
+    cleanup = s.b.stop
+    pointer(s.target, 'pointerdown', { button: 0, buttons: 1 })
+    pointer(s.target, 'pointerdown', { button: 2, buttons: 3 })
+    pointer(s.target, 'pointermove', { button: -1, buttons: 2 })
+    expect(s.kinds()).toEqual(['charge', 'ability', 'swing'])
+    pointer(s.target, 'pointerup', { button: 2, buttons: 0 })
+    expect(s.kinds()).toEqual(['charge', 'ability', 'swing'])
+  })
+
+  it('plain mouse moves with the left held do not swing', () => {
+    const s = setup()
+    cleanup = s.b.stop
+    pointer(s.target, 'pointerdown', { button: 0, buttons: 1 })
+    pointer(s.target, 'pointermove', { button: -1, buttons: 1 })
+    expect(s.kinds()).toEqual(['charge'])
   })
 
   it('the context menu is suppressed on the court even without a pad', () => {

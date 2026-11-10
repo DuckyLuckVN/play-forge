@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Color, Vector3 } from 'three'
 import { SHUTTLECOCK } from './model/shuttlecock'
 import { POWER_SWING } from './power'
@@ -110,6 +110,37 @@ describe('trailStyle (kind × grade × power × speed)', () => {
     const head = out.colorHead
     expect(trailStyle('smash', 'perfect', BIG, 20, out)).toBe(out)
     expect(out.colorHead).toBe(head)
+  })
+})
+
+describe('trailStyle contrast + precomputed colours', () => {
+  it('every style has a dark rim (faint alpha); Perfect browns it, Perfect + power keeps the bolder red', () => {
+    for (const k of ['drop', 'clear', 'drive', 'smash'] as const) {
+      const s = style(k, 'good')
+      expect(s.edged).toBe(true)
+      expect(s.edgeAlpha).toBeCloseTo(0.35)
+      expect(hue(s.colorEdge).l).toBeLessThan(0.1)
+    }
+    const perf = style('clear', 'perfect')
+    expect(perf.colorEdge.r).toBeGreaterThan(perf.colorEdge.b * 3)
+    expect(perf.opacity).toBeGreaterThanOrEqual(0.9)
+    expect(style('drive', 'good').opacity).toBeCloseTo(0.88)
+    expect(style('drive', 'good', BIG, 20).edgeAlpha).toBeCloseTo(0.35)
+    expect(style('drive', 'perfect', BIG).edgeAlpha).toBeGreaterThan(0.35)
+  })
+
+  it('never parses a colour string per call (no Color.set)', () => {
+    const out = newTrailStyle()
+    const set = vi.spyOn(Color.prototype, 'set')
+    for (const g of ['late', 'good', 'perfect'] as const)
+      for (const p of [0, BIG]) trailStyle('smash', g, p, 20, out)
+    expect(set).not.toHaveBeenCalled()
+    set.mockRestore()
+  })
+
+  it('a short serve gets the drop trail (shape), a long serve the clear', () => {
+    expect(style('serveShort', null).width).toBe(style('drop', 'good').width)
+    expect(style('serveLong', null).width).toBe(style('clear', 'good').width)
   })
 })
 

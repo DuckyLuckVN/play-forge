@@ -72,9 +72,11 @@ export interface TrailStyle {
   length: number
   colorHead: Color
   colorTail: Color
-  /** Soft outer edge colour, used when `edged` (Perfect + power: red); else the edges match the core. */
+  /** Soft outer edge colour, used when `edged` (a dark rim for contrast on the court; Perfect: brown; Perfect + power: red). */
   colorEdge: Color
   edged: boolean
+  /** Alpha (× the centre's) of the inner edge vertices when `edged`: a dark rim stays faint, Perfect + power's red is bolder. */
+  edgeAlpha: number
   /** Peak opacity (near the start). */
   opacity: number
   /** How fast the opacity falls toward the tail (exponent; drop fades fastest). */
@@ -90,6 +92,7 @@ export const newTrailStyle = (): TrailStyle => ({
   colorTail: new Color(),
   colorEdge: new Color(),
   edged: false,
+  edgeAlpha: 0,
   opacity: 0,
   fade: 1,
   sparkle: false,
@@ -99,14 +102,14 @@ export const newTrailStyle = (): TrailStyle => ({
 export const TRAIL_KINDS = {
   drop: { width: 0.12, length: 0.85, head: '#ffffff', tail: '#eef1f6', opacity: 0.78, fade: 1.8 },
   clear: { width: 0.15, length: 1.7, head: '#f4faff', tail: '#a9d8ff', opacity: 0.7, fade: 1.2 },
-  drive: { width: 0.15, length: 1.15, head: '#d8fdff', tail: '#2fd3ec', opacity: 0.78, fade: 1.3 },
-  smash: { width: 0.24, length: 1.9, head: '#ffffff', tail: '#ffa860', opacity: 0.88, fade: 1.1 },
+  drive: { width: 0.15, length: 1.15, head: '#ffffff', tail: '#8ff0ff', opacity: 0.88, fade: 1.3 },
+  smash: { width: 0.24, length: 1.9, head: '#ffffff', tail: '#ffa860', opacity: 0.92, fade: 1.1 },
 } as const
 export type TrailKind = keyof typeof TRAIL_KINDS
 
 export const TRAIL_MODS = {
   late: { width: 0.7, length: 0.7, opacity: 0.75, dull: '#c4c4c8', dullMix: 0.6 },
-  perfect: { gold: '#ffd166', goldHead: '#fff2b8', goldMix: 0.6 },
+  perfect: { gold: '#ffc23d', goldHead: '#fffbe6', goldMix: 0.85, opacity: 0.9, edge: '#5a3a00' },
   power: { width: 1.5, length: 1.3, head: '#ffc79a', tail: '#ff4a2e', opacity: 0.9 },
   perfectPower: {
     width: 1.75,
@@ -116,6 +119,8 @@ export const TRAIL_MODS = {
     edge: '#ff3b3b',
     opacity: 0.95,
   },
+  /** Dark rim on every ribbon (contrast on the teal court) and its inner-edge alpha. */
+  edge: { color: '#1b2a3a', alpha: 0.35, boldAlpha: 0.6 },
 } as const
 
 export const TRAIL_SPEED = {
@@ -140,8 +145,27 @@ export function speedScale(speed: number): number {
   return Math.min(TRAIL_SPEED.hi, Math.max(TRAIL_SPEED.lo, TRAIL_SPEED.lo + speed / TRAIL_SPEED.ref))
 }
 
-const tmpA = new Color()
-const tmpB = new Color()
+// Every colour parsed once (Color.set('#hex') per frame would parse a string and allocate).
+const hexes = <T extends Record<string, string>>(o: T) =>
+  Object.fromEntries(Object.entries(o).map(([k, v]) => [k, new Color(v)])) as Record<keyof T, Color>
+const KIND_COLORS = Object.fromEntries(
+  Object.entries(TRAIL_KINDS).map(([k, v]) => [k, { head: new Color(v.head), tail: new Color(v.tail) }]),
+) as Record<TrailKind, { head: Color; tail: Color }>
+const TRAIL_COLORS = {
+  late: hexes({ dull: TRAIL_MODS.late.dull }),
+  perfect: hexes({
+    gold: TRAIL_MODS.perfect.gold,
+    goldHead: TRAIL_MODS.perfect.goldHead,
+    edge: TRAIL_MODS.perfect.edge,
+  }),
+  power: hexes({ head: TRAIL_MODS.power.head, tail: TRAIL_MODS.power.tail }),
+  perfectPower: hexes({
+    head: TRAIL_MODS.perfectPower.head,
+    tail: TRAIL_MODS.perfectPower.tail,
+    edge: TRAIL_MODS.perfectPower.edge,
+  }),
+  edge: hexes({ dark: TRAIL_MODS.edge.color }).dark,
+}
 
 /**
  * The trail's look for a shot: kind × grade × power, at `speed`. `grade` null = a serve (good). Writes into
@@ -154,25 +178,30 @@ export function trailStyle(
   speed: number,
   out: TrailStyle = newTrailStyle(),
 ): TrailStyle {
-  const K = TRAIL_KINDS[trailKind(kind)]
+  const tk = trailKind(kind)
+  const K = TRAIL_KINDS[tk]
+  const KC = KIND_COLORS[tk]
   let width = K.width
   let length = K.length
   out.opacity = K.opacity
   out.fade = K.fade
-  out.colorHead.set(K.head)
-  out.colorTail.set(K.tail)
+  out.colorHead.copy(KC.head)
+  out.colorTail.copy(KC.tail)
+  out.colorEdge.copy(TRAIL_COLORS.edge)
+  out.edged = true
+  out.edgeAlpha = TRAIL_MODS.edge.alpha
   out.sparkle = false
-  out.edged = false
   const big = isPowerHit(power)
   if (grade === 'perfect' && big) {
     const M = TRAIL_MODS.perfectPower
+    const C = TRAIL_COLORS.perfectPower
     width *= M.width
     length *= M.length
     out.opacity = M.opacity
-    out.colorHead.set(M.head)
-    out.colorTail.set(M.tail)
-    out.colorEdge.set(M.edge)
-    out.edged = true
+    out.colorHead.copy(C.head)
+    out.colorTail.copy(C.tail)
+    out.colorEdge.copy(C.edge)
+    out.edgeAlpha = TRAIL_MODS.edge.boldAlpha
     out.sparkle = true
   } else {
     if (big) {
@@ -180,22 +209,24 @@ export function trailStyle(
       width *= M.width
       length *= M.length
       out.opacity = Math.max(out.opacity, M.opacity)
-      out.colorHead.set(M.head)
-      out.colorTail.set(M.tail)
+      out.colorHead.copy(TRAIL_COLORS.power.head)
+      out.colorTail.copy(TRAIL_COLORS.power.tail)
     }
     if (grade === 'perfect') {
       const M = TRAIL_MODS.perfect
-      out.colorHead.lerp(tmpA.set(M.goldHead), M.goldMix)
-      out.colorTail.lerp(tmpB.set(M.gold), M.goldMix)
+      const C = TRAIL_COLORS.perfect
+      out.colorHead.lerp(C.goldHead, M.goldMix)
+      out.colorTail.lerp(C.gold, M.goldMix)
+      out.colorEdge.copy(C.edge)
+      out.opacity = Math.max(out.opacity, M.opacity)
       out.sparkle = true
     } else if (grade === 'late') {
       const M = TRAIL_MODS.late
       width *= M.width
       length *= M.length
       out.opacity *= M.opacity
-      tmpA.set(M.dull)
-      out.colorHead.lerp(tmpA, M.dullMix)
-      out.colorTail.lerp(tmpA, M.dullMix)
+      out.colorHead.lerp(TRAIL_COLORS.late.dull, M.dullMix)
+      out.colorTail.lerp(TRAIL_COLORS.late.dull, M.dullMix)
     }
   }
   out.width = width
@@ -218,6 +249,8 @@ export function ribbonAlpha(t: number, fade: number): number {
 /** Across the ribbon: offsets (× half-width) and alpha (× the centre's): soft edges, no hard banding. */
 const ACROSS = [-1, -0.45, 0, 0.45, 1] as const
 const ACROSS_ALPHA = [0, 0.6, 1, 0.6, 0] as const
+/** Indices of the inner edge vertices (their alpha is the style's edgeAlpha when edged). */
+const INNER = [1, 3]
 
 /**
  * Screen-space floor on the ribbon's half-width: MIN_HALF_PX pixels per REF_WIDTH metres of style width, so a
@@ -398,7 +431,7 @@ export class RibbonTrail {
         this.col[v * 4] = col.r
         this.col[v * 4 + 1] = col.g
         this.col[v * 4 + 2] = col.b
-        this.col[v * 4 + 3] = alpha * ACROSS_ALPHA[c]
+        this.col[v * 4 + 3] = alpha * (style.edged && INNER.includes(c) ? style.edgeAlpha : ACROSS_ALPHA[c])
       }
     }
     // Sparkle tip: 85% along the ribbon.

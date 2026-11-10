@@ -196,9 +196,11 @@ const TRAIL_SPARK = {
   every: 0.07,
   burst: { count: 2, color: ['#ffd166', '#fff3b0'], speed: 0.6, life: 0.32, size: 0.12 },
 }
-/** Draw order (transparent pass): net 1 → trail / sparkles 2 → shuttlecock 3 → halo 4 → chibis (CHIBI_ORDER). */
+/** Draw order (transparent pass): net 1 → trail / sparkles 2 → halo 2.5 → shuttlecock 3 → chibis (CHIBI_ORDER). */
 const SHUTTLE_ORDER = 3
-const HALO_ORDER = 4
+const HALO_ORDER = 2.5
+/** Longest frame step (s) fed to the trail: a hitch draws one normal frame, not a huge one. */
+const TRAIL_MAX_DT = 0.05
 /**
  * Every chibi object (meshes and their nested Groups: a Group's renderOrder becomes its subtree's group order)
  * draws after the shuttlecock, so a faded (covering) chibi blends over it instead of hiding it. The rig is
@@ -467,7 +469,10 @@ export class Court3D {
     this.fades = this.players.map(() => 1)
     this.occ = this.players.map(() => 0)
     for (const p of this.players) {
-      p.chibi.root.traverse((o) => (o.renderOrder = CHIBI_ORDER))
+      p.chibi.root.traverse((o) => {
+        // The swing streak and blob shadow keep their own order (the streak must not draw over the shuttle).
+        if (o.name !== 'streak' && o.name !== 'shadow') o.renderOrder = CHIBI_ORDER
+      })
       scene.add(p.chibi.root, p.ring.root)
     }
 
@@ -665,6 +670,7 @@ export class Court3D {
     this.hudPhase = ''
     this.trail.reset()
     this.setTrailShot(null, null, 0)
+    this.shVel.x = this.shVel.y = this.shVel.z = 0
     this.punch.reset()
     this.dust.reset()
     this.lastPop[0] = this.lastPop[1] = -Infinity
@@ -922,7 +928,7 @@ export class Court3D {
     const tr = this.trail
     const cam = this.view.camera
     const pxScale = (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, this.view.height)
-    tr.update(flying, sp.x, sp.y, sp.z, dt, look, cp.x, cp.y, cp.z, pxScale)
+    tr.update(flying, sp.x, sp.y, sp.z, Math.min(dt, TRAIL_MAX_DT), look, cp.x, cp.y, cp.z, pxScale)
     // Perfect trails twinkle at the ribbon's tip (the lowest quality rung skips it).
     if (tr.shown && look.sparkle && this.view.quality.dpr > 1 && this.time >= this.sparkAt) {
       this.sparkAt = this.time + TRAIL_SPARK.every
@@ -1120,7 +1126,7 @@ export class Court3D {
       } else if (e.k === 'hit') {
         this.onHit(s, e.side, e.grade, e.shot === 'smash', e.power ?? 0)
         this.setTrailShot(e.shot, e.grade, e.power ?? 0)
-      } else if (e.k === 'serve') this.setTrailShot(null, null, 0)
+      } else if (e.k === 'serve') this.setTrailShot(e.shot ?? null, null, 0)
       else if (e.k === 'whiff' && !this.spectating && e.side === this.side)
         this.popAt(this.localIdx, 'miss', false)
     }

@@ -108,7 +108,7 @@ export type SpEvent = { id: number; tick: number } &
     | { k: 'land'; x: number; z: number; in: boolean }
     | { k: 'net' }
     | { k: 'point'; side: 0 | 1 }
-    | { k: 'serve'; side: 0 | 1 }
+    | { k: 'serve'; side: 0 | 1; shot?: ShotKind }
   )
 type EventBody = SpEvent extends infer E ? (E extends SpEvent ? Omit<E, 'id' | 'tick'> : never) : never
 
@@ -374,7 +374,7 @@ function serve(state: SpState, p: SpPlayer, held: { x: number; z: number }) {
   state.phase = 'rally'
   state.phaseT = 0
   state.stats.shots = 1
-  emit(state, { k: 'serve', side: p.side })
+  emit(state, { k: 'serve', side: p.side, shot: kind })
 }
 
 const sq = (n: number) => n * n

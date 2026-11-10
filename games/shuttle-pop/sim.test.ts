@@ -257,7 +257,7 @@ describe('serve', () => {
   it('no held dir → short serve lands in the diagonal short box, point to server', () => {
     const s = duel()
     game.tick(s, [swing('p0')])
-    expect(s.events.some((e) => e.k === 'serve' && e.side === 0)).toBe(true)
+    expect(s.events.some((e) => e.k === 'serve' && e.side === 0 && e.shot === 'serveShort')).toBe(true)
     expect(s.phase).toBe('rally')
     const seen = run(s, 300)
     const land = seen.find((e) => e.k === 'land')

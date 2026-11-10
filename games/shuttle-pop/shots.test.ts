@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import { courtDims, COURT_SIZES } from './courtsize'
 import { COURT, isIn, predictLanding, stepShuttle, type Flight } from './physics'
 import {
   chooseShot,
+  depthOf,
   type Grade,
   findContact,
   gradeOf,
@@ -608,5 +610,62 @@ describe('pickContact', () => {
     const c = query(s, s.players[1], 5)!
     expect(c.tick).toBe(1)
     expect(c.pos).toEqual({ x: 0, y: 1.5, z: 3 })
+  })
+})
+
+describe('court size', () => {
+  const xl = courtDims('xl')
+  it('depths: Normal unchanged, line-relative shots follow the lines, drive/smash scale', () => {
+    expect(depthOf('clear')).toBe(COURT.halfLen - 0.6)
+    expect(depthOf('smash')).toBe(4.0)
+    expect(depthOf('drive')).toBe(5.6)
+    expect(depthOf('clear', xl)).toBe(xl.halfLen - 0.6)
+    expect(depthOf('serveShort', xl)).toBe(xl.shortLine + 0.4)
+    expect(depthOf('serveLong', xl)).toBe(xl.halfLen - 0.5)
+    expect(depthOf('drive', xl)).toBeCloseTo(5.6 * 1.3)
+    expect(depthOf('smash', xl)).toBeCloseTo(4.0 * 1.3)
+    expect(depthOf('drop', xl)).toBe(1.0)
+  })
+  const spots = (court: ReturnType<typeof courtDims>) => {
+    const out: { x: number; z: number }[] = []
+    for (const fx of [-0.8, 0, 0.8])
+      for (const z of [-1.5, -court.halfLen / 2, -(court.halfLen - 0.3)])
+        out.push({ x: fx * court.halfWidth, z })
+    return out
+  }
+  const kinds: ShotKind[] = ['clear', 'drop', 'drive', 'smash']
+  for (const [name, charge] of [
+    ['every Perfect tap shot lands in from anywhere on own half, at every size', 0],
+    ['full-charge Perfect smash / drive / clear still land in at every size', 1],
+  ] as const) {
+    it(
+      name,
+      () => {
+        for (const size of COURT_SIZES) {
+          const court = courtDims(size)
+          for (const kind of charge ? (['smash', 'drive', 'clear'] as ShotKind[]) : kinds)
+            for (const sp of spots(court))
+              for (const hx of [-1, 0, 1]) {
+                const from = { x: sp.x, y: kind === 'smash' ? 2.6 : 1.2, z: sp.z }
+                const t = shotTarget(kind, 0, hx, court)
+                const vel = launchFor(kind, 'perfect', from, t, () => 0.5, charge, court)
+                const p = predictLanding({ pos: from, vel })
+                const tag = `${size} ${kind} ${JSON.stringify(sp)} hx${hx}`
+                expect(p.netHit, tag).toBe(false)
+                expect(isIn(p.pos, 1, court), tag).toBe(true)
+              }
+        }
+      },
+      SLOW,
+    )
+  }
+  it('a bigger court is played deeper', () => {
+    const from = { x: 0, y: 1.2, z: -3 }
+    const land = (c: ReturnType<typeof courtDims>) =>
+      predictLanding({
+        pos: from,
+        vel: launchFor('drive', 'perfect', from, shotTarget('drive', 0, 0, c), () => 0.5, 0, c),
+      }).pos.z
+    expect(land(xl)).toBeGreaterThan(land(COURT))
   })
 })

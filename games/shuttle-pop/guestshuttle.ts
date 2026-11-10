@@ -3,7 +3,7 @@
 // lurches the shuttle. A hit / serve event starts a new flight, so a sample is never run past one.
 // The guest's own hit is predicted with the sim's contact rules (predictHit) and shown at once; the
 // host's answer then replaces it through the same capped, never-snapping correction offset.
-import { settleOnFloor, stepShuttle, type Flight, type Vec3 } from './physics'
+import { COURT, settleOnFloor, stepShuttle, type CourtDims, type Flight, type Vec3 } from './physics'
 import type { RemoteTracks } from './remotes'
 import type { RenderClock } from './renderclock'
 import { hitPower, perfectWindowOf } from './power'
@@ -20,7 +20,8 @@ import {
 import { clampDir, launchTick, MAX_REWIND, tapContact, type SpEvent, type SpState } from './sim'
 import { interpShuttle } from './world'
 
-export type ShuttleSample = Pick<SpState, 'tick' | 'phase' | 'shuttle' | 'events'>
+/** One host snapshot's shuttle; `court` = the host's court (omitted = Normal). */
+export type ShuttleSample = Pick<SpState, 'tick' | 'phase' | 'shuttle' | 'events'> & { court?: CourtDims }
 
 /** Samples kept: covers an own swing's past contacts (WINDOW.pastGrace + 1 behind the screen) plus the clock's lead. */
 const RING = 24
@@ -126,6 +127,8 @@ export class GuestShuttle {
   private readonly old: Vec3 = { x: 0, y: 0, z: 0 }
   private readonly fresh: Vec3 = { x: 0, y: 0, z: 0 }
   private pred: Prediction | null = null
+  /** The newest sample's court: shots are aimed on it, like the host's. */
+  private court: CourtDims = COURT
   /** err holds a prediction correction: capped per frame, never snaps. */
   private predErr = false
 
@@ -147,6 +150,7 @@ export class GuestShuttle {
       breaks: s.events.filter((e) => e.k === 'hit' || e.k === 'serve').map((e) => e.tick),
     })
     if (this.ring.length > RING) this.ring.shift()
+    this.court = s.court ?? COURT
     this.resolve(s)
     if (!known) return
     // A serve placed after the tick on screen teleports the shuttle: snap, never bend.
@@ -234,8 +238,8 @@ export class GuestShuttle {
     this.at(from - 1, flight)
     const held = clampDir(sw.held.x, sw.held.z)
     const kind = chooseShot(held, c.y, c.grade)
-    const target = shotTarget(kind, sw.side, held.x)
-    const { vel, gain } = launchShot(kind, c.grade, flight.pos, target, () => 0, sw.charge)
+    const target = shotTarget(kind, sw.side, held.x, this.court)
+    const { vel, gain } = launchShot(kind, c.grade, flight.pos, target, () => 0, sw.charge, this.court)
     flight.vel = vel
     const power = hitPower(c.grade, gain)
     this.pred = {

@@ -1,5 +1,14 @@
 // Swing grading + shot selection/launch. Pure; rng is injected (no Math.random).
-import { COURT, launchVel, predictLanding, solveLaunch, stepShuttle, type Flight, type Vec3 } from './physics'
+import {
+  COURT,
+  launchVel,
+  predictLanding,
+  solveLaunch,
+  stepShuttle,
+  type CourtDims,
+  type Flight,
+  type Vec3,
+} from './physics'
 
 export type Grade = 'perfect' | 'good' | 'late'
 export type ShotKind = 'smash' | 'drive' | 'clear' | 'drop' | 'serveShort' | 'serveLong'
@@ -11,17 +20,37 @@ export const WINDOW = { perfect: 6, good: 12, late: 18, pastGrace: 12 }
 interface ShotSpec {
   elevation: number
   maxSpeed: number
-  /** Target depth past the net, metres. */
-  depth: number
 }
 
 const SHOTS: Record<ShotKind, ShotSpec> = {
-  clear: { elevation: 47, maxSpeed: 45, depth: COURT.halfLen - 0.6 },
-  drop: { elevation: 20, maxSpeed: 45, depth: 1.0 },
-  drive: { elevation: 3, maxSpeed: 45, depth: 5.6 },
-  smash: { elevation: -10, maxSpeed: 45, depth: 4.0 },
-  serveShort: { elevation: 25, maxSpeed: 45, depth: COURT.shortLine + 0.4 },
-  serveLong: { elevation: 55, maxSpeed: 45, depth: COURT.halfLen - 0.5 },
+  clear: { elevation: 47, maxSpeed: 45 },
+  drop: { elevation: 20, maxSpeed: 45 },
+  drive: { elevation: 3, maxSpeed: 45 },
+  smash: { elevation: -10, maxSpeed: 45 },
+  serveShort: { elevation: 25, maxSpeed: 45 },
+  serveLong: { elevation: 55, maxSpeed: 45 },
+}
+
+/**
+ * Target depth past the net, metres, on `court`. Line-relative shots (clear, serves) follow the lines, a
+ * drop stays tight to the net, drive / smash stretch with the court length (x1 at Normal, exactly).
+ */
+export function depthOf(kind: ShotKind, court: CourtDims = COURT): number {
+  const kz = court.halfLen / COURT.halfLen
+  switch (kind) {
+    case 'clear':
+      return court.halfLen - 0.6
+    case 'drop':
+      return 1.0
+    case 'drive':
+      return 5.6 * kz
+    case 'smash':
+      return 4.0 * kz
+    case 'serveShort':
+      return court.shortLine + 0.4
+    case 'serveLong':
+      return court.halfLen - 0.5
+  }
 }
 
 const JITTER: Record<Grade, number> = { perfect: 0.2, good: 0.6, late: 1.2 }
@@ -43,6 +72,7 @@ export const POWER: {
   speed: { smash: 0.26, drive: 0.16 },
   flatten: { smash: 8, drive: 3 },
   loft: { clear: 8, drop: 6 },
+  // clear: on the Normal court; launchShot uses court.halfLen - 0.25.
   depth: { clear: COURT.halfLen - 0.25, drop: 0.7 },
   jitter: 0.4,
 }
@@ -177,9 +207,14 @@ export function chooseShot(held: { x: number; z: number }, contactY: number, gra
  * World-space aim point. heldX is view-relative (screen right), so it is mirrored for side 1.
  * Serves: lateral comes from heldX too; the caller overrides x with the diagonal box centre.
  */
-export function shotTarget(kind: ShotKind, hitterSide: 0 | 1, heldX: number): { x: number; z: number } {
+export function shotTarget(
+  kind: ShotKind,
+  hitterSide: 0 | 1,
+  heldX: number,
+  court: CourtDims = COURT,
+): { x: number; z: number } {
   const dir = hitterSide === 0 ? 1 : -1
-  return { x: -dir * heldX * (COURT.halfWidth - 0.4), z: dir * SHOTS[kind].depth }
+  return { x: -dir * heldX * (court.halfWidth - 0.4), z: dir * depthOf(kind, court) }
 }
 
 /** Every shot lands at least this far past the net (before jitter) and never hits the net. */
@@ -217,6 +252,7 @@ export function launchShot(
   target: { x: number; z: number },
   rng: () => number,
   charge = 0,
+  court: CourtDims = COURT,
 ): { vel: Vec3; gain: number } {
   const spec = SHOTS[kind]
   const c = kind === 'serveShort' || kind === 'serveLong' ? 0 : Math.min(1, Math.max(0, charge || 0))
@@ -224,8 +260,10 @@ export function launchShot(
   const depth = Math.abs(target.z)
   let tz = target.z
   if (c > 0) {
-    let d = lerp(depth, POWER.depth[kind] ?? depth, c)
-    if (kind === 'clear') d = Math.min(d, COURT.halfLen - BACK_MARGIN)
+    // A charged clear aims 0.25 short of the back line of this court (POWER.depth.clear is the Normal value).
+    const full = kind === 'clear' ? court.halfLen - 0.25 : POWER.depth[kind]
+    let d = lerp(depth, full ?? depth, c)
+    if (kind === 'clear') d = Math.min(d, court.halfLen - BACK_MARGIN)
     tz = dir * d
   }
   const minDepth = minDepthOf(kind, c)
@@ -287,8 +325,8 @@ export function launchShot(
       elevation === spec.elevation
         ? baseTicks
         : predictLanding({ pos: from, vel: plain(spec.elevation) }).ticks
-    const maxX = Math.max(COURT.halfWidth, Math.abs(baseLand.x))
-    const maxZ = Math.max(COURT.halfLen, Math.abs(baseLand.z))
+    const maxX = Math.max(court.halfWidth, Math.abs(baseLand.x))
+    const maxZ = Math.max(court.halfLen, Math.abs(baseLand.z))
     const cap = spec.maxSpeed * (1 + (POWER.speed[kind] ?? 0))
     boosted: for (const f of BOOST_STEPS) {
       const sp = Math.min(cap, base * (1 + boost * f))
@@ -321,6 +359,7 @@ export function launchFor(
   target: { x: number; z: number },
   rng: () => number,
   charge = 0,
+  court: CourtDims = COURT,
 ): Vec3 {
-  return launchShot(kind, grade, from, target, rng, charge).vel
+  return launchShot(kind, grade, from, target, rng, charge, court).vel
 }

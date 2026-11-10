@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { answersPrediction, GuestShuttle, PREDICT, type OwnSwing } from './guestshuttle'
+import { courtDims } from './courtsize'
 import { solveLaunch, type Vec3 } from './physics'
 import { hitPower } from './power'
 import { launchShot, shotTarget } from './shots'
 import { RenderClock } from './renderclock'
-import { createState, MAX_REWIND, step, type SpEvent, type SpInput, type SpState } from './sim'
+import { clampDir, createState, MAX_REWIND, step, type SpEvent, type SpInput, type SpState } from './sim'
 import type { InputEvent } from '@forge/net/session'
 
 const DT = 1 / 60
@@ -609,6 +610,40 @@ describe('GuestShuttle own-hit prediction', () => {
     expect(p.power).toBeGreaterThan(0)
     gs.reset()
     expect(gs.predicted()).toBeNull()
+  })
+
+  it('predictHit aims on the host court from the samples', () => {
+    const xl = courtDims('xl')
+    const C = closest(incoming(), ON)
+    const predict = (court?: typeof xl) => {
+      const clock = new RenderClock(60)
+      const gs = new GuestShuttle(clock)
+      for (const st of host(incoming(), C + 8)) {
+        clock.onState(st.tick)
+        gs.push(
+          court ? { tick: st.tick, phase: st.phase, shuttle: st.shuttle, events: st.events, court } : st,
+        )
+      }
+      clock.tick = C - 1
+      gs.update(DT)
+      const held = { x: 0.4, z: -1 }
+      expect(gs.predictHit({ side: 1, held, charge: 1, player: ON, tap: false })).toBe(true)
+      const p = gs.predicted()!
+      return { p, from: gs['pred']!.flight.pos, vel: gs['pred']!.flight.vel, held }
+    }
+    const big = predict(xl)
+    const norm = predict(undefined)
+    const want = launchShot(
+      big.p.shot,
+      big.p.grade,
+      big.from,
+      shotTarget(big.p.shot, 1, clampDir(big.held.x, big.held.z).x, xl),
+      () => 0,
+      1,
+      xl,
+    ).vel
+    expect(big.vel).toEqual(want)
+    expect(big.vel).not.toEqual(norm.vel)
   })
 
   it('answersPrediction: own event of that kind from the rewind window on', () => {

@@ -366,10 +366,10 @@ function serve(state: SpState, p: SpPlayer, held: { x: number; z: number }) {
   const receiver = other(p.side)
   const { xSign } = serveBox(p.side, state.score[p.side])
   // Diagonal: the receiver's box on the same view-relative side as the server's.
-  const target = shotTarget(kind, p.side, 0)
+  const target = shotTarget(kind, p.side, 0, state.court)
   target.x = toWorld(receiver, xSign * (state.court.halfWidth / 2), 0).x
   const s = state.shuttle
-  const v = launchFor(kind, 'perfect', s.pos, target, () => rand(state))
+  const v = launchFor(kind, 'perfect', s.pos, target, () => rand(state), 0, state.court)
   s.vel.x = v.x
   s.vel.y = v.y
   s.vel.z = v.z
@@ -561,8 +561,16 @@ function hit(state: SpState) {
     s.pos.y = from.pos.y
     s.pos.z = from.pos.z
   }
-  const target = shotTarget(pend.kind, pend.side, pend.aimX)
-  const { vel: v, gain } = launchShot(pend.kind, pend.grade, s.pos, target, () => rand(state), pend.charge)
+  const target = shotTarget(pend.kind, pend.side, pend.aimX, state.court)
+  const { vel: v, gain } = launchShot(
+    pend.kind,
+    pend.grade,
+    s.pos,
+    target,
+    () => rand(state),
+    pend.charge,
+    state.court,
+  )
   const power = hitPower(pend.grade, gain)
   s.power = power
   s.pressured = pressureOf(pend.kind, power)

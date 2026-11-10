@@ -149,6 +149,18 @@ function racketIcon(): SVGSVGElement {
   return svg
 }
 
+/** Up-chevron over two feet: the jump / dive button's glyph (drawn once). */
+function actIcon(): SVGSVGElement {
+  const svg = document.createElementNS(SVG_NS, 'svg')
+  svg.setAttribute('viewBox', '0 0 48 48')
+  svg.setAttribute('aria-hidden', 'true')
+  svg.innerHTML =
+    '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="4">' +
+    '<path d="M14 18 24 8l10 10M14 30 24 20l10 10"/></g>' +
+    '<g fill="currentColor"><ellipse cx="17" cy="41" rx="5" ry="3"/><ellipse cx="31" cy="41" rx="5" ry="3"/></g>'
+  return svg
+}
+
 /**
  * Touch controls' visuals: a floating stick (rests dim in the bottom-left corner, jumps under the
  * thumb while held) and the swing button bottom-right. Hidden until the device has a coarse pointer
@@ -158,6 +170,8 @@ export class TouchPad {
   readonly root: HTMLElement
   /** Touch presses on this swing. */
   readonly swingEl: HTMLElement
+  /** Touch presses on this are the ability button (jump / lunge). */
+  readonly actEl: HTMLElement
   private stickEl: HTMLElement
   private knobEl: HTMLElement
 
@@ -166,7 +180,8 @@ export class TouchPad {
     this.stickEl = h('div', { class: 'sp-stick idle' }, this.knobEl)
     this.stickEl.style.setProperty('--sp-stick-r', `${STICK_RADIUS}px`)
     this.swingEl = h('div', { class: 'sp-swing' }, racketIcon())
-    this.root = h('div', { class: 'sp-touch' }, this.stickEl, this.swingEl)
+    this.actEl = h('div', { class: 'sp-act' }, actIcon())
+    this.root = h('div', { class: 'sp-touch' }, this.stickEl, this.actEl, this.swingEl)
     this.root.setAttribute('aria-hidden', 'true')
     this.root.hidden = !globalThis.matchMedia?.('(pointer: coarse)').matches
   }
@@ -198,5 +213,17 @@ export class TouchPad {
 
   setPressed(on: boolean) {
     this.swingEl.classList.toggle('down', on)
+  }
+
+  /** The ability button is held. */
+  setAct(on: boolean) {
+    this.actEl.classList.toggle('down', on)
+  }
+
+  /** Ability cooldown left 0..1 (0 = ready): the button dims clockwise by it. */
+  setAbility(cooldown: number) {
+    const cd = Math.min(1, Math.max(0, cooldown))
+    this.actEl.style.setProperty('--sp-cd', cd.toFixed(2))
+    this.actEl.classList.toggle('cooling', cd > 0)
   }
 }

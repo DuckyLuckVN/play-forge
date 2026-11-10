@@ -2,6 +2,7 @@ import { createGameApp, h, landscapeGuard, smoothState, type Session } from '@fo
 import { ARCADE } from '@forge/audio/tracks'
 import { webglAvailable } from '@forge/render3d'
 import './shuttle-pop.css'
+import type { Strike } from './ability'
 import { chargeOf } from './charge'
 import { t } from './i18n'
 import { TouchPad } from './hud'
@@ -15,6 +16,7 @@ import { RenderClock } from './renderclock'
 import { scoreText, summaryRows } from './results'
 import { winner } from './rules'
 import {
+  canAct,
   canCharge,
   canSwing,
   createState,
@@ -75,12 +77,18 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
   // held press (its screen tick + local time, for the charge and the tap rules) and the move last sent.
   let press: { tick: number | undefined; ms: number } | null = null
   const moved = { x: 0, z: 0 }
-  const predictHit = (held: { x: number; z: number }, tap: boolean, charge: number, pressTick?: number) => {
+  const predictHit = (
+    held: { x: number; z: number },
+    tap: boolean,
+    charge: number,
+    pressTick?: number,
+    act?: Strike,
+  ) => {
     const me = smooth.curr?.players.find((p) => p.id === session.selfId)
     if (!guest || !predictor || !me) return
     const player = { x: predictor.x, z: predictor.z }
     // Heard at once; the host's answering hit is then skipped (Court3D's echo).
-    if (!guest.shuttle.predictHit({ side: me.side, held, charge, player, tap, pressTick })) return
+    if (!guest.shuttle.predictHit({ side: me.side, held, charge, player, tap, pressTick, act })) return
     const hit = guest.shuttle.predicted()
     if (hit) court?.ownHitPredicted(hit)
   }
@@ -116,6 +124,16 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
         predictHit({ x: input.x, z: input.z }, false, charge, atPress)
       }
       press = null
+    } else if (input.t === 'ability') {
+      // The host would ignore a press that can't act (locked, cooling, charging): don't send it.
+      if (!live() || !seatCan(canAct)) return
+      const me = smooth.curr?.players.find((p) => p.id === session.selfId)
+      if (guest && predictor && me) {
+        // Same pick as the host (ability.ts) on the flight shown: the body leaps now, a strike also shows its hit.
+        const pick = guest.shuttle.pickAbility({ x: predictor.x, z: predictor.z }, me.side, seatCan(canSwing))
+        predictor.startAct(pick.k)
+        if (pick.k !== 'hop') predictHit({ x: input.x, z: input.z }, false, 0, input.tick, pick.k)
+      }
     } else if (input.t === 'move' && live()) {
       moved.x = input.x
       moved.z = input.z
@@ -249,6 +267,14 @@ createGameApp<SpState, SpInput>({
       keys: [['Space'], ['J']],
       mouse: 'hold',
       touch: 'button',
+    },
+    {
+      action: t('Jump or dive'),
+      note: t('High shuttle: jump smash. Low and far: dive. Then a short cooldown.'),
+      keys: [['K'], ['Shift']],
+      mouse: 'right',
+      touch: 'button',
+      touchLabel: t('small button'),
     },
     { action: t('Smash or drive'), note: t('as you swing'), hold: true, keys: [['W'], ['Up']] },
     { action: t('Clear (high and deep)'), note: t('as you swing'), hold: true, keys: [['S'], ['Down']] },

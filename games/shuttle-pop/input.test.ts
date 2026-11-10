@@ -303,3 +303,39 @@ describe('hold-to-charge swing button', () => {
     ])
   })
 })
+
+describe('ability button', () => {
+  function setup(...a: [] | [undefined]) {
+    const tick = a.length ? undefined : 42
+    const got: SpInput[] = []
+    const keys = new HeldKeys(
+      (i) => got.push(i),
+      () => tick,
+      slowClock(),
+    )
+    return { got, keys }
+  }
+
+  it('ability() sends the held direction and the screen tick', () => {
+    const { got, keys } = setup()
+    keys.press('KeyW')
+    keys.press('KeyD')
+    keys.ability()
+    expect(got.at(-1)).toEqual({ t: 'ability', x: Math.SQRT1_2, z: Math.SQRT1_2, tick: 42 })
+  })
+
+  it('has no tick key before a state is on screen', () => {
+    const { got, keys } = setup(undefined)
+    keys.ability()
+    expect(got.at(-1)).toEqual({ t: 'ability', x: 0, z: 0 })
+    expect('tick' in got.at(-1)!).toBe(false)
+  })
+
+  it('does not touch the swing charge', () => {
+    const { got, keys } = setup()
+    keys.swingDown('Space')
+    keys.ability()
+    keys.swingUp('Space')
+    expect(got.map((i) => i.t)).toEqual(['charge', 'ability', 'swing'])
+  })
+})

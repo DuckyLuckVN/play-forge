@@ -27,6 +27,10 @@ export const VI: Dictionary = {
   'Power shot': 'Cú đánh mạnh',
   'Let go to hit. You move slower while charging, and much slower for a moment after a full-power swing.':
     'Thả ra để đánh. Khi tích lực bạn đi chậm hơn, và chậm hẳn trong giây lát sau cú đánh mạnh tối đa.',
+  'Jump or dive': 'Nhảy hoặc bổ nhào',
+  'High shuttle: jump smash. Low and far: dive. Then a short cooldown.':
+    'Cầu cao: bật nhảy đập. Cầu thấp và xa: bổ nhào cứu cầu. Sau đó chờ hồi chiêu một chút.',
+  'small button': 'nút nhỏ',
   'Smash or drive': 'Đập cầu hoặc tạt cầu',
   'as you swing': 'khi vung vợt',
   'Clear (high and deep)': 'Đánh cầu cao sâu',

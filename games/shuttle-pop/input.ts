@@ -35,6 +35,8 @@ const DIRS: Record<string, readonly [number, number]> = {
   ArrowRight: [1, 0],
 }
 const SWING_KEYS = new Set(['Space', 'KeyJ'])
+/** The jump / lunge button (T = emoji and V = push-to-talk stay free). */
+export const ABILITY_KEYS = new Set(['KeyK', 'ShiftLeft', 'ShiftRight'])
 
 /** Held direction from the pressed key codes: each axis −1/0/1, normalised to length ≤ 1. */
 export function heldDir(held: ReadonlySet<string>): { x: number; z: number } {
@@ -151,6 +153,16 @@ export class HeldKeys {
     )
   }
 
+  /** The ability button (jump / lunge / hop, picked by the sim): the held direction and the tick on screen. */
+  ability(): void {
+    const tick = this.nowTick()
+    this.send(
+      tick === undefined
+        ? { t: 'ability', x: this.dir.x, z: this.dir.z }
+        : { t: 'ability', x: this.dir.x, z: this.dir.z, tick },
+    )
+  }
+
   /** Send the held direction again now (stop when nothing is held). */
   resync(): void {
     this.sendMove()
@@ -211,11 +223,15 @@ export interface InputBinding {
 /** Draws the touch controls (hud.ts `TouchPad`); coordinates are px in the target. */
 export interface TouchView {
   readonly swingEl: HTMLElement
+  /** Touch presses on this are the ability button. */
+  readonly actEl: HTMLElement
   enable(): void
   showStick(x: number, y: number): void
   moveKnob(dx: number, dy: number): void
   hideStick(): void
   setPressed(on: boolean): void
+  /** The ability button is held (squash). */
+  setAct(on: boolean): void
 }
 
 /** Touches starting in this share of the view's width (from the left) grab the stick. */
@@ -223,7 +239,7 @@ const STICK_ZONE = 0.45
 
 /**
  * WASD / arrows move; Space, J or a left click on `target` is the swing button (hold to charge, let go
- * to swing). With a `pad`, touches on the left of `target` drive a floating stick and the pad's swing
+ * to swing); K, Shift or a right click is the ability button (jump / lunge, one press). With a `pad`, touches on the left of `target` drive a floating stick and the pad's swing
  * button is the swing button (both at once: each finger is tracked by pointer id). `nowTick` = the
  * swing's tick (world.ts swingTick; undefined before a state).
  */
@@ -236,11 +252,14 @@ export function bindInput(
   const keys = new HeldKeys(send, nowTick)
   const stick = new StickTracker(STICK_RADIUS)
   let swingPointer: number | null = null
+  let actPointer: number | null = null
   const onDown = (e: KeyboardEvent) => {
     if (isUi(e.target)) return
     if (SWING_KEYS.has(e.code)) {
       e.preventDefault()
       if (!e.repeat) keys.swingDown(e.code)
+    } else if (ABILITY_KEYS.has(e.code)) {
+      if (!e.repeat) keys.ability()
     } else if (keys.press(e.code)) e.preventDefault()
   }
   const onUp = (e: KeyboardEvent) => {
@@ -250,13 +269,21 @@ export function bindInput(
   const letGo = () => {
     stick.cancel()
     swingPointer = null
+    actPointer = null
     keys.clear()
     pad?.hideStick()
     pad?.setPressed(false)
+    pad?.setAct(false)
   }
   const onPointer = (e: PointerEvent) => {
     if (e.pointerType === 'mouse') {
-      if (e.button !== 0 || isUi(e.target)) return
+      if (isUi(e.target)) return
+      if (e.button === 2) {
+        e.preventDefault()
+        keys.ability()
+        return
+      }
+      if (e.button !== 0) return
       e.preventDefault()
       // Captured: the button-up comes back here even off the court.
       target.setPointerCapture?.(e.pointerId)
@@ -265,6 +292,20 @@ export function bindInput(
     }
     if (!pad) return
     pad.enable()
+    if (e.target instanceof Node && pad.actEl.contains(e.target)) {
+      e.preventDefault()
+      if (actPointer !== null) return // a second thumb on the button doesn't repeat it
+      actPointer = e.pointerId
+      target.setPointerCapture?.(e.pointerId)
+      pad.setAct(true)
+      try {
+        navigator.vibrate?.(10)
+      } catch {
+        // Haptics are a nicety.
+      }
+      keys.ability()
+      return
+    }
     if (e.target instanceof Node && pad.swingEl.contains(e.target)) {
       e.preventDefault()
       if (swingPointer !== null) return // a second thumb on the button doesn't double-swing
@@ -303,6 +344,9 @@ export function bindInput(
     if (e.pointerType === 'mouse') {
       if (swing) keys.swingUp('mouse')
       else keys.cancelSwing('mouse')
+    } else if (e.pointerId === actPointer) {
+      actPointer = null
+      pad?.setAct(false)
     } else if (e.pointerId === swingPointer) {
       swingPointer = null
       pad?.setPressed(false)
@@ -333,8 +377,9 @@ export function bindInput(
   if (pad) {
     target.classList.add('sp-touchable')
     target.addEventListener('pointermove', onMove)
-    target.addEventListener('contextmenu', noMenu)
   }
+  // Right click is a button: never the browser menu (a long press on a phone too).
+  target.addEventListener('contextmenu', noMenu)
   return {
     resync: () => keys.resync(),
     release: letGo,

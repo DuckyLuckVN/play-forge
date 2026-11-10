@@ -41,13 +41,14 @@ describe('eventSound', () => {
 })
 
 describe('power sounds (hold-to-charge)', () => {
-  const hit = (grade: 'perfect' | 'good' | 'late', shot: 'smash' | 'drive', charge?: number): SpEvent => ({
+  const hit = (grade: 'perfect' | 'good' | 'late', shot: 'smash' | 'drive', power?: number): SpEvent => ({
     ...at,
     k: 'hit',
     side: 0,
     grade,
     shot,
-    ...(charge === undefined ? {} : { charge }),
+    charge: 1,
+    ...(power === undefined ? {} : { power }),
   })
 
   it('an uncharged hit sounds exactly as before (old events without charge too)', () => {
@@ -64,9 +65,9 @@ describe('power sounds (hold-to-charge)', () => {
     expect(full.vol).toBeGreaterThan(half.vol)
   })
 
-  it('a full-charge Perfect smash booms (with the crowd); a lesser smash cracks as before', () => {
+  it('a power smash (power >= popFrom) booms (with the crowd); a lesser smash cracks as before', () => {
     expect(eventSound(hit('perfect', 'smash', 1), 0)?.sound).toBe(SHUTTLE_SOUNDS.powerSmash)
-    expect(eventSound(hit('perfect', 'smash', 0.6), 0)?.sound).toBe(SHUTTLE_SOUNDS.smash)
+    expect(eventSound(hit('perfect', 'smash', 0.5), 0)?.sound).not.toBe(SHUTTLE_SOUNDS.powerSmash)
     expect(eventSound(hit('perfect', 'smash'), 0)?.sound).toBe(SHUTTLE_SOUNDS.smash)
   })
 
@@ -97,15 +98,15 @@ describe('sound headroom', () => {
   it('every hit, at any grade / shot / charge, peaks at most 1.0 at full effects volume', () => {
     for (const grade of ['perfect', 'good', 'late'] as const)
       for (const shot of ['smash', 'drive', 'clear', 'drop'] as const)
-        for (const charge of [0, 0.5, 1]) {
-          const r = eventSound({ ...at, k: 'hit', side: 0, grade, shot, charge }, 0)!
-          expect(onsetPeak(r.sound) * r.vol * SFX_BUS, `${grade} ${shot} ${charge}`).toBeLessThanOrEqual(1)
+        for (const power of [0, 0.5, 1]) {
+          const r = eventSound({ ...at, k: 'hit', side: 0, grade, shot, charge: power, power }, 0)!
+          expect(onsetPeak(r.sound) * r.vol * SFX_BUS, `${grade} ${shot} ${power}`).toBeLessThanOrEqual(1)
         }
   })
 
   it('the power smash is not boosted on top (its layers are the boost)', () => {
-    expect(eventSound({ ...at, k: 'hit', side: 0, grade: 'perfect', shot: 'smash', charge: 1 }, 0)!.vol).toBe(
-      1,
-    )
+    expect(
+      eventSound({ ...at, k: 'hit', side: 0, grade: 'perfect', shot: 'smash', charge: 1, power: 1 }, 0)!.vol,
+    ).toBe(1)
   })
 })

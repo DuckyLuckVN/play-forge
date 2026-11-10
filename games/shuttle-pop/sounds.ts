@@ -1,6 +1,7 @@
 // Shuttle Pop sound effects (synthesised, see @forge/audio/sound). Music is the stock ARCADE track.
 import type { Sound, Tone } from '@forge/audio/sound'
 import { CHARGE, isFull } from './charge'
+import { isPowerHit } from './power'
 import type { Grade } from './shots'
 import type { SpEvent } from './sim'
 
@@ -128,10 +129,10 @@ export function chargeSound(stage: number): Sound | null {
 export function eventSound(e: SpEvent, localSide: 0 | 1): { sound: Sound; vol: number } | null {
   switch (e.k) {
     case 'hit': {
-      const c = e.charge ?? 0
+      const c = e.power ?? 0
       const sound =
         e.shot === 'smash'
-          ? isFull(c) && e.grade === 'perfect'
+          ? isPowerHit(e.power)
             ? SHUTTLE_SOUNDS.powerSmash
             : SHUTTLE_SOUNDS.smash
           : c >= THWACK_FROM

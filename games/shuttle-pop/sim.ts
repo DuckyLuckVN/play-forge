@@ -7,11 +7,13 @@ import { CHARGE, chargeOf } from './charge'
 import { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld } from './court'
 import { t } from './i18n'
 import { COURT, DT, settleOnFloor, stepShuttle, type Flight, type Vec3 } from './physics'
+import { hitPower } from './power'
 import { isAvailable, nextAvailable, PRESETS as PRESET_TABLE } from './presets'
 import { award, serveBox, winner } from './rules'
 import {
   chooseShot,
   launchFor,
+  launchShot,
   pickContact,
   REACH,
   shotTarget,
@@ -99,7 +101,7 @@ export interface SpPlayer {
 export type SpEvent = { id: number; tick: number } &
   /** charge: the swing's hold-to-charge power 0..1 (absent = 0). */
   (
-    | { k: 'hit'; side: 0 | 1; grade: Grade; shot: ShotKind; charge?: number }
+    | { k: 'hit'; side: 0 | 1; grade: Grade; shot: ShotKind; charge?: number; power?: number }
     | { k: 'whiff'; side: 0 | 1 }
     | { k: 'land'; x: number; z: number; in: boolean }
     | { k: 'net' }
@@ -116,6 +118,8 @@ export interface SpState {
   players: [SpPlayer, SpPlayer]
   shuttle: Flight & {
     lastHitter: -1 | 0 | 1
+    /** Power 0..1 of the last hit (power.ts hitPower; 0 at serve). */
+    power: number
     /** A connected swing whose contact tick is still ahead. aimX = held view-relative x at the swing. */
     pending: null | {
       atTick: number
@@ -230,6 +234,7 @@ function resetForServe(state: SpState) {
   state.phase = 'serve'
   state.phaseT = 0
   state.shuttle.lastHitter = -1
+  state.shuttle.power = 0
   state.shuttle.pending = null
   holdShuttle(state)
 }
@@ -283,7 +288,13 @@ export function createState(players: PlayerInfo[], seed: number, options: GameOp
         ? makePlayer(players[1].id, players[1].name, 'human', 1)
         : makePlayer(AI_ID, t('Computer'), 'ai', 1, level),
     ],
-    shuttle: { pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 }, lastHitter: -1, pending: null },
+    shuttle: {
+      pos: { x: 0, y: 0, z: 0 },
+      vel: { x: 0, y: 0, z: 0 },
+      lastHitter: -1,
+      power: 0,
+      pending: null,
+    },
     score: [0, 0],
     server: 0,
     winner: -1,
@@ -348,6 +359,7 @@ function serve(state: SpState, p: SpPlayer, held: { x: number; z: number }) {
   s.vel.y = v.y
   s.vel.z = v.z
   s.lastHitter = p.side
+  s.power = 0
   s.pending = null
   state.phase = 'rally'
   state.phaseT = 0
@@ -533,7 +545,9 @@ function hit(state: SpState) {
     s.pos.z = from.pos.z
   }
   const target = shotTarget(pend.kind, pend.side, pend.aimX)
-  const v = launchFor(pend.kind, pend.grade, s.pos, target, () => rand(state), pend.charge)
+  const { vel: v, gain } = launchShot(pend.kind, pend.grade, s.pos, target, () => rand(state), pend.charge)
+  const power = hitPower(pend.grade, gain)
+  s.power = power
   s.vel.x = v.x
   s.vel.y = v.y
   s.vel.z = v.z
@@ -543,7 +557,7 @@ function hit(state: SpState) {
   state.history.length = 0
   state.stats.shots++
   if (pend.grade === 'perfect') state.stats.perfect[pend.side]++
-  emit(state, { k: 'hit', side: pend.side, grade: pend.grade, shot: pend.kind, charge: pend.charge })
+  emit(state, { k: 'hit', side: pend.side, grade: pend.grade, shot: pend.kind, charge: pend.charge, power })
   // Fast-forwarded ticks are not written to history: the opponent cannot rewind-hit on them (rare, accepted).
   if (from) for (let t = from.tick; t < state.tick && state.phase === 'rally'; t++) flightStep(state)
 }

@@ -47,7 +47,8 @@ import {
   type ChibiPose,
 } from './actors'
 import { AVAILABLE_IDS } from './presets'
-import { chargeOf, chargeStage, CHARGE, isFull } from './charge'
+import { chargeOf, chargeStage, CHARGE } from './charge'
+import { isPowerHit } from './power'
 import { ChargeRing } from './chargering'
 import { TICK_RATE } from './court'
 import { DustPuffs } from './dust'
@@ -963,7 +964,7 @@ export class Court3D {
       if (e.k === 'point') {
         this.pointSide = e.side
         if (this.pointHits >= CHEER.rally) playSound(SHUTTLE_SOUNDS.cheer)
-      } else if (e.k === 'hit') this.onHit(s, e.side, e.grade, e.shot === 'smash', e.charge ?? 0)
+      } else if (e.k === 'hit') this.onHit(s, e.side, e.grade, e.shot === 'smash', e.power ?? 0)
       else if (e.k === 'serve') this.trail.setLook(TRAIL.plain)
       else if (e.k === 'whiff' && !this.spectating && e.side === this.side)
         this.popAt(this.localIdx, 'miss', false)
@@ -975,14 +976,14 @@ export class Court3D {
     side: 0 | 1,
     grade: Exclude<PopKind, 'power' | 'miss'>,
     smash: boolean,
-    charge: number,
+    power: number,
   ) {
     const j = s.players[0].side === side ? 0 : 1
     const mine = this.spectating || side === this.side
-    const power = isFull(charge) && grade === 'perfect'
-    this.popAt(j, power ? 'power' : grade, smash)
+    const big = isPowerHit(power)
+    this.popAt(j, big ? 'power' : grade, smash)
     this.trail.setLook(
-      isFull(charge) ? TRAIL.power : smash ? TRAIL.smash : grade === 'perfect' ? TRAIL.perfect : TRAIL.plain,
+      big ? TRAIL.power : smash ? TRAIL.smash : grade === 'perfect' ? TRAIL.perfect : TRAIL.plain,
     )
     // The hit is happening now: a racket still on its way to contact hurries to meet it (a press seen
     // later this frame catches up too: hitAt).
@@ -997,15 +998,15 @@ export class Court3D {
       // A snappy stretch-then-squash on the hitter.
       view.squash.kick(MOTION.kickPerfect)
     }
-    const boost = 1 + POWER_FX.punch * charge
+    const boost = 1 + POWER_FX.punch * power
     if (smash) {
       // Keep a leap scheduled from the pending smash; a same-tick hit leaps now.
       view.jumpAge = leapAtHit(view.jumpAge)
       this.fx.burst(p.x, p.y, p.z, SMASH_BURST)
-      if (power) this.fx.burst(p.x, p.y, p.z, POWER_BURST)
-      this.punch.kick((mine ? PUNCH.kickMine : PUNCH.kickTheirs) * (power ? POWER_FX.powerSmash : boost))
-    } else if (charge > 0) this.punch.kick(POWER_FX.hitKick * charge * (mine ? 1 : 0.5))
-    if (power && !this.spectating && side === this.side) {
+      if (big) this.fx.burst(p.x, p.y, p.z, POWER_BURST)
+      this.punch.kick((mine ? PUNCH.kickMine : PUNCH.kickTheirs) * (big ? POWER_FX.powerSmash : boost))
+    } else if (power > 0) this.punch.kick(POWER_FX.hitKick * power * (mine ? 1 : 0.5))
+    if (big && !this.spectating && side === this.side) {
       try {
         navigator.vibrate?.(POWER_FX.buzz)
       } catch {

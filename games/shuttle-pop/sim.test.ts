@@ -881,14 +881,14 @@ describe('hold-to-charge', () => {
   const charge = (player: string, cancel = false): InputEvent<SpInput> =>
     ev(player, cancel ? { t: 'charge', cancel: true } : { t: 'charge' })
   /** Shuttle passes right through p1 (as in 'swing timing'); p1 starts charging `hold` ticks before. */
-  function chargedHit(hold: number, rewindTick?: number, heldZ = 0) {
+  function chargedHit(hold: number, rewindTick?: number, heldZ = 0, contactY = 1.5) {
     const s = duel()
     s.players[1].x = 0
     s.players[1].z = 3
     rally(s, { x: 0, y: 3, z: -3 }, { x: 0, y: 5, z: 0 }, 1) // in the air on the far half meanwhile
     game.tick(s, [charge('p1')])
     run(s, hold - 1)
-    rally(s, { x: 0, y: 1.5, z: 3 }, { x: 1.2, y: 1, z: 0 }, 0)
+    rally(s, { x: 0, y: contactY, z: 3 }, { x: 1.2, y: 1, z: 0 }, 0)
     s.history.length = 0
     const sw: SpInput =
       rewindTick === undefined
@@ -907,6 +907,20 @@ describe('hold-to-charge', () => {
     expect(s.players[1].chargeAt).toBe(s.tick - 1)
     game.tick(s, [swing('p1')])
     expect(s.players[1].chargeAt).toBe(-1)
+  })
+
+  it('a full-charge Perfect smash carries power > 0.9 into the event and s.shuttle.power; a tap 0; a serve resets', () => {
+    const { s, hit } = chargedHit(40, undefined, 1, 2.2)
+    expect(hit).toMatchObject({ shot: 'smash', grade: 'perfect' })
+    const power = (hit as { power: number }).power
+    expect(power).toBeGreaterThan(0.9)
+    expect(s.shuttle.power).toBe(power)
+    const tap = chargedHit(1, undefined, 1, 2.2)
+    expect(tap.hit).toMatchObject({ shot: 'smash', power: 0 })
+    expect(tap.s.shuttle.power).toBe(0)
+    rally(s, { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }, 0)
+    run(s, 600)
+    expect(s.shuttle.power).toBe(0)
   })
 
   it('a tap (no charge press) hits with charge 0, exactly like before', () => {

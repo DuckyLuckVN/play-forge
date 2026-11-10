@@ -37,14 +37,15 @@ const Z = new Vector3(0, 0, 1)
 
 const B = BOX_HEAD
 /**
- * Chibi head deformation: wider (x) and a touch fuller (z) low on the face, for round cheeks. Applied to
- * every head part of a 'chibi' look (so hair and hats follow) and to its face decal surface (face.ts).
+ * Chibi head deformation (the reference's toy head): wider than tall (`wide` × x, `sy` × y), with soft
+ * full cheeks and jaw (x / z bump low on the face). Applied to every head part of a 'chibi' look (so hair
+ * and hats follow) and to its face decal surface (face.ts), as a function of the undeformed height y.
  */
-export const CHEEK = { x: 0.1, z: 0.035, y: -0.15, w: 0.14 }
+export const CHEEK = { wide: 1.05, sy: 0.97, x: 0.08, z: 0.05, y: -0.17, w: 0.15 }
 const cheekBump = (y: number) => Math.exp(-(((y - CHEEK.y) / CHEEK.w) ** 2))
-/** x scale at height y. */
-export const cheekX = (y: number): number => 1 + CHEEK.x * cheekBump(y)
-/** z scale at height y. */
+/** x scale at (undeformed) height y. */
+export const cheekX = (y: number): number => CHEEK.wide + CHEEK.x * cheekBump(y)
+/** z scale at (undeformed) height y. */
 export const cheekZ = (y: number): number => 1 + CHEEK.z * cheekBump(y)
 
 /** Deforms placed head parts in place by cheekX / cheekZ (normals follow, approximately). */
@@ -56,9 +57,9 @@ function puffCheeks(parts: Part[]): Part[] {
       const y = P.getY(i)
       const fx = cheekX(y)
       const fz = cheekZ(y)
-      P.setXYZ(i, P.getX(i) * fx, y, P.getZ(i) * fz)
+      P.setXYZ(i, P.getX(i) * fx, y * CHEEK.sy, P.getZ(i) * fz)
       const nx = N.getX(i) / fx
-      const ny = N.getY(i)
+      const ny = N.getY(i) / CHEEK.sy
       const nz = N.getZ(i) / fz
       const len = Math.hypot(nx, ny, nz) || 1
       N.setXYZ(i, nx / len, ny / len, nz / len)
@@ -68,14 +69,14 @@ function puffCheeks(parts: Part[]): Part[] {
 }
 
 /** Rig scale of the head bone per head kind (the chibi head is a touch smaller than the animals' heads). */
-export const HEAD_SCALE: Record<HeadKind, number> = { round: 1, chibi: 0.93, box: 1 }
+export const HEAD_SCALE: Record<HeadKind, number> = { round: 1, chibi: 0.95, box: 1 }
 
 export const HEADS: Record<HeadKind, (l: Look) => Part[]> = {
   round: (l) => [part(new SphereGeometry(R, 32, 24), l.skin)],
   /** Human: the round head + a tiny nose bump (cheeks: puffCheeks over all head parts). */
   chibi: (l) => [
     part(new SphereGeometry(R, 34, 24), l.skin),
-    part(new SphereGeometry(0.024, 12, 8), l.skin, { p: [0, -0.115, R - 0.014], s: [1.15, 0.8, 0.75] }),
+    part(new SphereGeometry(0.024, 12, 8), l.skin, { p: [0, -0.148, R - 0.02], s: [1.15, 0.8, 0.75] }),
   ],
   /** Robot: a rounded box, a little darker underneath. */
   box: (l) => [
@@ -86,7 +87,7 @@ export const HEADS: Record<HeadKind, (l: Look) => Part[]> = {
 export const EARS: Record<EarKind, (l: Look) => Part[]> = {
   human: (l) =>
     [-1, 1].map((s) =>
-      part(new SphereGeometry(0.064, 14, 10), l.skin, { p: [s * 0.348, -0.04, -0.01], s: [0.55, 1, 0.78] }),
+      part(new SphereGeometry(0.064, 14, 10), l.skin, { p: [s * 0.35, -0.06, -0.01], s: [0.6, 1, 0.8] }),
     ),
   none: () => [],
   /** Robot: round bolts on the sides with an accent ring. */
@@ -240,18 +241,6 @@ function onHead(polar: number, az: number, rs: number, curl: number): { p: Vecto
   }
 }
 
-/** A pointed tuft (flattened cone, tip down) on the head at (polar, az): fringes, sideburns. */
-function tuft(color: number, polar: number, az: number, len: number, wid: number, curl = 0, rs = 1.0): Part {
-  const { p, r } = onHead(polar, az, rs, curl)
-  const pt = part(new ConeGeometry(wid, len, 8), color, {
-    p: [p.x, p.y, p.z],
-    r: r.multiply(new Quaternion().setFromAxisAngle(Z, Math.PI)),
-    s: [1, 1, 0.5],
-  })
-  pt.surf = 'hair'
-  return pt
-}
-
 /** A teardrop lock (rounded top, tapering to a tip), unit size, tip on −y: the sculpted clump shape. */
 const CLUMP = new LatheGeometry(
   Array.from({ length: 9 }, (_, i) => {
@@ -274,10 +263,12 @@ function clump(
   wid: number,
   curl = 0,
   rs = 1.03,
+  shape: BufferGeometry = CLUMP,
+  flat = 0.42,
 ): Part {
-  const g = CLUMP.clone()
+  const g = shape.clone()
   const P = g.getAttribute('position')
-  const thick = wid * 0.42
+  const thick = wid * flat
   const c = Math.cos(curl)
   const sn = Math.sin(curl)
   const ring = R * Math.max(0.2, Math.sin(polar))
@@ -299,6 +290,9 @@ function clump(
   pt.surf = 'hair'
   return pt
 }
+
+/** A rounded lock (both ends round, unit size): fat bangs and lock ends with no points. */
+const BLOB = new SphereGeometry(1, 10, 7)
 
 /**
  * A fan of `n` clumps between polar angles a..b (rad) and azimuths az0..az1 (rad), each spanning the band
@@ -329,6 +323,7 @@ function lockFan(
         width * 0.62,
         0,
         rs + (i % 2) * 0.008,
+        BLOB,
       ),
     )
   }
@@ -415,9 +410,15 @@ function spike(color: number, polar: number, az: number, len: number, back = 0.4
     .multiplyScalar(R * 0.96)
     .addScaledVector(aim, len * 0.42)
   const lit = tint(color, 0.1)
-  const pt = part(new ConeGeometry(r0, len, 9), (x, y, z) => (Math.hypot(x, y, z) > R * 1.25 ? lit : color), {
+  // Flattened across the meridian: a thick blade-like clump rather than a round thorn.
+  const across = new Vector3(Math.cos(az), 0, -Math.sin(az))
+  const q = turn(Y, aim)
+  const lx = new Vector3(1, 0, 0).applyQuaternion(q)
+  const roll = Math.atan2(lx.clone().cross(across).dot(aim), lx.dot(across))
+  const pt = part(new ConeGeometry(r0, len, 7), (x, y, z) => (Math.hypot(x, y, z) > R * 1.25 ? lit : color), {
     p: [p.x, p.y, p.z],
-    r: turn(Y, aim),
+    r: q.multiply(new Quaternion().setFromAxisAngle(Y, roll)),
+    s: [1, 1, 0.6],
   })
   pt.surf = 'hair'
   return pt
@@ -429,22 +430,12 @@ export const STYLES: Record<StyleKind, (l: Look) => Part[]> = {
     const acc = l.accent
     const hair = l.hair
     const out = [hairShell(shade(hair, 0.12), 56, 104, 160, 1.03, 0)]
-    // Fringe: seven rounded clumps, tips down, the middle ones a little shorter.
-    for (let i = 0; i < 7; i++) {
-      const t = i / 6 - 0.5
-      out.push(
-        clump(
-          hair,
-          0.27 * Math.PI + Math.abs(t) * 0.18,
-          t * 1.75,
-          0.11 - Math.abs(t) * 0.01,
-          0.07,
-          -t * 0.3,
-          1.035,
-        ),
-      )
+    // Fringe: five fat rounded bangs covering the forehead down to the brows.
+    for (let i = 0; i < 5; i++) {
+      const t = i / 4 - 0.5
+      out.push(clump(hair, 0.36 * Math.PI + Math.abs(t) * 0.1, t * 1.8, 0.15, 0.09, -t * 0.2, 1.04, BLOB))
     }
-    for (const s of [-1, 1]) out.push(clump(hair, 0.47 * Math.PI, s * 1.25, 0.15, 0.06, s * 0.12, 1.02))
+    for (const s of [-1, 1]) out.push(clump(hair, 0.47 * Math.PI, s * 1.22, 0.14, 0.055, s * 0.1, 1.02, BLOB))
     // Back: long locks radiating from the crown down to the nape (grooves between them).
     out.push(...lockFan(hair, 0.05 * Math.PI, 0.86 * Math.PI, 13, 1.35, 2 * Math.PI - 1.35, 1.045))
     for (const s of [-1, 1]) {
@@ -493,11 +484,11 @@ export const STYLES: Record<StyleKind, (l: Look) => Part[]> = {
     const navy = shade(acc, 0.6)
     const out = [hairShell(shade(hair, 0.1), 66, 88, 142, 1.025, 0)]
     // Fringe tufts under the brim, sideburns, and short locks round the back and sides below the cap.
-    for (let i = 0; i < 6; i++) {
-      const t = i / 5 - 0.5
-      out.push(tuft(hair, 0.4 * Math.PI, t * 1.35, 0.08, 0.045, -t * 0.6, 1.02))
+    for (let i = 0; i < 3; i++) {
+      const t = i / 2 - 0.5
+      out.push(clump(hair, 0.41 * Math.PI, t * 1.2, 0.11, 0.1, -t * 0.5, 1.03, CLUMP, 0.22))
     }
-    for (const s of [-1, 1]) out.push(tuft(hair, 0.47 * Math.PI, s * 1.24, 0.1, 0.04, 0, 1.01))
+    for (const s of [-1, 1]) out.push(clump(hair, 0.45 * Math.PI, s * 1.2, 0.06, 0.035, 0, 1.015, BLOB))
     out.push(...lockFan(hair, 0.38 * Math.PI, 0.72 * Math.PI, 11, 1.5, 2 * Math.PI - 1.5, 1.035))
     // Crown: a dome sitting high (its rim on the head's widest band), panels + seams, dark band at the back.
     const CY = 0.085
@@ -511,9 +502,9 @@ export const STYLES: Record<StyleKind, (l: Look) => Part[]> = {
     const cap: Part[] = [
       part(new SphereGeometry(CR, 42, 16, 0, Math.PI * 2, 0, HALF_PI), crown, {
         p: [0, CY, 0],
-        s: [1.01, 1.0, 1.03],
+        s: [1.0, 0.9, 1.02],
       }),
-      part(new SphereGeometry(0.03, 10, 6), acc, { p: [0, CY + CR, 0], s: [1, 0.55, 1] }),
+      part(new SphereGeometry(0.03, 10, 6), acc, { p: [0, CY + CR * 0.9, 0], s: [1, 0.55, 1] }),
       // Brim: a long rounded bill off the front of the crown, cap colour on top, dark underneath.
       part(new CylinderGeometry(0.21, 0.21, 0.018, 36, 1, false, -HALF_PI, Math.PI), acc, {
         p: [0, CY + 0.012, 0.27],
@@ -530,7 +521,7 @@ export const STYLES: Record<StyleKind, (l: Look) => Part[]> = {
       part(roundBox(0.03, 0.022, 0.012, 4, 12, 8), tint(acc, 0.6), { p: [0, CY + 0.036, -0.39] }),
     ]
     made('cloth', cap)
-    cap.push(...made('plastic', emblem(PALETTE.emblem, [0, CY + 0.2, CR * 0.92], [-0.6, 0, 0], 2.6)))
+    cap.push(...made('plastic', emblem(PALETTE.emblem, [0, CY + 0.18, CR * 0.92], [-0.55, 0, 0], 2.6)))
     out.push(...place(cap, { r: [-0.08, 0, 0] }))
     return out
   },
@@ -539,26 +530,23 @@ export const STYLES: Record<StyleKind, (l: Look) => Part[]> = {
     const hair = l.hair
     const out = [hairShell(shade(hair, 0.1), 62, 88, 142, 1.03, 0)]
     // (polar share, azimuth, length, base radius): big overlapping clumps, the front ones over the band.
-    const spikes: [number, number, number, number][] = [
-      [0.02, 0.4, 0.32, 0.13],
-      [0.05, -2.4, 0.3, 0.13],
-      [0.11, 1.1, 0.3, 0.13],
-      [0.11, -0.9, 0.3, 0.13],
-      [0.13, 2.1, 0.28, 0.125],
-      [0.14, 2.9, 0.27, 0.125],
-      [0.15, -1.8, 0.28, 0.125],
-      [0.19, 0.05, 0.27, 0.12],
-      [0.22, 0.65, 0.25, 0.115],
-      [0.22, -0.55, 0.25, 0.115],
-      [0.25, 1.55, 0.24, 0.11],
-      [0.25, -1.45, 0.24, 0.11],
-      [0.26, 2.45, 0.23, 0.11],
-      [0.26, -2.35, 0.23, 0.11],
-      [0.27, 3.14, 0.22, 0.11],
+    // Big thick clumps in rings (polar share, azimuth offset, count, length, base radius), swept back.
+    const rings: [number, number, number, number, number][] = [
+      [0.03, 0.2, 2, 0.3, 0.15],
+      [0.13, 0.0, 6, 0.29, 0.15],
+      [0.24, 0.5, 8, 0.25, 0.14],
+      [0.33, 0.0, 7, 0.2, 0.12],
     ]
-    for (const [p, az, len, r0] of spikes) out.push(spike(hair, p * Math.PI, az, len, 0.1, r0))
+    for (const [p, off, n, len, r0] of rings)
+      for (let i = 0; i < n; i++) {
+        const az = off + (i / n) * Math.PI * 2
+        // The lowest ring only behind the band's front (the fringe shows there).
+        if (p > 0.3 && Math.cos(az) > 0.3) continue
+        out.push(spike(hair, p * Math.PI, az, len, 0.35, r0))
+      }
+
     out.push(...lockFan(hair, 0.4 * Math.PI, 0.72 * Math.PI, 11, 1.5, 2 * Math.PI - 1.5, 1.035))
-    for (const s of [-1, 1]) out.push(tuft(hair, 0.47 * Math.PI, s * 1.24, 0.1, 0.04, 0, 1.01))
+    for (const s of [-1, 1]) out.push(clump(hair, 0.45 * Math.PI, s * 1.2, 0.06, 0.035, 0, 1.015, BLOB))
     const band = l.accent
     out.push(
       ...made(
@@ -580,9 +568,9 @@ export const STYLES: Record<StyleKind, (l: Look) => Part[]> = {
     const out = [hairShell(shade(hair, 0.1), 66, 86, 142, 1.025, 0)]
     for (let i = 0; i < 5; i++) {
       const t = i / 4 - 0.5
-      out.push(tuft(hair, 0.41 * Math.PI, t * 1.3 - 0.08, 0.11, 0.065, -0.55, 1.02))
+      out.push(clump(hair, 0.41 * Math.PI, t * 1.3 - 0.08, 0.1, 0.085, -0.6, 1.035, CLUMP, 0.25))
     }
-    for (const s of [-1, 1]) out.push(tuft(hair, 0.47 * Math.PI, s * 1.24, 0.1, 0.04, 0, 1.01))
+    for (const s of [-1, 1]) out.push(clump(hair, 0.45 * Math.PI, s * 1.2, 0.06, 0.035, 0, 1.015, BLOB))
     out.push(...lockFan(hair, 0.44 * Math.PI, 0.72 * Math.PI, 10, 1.5, 2 * Math.PI - 1.5, 1.03))
     // Fold: a thick rounded ring with real ribs (radial bumps); dome with ribs; pompom with fluff.
     const FOLD: [number, number][] = [

@@ -58,19 +58,18 @@ const TORSO_PROFILE: readonly (readonly [number, number])[] = [
 
 /** Human shirt outline (radius, world y), bottom to top: a short boxy tee whose hem flares over the shorts. */
 const HUMAN_PROFILE: readonly (readonly [number, number])[] = [
-  [0, 0.226],
-  [0.16, 0.228],
-  [0.184, 0.234],
-  [0.19, 0.246],
-  [0.192, 0.3],
-  [0.193, 0.36],
-  [0.19, 0.41],
-  [0.18, 0.455],
-  [0.165, 0.49],
-  [0.142, 0.518],
-  [0.115, 0.538],
-  [0.088, 0.551],
-  [0.07, NECK_Y],
+  [0, 0.262],
+  [0.17, 0.264],
+  [0.193, 0.27],
+  [0.199, 0.282],
+  [0.2, 0.32],
+  [0.2, 0.38],
+  [0.199, 0.44],
+  [0.193, 0.488],
+  [0.178, 0.518],
+  [0.145, 0.54],
+  [0.105, 0.552],
+  [0.075, NECK_Y],
   [0.062, NECK_Y + 0.001],
   [0.06, 0.62],
   [0.058, 0.66],
@@ -78,11 +77,11 @@ const HUMAN_PROFILE: readonly (readonly [number, number])[] = [
 ]
 /** Two contrast stripes round the hem (world y bands). */
 const HEM_BANDS: readonly (readonly [number, number])[] = [
-  [0.25, 0.262],
-  [0.273, 0.285],
+  [0.288, 0.298],
+  [0.306, 0.316],
 ]
 /** Shirt depth / width share (a tee is wider than deep). */
-const TEE = { sx: 1.12, sz: 0.92 }
+const TEE = { sx: 0.96, sz: 0.88 }
 
 /** Radius of a (radius, y) outline at height y (linear between points). */
 function radiusAt(prof: readonly (readonly [number, number])[], y: number): number {
@@ -130,6 +129,14 @@ function humanTorso(l: Look): Part[] {
     // V collar: two strips meeting on the chest, a band round the back of the neck.
     part(v, k.trim, { p: [-0.033, vy - HIP_Y, front(vy) - 0.004], r: [-0.55, 0, 0.6] }),
     part(v, k.trim, { p: [0.033, vy - HIP_Y, front(vy) - 0.004], r: [-0.55, 0, -0.6] }),
+    // Polo collar flaps either side of the V.
+    ...[-1, 1].map((s) =>
+      part(new SphereGeometry(0.04, 10, 6), k.trim, {
+        p: [s * 0.05, neckY - 0.01, front(NECK_Y - 0.01) - 0.012],
+        r: [0.5, 0, s * 0.6],
+        s: [1.15, 0.5, 0.28],
+      }),
+    ),
     part(new TorusGeometry(0.073, 0.014, 6, 24), k.trim, {
       p: [0, neckY - 0.008, -0.008],
       r: [HALF_PI + 0.3, 0, 0],
@@ -141,9 +148,9 @@ function humanTorso(l: Look): Part[] {
 
 /** Pleated skirt: a flared tube whose rim zigzags (pleats), shaded in the folds. */
 function pleatedSkirt(color: number, trim: number): Part[] {
-  const PLEATS = 14
+  const PLEATS = 18
   const H = 0.17
-  const g = new CylinderGeometry(0.16, 0.232, H, PLEATS * 4, 2, true)
+  const g = new CylinderGeometry(0.165, 0.245, H, PLEATS * 3, 2, true)
   const P = g.getAttribute('position')
   const fold = (x: number, z: number) => {
     const a = (Math.atan2(x, z) / (Math.PI * 2)) * PLEATS
@@ -170,11 +177,11 @@ function pleatedSkirt(color: number, trim: number): Part[] {
 /** Shorts or skirt (bare hips without a kit), in the hips bone's space (origin at the hip joints' height). */
 function humanHips(l: Look): Part[] {
   const k = l.kit
-  if (k?.bottom === 'skirt') return pleatedSkirt(k.bottomColor, k.stripe)
+  if (k?.bottom === 'skirt') return pleatedSkirt(k.bottomColor, l.accent)
   return [
     part(new SphereGeometry(0.155, 28, 14), k ? k.bottomColor : l.skin, {
       p: [0, 0.03, 0],
-      s: [1.2, 0.66, 0.98],
+      s: [l.body === 'human' ? 1.1 : 1.2, 0.66, 0.98],
     }),
   ]
 }
@@ -376,19 +383,26 @@ export function hipsParts(l: Look): Part[] {
   return BODIES[l.body].hips(l)
 }
 
+/** Limb thickness share: the humans' chunky toy limbs; everyone else as built. */
+const limbScale = (l: Look) => (l.body === 'human' ? 1.14 : 1)
+/** Human fist size share. */
+const FIST = 1.22
+
 /** Upper arm hanging from the shoulder (y = 0 → −ARM.upper): puffed short sleeve, stripe + cuff (kit only). */
 export function upperArmParts(l: Look): Part[] {
   const k = l.kit
-  const arm = new CapsuleGeometry(ARM.upperR, ARM.upper, 4, 12).translate(0, -ARM.upper / 2, 0)
+  const t = limbScale(l)
+  const arm = new CapsuleGeometry(ARM.upperR * t, ARM.upper, 4, 12).translate(0, -ARM.upper / 2, 0)
   if (!k) return [part(arm, limbOf(l))]
-  const SLEEVE = 0.077
+  const SLEEVE = 0.075 * t
   return [
     part(arm, limbOf(l)),
     ...made('cloth', [
       part(new SphereGeometry(SLEEVE, 16, 8, 0, Math.PI * 2, 0, HALF_PI), k.shirt),
       part(
         new CylinderGeometry(SLEEVE, SLEEVE + 0.004, 0.07, 18),
-        (_x, y) => (y < -0.046 && y > -0.058 ? k.stripe : k.shirt),
+        // Two stripes above the cuff.
+        (_x, y) => ((y < -0.044 && y > -0.052) || (y < -0.03 && y > -0.038) ? k.stripe : k.shirt),
         {
           p: [0, -0.035, 0],
         },
@@ -400,7 +414,8 @@ export function upperArmParts(l: Look): Part[] {
 
 /** Forearm hanging from the elbow, with a wristband (kit or racket arm). */
 export function foreArmParts(l: Look, side: number): Part[] {
-  const fore = new CapsuleGeometry(ARM.foreR + 0.004, ARM.fore, 4, 12).translate(0, -ARM.fore / 2, 0)
+  const t = limbScale(l)
+  const fore = new CapsuleGeometry((ARM.foreR + 0.004) * t, ARM.fore, 4, 12).translate(0, -ARM.fore / 2, 0)
   const out = [part(fore, limbOf(l))]
   if (side < 0 || l.kit) {
     // Terry wristband: light ribbed edges painted on (no extra rings).
@@ -408,7 +423,7 @@ export function foreArmParts(l: Look, side: number): Part[] {
     out.push(
       ...made('cloth', [
         part(
-          new CylinderGeometry(0.061, 0.061, 0.036, 18, 4),
+          new CylinderGeometry(0.061 * t, 0.061 * t, 0.036, 18, 4),
           (_x, y) => (Math.abs(y - 0.022 + ARM.fore) > 0.012 ? edge : l.accent),
           {
             p: [0, -ARM.fore + 0.022, 0],
@@ -443,22 +458,27 @@ export const HANDS: Record<HandKind, (l: Look, side: number) => Part[]> = {
   ],
   /** Slime / ghost: a soft round nub. */
   nub: (l) => [part(new SphereGeometry(0.058, 14, 10), limbOf(l), { p: [0, -ARM.hand, 0.004] })],
-  /** Soft round fist with a thumb on the inner (body) side and a knuckle ridge. */
-  mitten: (l, side) => [
-    part(new SphereGeometry(0.07, 16, 11), limbOf(l), {
-      p: [0, -ARM.hand - 0.004, 0.006],
-      s: [0.95, 1.02, 0.88],
-    }),
-    part(new CapsuleGeometry(0.03, 0.06, 4, 10), limbOf(l), {
-      p: [0, -ARM.hand - 0.04, 0.012],
-      r: [HALF_PI, 0, 0],
-      s: [1, 1, 0.9],
-    }),
-    part(new CapsuleGeometry(0.024, 0.022, 3, 10), limbOf(l), {
-      p: [-side * 0.052, -ARM.hand + 0.004, 0.03],
-      r: [0.4, 0, side * 0.7],
-    }),
-  ],
+  /** Big soft round fist (the toy's chunky hands) with a thumb on the inner (body) side and a knuckle ridge. */
+  mitten: (l, side) =>
+    place(
+      [
+        part(new SphereGeometry(0.07, 16, 11), limbOf(l), {
+          p: [0, -ARM.hand - 0.004, 0.006],
+          s: [0.95, 1.02, 0.88],
+        }),
+        part(new CapsuleGeometry(0.03, 0.06, 4, 10), limbOf(l), {
+          p: [0, -ARM.hand - 0.04, 0.012],
+          r: [HALF_PI, 0, 0],
+          s: [1, 1, 0.9],
+        }),
+        part(new CapsuleGeometry(0.024, 0.022, 3, 10), limbOf(l), {
+          p: [-side * 0.052, -ARM.hand + 0.004, 0.03],
+          r: [0.4, 0, side * 0.7],
+        }),
+      ],
+      // Grown about the wrist, pushed out along the hand so the wrist stays covered.
+      { p: [0, -ARM.hand * (FIST - 1), 0], s: FIST },
+    ),
 }
 
 /** Paw: a round mitten (no thumb) with a light pad on the palm and three toe bumps. */
@@ -483,13 +503,13 @@ export function handParts(l: Look, side: number): Part[] {
 /** Thigh hanging from the hip joint (y = 0 → knee at −rigOf(l).thigh); shorts legs (hem + side stripes) over the top. */
 export function thighParts(l: Look): Part[] {
   const T = rigOf(l).thigh
-  const thigh = new CapsuleGeometry(0.064, T - 0.05, 4, 12).translate(0, -T / 2, 0)
+  const thigh = new CapsuleGeometry(0.064 * limbScale(l), T - 0.05, 4, 12).translate(0, -T / 2, 0)
   const out = [part(thigh, limbOf(l))]
   const k = l.kit
   if (k?.bottom === 'shorts') {
     // Shorts legs down to mid-thigh.
-    const R = 0.088
-    const H = 0.105
+    const R = l.body === 'human' ? 0.086 : 0.088
+    const H = l.body === 'human' ? 0.12 : 0.105
     out.push(
       ...made('cloth', [
         part(new CylinderGeometry(R, R + 0.006, H, 20), k.bottomColor, { p: [0, -H / 2 + 0.03, 0] }),
@@ -511,8 +531,9 @@ export function thighParts(l: Look): Part[] {
 
 /** The sneaker a touch bigger than built (chunky toy trainers), scaled about its sole centre. */
 const SHOE_SCALE = (g: number) => {
-  const k = 1.14
-  return { p: [0, g * (1 - k), 0.03 * (1 - k)] as const, s: k }
+  const k = 1.1
+  // Wider than long: the reference's chunky trainers.
+  return { p: [0, g * (1 - k), 0.03 * (1 - k)] as const, s: [k * 1.18, k, k] as const }
 }
 
 const DEFAULT_SHOES: Shoes = { socks: 0xffffff, shoe: 0xffffff, sole: 0xffffff }
@@ -606,6 +627,6 @@ export const FEET: Record<FootKind, (l: Look) => Part[]> = {
 export function shinParts(l: Look): Part[] {
   // Knee down to just above the foot (the sneaker's sock covers the end).
   const len = rigOf(l).shin - 0.095
-  const shin = new CapsuleGeometry(0.054, len, 4, 12).translate(0, -0.0275 - len / 2, 0)
+  const shin = new CapsuleGeometry(0.054 * limbScale(l), len, 4, 12).translate(0, -0.0275 - len / 2, 0)
   return [part(shin, limbOf(l)), ...FEET[l.feet](l)]
 }

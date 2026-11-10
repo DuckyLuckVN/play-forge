@@ -42,17 +42,18 @@ export const RIG: Rig = {
   headY: HEAD_Y,
 }
 /**
- * Human rig (the toy reference): longer legs and a wider stance; everything above the hips rides up by
- * the same 7 cm, so the torso, arms and head keep their layout relative to the hips.
+ * Human rig (the toy reference): longer legs, a wider stance and shoulders; the torso and arms ride up
+ * with the hips (same hip-relative layout), the head sits lower on the shoulders.
  */
 export const TALL_RIG: Rig = {
   hipY: 0.31,
-  hipX: 0.098,
+  hipX: 0.105,
   thigh: 0.145,
   shin: 0.165,
   shoulderY: SHOULDER_Y + 0.07,
-  shoulderX: SHOULDER_X + 0.008,
-  headY: HEAD_Y + 0.07,
+  shoulderX: SHOULDER_X + 0.01,
+  // Sits 3.5 cm lower on the shoulders than the default (the neck nearly hidden, like the reference).
+  headY: HEAD_Y + 0.035,
 }
 
 /** Robot head: a rounded box (superellipsoid half sizes, exponent), centred like the round head. */

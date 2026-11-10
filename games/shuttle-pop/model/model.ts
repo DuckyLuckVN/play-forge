@@ -6,9 +6,9 @@ import { foreArmParts, handParts, hipsParts, shinParts, thighParts, torsoParts, 
 import { EXTRAS, type ExtraSpec } from './extras'
 import { faceGeometry } from './face'
 import { headParts } from './head'
-import { legless, type Look } from './look'
+import { legless, rigOf, type Look } from './look'
 import { mergeParts, part, type MergeOpts, type Part } from './merge'
-import { HEAD_R, HEAD_Y, HIP_Y } from './dims'
+import { HEAD_R } from './dims'
 import { racketParts } from './racket'
 
 /** Twin outline width (m): the far twin's back-faced shell is the head pushed out this much. */
@@ -54,7 +54,10 @@ const AO: MergeOpts = { ao: {} }
 /** Limbs and extras: skin unless a part says otherwise (sleeves, shorts, socks, shoes). */
 const SKIN: MergeOpts = { ao: {}, surf: 'skin' }
 /** The head at rest over the torso (torso space), shading the neck. */
-const neckShade = (): Part[] => [part(new SphereGeometry(HEAD_R, 24, 16), 0, { p: [0, HEAD_Y - HIP_Y, 0] })]
+const neckShade = (l: Look): Part[] => {
+  const r = rigOf(l)
+  return [part(new SphereGeometry(HEAD_R, 24, 16), 0, { p: [0, r.headY - r.hipY, 0] })]
+}
 const rackets = new Map<string, BufferGeometry>()
 const EMPTY = new BufferGeometry()
 EMPTY.setAttribute('position', new BufferAttribute(new Float32Array(0), 3))
@@ -87,7 +90,7 @@ export function modelOf(src: ModelSource): ModelGeos {
     const legs = !legless(l)
     m = {
       // The neck sits in the head's shadow, the shorts' top under the shirt hem.
-      torso: mergeParts(torsoParts(l), { ao: { extra: neckShade() } }),
+      torso: mergeParts(torsoParts(l), { ao: { extra: neckShade(l) } }),
       // (Humans only: the animals' rounder torso sits inside their shorts and would blot them.)
       hips: mergeParts(hipsParts(l), { ao: { extra: l.body === 'human' ? torsoParts(l) : [] } }),
       head,

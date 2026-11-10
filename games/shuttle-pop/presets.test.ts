@@ -68,9 +68,10 @@ describe('preset table', () => {
     for (const p of PRESETS) {
       const r = rigOf(p.look)
       expect(r.thigh + r.shin, p.name).toBeCloseTo(r.hipY, 9)
-      // The upper body keeps its layout relative to the hips (torso / head builders are hip-relative).
-      expect(r.headY - r.hipY).toBeCloseTo(RIG.headY - RIG.hipY, 9)
+      // The torso keeps its layout relative to the hips (the torso builders are hip-relative); the head
+      // sits on the shoulders, never sunk below the collar.
       expect(r.shoulderY - r.hipY).toBeCloseTo(RIG.shoulderY - RIG.hipY, 9)
+      expect(r.headY - r.shoulderY).toBeGreaterThan(0.38)
       expect(r).toBe(p.look.body === 'human' ? TALL_RIG : RIG)
     }
   })
@@ -97,7 +98,7 @@ describe('preset table', () => {
 
 /**
  * Per look: triangles over every drawn bone, head mesh alone, extra meshes. The toy-style humans (Task 18:
- * sculpted hair clumps, knit ribs, kit stripes, chunky sneakers) need ~22k, heads ~10k; draw calls, not
+ * sculpted hair clumps, knit ribs, kit stripes, chunky sneakers, pleated skirt) need ~22k, heads ~10k; draw calls, not
  * triangles, are the budget that matters on phones (two chibis ≈ 45k triangles).
  */
 const BUDGET = { tris: 22500, head: 10000, extraMeshes: 4 }

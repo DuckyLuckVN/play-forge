@@ -7,7 +7,7 @@
 
 import { BufferAttribute, BufferGeometry, Color, Float32BufferAttribute } from 'three'
 import { BOX_HEAD, HEAD_R } from './dims'
-import { cheekX, cheekZ, MUZZLE_DIMS } from './head'
+import { CHEEK, cheekX, cheekZ, MUZZLE_DIMS } from './head'
 import { limbOf, type FaceKind, type HeadKind, type Look } from './look'
 import { shade, tint } from './merge'
 import { PALETTE } from './palette'
@@ -109,13 +109,13 @@ const MOUTH_Y = -0.125
  * brows (gap over the eye top); mouth height; soft blush; tongue colour.
  */
 const TOY = {
-  eye: { a: 0.086, b: 0.102, x: 0.158, y: -0.062 } as EyeDims,
-  iris: { a: 0.9, b: 0.9, dy: -0.004 },
+  eye: { a: 0.075, b: 0.09, x: 0.142, y: -0.1 } as EyeDims,
+  iris: { a: 0.93, b: 0.93, dy: -0.003 },
   pupil: { a: 0.5, b: 0.54, dy: 0.008 },
-  lid: { mid: 0.13, end: 0.05, from: 0.06 },
+  lid: { mid: 0.09, end: 0.035, from: 0.08 },
   brow: { gap: 0.034, w: 0.046, th: 0.011 },
-  mouthY: -0.19,
-  blush: { a: 0.066, b: 0.038, x: 0.245, y: -0.165 },
+  mouthY: -0.196,
+  blush: { a: 0.064, b: 0.036, x: 0.238, y: -0.175 },
   tongue: 0xf07a8a,
 }
 /** Mouth size share (shapes below are drawn at 1). */
@@ -208,8 +208,8 @@ function toyMouth(e: Expr): { w: number; top: (t: number) => number; bot: (t: nu
       return { w: 0.042, top, bot: (t) => top(t) - 0.04 * (1 - t * t) }
     }
     case 'neutral': {
-      const top = (t: number) => 0.003 + 0.006 * t * t
-      return { w: 0.032, top, bot: (t) => top(t) - 0.026 * (1 - t * t) - 0.002 }
+      const top = (t: number) => 0.003 + 0.007 * t * t
+      return { w: 0.04, top, bot: (t) => top(t) - 0.034 * (1 - t * t) - 0.002 }
     }
     default:
       return mouth(e)
@@ -235,8 +235,10 @@ const sphere =
 const HEAD_SURFACES: Record<HeadKind, Surface> = {
   round: sphere(HEAD_R),
   // The round head with the cheek puff (head.ts puffCheeks): x widened, z fuller, by height.
-  chibi: (u, v, lift) =>
-    cheekZ(v) * Math.sqrt(Math.max(0, (HEAD_R + lift) ** 2 - (u / cheekX(v)) ** 2 - v * v)),
+  chibi: (u, v, lift) => {
+    const y = v / CHEEK.sy
+    return cheekZ(y) * Math.sqrt(Math.max(0, (HEAD_R + lift) ** 2 - (u / cheekX(y)) ** 2 - y * y))
+  },
   box: (u, v, lift) => roundBoxZ(BOX_HEAD.a, BOX_HEAD.b, BOX_HEAD.c, BOX_HEAD.n, u, v, lift),
 }
 

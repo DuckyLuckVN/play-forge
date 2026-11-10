@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { ABILITY, type Strike } from './ability'
 import { answersPrediction, GuestShuttle, PREDICT, type OwnSwing } from './guestshuttle'
 import { courtDims } from './courtsize'
 import { solveLaunch, type Vec3 } from './physics'
@@ -696,5 +697,145 @@ describe('GuestShuttle own-hit prediction', () => {
       gs.update(DT)
       expect(gs.pos.z).toBeGreaterThan(before.z)
     }
+  })
+})
+
+// ---- Own jump / lunge: the guest picks the host's move and predicts the host's shot. ----
+
+describe('GuestShuttle own jump / lunge prediction', () => {
+  /** Side-1 (seat b) mirrors of sim.test's LOB (over b at y ≈ 3.4) and WIDE (1.8 m wide at y ≈ 0.7). */
+  const LOB = { pos: { x: 0, y: 4.2, z: 2.6 }, vel: { x: 0, y: -1, z: 5 }, at: { x: 0, z: 4 } }
+  const WIDE = { pos: { x: 1.8, y: 0.9, z: 1 }, vel: { x: 0, y: 0.6, z: 8 }, at: { x: 0, z: 2.83 } }
+  type Scene = typeof LOB
+
+  function scene(sc: Scene): SpState {
+    const s = rally(sc.pos, sc.vel)
+    s.players[1].x = sc.at.x
+    s.players[1].z = sc.at.z
+    // mulberry32 seed whose 2nd draw (the aim jitter radius) is ~7e-10: the host aims un-jittered too.
+    s.rng = 25632116
+    return s
+  }
+
+  /** History tick of the scene flight's closest approach to `at` inside `act`'s reach box. */
+  function boxContact(sc: Scene, act: Strike): number {
+    const c = scene(sc)
+    const r = ABILITY[act].reach
+    let best = Infinity
+    let tick = -1
+    for (let i = 0; i < 60; i++) {
+      const { x, y, z } = c.shuttle.pos
+      const d = Math.hypot(x - sc.at.x, z - sc.at.z)
+      if (y >= r.minY && y <= r.maxY && d <= r.radius && d < best) {
+        best = d
+        tick = c.tick + 1
+      }
+      step(c, [])
+    }
+    expect(tick).toBeGreaterThan(0)
+    return tick
+  }
+
+  /**
+   * The guest presses on screen tick P = contact − lead (it has every host state up to P − 1); the host
+   * gets `{t:'ability', tick: P}` at host tick P + lag. Returns the guest's pick + prediction and the host's hit.
+   */
+  function parity(sc: Scene, act: Strike, lag: number) {
+    const P = boxContact(sc, act) - ABILITY[act].lead
+    const s = scene(sc)
+    const clock = new RenderClock(60)
+    const gs = new GuestShuttle(clock)
+    while (s.tick < P - 1) {
+      step(s, [])
+      clock.onState(s.tick)
+      gs.push(structuredClone(s))
+    }
+    clock.tick = P - 1 // seenTick() = round(tick) + 1 = P
+    gs.update(DT)
+    expect(clock.seenTick()).toBe(P)
+    const held = { x: 0, z: 1 }
+    const pick = gs.pickAbility(sc.at, 1, true)
+    const sw: OwnSwing = {
+      side: 1,
+      held,
+      charge: 0,
+      player: sc.at,
+      tap: false,
+      pressTick: P,
+      act: pick.k as Strike,
+    }
+    const predicted = pick.k !== 'hop' && gs.predictHit(sw)
+    const pred = gs['pred']
+    let hit: SpEvent | undefined
+    let launch: Vec3 | undefined
+    for (let i = 0; i < 80 && !hit; i++) {
+      const press = s.tick + 1 === P + lag
+      step(s, press ? [{ player: 'b', input: { t: 'ability', x: held.x, z: held.z, tick: P } }] : [])
+      hit = s.events.find((e) => e.k === 'hit' && e.side === 1)
+      if (hit) launch = s.history.find((h) => h.tick === hit!.tick)?.vel
+    }
+    return { pick, predicted, pred, hit, launch }
+  }
+
+  it.each([0, 5])('own jump: same kind, grade and launch as the host (lag %i)', (lag) => {
+    const r = parity(LOB, 'jump', lag)
+    expect(r.pick.k).toBe('jump')
+    expect(r.predicted).toBe(true)
+    expect(r.hit).toMatchObject({ act: 'jump', shot: 'smash' })
+    const hit = r.hit as Extract<SpEvent, { k: 'hit' }>
+    expect(r.pred).toMatchObject({ side: 1, grade: hit.grade, shot: hit.shot, power: hit.power })
+    // The host's answer is recognised as the echo of this prediction (HitEcho's rule).
+    expect(answersPrediction(hit, 'hit', 1, r.pred!.from)).toBe(true)
+    for (const k of ['x', 'y', 'z'] as const) expect(r.pred!.flight.vel[k]).toBeCloseTo(r.launch![k], 3)
+  })
+
+  it.each([0, 5])('own lunge matches the host the same way (lag %i)', (lag) => {
+    const r = parity(WIDE, 'lunge', lag)
+    expect(r.pick.k).toBe('lunge')
+    expect(r.pick.dx).toBeGreaterThan(0.99) // toward the shuttle (world +x)
+    expect(r.predicted).toBe(true)
+    expect(r.hit).toMatchObject({ act: 'lunge', shot: 'clear' })
+    const hit = r.hit as Extract<SpEvent, { k: 'hit' }>
+    expect(hit.grade).not.toBe('perfect')
+    expect(r.pred).toMatchObject({ side: 1, grade: hit.grade, shot: hit.shot, power: hit.power })
+    expect(answersPrediction(hit, 'hit', 1, r.pred!.from)).toBe(true)
+    for (const k of ['x', 'y', 'z'] as const) expect(r.pred!.flight.vel[k]).toBeCloseTo(r.launch![k], 3)
+  })
+
+  it('no prediction for a hop / out-of-turn press', () => {
+    const P = boxContact(LOB, 'jump') - ABILITY.jump.lead
+    const view = (mutate: (s: SpState) => void, upTo = P - 1, start = scene(LOB)) => {
+      const clock = new RenderClock(60)
+      const gs = new GuestShuttle(clock)
+      for (const st of host(start, upTo - start.tick)) {
+        const c = structuredClone(st)
+        mutate(c)
+        clock.onState(c.tick)
+        gs.push(c)
+      }
+      clock.tick = upTo // seenTick() = upTo + 1
+      gs.update(DT)
+      return gs
+    }
+    // Our own shot last (not ours to hit), a hit pending, or a swing still cooling down: hop.
+    expect(view((s) => (s.shuttle.lastHitter = 1)).pickAbility(LOB.at, 1, true).k).toBe('hop')
+    expect(view(() => {}).pickAbility(LOB.at, 1, false).k).toBe('hop')
+    expect(view(() => {}).pickAbility(LOB.at, 1, true).k).toBe('jump')
+    // An empty view (no state yet) hops.
+    expect(new GuestShuttle(new RenderClock(60)).pickAbility(LOB.at, 1, true).k).toBe('hop')
+    // The wide drive stays below 1 m: out of the jump box, so a jump predicts nothing (the lunge does).
+    const L = boxContact(WIDE, 'lunge') - ABILITY.lunge.lead
+    const gs = view(() => {}, L - 1, scene(WIDE))
+    const sw: OwnSwing = {
+      side: 1,
+      held: { x: 0, z: 1 },
+      charge: 0,
+      player: WIDE.at,
+      tap: false,
+      act: 'jump',
+    }
+    expect(gs.predictHit(sw)).toBe(false)
+    expect(gs.predictHit({ ...sw, act: undefined })).toBe(false) // nor a plain swing
+    expect(gs.predictHit({ ...sw, act: 'lunge' })).toBe(true)
   })
 })

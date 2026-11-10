@@ -2,7 +2,16 @@
 // is re-simulated locally with the sim's own rule (deterministic), so a late packet never freezes or
 // lurches the shuttle. A hit / serve event starts a new flight, so a sample is never run past one.
 // The guest's own hit is predicted with the sim's contact rules (predictHit) and shown at once; the
-// host's answer then replaces it through the same capped, never-snapping correction offset.
+// host's answer then replaces it through the same capped, never-snapping correction offset. An own
+// ability press picks the host's move (ability.ts pickAbility) and a jump / lunge is predicted like a swing.
+import {
+  abilityShot,
+  leadOf,
+  pickAbility as abilityFor,
+  reachOf,
+  type AbilityKind,
+  type Strike,
+} from './ability'
 import { COURT, settleOnFloor, stepShuttle, type CourtDims, type Flight, type Vec3 } from './physics'
 import type { RemoteTracks } from './remotes'
 import type { RenderClock } from './renderclock'
@@ -53,6 +62,11 @@ export interface OwnSwing {
   tap: boolean
   /** A short charge-0 release the sim grades at its press (gradeRewind): the press's screen tick. */
   pressTick?: number
+  /**
+   * An ability press that picked a jump / lunge (pickAbility): its reach box, graded leadOf(act) ticks
+   * after the press, its own shot (abilityShot: `held` / `charge` ignored for the shot kind), no tap rule.
+   */
+  act?: Strike
 }
 
 /** A predicted own hit, as the guest plays it at once (sound) before the host's answer. */
@@ -207,6 +221,27 @@ export class GuestShuttle {
   }
 
   /**
+   * The move an own ability press (sent this frame, stamped clock.seenTick()) makes, by the host's rule
+   * (sim resolveAct): pickAbility on the flight shown at the press (history tick `seen`), from the guest's
+   * predicted spot. A strike needs a rally the opponent hit last, no pending hit, no own prediction
+   * awaiting the host and `canSwingNow` (the swing cooldown); else, or with no state yet, a hop.
+   */
+  pickAbility(
+    player: { x: number; z: number },
+    side: 0 | 1,
+    canSwingNow: boolean,
+  ): { k: AbilityKind; dx: number; dz: number } {
+    const newest = this.ring[this.ring.length - 1]
+    if (!newest) return { k: 'hop', dx: 0, dz: 0 }
+    const awaiting = !!this.pred && this.pred.until === Infinity
+    const canHit =
+      newest.phase === 'rally' && newest.lastHitter !== side && !newest.pending && !awaiting && canSwingNow
+    const f: Flight = { pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 } }
+    this.at(this.clock.seenTick() - 1, f)
+    return abilityFor(f, player, side, newest.lastHitter, canHit)
+  }
+
+  /**
    * The guest's own swing (sent this frame, stamped clock.seenTick()): if the sim's rules (pickContact on
    * the flight shown, reach from the guest's predicted spot) make it a hit, show that hit now. Only in a
    * rally the opponent hit last, with no pending hit and no prediction awaiting the host. It launches
@@ -219,33 +254,58 @@ export class GuestShuttle {
     if (this.pred && this.pred.until === Infinity) return false
     // History tick h's shuttle = the flight at state tick h − 1 (the sim records it before stepping).
     const seen = this.clock.seenTick()
-    const swingTick = sw.pressTick ?? seen
+    const pressTick = sw.pressTick ?? seen
+    // A jump / lunge is graded its lead after the press (sim contactFor).
+    const swingTick = pressTick + leadOf(sw.act)
     // The host's history starts at the last hit / serve.
     let start = -Infinity
     for (const r of this.ring) for (const b of r.breaks) if (b <= seen && b > start) start = b
     const past: ContactCandidate[] = []
-    for (let h = Math.max(start, swingTick - WINDOW.pastGrace - 1); h < seen; h++) {
+    for (let h = Math.max(start, pressTick - WINDOW.pastGrace - 1); h < seen; h++) {
       const f: Flight = { pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 } }
       this.at(h - 1, f)
       past.push({ tick: h, pos: f.pos, at: sw.player })
     }
     this.at(seen - 1, this.a)
     const perfect = perfectWindowOf(newest.pressured)
-    const c = pickContact(past, this.a, seen, sw.player, sw.side, newest.lastHitter, swingTick, seen, perfect)
-    if (!c || (sw.tap && !tapContact(c.tick, swingTick))) return false
+    const reach = reachOf(sw.act)
+    const c = pickContact(
+      past,
+      this.a,
+      seen,
+      sw.player,
+      sw.side,
+      newest.lastHitter,
+      swingTick,
+      seen,
+      perfect,
+      reach,
+    )
+    if (!c || (!sw.act && sw.tap && !tapContact(c.tick, swingTick))) return false
     const from = launchTick(c.tick, seen)
     const flight: Flight = { pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 } }
     this.at(from - 1, flight)
     const held = clampDir(sw.held.x, sw.held.z)
-    const kind = chooseShot(held, c.y, c.grade)
-    const target = shotTarget(kind, sw.side, held.x, this.court)
-    const { vel, gain } = launchShot(kind, c.grade, flight.pos, target, () => 0, sw.charge, this.court)
+    // A jump / lunge plays its own shot (sim resolveSwing), else the held direction's.
+    const shot = sw.act
+      ? abilityShot(sw.act, held, c.grade)
+      : { kind: chooseShot(held, c.y, c.grade), grade: c.grade, charge: sw.charge }
+    const target = shotTarget(shot.kind, sw.side, held.x, this.court)
+    const { vel, gain } = launchShot(
+      shot.kind,
+      shot.grade,
+      flight.pos,
+      target,
+      () => 0,
+      shot.charge,
+      this.court,
+    )
     flight.vel = vel
-    const power = hitPower(c.grade, gain)
+    const power = hitPower(shot.grade, gain)
     this.pred = {
       side: sw.side,
-      grade: c.grade,
-      shot: kind,
+      grade: shot.grade,
+      shot: shot.kind,
       power,
       from,
       flight,

@@ -142,9 +142,9 @@ function wireGeometry(k: Spread): BufferGeometry {
     for (let s = 0; s + 1 < poles.length; s++) {
       const z0 = poles[s] * k.z
       const z1 = poles[s + 1] * k.z
-      for (let k = 0; k < STEPS; k++) {
-        const a = k / STEPS
-        const b = (k + 1) / STEPS
+      for (let i = 0; i < STEPS; i++) {
+        const a = i / STEPS
+        const b = (i + 1) / STEPS
         wire.push(x, lanternHang(a), z0 + (z1 - z0) * a, x, lanternHang(b), z0 + (z1 - z0) * b)
       }
     }

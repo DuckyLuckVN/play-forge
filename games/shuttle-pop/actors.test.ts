@@ -1,38 +1,87 @@
 import { describe, expect, it } from 'vitest'
-import {
-  BufferGeometry,
-  CapsuleGeometry,
-  Mesh,
-  MeshBasicMaterial,
-  SphereGeometry,
-  TorusGeometry,
-  Vector3,
-} from 'three'
-import { createChibi, restPose } from './actors'
+import { BufferGeometry, Mesh, MeshBasicMaterial, Object3D, Vector3 } from 'three'
+import { createChibi, PRESETS, restPose } from './actors'
 import { STRIKE_END } from './arm'
 import { SwingDriver } from './moves'
 
 // Rig checks with real three.js transforms (no WebGL needed).
-function rig() {
-  const chibi = createChibi(0)
-  let frame: Mesh | null = null
-  let head: Mesh | null = null
-  const capsules: Mesh[] = []
+function rig(preset = 0) {
+  const chibi = createChibi(preset)
+  const named = (n: string) => chibi.root.getObjectByName(n)!
   let streak: Mesh | null = null
   chibi.root.traverse((o) => {
-    if (!(o instanceof Mesh)) return
-    if (o.geometry instanceof TorusGeometry && o.geometry.parameters.radius === 0.16) frame = o
-    if (o.geometry instanceof SphereGeometry && o.geometry.parameters.radius === 0.36) head = o
-    if (o.geometry instanceof CapsuleGeometry) capsules.push(o)
-    if (o.material instanceof MeshBasicMaterial && o.material.vertexColors) streak = o
+    if (o instanceof Mesh && o.material instanceof MeshBasicMaterial && o.material.vertexColors && !o.name)
+      streak = o
   })
-  return { chibi, frame: frame!, head: head!, capsules, streak: streak! }
+  return { chibi, frame: named('racketHead'), head: named('head'), streak: streak! }
+}
+
+/** Meshes that would draw (visible all the way up). */
+function drawn(root: Object3D): Mesh[] {
+  const out: Mesh[] = []
+  root.traverseVisible((o) => {
+    if (o instanceof Mesh) out.push(o)
+  })
+  return out
 }
 
 describe('chibi rig', () => {
-  it('arms are jointed chains: upper arm + forearm capsules per arm (plus legs and body)', () => {
-    const { capsules } = rig()
-    expect(capsules).toHaveLength(2 * 2 + 2 + 1)
+  it('limbs are jointed chains: shoulder → upper arm → elbow → forearm → wrist → hand, hip → thigh → knee → shin', () => {
+    const { chibi } = rig()
+    const parentName = (m: Object3D) => m.parent!
+    const by = (n: string) => {
+      const out: Object3D[] = []
+      chibi.root.traverse((o) => o.name === n && out.push(o))
+      return out
+    }
+    for (const n of ['upperArm', 'foreArm', 'hand', 'thigh', 'shin']) expect(by(n)).toHaveLength(2)
+    for (const shin of by('shin')) {
+      const knee = parentName(shin)
+      const hip = knee.parent!
+      expect(hip.children).toContain(by('thigh').find((t) => t.parent === hip))
+      expect(knee.position.y).toBeLessThan(0)
+    }
+    for (const hand of by('hand')) {
+      const wrist = hand.parent!
+      const elbow = wrist.parent!
+      expect(elbow.children.some((c) => c.name === 'foreArm')).toBe(true)
+      expect(elbow.parent!.children.some((c) => c.name === 'upperArm')).toBe(true)
+    }
+  })
+
+  it('every preset builds with ≤ 16 draw calls per chibi (twin outline + streak only when shown), shadow casters = torso, head, racket', () => {
+    for (let n = 0; n < PRESETS.length; n++) {
+      const { chibi } = rig(n)
+      expect(drawn(chibi.root).length).toBeLessThanOrEqual(16)
+      chibi.setPreset(n, true)
+      expect(drawn(chibi.root).length).toBeLessThanOrEqual(17)
+      const casters: string[] = []
+      chibi.root.traverse((o) => o instanceof Mesh && o.castShadow && casters.push(o.name))
+      expect(casters.sort()).toEqual(['head', 'racket', 'torso'])
+      for (const m of drawn(chibi.root))
+        expect((m.geometry as BufferGeometry).getAttribute('position').count).toBeGreaterThan(0)
+    }
+  })
+
+  it('both players on one preset share every geometry (built once per look)', () => {
+    const a = rig(2).chibi
+    const b = rig(2).chibi
+    const geos = (c: typeof a) => drawn(c.root).map((m) => m.geometry)
+    expect(geos(a)).toEqual(geos(b))
+    geos(a).forEach((g, i) => expect(g).toBe(geos(b)[i]))
+  })
+
+  it('the face morphs: smash effort and a happy point move its influences', () => {
+    const { chibi } = rig()
+    const face = chibi.root.getObjectByName('face') as Mesh
+    const p = restPose()
+    p.happy = 1
+    chibi.setPose(p, 1)
+    expect(face.morphTargetInfluences![0]).toBeCloseTo(1)
+    p.happy = 0
+    p.smash = 1
+    chibi.setPose(p, 1)
+    expect(face.morphTargetInfluences![2]).toBeCloseTo(1)
   })
 
   it('the racket never cuts through the head: swing, smash, run, ready, cheer (behind-camera readability)', () => {
@@ -81,7 +130,7 @@ describe('chibi rig', () => {
         chibi.setPose(p, st * 3)
         check()
       }
-    // Head radius 0.36 + frame radius 0.16: the frame's centre stays (about) outside both, so the
+    // Head radius 0.36 + frame half-width 0.13 (oval, 0.18 along the shaft): the frame's centre stays (about) outside both, so the
     // racket at most grazes the head's silhouette.
     expect(closest).toBeGreaterThan(0.36 + 0.14)
   })

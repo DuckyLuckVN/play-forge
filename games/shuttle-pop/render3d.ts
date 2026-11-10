@@ -36,7 +36,7 @@ import { startRenderLoop } from '@forge/core/loop'
 import type { Smoothed } from '@forge/net/smoothing'
 import { playSound } from '@forge/audio/sound'
 import { createScene3D, Particles3D, QualityGovernor, type Scene3D } from '@forge/render3d'
-import { createChibi, restPose, type Chibi, type ChibiPose } from './actors'
+import { createChibi, PRESETS, restPose, type Chibi, type ChibiPose } from './actors'
 import { chargeOf, chargeStage, CHARGE, isFull } from './charge'
 import { ChargeRing } from './chargering'
 import { TICK_RATE } from './court'
@@ -461,7 +461,8 @@ export class Court3D {
     this.ring.visible = true
     this.trail.mesh.visible = true
     this.dust.mesh.visible = true
-    // Every hat + the twin outline, so no material compiles mid-match.
+    // The twin outline + kit materials (both shades), so no material compiles mid-match.
+    this.players[1].chibi.setPreset(1, true)
     for (const p of this.players) {
       p.chibi.root.traverse((o) => (o.visible = true))
       p.ring.shown = true
@@ -470,6 +471,12 @@ export class Court3D {
     // Scenery, crowd and the shadow variants of every lit material are all in the scene by now.
     await this.view.renderer.compileAsync(this.view.scene, this.view.camera)
     this.view.render(0)
+    // Upload every look's merged geometries now (a first-time preset would otherwise upload mid-match).
+    for (let k = 0; k < PRESETS.length; k++) {
+      this.players[0].chibi.setPreset(k)
+      this.players[1].chibi.setPreset(k, true)
+      this.view.render(0)
+    }
     this.ring.visible = false
     this.trail.mesh.visible = false
     this.dust.mesh.visible = false

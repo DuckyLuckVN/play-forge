@@ -40,17 +40,21 @@ interface Profile {
  * Tuning gauges, not people: "casual" is a first-evening player (late-ish reads, ~150 ms timing
  * spread, misjudges depth now and then); "skilled" is a practised one (~100 ms spread, clean reads).
  */
+const casual = {
+  reactTicks: 20,
+  timingSigma: 9,
+  posSigma: 0.3,
+  depthMiss: 0.25,
+  depthBy: 0.5,
+  unsureLine: 0.2,
+  chargeHigh: 0.35,
+  chargeLow: 0.2,
+}
+
 const PROFILES = {
-  casual: {
-    reactTicks: 20,
-    timingSigma: 9,
-    posSigma: 0.3,
-    depthMiss: 0.25,
-    depthBy: 0.5,
-    unsureLine: 0.2,
-    chargeHigh: 0.35,
-    chargeLow: 0.2,
-  },
+  casual,
+  /** Casual who never charges: pure taps (= today's shots). */
+  tap: { ...casual, chargeHigh: 0, chargeLow: 0 },
   skilled: {
     reactTicks: 15,
     timingSigma: 6,
@@ -297,6 +301,20 @@ function gauge(H: Profile, level: Level, n: number, speeds: Partial<Record<ShotK
  * fewer matches swing win rates by ±10%. ~0.03–0.1 s a match.
  */
 const N = 80
+
+// Measured at 973e671 before slice 10 (power swing), N = 80; Task 6 asserts bands around these.
+// `tap` = casual who never charges.
+export const BASELINE = {
+  'casual v easy': { win: 0.9875, share: 0.763 },
+  'casual v normal': { win: 0.5375, share: 0.512 },
+  'casual v hard': { win: 0.05, share: 0.337 },
+  'tap v easy': { win: 1, share: 0.76 },
+  'tap v normal': { win: 0.425, share: 0.491 },
+  'tap v hard': { win: 0.075, share: 0.348 },
+  'skilled v easy': { win: 1, share: 0.918 },
+  'skilled v normal': { win: 0.9625, share: 0.708 },
+  'skilled v hard': { win: 0.625, share: 0.539 },
+} satisfies Record<string, { win: number; share: number }>
 
 // Tuning gauges, not truths. Measured at N (task-14 fix 2: proxies charging, taps 4–7 ticks long, reach
 // judged from where each side stood): casual wins Easy 99%, Normal 54%, Hard 5%; skilled wins Hard 62.5%.

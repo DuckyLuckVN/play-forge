@@ -102,6 +102,64 @@ export function gradeOf(dtTicks: number): Grade | null {
   return null
 }
 
+/** The half a shuttle position belongs to for `side` hitting it (z = 0 goes to the non-last-hitter). */
+export function onHalf(z: number, side: 0 | 1, lastHitter: -1 | 0 | 1): boolean {
+  if (z === 0) return lastHitter !== side
+  return side === 0 ? z < 0 : z > 0
+}
+
+/** A past shuttle position (`tick`) and where the swinger stood beside it on its own screen. */
+export interface ContactCandidate {
+  tick: number
+  pos: Vec3
+  at: { x: number; z: number }
+}
+
+/**
+ * The contact a swing at `swingTick` makes (the sim's rules; shared with the guest's own-hit prediction),
+ * or null = a whiff. Candidates: in-reach `past` positions on the swinger's half before `nowTick`
+ * (reach from `at`), and the forward scan of `future` (the flight at `futureTick`, from `player`) up to
+ * WINDOW.late after the swing. The closest wins (the past only when strictly closer); graded by gradeOf
+ * (contact tick − swingTick). `pos` = the shuttle at the contact.
+ */
+export function pickContact(
+  past: readonly ContactCandidate[],
+  future: Flight,
+  futureTick: number,
+  player: { x: number; z: number },
+  side: 0 | 1,
+  lastHitter: -1 | 0 | 1,
+  swingTick: number,
+  nowTick: number,
+): { tick: number; pos: Vec3; y: number; grade: Grade } | null {
+  let bestD = Infinity
+  let bestTick = 0
+  let best: Vec3 = future.pos
+  for (const h of past) {
+    // Every in-reach past position competes (no pastGrace pre-filter): the grade is anchored on the
+    // closest approach, so a swing well after it whiffs even if the shuttle still hovers in reach.
+    if (h.tick >= nowTick || h.pos.y < REACH.minY || h.pos.y > REACH.maxY) continue
+    if (!onHalf(h.pos.z, side, lastHitter)) continue
+    const d = Math.hypot(h.pos.x - h.at.x, h.pos.z - h.at.z)
+    if (d <= REACH.radius && d < bestD) {
+      bestD = d
+      bestTick = h.tick
+      best = h.pos
+    }
+  }
+  const c = findContact(future, player, 0, Math.max(0, swingTick + WINDOW.late - futureTick))
+  if (c && onHalf(c.pos.z, side, lastHitter)) {
+    const d = Math.hypot(c.pos.x - player.x, c.pos.z - player.z)
+    if (d <= bestD) {
+      bestD = d
+      bestTick = futureTick + c.dt
+      best = c.pos
+    }
+  }
+  const grade = bestD === Infinity ? null : gradeOf(bestTick - swingTick)
+  return grade ? { tick: bestTick, pos: { ...best }, y: best.y, grade } : null
+}
+
 /** Held direction is view-relative (z > 0 = toward the net). Late swings are always floaty clears. */
 export function chooseShot(held: { x: number; z: number }, contactY: number, grade: Grade): ShotKind {
   if (grade === 'late') return 'clear'

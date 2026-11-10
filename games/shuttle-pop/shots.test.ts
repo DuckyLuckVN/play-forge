@@ -6,10 +6,20 @@ import {
   findContact,
   gradeOf,
   launchFor,
+  onHalf,
+  pickContact,
   REACH,
   shotTarget,
   type ShotKind,
 } from './shots'
+import {
+  contactCandidates,
+  setupBots,
+  shuttlePopGame as game,
+  step,
+  type SpPlayer,
+  type SpState,
+} from './sim'
 
 const rngOf = (...v: number[]) => {
   let i = 0
@@ -367,5 +377,112 @@ describe('launchFor charge (hold-to-charge power)', () => {
     expect(err('good', 1)).toBeGreaterThan(err('good', 0) + 0.2)
     expect(err('late', 1)).toBeGreaterThan(err('late', 0) + 0.2)
     expect(err('perfect', 1)).toBeLessThan(0.35)
+  })
+})
+
+describe('onHalf', () => {
+  it('own half by side; z = 0 belongs to whoever did not hit last', () => {
+    expect(onHalf(-1, 0, 1)).toBe(true)
+    expect(onHalf(1, 0, 1)).toBe(false)
+    expect(onHalf(1, 1, 0)).toBe(true)
+    expect(onHalf(0, 0, 1)).toBe(true)
+    expect(onHalf(0, 0, 0)).toBe(false)
+    expect(onHalf(0, 1, -1)).toBe(true)
+  })
+})
+
+describe('pickContact', () => {
+  /** The sim's own contact for `p` swinging `rewind` ticks ago, via pickContact (sim's contactFor rules). */
+  const query = (s: SpState, p: SpPlayer, rewind: number) =>
+    pickContact(
+      contactCandidates(s, p, rewind),
+      s.shuttle,
+      s.tick,
+      p,
+      p.side,
+      s.shuttle.lastHitter,
+      s.tick - rewind,
+      s.tick,
+    )
+  const strip = (c: ReturnType<typeof query>) => c && { tick: c.tick, y: c.y, grade: c.grade }
+  const twoHumans = () =>
+    game.setup(
+      [0, 1].map((i) => ({ id: `p${i}`, name: `P${i}`, slot: i, ready: true, connected: true })),
+      1,
+      {},
+    )
+  const inRally = (s: SpState, pos: Flight['pos'], vel: Flight['vel'], lastHitter: 0 | 1) => {
+    s.phase = 'rally'
+    s.phaseT = 0
+    s.shuttle.pos = { ...pos }
+    s.shuttle.vel = { ...vel }
+    s.shuttle.lastHitter = lastHitter
+  }
+
+  it('matches the old contactFor on recorded rallies', () => {
+    // 200 swings near the shuttle in a seeded bot rally (rewind 0 / 4 / 7), expected values recorded
+    // from the sim's contactFor before it became an adapter over pickContact.
+    const s = setupBots('hard', 'hard', 1)
+    const got: { tick: number; side: number; rewind: number; c: ReturnType<typeof strip> }[] = []
+    for (let i = 0; i < 600 && got.length < 200; i++) {
+      step(s, [])
+      if (s.phase !== 'rally' || s.tick % 3 !== 0 || s.shuttle.pending) continue
+      for (const p of s.players) {
+        if (s.shuttle.lastHitter === p.side) continue
+        if (Math.hypot(s.shuttle.pos.x - p.x, s.shuttle.pos.z - p.z) > 3) continue
+        for (const rewind of [0, 4, 7]) {
+          if (got.length < 200)
+            got.push({ tick: s.tick, side: p.side, rewind, c: strip(query(s, p, rewind)) })
+        }
+      }
+    }
+    expect(got).toHaveLength(200)
+    const hits = got.filter((g) => g.c)
+    const grades = { perfect: 0, good: 0, late: 0 }
+    for (const g of hits) grades[g.c!.grade]++
+    expect(hits).toHaveLength(85)
+    expect(grades).toEqual({ perfect: 19, good: 24, late: 42 })
+    expect(hits.reduce((a, g) => a + g.c!.tick, 0)).toBe(15169)
+    expect(hits.reduce((a, g) => a + g.c!.y, 0)).toBeCloseTo(105.74758317815683, 9)
+    const at = (tick: number, side: number, rewind: number) =>
+      got.find((g) => g.tick === tick && g.side === side && g.rewind === rewind)?.c
+    // perfect from the past (rewound)
+    expect(at(264, 1, 4)).toEqual({ tick: 262, y: 1.679200376769848, grade: 'perfect' })
+    // good in the future
+    expect(at(63, 0, 0)).toEqual({ tick: 75, y: 0.8461322289050712, grade: 'good' })
+    // late
+    expect(at(54, 0, 0)).toEqual({ tick: 72, y: 1.0159664682800775, grade: 'late' })
+  })
+
+  it('a swing after the closest approach by more than pastGrace whiffs (a rewind brings it back)', () => {
+    const s = twoHumans()
+    s.players[1].x = 0
+    s.players[1].z = 3
+    inRally(s, { x: 0, y: 1.5, z: 3 }, { x: 6, y: 1, z: 0 }, 0)
+    for (let i = 0; i < 15; i++) step(s, [])
+    expect(query(s, s.players[1], 0)).toBeNull()
+    expect(strip(query(s, s.players[1], 3))).toEqual({ tick: 1, y: 1.5, grade: 'good' })
+  })
+
+  it('a shuttle in reach over the other half is no contact', () => {
+    const s = twoHumans()
+    s.players[0].x = 0
+    s.players[0].z = -0.4
+    inRally(s, { x: 0, y: 1.5, z: 0.3 }, { x: 0, y: 0, z: 0.5 }, 1)
+    step(s, [])
+    step(s, [])
+    expect(Math.hypot(s.shuttle.pos.x, s.shuttle.pos.z + 0.4)).toBeLessThan(REACH.radius)
+    expect(query(s, s.players[0], 0)).toBeNull()
+  })
+
+  it('returns the contact position (the past candidate it picked)', () => {
+    const s = twoHumans()
+    s.players[1].x = 0
+    s.players[1].z = 3
+    inRally(s, { x: 0, y: 1.5, z: 3 }, { x: 6, y: 1, z: 0 }, 0)
+    for (let i = 0; i < 5; i++) step(s, [])
+    const c = query(s, s.players[1], 5)!
+    expect(c.tick).toBe(1)
+    expect(c.pos).toEqual({ x: 0, y: 1.5, z: 3 })
   })
 })

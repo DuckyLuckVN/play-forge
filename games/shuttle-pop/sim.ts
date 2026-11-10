@@ -11,12 +11,11 @@ import { isAvailable, nextAvailable, PRESETS as PRESET_TABLE } from './presets'
 import { award, serveBox, winner } from './rules'
 import {
   chooseShot,
-  findContact,
-  gradeOf,
   launchFor,
+  pickContact,
   REACH,
   shotTarget,
-  WINDOW,
+  type ContactCandidate,
   type Grade,
   type ShotKind,
 } from './shots'
@@ -126,6 +125,12 @@ export interface SpState {
       aimX: number
       /** Hold-to-charge power 0..1 (charge.ts). */
       charge: number
+      /**
+       * Tick the flight launches from: the contact tick, no earlier than the swinger's screen tick when
+       * the swing resolved (now − lag, lag ≤ MAX_REWIND). Before now = a lag-compensated hit, launched
+       * from history there and fast-forwarded; = atTick for every computer / unlagged / future contact.
+       */
+      fromTick: number
     }
   }
   score: [number, number]
@@ -350,12 +355,6 @@ function serve(state: SpState, p: SpPlayer, held: { x: number; z: number }) {
   emit(state, { k: 'serve', side: p.side })
 }
 
-/** The half a shuttle position belongs to for `side` hitting it (z = 0 goes to the non-last-hitter). */
-function onHalf(z: number, side: 0 | 1, lastHitter: -1 | 0 | 1): boolean {
-  if (z === 0) return lastHitter !== side
-  return side === 0 ? z < 0 : z > 0
-}
-
 const sq = (n: number) => n * n
 
 /**
@@ -393,9 +392,12 @@ function humanRewind(state: SpState, p: SpPlayer, tick: number | undefined): num
  * the host's own interpolation; 0 for the computer's swings). Candidates: in-reach shuttle positions on the swinger's half from `history` (the past)
  * and the forward scan (the future, up to WINDOW.late after the swing). The closest one wins (the past
  * only when strictly closer); dt = contact tick − swing tick, graded by gradeOf (|dt| bands, dt <
- * −pastGrace → whiff). A contact at or before now hits at once from the current position; a future one
- * is scheduled as `pending`. Past candidates come only from `history`, so it must cover
- * rewind + pastGrace + 1 ticks.
+ * −pastGrace → whiff). A contact at or before now hits at once; a future one is scheduled as `pending`.
+ * `lag` (≤ MAX_REWIND) = how far the swinger's screen ran behind the host when the resolving input was sent
+ * (its stamp's rewindTicks; 0 for the computer and unstamped swings): the shot launches from the shuttle
+ * at max(contact tick, now − lag) (`fromTick`, from `history`) and is fast-forwarded to now, so a guest's
+ * hit flies as if it had no lag; with lag 0 it launches from where the shuttle is now. Past candidates
+ * come only from `history`, so it must cover rewind + pastGrace + 1 ticks.
  */
 export function resolveSwing(
   state: SpState,
@@ -403,6 +405,7 @@ export function resolveSwing(
   held: { x: number; z: number },
   rewind = 0,
   charge = 0,
+  lag = 0,
 ) {
   const s = state.shuttle
   const c = s.lastHitter === p.side || s.pending ? null : contactFor(state, p, rewind)
@@ -418,6 +421,7 @@ export function resolveSwing(
     grade: c.grade,
     aimX: held.x,
     charge,
+    fromTick: Math.max(c.tick, state.tick - Math.min(MAX_REWIND, Math.max(0, lag))),
   }
   if (s.pending.atTick === state.tick) hit(state)
 }
@@ -430,37 +434,26 @@ function contactFor(
 ): { tick: number; y: number; grade: Grade } | null {
   const s = state.shuttle
   const swingTick = state.tick - rewind
-  let bestD = Infinity
-  let bestTick = 0
-  let bestY = 0
+  return pickContact(
+    contactCandidates(state, p, rewind),
+    s,
+    state.tick,
+    p,
+    p.side,
+    s.lastHitter,
+    swingTick,
+    state.tick,
+  )
+}
+
+/**
+ * contactFor's past candidates: each `history` shuttle position, with `p`'s reach measured from where it
+ * saw itself beside that shuttle (its own chibi runs ahead of the shown shuttle by the rewind, a guest's
+ * being predicted, so its spot `rewind` ticks later, or now).
+ */
+export function contactCandidates(state: SpState, p: SpPlayer, rewind: number): ContactCandidate[] {
   const hist = state.history
-  for (let i = 0; i < hist.length; i++) {
-    const h = hist[i]
-    // Every in-reach past position competes (no pastGrace pre-filter): the grade is anchored on the
-    // closest approach, so a swing well after it whiffs even if the shuttle still hovers in reach.
-    if (h.tick >= state.tick || h.pos.y < REACH.minY || h.pos.y > REACH.maxY) continue
-    if (!onHalf(h.pos.z, p.side, s.lastHitter)) continue
-    // Reach from where the swinger saw itself beside that shuttle: its own chibi runs ahead of the shown
-    // shuttle by the rewind (a guest's is predicted), so its spot `rewind` ticks later (or now).
-    const at = seenAt(hist, i, rewind, state.tick, p)
-    const d = Math.hypot(h.pos.x - at.x, h.pos.z - at.z)
-    if (d <= REACH.radius && d < bestD) {
-      bestD = d
-      bestTick = h.tick
-      bestY = h.pos.y
-    }
-  }
-  const c = findContact(s, p, 0, Math.max(0, swingTick + WINDOW.late - state.tick))
-  if (c && onHalf(c.pos.z, p.side, s.lastHitter)) {
-    const d = Math.hypot(c.pos.x - p.x, c.pos.z - p.z)
-    if (d <= bestD) {
-      bestD = d
-      bestTick = state.tick + c.dt
-      bestY = c.pos.y
-    }
-  }
-  const grade = bestD === Infinity ? null : gradeOf(bestTick - swingTick)
-  return grade ? { tick: bestTick, y: bestY, grade } : null
+  return hist.map((h, i) => ({ tick: h.tick, pos: h.pos, at: seenAt(hist, i, rewind, state.tick, p) }))
 }
 
 /** `p`'s spot (by side) at tick hist[i].tick + rewind: from the history (contiguous ticks), or now. */
@@ -492,7 +485,7 @@ function tapOnPress(state: SpState, p: SpPlayer): boolean {
   if (!c || c.tick > p.pressAt + CHARGE.start) return false
   p.swingAt = state.tick
   p.chargeAt = TAPPED
-  resolveSwing(state, p, p.move, rewind, 0)
+  resolveSwing(state, p, p.move, rewind, 0, rewind) // the press arrived now: its rewind is its lag
   return true
 }
 
@@ -509,9 +502,21 @@ function firePending(state: SpState) {
   hit(state)
 }
 
+/**
+ * Launch the pending shot. A rewound contact (fromTick < now) launches from the shuttle as history had it
+ * at fromTick and is fast-forwarded to now (the flight a lag-free hit would have), so the swinger's own
+ * prediction matches; a net / floor touch in the fast-forward scores as in step 4. Otherwise (every AI
+ * and on-time hit) it launches from where the shuttle is now.
+ */
 function hit(state: SpState) {
   const s = state.shuttle
   const pend = s.pending!
+  const from = pend.fromTick < state.tick ? state.history.find((h) => h.tick === pend.fromTick) : undefined
+  if (from) {
+    s.pos.x = from.pos.x
+    s.pos.y = from.pos.y
+    s.pos.z = from.pos.z
+  }
   const target = shotTarget(pend.kind, pend.side, pend.aimX)
   const v = launchFor(pend.kind, pend.grade, s.pos, target, () => rand(state), pend.charge)
   s.vel.x = v.x
@@ -524,6 +529,23 @@ function hit(state: SpState) {
   state.stats.shots++
   if (pend.grade === 'perfect') state.stats.perfect[pend.side]++
   emit(state, { k: 'hit', side: pend.side, grade: pend.grade, shot: pend.kind, charge: pend.charge })
+  if (from) for (let t = from.tick; t < state.tick && state.phase === 'rally'; t++) flightStep(state)
+}
+
+/** One rally tick of flight: a net hit or a floor touch ends the rally (the point is scored). */
+function flightStep(state: SpState): void {
+  const s = state.shuttle
+  const px = s.pos.x
+  const py = s.pos.y
+  const pz = s.pos.z
+  if (stepShuttle(s).netHit) {
+    emit(state, { k: 'net' })
+    scorePoint(state, other(s.lastHitter === -1 ? state.server : s.lastHitter))
+  } else if (s.pos.y <= 0) {
+    // Call the line where it truly touched down, not at the below-floor overshoot.
+    settleOnFloor(s.pos, px, py, pz)
+    landed(state)
+  }
 }
 
 function scorePoint(state: SpState, side: 0 | 1) {
@@ -609,7 +631,13 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
   state.events = state.events.filter((e) => e.tick > state.tick - EVENT_TICKS)
 
   // 1. Inputs (from the network: check everything).
-  const swings: { p: SpPlayer; held: { x: number; z: number }; rewind: number; charge: number }[] = []
+  const swings: {
+    p: SpPlayer
+    held: { x: number; z: number }
+    rewind: number
+    charge: number
+    lag: number
+  }[] = []
   const presses: SpPlayer[] = []
   for (const { player, input } of [...inputs, ...botInputs(state)]) {
     const p = state.players.find((q) => q.id === player)
@@ -640,7 +668,7 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
       // Only swings that resolve (any rally swing, the server's serve) start the cooldown.
       if (!canSwing(state, p) || swings.some((w) => w.p === p)) continue
       p.swingAt = state.tick
-      swings.push({ p, held: clampDir(input.x, input.z), rewind, charge })
+      swings.push({ p, held: clampDir(input.x, input.z), rewind, charge, lag: released })
     }
   }
   for (const p of state.players) {
@@ -663,9 +691,9 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
     // 3. Swings: who can hit is decided by lastHitter + the shuttle's half, so at most one schedules.
     // A shuttle hit this tick can't be hit back on the same tick (else input order would decide).
     const hitter = s.lastHitter
-    for (const { p, held, rewind, charge } of swings) {
+    for (const { p, held, rewind, charge, lag } of swings) {
       if (s.lastHitter !== hitter) emit(state, { k: 'whiff', side: p.side })
-      else resolveSwing(state, p, held, rewind, charge)
+      else resolveSwing(state, p, held, rewind, charge, lag)
     }
     for (const p of presses)
       if (s.lastHitter === hitter && !swings.some((w) => w.p === p)) tapOnPress(state, p)
@@ -675,19 +703,8 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
   recordHistory(state)
 
   // 4. Flight, landing, net.
-  if (state.phase === 'rally') {
-    const px = s.pos.x
-    const py = s.pos.y
-    const pz = s.pos.z
-    if (stepShuttle(s).netHit) {
-      emit(state, { k: 'net' })
-      scorePoint(state, other(s.lastHitter === -1 ? state.server : s.lastHitter))
-    } else if (s.pos.y <= 0) {
-      // Call the line where it truly touched down, not at the below-floor overshoot.
-      settleOnFloor(s.pos, px, py, pz)
-      landed(state)
-    }
-  } else if (state.phase === 'point') {
+  if (state.phase === 'rally') flightStep(state)
+  else if (state.phase === 'point') {
     // Let it fall (e.g. off the net tape) for the renderer; no more faults.
     if (s.pos.y > 0) {
       stepShuttle(s)

@@ -624,6 +624,131 @@ describe('lag fairness (swing rewind)', () => {
   })
 })
 
+describe('lag-compensated hits (launch from the rewound contact)', () => {
+  type V = { x: number; y: number; z: number }
+  /** The receiver stands at `at` (default: on the shuttle's path); the closest approach is the first tick (C). */
+  function onPath(pos: V, vel: V, at: { x: number; z: number } = pos) {
+    const s = duel()
+    const side = pos.z > 0 ? 1 : 0
+    s.players[side].x = at.x
+    s.players[side].z = at.z
+    rally(s, pos, vel, side === 0 ? 1 : 0)
+    return { s, id: `p${side}`, C: s.tick + 1 }
+  }
+  /** The swing seen at tick C, delivered `lag` ticks later; returns the state and every event. */
+  function swingSeenAt(pos: V, vel: V, lag: number, at?: { x: number; z: number }) {
+    const { s, id, C } = onPath(pos, vel, at)
+    const seen = run(s, lag)
+    game.tick(s, [ev(id, { t: 'swing', x: 0, z: 0, tick: C })])
+    allEvents(s, seen)
+    return { s, C, seen }
+  }
+
+  it('a rewound guest hit flies as if it had no lag', () => {
+    const pos = { x: 0, y: 1.5, z: 3 }
+    const vel = { x: 6, y: 1, z: 0 }
+    const a = swingSeenAt(pos, vel, 0)
+    const b = swingSeenAt(pos, vel, 5)
+    expect(a.seen.find((e) => e.k === 'hit')).toMatchObject({ tick: a.C, grade: 'perfect' })
+    expect(b.seen.find((e) => e.k === 'hit')).toMatchObject({ tick: b.C + 5, grade: 'perfect' })
+    run(a.s, a.C + 10 - a.s.tick)
+    run(b.s, b.C + 10 - b.s.tick)
+    expect(b.s.tick).toBe(a.s.tick)
+    for (const k of ['x', 'y', 'z'] as const) {
+      expect(b.s.shuttle.pos[k]).toBeCloseTo(a.s.shuttle.pos[k], 9)
+      expect(b.s.shuttle.vel[k]).toBeCloseTo(a.s.shuttle.vel[k], 9)
+    }
+  })
+
+  it('a fast-forward into the net scores like a lag-free hit', () => {
+    // A low drop right at the tape: no lift clears the net from there. The shuttle drifts back off the
+    // tape (and away from p0), so a hit from where it is 5 ticks later would clear: only a launch from
+    // the contact point nets.
+    const pos = { x: 0, y: 0.6, z: -0.02 }
+    const vel = { x: 1.5, y: -0.5, z: -1.2 }
+    const at = { x: -0.3, z: -0.3 }
+    const a = swingSeenAt(pos, vel, 0, at)
+    const b = swingSeenAt(pos, vel, 5, at)
+    const kinds = (r: typeof a, tick: number) => r.seen.filter((e) => e.tick === tick).map((e) => e.k)
+    expect(kinds(a, a.C)).toEqual(['hit', 'net', 'point'])
+    // The rewound hit resolves on the tick it arrives: hit, then the net it flew into during the fast-forward.
+    expect(kinds(b, b.C + 5)).toEqual(['hit', 'net', 'point'])
+    expect(b.seen.filter((e) => e.k === 'point')).toEqual([expect.objectContaining({ side: 1 })])
+    expect(b.s.score).toEqual(a.s.score)
+    expect(b.s.phase).toBe('point')
+  })
+
+  it('AI and on-time swings are unchanged', () => {
+    // Recorded before hits launched from the rewound contact (AI swings have rewind 0: a no-op for them).
+    const fingerprint: number[][] = []
+    const finals: SpState[] = []
+    for (let seed = 1; seed <= 20; seed++) {
+      const s = setupBots('hard', 'hard', seed)
+      run(s, 600)
+      const { score, stats, rng } = s
+      fingerprint.push([...score, stats.shots, stats.longest, ...stats.perfect, rng])
+      finals.push(s)
+    }
+    expect(fingerprint).toEqual([
+      [1, 0, 3, 4, 2, 1, 1703683420],
+      [0, 2, 0, 5, 1, 2, 1071847751],
+      [1, 0, 4, 4, 0, 1, 1071847752],
+      [1, 0, 6, 2, 1, 1, 1071847753],
+      [0, 0, 8, 0, 3, 3, 1071847754],
+      [0, 1, 0, 9, 3, 2, 440012085],
+      [1, 0, 4, 3, 1, 1, 1703683426],
+      [1, 1, 0, 5, 1, 2, 1703683427],
+      [0, 0, 12, 0, 2, 4, -1455494922],
+      [0, 0, 9, 0, 1, 3, 440012089],
+      [0, 0, 10, 0, 4, 1, -191823580],
+      [1, 0, 3, 5, 1, 0, 1071847761],
+      [1, 0, 4, 4, 2, 1, 1071847762],
+      [1, 1, 3, 2, 1, 2, -1959448193],
+      [0, 0, 10, 0, 2, 3, -191823576],
+      [0, 0, 8, 0, 2, 2, 1071847765],
+      [1, 1, 0, 4, 3, 2, 1703683436],
+      [0, 0, 10, 0, 3, 4, -191823573],
+      [0, 0, 9, 0, 1, 3, 440012098],
+      [1, 0, 3, 6, 3, 1, 440012099],
+    ])
+    const shuttle = (s: SpState) => ({
+      pos: s.shuttle.pos,
+      vel: s.shuttle.vel,
+      lastHitter: s.shuttle.lastHitter,
+    })
+    expect(shuttle(finals[0])).toEqual({
+      pos: { x: -0.02991209322884257, y: 1.9330094871611747, z: -1.1357248502609028 },
+      vel: { x: 4.5812968825571465, y: -8.343497383700601, z: 26.28560699328785 },
+      lastHitter: 0,
+    })
+    expect(shuttle(finals[1])).toEqual({
+      pos: { x: 0.952332812850733, y: 0, z: -4.023736045721154 },
+      vel: { x: 0, y: 0, z: 0 },
+      lastHitter: 1,
+    })
+    expect(shuttle(finals[2])).toEqual({
+      pos: { x: 0.25382244258068576, y: 1.167678871796932, z: -2.5788653583391055 },
+      vel: { x: 0.8986949147934271, y: -3.063709567868111, z: -7.864988484471223 },
+      lastHitter: 1,
+    })
+  })
+
+  it('an unlagged late swing (contact in the past, lag 0) still launches from where the shuttle is now', () => {
+    for (const stamped of [false, true]) {
+      const { s, id } = onPath({ x: 0, y: 1.5, z: 3 }, { x: 1.2, y: 1, z: 0 })
+      run(s, 5)
+      const now = { ...s.shuttle.pos }
+      const input: SpInput = stamped
+        ? { t: 'swing', x: 0, z: 0, tick: s.tick + 1 }
+        : { t: 'swing', x: 0, z: 0 }
+      game.tick(s, [ev(id, input)])
+      expect(s.events.find((e) => e.k === 'hit' && e.tick === s.tick)).toMatchObject({ grade: 'perfect' })
+      expect(s.history.at(-1)!.pos).toEqual(now) // not the contact point 5 ticks back
+      expect(s.shuttle.lastHitter).toBe(1)
+    }
+  })
+})
+
 describe('serve timeout', () => {
   it('an idle server short-serves after SERVE_TIMEOUT ticks', () => {
     const s = game.setup(players(1), 5, {})

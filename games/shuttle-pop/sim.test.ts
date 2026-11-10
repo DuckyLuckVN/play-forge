@@ -154,7 +154,7 @@ describe('pick', () => {
   it('clamps the preset to 0..PRESETS−1, then a hidden one maps to an available look (host validation)', () => {
     const s = duel()
     game.tick(s, [ev('p0', { t: 'pick', preset: 99 }), ev('p1', { t: 'pick', preset: 1.7 })])
-    expect(s.players[0].preset).toBe(0)
+    expect(s.players[0].preset).toBe(3) // hidden → first free in picker order (Cloud taken → Mint)
     expect(s.players[1].preset).toBe(1)
     game.tick(s, [ev('p0', { t: 'pick', preset: -2 })])
     expect(s.players[0].preset).toBe(0)
@@ -175,7 +175,7 @@ describe('pick', () => {
     expect(s.players[0].preset).toBe(1)
     s.players[1].preset = 1
     seedPreset(s, 'p0', 5)
-    expect(s.players[0].preset).toBe(0)
+    expect(s.players[0].preset).toBe(3)
   })
 
   it('every available pick keeps exactly that look', () => {
@@ -203,7 +203,7 @@ describe('pick', () => {
     expect(s.players[1].preset).toBe(1)
     game.tick(s, [ev('p0', { t: 'pick', preset: 1 })])
     expect(s.players[0].preset).toBe(1)
-    expect(s.players[1].preset).toBe(2)
+    expect(s.players[1].preset).toBe(3) // next card in picker order after Cloud: Mint
     game.tick(s, [ev('p0', { t: 'pick', preset: 3 })])
     expect(s.players[1].preset).toBe(2)
   })
@@ -239,11 +239,11 @@ describe('pick', () => {
   it('seedPreset gives a fresh match the stored look, before any input', () => {
     const s = game.setup(players(1), 1, {})
     seedPreset(s, 'p0', 1)
-    expect(s.players.map((p) => p.preset)).toEqual([1, 2])
+    expect(s.players.map((p) => p.preset)).toEqual([1, 3])
     seedPreset(s, 'p0', 99)
-    expect(s.players[0].preset).toBe(0)
+    expect(s.players[0].preset).toBe(1)
     seedPreset(s, 'nobody', 3)
-    expect(s.players[0].preset).toBe(0)
+    expect(s.players[0].preset).toBe(1)
   })
 
   it('two humans may pick the same available preset', () => {

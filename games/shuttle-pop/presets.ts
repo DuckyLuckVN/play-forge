@@ -297,15 +297,16 @@ export const PRESETS: readonly Preset[] = [
 ]
 
 /**
- * Presets players can pick and the computer wears. Only the four humans for now; the animals/creatures
+ * Presets players can pick and the computer wears, in picker order. Only the four humans for now; the animals/creatures
  * (4..11) stay built and tested but hidden. To bring them back, add their ids here (one place: the picker
  * grid's columns follow the card count, picker.ts gridCols). Cost per enabled look: Court3D.warm builds and
  * uploads its merged geometries for both shades before the first match (up to ~24k triangles, tens of ms of
  * build each), so the first load grows with every id added.
  */
-export const AVAILABLE_IDS: readonly number[] = [0, 1, 2, 3]
+export const AVAILABLE_IDS: readonly number[] = [1, 3, 2, 0] // picker order (owner): Cloud, Mint, Sunny, Berry
 
-export const AVAILABLE_PRESETS: readonly Preset[] = PRESETS.filter((p) => AVAILABLE_IDS.includes(p.id))
+/** The available looks in picker order (AVAILABLE_IDS order, not id order). */
+export const AVAILABLE_PRESETS: readonly Preset[] = AVAILABLE_IDS.map((id) => PRESETS[id])
 
 export const isAvailable = (id: number): boolean => AVAILABLE_IDS.includes(id)
 

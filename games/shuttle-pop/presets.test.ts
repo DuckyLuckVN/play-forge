@@ -135,18 +135,19 @@ describe('preset table', () => {
 const BUDGET = { tris: 22500, head: 10000, hull: 1500, extraMeshes: 4 }
 
 describe('availability flag', () => {
-  it('only the four humans are available now', () => {
-    expect(AVAILABLE_IDS).toEqual([0, 1, 2, 3])
-    expect(AVAILABLE_PRESETS.map((p) => p.name)).toEqual(['Berry', 'Cloud', 'Sunny', 'Mint'])
+  it('only the four humans are available now, in picker order Cloud, Mint, Sunny, Berry', () => {
+    expect(AVAILABLE_IDS).toEqual([1, 3, 2, 0])
+    expect(AVAILABLE_PRESETS.map((p) => p.name)).toEqual(['Cloud', 'Mint', 'Sunny', 'Berry'])
     expect(PRESETS.length).toBe(12)
     expect(isAvailable(4)).toBe(false)
     expect(isAvailable(-1)).toBe(false)
   })
 
-  it('nextAvailable cycles the available ids and skips taken ones', () => {
+  it('nextAvailable cycles the available ids in picker order and skips taken ones', () => {
     expect(nextAvailable(0, () => false)).toBe(1)
-    expect(nextAvailable(3, () => false)).toBe(0)
-    expect(nextAvailable(0, (n) => n === 1)).toBe(2)
+    expect(nextAvailable(1, () => false)).toBe(3)
+    expect(nextAvailable(3, () => false)).toBe(2)
+    expect(nextAvailable(0, (n) => n === 1)).toBe(3)
     expect(nextAvailable(7, (n) => n === 0)).toBe(1)
     expect(nextAvailable(2, () => true)).toBe(2)
   })

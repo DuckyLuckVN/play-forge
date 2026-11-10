@@ -114,16 +114,16 @@ export function readyDepth(court: CourtDims): number {
   return BASE_Z * (court.halfLen / COURT.halfLen)
 }
 
-/** seed: the match seed; each side gets its own stream. */
-export const newBotMemory = (seed: number, side: 0 | 1): BotMemory => ({
+/** seed: the match seed; each seat (index in players; 1v1 = side) gets its own stream. */
+export const newBotMemory = (seed: number, seat: number): BotMemory => ({
   targetAt: -1,
   target: { x: 0, z: 0 },
   plannedSwingTick: -1,
   plannedHeld: { x: 0, z: 0 },
   plannedChargeTick: -1,
   plannedAct: null,
-  rng: (seed ^ Math.imul(0x9e3779b9, side + 1)) | 0,
-  actRng: (seed ^ Math.imul(0x85ebca6b, side + 1)) | 0,
+  rng: (seed ^ Math.imul(0x9e3779b9, seat + 1)) | 0,
+  actRng: (seed ^ Math.imul(0x85ebca6b, seat + 1)) | 0,
 })
 
 /** The ability stream of `mem` (BotMemory.actRng) as an rng. */

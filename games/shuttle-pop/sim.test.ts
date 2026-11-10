@@ -7,10 +7,20 @@ import { COURT, DT, predictLanding } from './physics'
 import { POWER_SWING } from './power'
 import { AVAILABLE_IDS, isAvailable } from './presets'
 import { launchShot, shotTarget } from './shots'
+import { readyDepth } from './ai'
+import { serveBox } from './rules'
 import { STUN } from './stun'
 import {
   AI_ID,
   canAct,
+  canCharge,
+  contactCandidates,
+  RECEIVE_BACK,
+  RECEIVE_X,
+  SERVE_BACK,
+  SERVE_X,
+  serverPlayer,
+  setupDoubles,
   canStrike,
   canSwing,
   gradeRewind,
@@ -1548,6 +1558,7 @@ describe('jump / lunge ability', () => {
     s.shuttle.lastHitter = 1
     s.shuttle.pending = {
       atTick: s.tick + 1,
+      id: 'p0',
       side: 0,
       kind: 'clear',
       grade: 'good',
@@ -1803,6 +1814,7 @@ describe('racket stun', () => {
     const T = s.tick + 1
     s.shuttle.pending = {
       atTick: T + 3,
+      id: 'p0',
       side: 0,
       kind: 'clear',
       grade: 'good',
@@ -1943,5 +1955,236 @@ describe('racket stun', () => {
     ai.z = 0.35
     const seen = tick(s, [ev(AI_ID, { t: 'swing', x: 0, z: 0 })])
     expect(bonksOf(seen)).toEqual([expect.objectContaining({ who: 'p0', by: AI_ID })])
+  })
+})
+
+describe('doubles', () => {
+  const infos = (...seats: number[]): PlayerInfo[] =>
+    seats.map((seat) => ({ id: `p${seat}`, name: `P${seat}`, slot: seat, ready: true, connected: true }))
+  /** Humans at `seats` (2v2), side 0 serving with its slot-0 player (searches seeds). */
+  function doubles(...seats: number[]): SpState {
+    for (let seed = 1; ; seed++) {
+      const s = game.setup(infos(...seats), seed, { mode: '2v2' })
+      if (s.server === 0) return s
+    }
+  }
+  const byId = (s: SpState, id: string) => s.players.find((p) => p.id === id)!
+  /** Bots play on until a point is scored (rallies can be long; ≤ 6000 ticks). */
+  const scoreSoon = (s: SpState) => {
+    for (let i = 0; i < 6000 && s.score[0] + s.score[1] === 0; i++) game.tick(s, [])
+    return s.score[0] + s.score[1] > 0
+  }
+  const near = (a: { x: number; z: number }, b: { x: number; z: number }) => {
+    expect(a.x).toBeCloseTo(b.x, 9)
+    expect(a.z).toBeCloseTo(b.z, 9)
+  }
+  /** Every seat's serve stance: server in its box, receiver diagonal, partners split to the other half. */
+  function expectStances(s: SpState) {
+    const { shortLine, halfWidth } = s.court
+    const { xSign } = serveBox(s.server, s.score[s.server])
+    const rcvSide = s.server === 0 ? 1 : 0
+    const srv = serverPlayer(s)
+    const rcv = s.players.find((p) => p.side === rcvSide && p.slot === s.serveSlot[rcvSide])!
+    for (const p of s.players) {
+      const want =
+        p === srv
+          ? toWorld(p.side, xSign * SERVE_X, -(shortLine + SERVE_BACK))
+          : p === rcv
+            ? toWorld(p.side, xSign * RECEIVE_X, -(shortLine + RECEIVE_BACK))
+            : toWorld(p.side, -xSign * (halfWidth / 2), -readyDepth(s.court))
+      near(p, want)
+    }
+  }
+  /** `side` wins the rally: the shuttle drops into the other side's back corner; runs to the next serve set-up. */
+  function winPoint(s: SpState, side: 0 | 1) {
+    const spot = toWorld(side === 0 ? 1 : 0, s.court.halfWidth - 0.3, -(s.court.halfLen - 0.3))
+    rally(s, { x: spot.x, y: 0.05, z: spot.z }, { x: 0, y: -3, z: 0 }, side)
+    const seen = run(s, 1)
+    expect(seen.filter((e) => e.k === 'point')).toEqual([expect.objectContaining({ side })])
+    let guard = 0
+    while (s.phase !== 'serve' && guard++ < 1000) game.tick(s, [])
+    expect(s.phase).toBe('serve')
+  }
+
+  it('1v1 is the default; maxPlayers 4; seating opens 4 seats in 2 teams only in 2v2', () => {
+    expect(game.setup(players(2), 1, {}).players).toHaveLength(2)
+    expect(game.maxPlayers).toBe(4)
+    expect(game.seating!({})).toEqual({ seats: 2, teams: 1, botFill: false })
+    expect(game.seating!({ mode: '2v2' })).toEqual({ seats: 4, teams: 2, botFill: true })
+    const solo = game.options!.find((o) => o.id === 'solo')!
+    expect(solo.shownWhen!(1, {})).toBe(true)
+    expect(solo.shownWhen!(2, {})).toBe(false)
+    expect(solo.shownWhen!(3, { mode: '2v2' })).toBe(true)
+    expect(solo.shownWhen!(4, { mode: '2v2' })).toBe(false)
+  })
+  it('2v2 alone: 1 human + 3 computers, seats A,B,A,B', () => {
+    const s = game.setup(players(1), 7, { mode: '2v2', solo: 'hard' })
+    expect(s.players.map((p) => p.side)).toEqual([0, 1, 0, 1])
+    expect(s.players.map((p) => p.slot)).toEqual([0, 0, 1, 1])
+    expect(s.players.map((p) => p.id)).toEqual(['p0', `${AI_ID}1`, `${AI_ID}2`, `${AI_ID}3`])
+    expect(s.players.map((p) => p.kind)).toEqual(['human', 'ai', 'ai', 'ai'])
+    expect(s.players.slice(1).every((p) => p.level === 'hard' && p.bot)).toBe(true)
+    expect(s.aiLevel).toBe('hard')
+    expect(s.court.halfWidth).toBe(3.05)
+    expect(game.setup(players(1), 7, { mode: '2v2', court: 'large' }).court.halfWidth).toBeCloseTo(
+      3.05 * (courtDims('large').halfWidth / COURT.halfWidth),
+      9,
+    )
+    expect(s.server).toBe(0)
+    expect(serverPlayer(s).id).toBe('p0')
+    expectStances(s)
+  })
+  it('2v2 alone in a seat on team B: that team serves, the human first', () => {
+    const s = game.setup(infos(3), 7, { mode: '2v2' })
+    expect(s.players.map((p) => p.id)).toEqual([`${AI_ID}0`, `${AI_ID}1`, `${AI_ID}2`, 'p3'])
+    expect(s.server).toBe(1)
+    expect(s.serveSlot).toEqual([0, 1])
+    expect(serverPlayer(s).id).toBe('p3')
+  })
+  it('1v1 keeps one player per side, slot 0, serveSlot [0, 0]', () => {
+    const s = game.setup(players(1), 7, {})
+    expect(s.players.map((p) => p.slot)).toEqual([0, 0])
+    expect(s.serveSlot).toEqual([0, 0])
+    expect(s.court.halfWidth).toBe(COURT.halfWidth)
+  })
+  it('2v2 seats follow room seats', () => {
+    const mates = game.setup(infos(0, 2), 3, { mode: '2v2' })
+    expect(byId(mates, 'p0').side).toBe(0)
+    expect(byId(mates, 'p2').side).toBe(0)
+    expect(mates.players.map((p) => p.kind)).toEqual(['human', 'ai', 'human', 'ai'])
+    const rivals = game.setup(infos(0, 1), 3, { mode: '2v2' })
+    expect(byId(rivals, 'p0').side).toBe(0)
+    expect(byId(rivals, 'p1').side).toBe(1)
+  })
+  it('computer looks are all different and avoid humans', () => {
+    for (const preset of AVAILABLE_IDS) {
+      const s = game.setup(players(1), 7, { mode: '2v2' })
+      seedPreset(s, 'p0', preset)
+      const looks = s.players.map((p) => p.preset)
+      expect(new Set(looks).size).toBe(4)
+      expect(looks.every(isAvailable)).toBe(true)
+    }
+    const fresh = game.setup(players(1), 7, { mode: '2v2' }).players.map((p) => p.preset)
+    expect(new Set(fresh).size).toBe(4)
+  })
+  it('serve rotation: A0 → (B wins) B0 → (A wins) A1; boxes follow the score; receiver and partners', () => {
+    const s = game.setup(players(1), 7, { mode: '2v2' })
+    expect(serverPlayer(s).id).toBe('p0')
+    winPoint(s, 1)
+    expect(s.score).toEqual([0, 1])
+    expect(s.server).toBe(1)
+    expect(serverPlayer(s).id).toBe(`${AI_ID}1`)
+    expect(s.serveSlot).toEqual([1, 0])
+    expectStances(s)
+    // B serves from its left box (odd score): view x < 0.
+    expect(toWorld(1, serverPlayer(s).x, 0).x).toBeLessThan(0)
+    winPoint(s, 0)
+    expect(s.score).toEqual([1, 1])
+    expect(serverPlayer(s).id).toBe(`${AI_ID}2`)
+    expect(s.serveSlot).toEqual([1, 1])
+    expectStances(s)
+    winPoint(s, 0) // the serving team wins: same server, other box
+    expect(serverPlayer(s).id).toBe(`${AI_ID}2`)
+    expect(s.serveSlot).toEqual([1, 1])
+    expectStances(s)
+  })
+  it('only the server may charge / serve in the serve phase', () => {
+    const s = doubles(0, 2)
+    expect(serverPlayer(s).id).toBe('p0')
+    const mate = byId(s, 'p2')
+    expect(canCharge(s, mate)).toBe(false)
+    expect(canCharge(s, byId(s, 'p0'))).toBe(true)
+    const seen = run(s, 1, () => [ev('p2', { t: 'charge' })])
+    expect(mate.chargeAt).toBe(-1)
+    seen.push(...run(s, 1, () => [swing('p2')]))
+    expect(s.phase).toBe('serve')
+    expect(seen.some((e) => 'by' in e && e.by === 'p2')).toBe(false)
+    expect(seen.some((e) => e.k === 'serve')).toBe(false)
+    run(s, 1, () => [swing('p0')])
+    expect(s.phase).toBe('rally')
+    expect(s.events.find((e) => e.k === 'serve')).toMatchObject({ side: 0, by: 'p0' })
+  })
+  it("a teammate's pending hit fires for the swinger, not the side's first player", () => {
+    const s = doubles(0, 2)
+    const [a, , b] = [byId(s, 'p0'), null, byId(s, 'p2')]
+    a.x = 2.5
+    a.z = -6
+    b.x = 0
+    b.z = -3
+    rally(s, { x: 0, y: 1.6, z: -1.6 }, { x: 0, y: 1.5, z: -3 }, 1)
+    game.tick(s, [swing('p2')])
+    const pend = s.shuttle.pending
+    expect(pend).toMatchObject({ id: 'p2', side: 0 })
+    expect(pend!.atTick).toBeGreaterThan(s.tick)
+    const seen = run(s, 30, () => [ev('p0', { t: 'move', x: 0, z: 0 })])
+    expect(seen.filter((e) => e.k === 'hit')).toEqual([expect.objectContaining({ side: 0, by: 'p2' })])
+    expect(seen.some((e) => e.k === 'whiff')).toBe(false)
+  })
+  it('a rewound swing in 2v2 reads its own history spot', () => {
+    const s = doubles(0, 2)
+    rally(s, { x: 0, y: 3, z: -3 }, { x: 0, y: 2, z: 0 }, 1)
+    run(s, 10, () => [ev('p2', { t: 'move', x: 1, z: 0 }), ev('p0', { t: 'move', x: -1, z: 0 })])
+    const p2 = byId(s, 'p2')
+    expect(s.history.at(-1)!.who).toHaveLength(4)
+    expect(s.history.at(-1)!.who[2]).toEqual({ x: p2.x, z: p2.z })
+    const rewind = 3
+    const cands = contactCandidates(s, p2, rewind)
+    for (let i = 0; i + rewind < s.history.length; i++)
+      expect({ x: cands[i].at.x, z: cands[i].at.z }).toEqual(s.history[i + rewind].who[2])
+    expect(cands[0].at).not.toEqual(s.history[rewind].who[0])
+  })
+  it("teammates can't both hit: the second same-tick swing whiffs", () => {
+    const s = doubles(0, 2)
+    const a = byId(s, 'p0')
+    const b = byId(s, 'p2')
+    a.x = 0.3
+    a.z = -3
+    b.x = -0.3
+    b.z = -3
+    rally(s, { x: 0, y: 1.6, z: -1.6 }, { x: 0, y: 1.5, z: -3 }, 1)
+    game.tick(s, [swing('p0'), swing('p2')])
+    const now = s.events.filter((e) => e.tick === s.tick)
+    expect(now.filter((e) => e.k === 'whiff')).toEqual([expect.objectContaining({ side: 0, by: 'p2' })])
+    const seen = run(s, 30)
+    expect([...now, ...seen].filter((e) => e.k === 'hit')).toEqual([expect.objectContaining({ by: 'p0' })])
+  })
+  it('a human leaving 2v2 becomes a computer; the match goes on', () => {
+    const s = doubles(0, 2)
+    s.aiLevel = 'easy'
+    run(s, 2, () => [ev('p2', { t: 'move', x: 1, z: 0 })])
+    const seat = byId(s, 'p2')
+    seat.chargeAt = s.tick
+    seat.pressAt = s.tick
+    game.removePlayer!(s, 'p2')
+    expect(s.phase).not.toBe('over')
+    expect(s.winner).toBe(-1)
+    expect(s.players).toHaveLength(4)
+    expect(s.players[2]).toMatchObject({ id: `${AI_ID}2`, kind: 'ai', level: 'easy', side: 0, slot: 1 })
+    expect(s.players[2].bot).toBeDefined()
+    expect(s.players[2].chargeAt).toBe(-1)
+    expect(s.players[2].pressAt).toBe(-1)
+    // The leaver's id no longer drives the seat; the computer plays it.
+    const x = s.players[2].x
+    run(s, 30, () => [ev('p2', { t: 'move', x: -1, z: 0 })])
+    expect(s.players[2].move).not.toEqual({ x: -1, z: 0 })
+    expect(s.players[2].x).not.toBe(x)
+    expect(game.isFinished(s)).toBe(false)
+    expect(scoreSoon(s)).toBe(true)
+  })
+  it('a human leaving 1v1 still ends it (other side wins)', () => {
+    const s = duel()
+    game.removePlayer!(s, 'p1')
+    expect(s.phase).toBe('over')
+    expect(s.winner).toBe(0)
+  })
+  it('setupDoubles runs 600 ticks without throwing and scores', () => {
+    const s = setupDoubles(['normal', 'normal', 'normal', 'normal'], 11)
+    expect(s.players.map((p) => p.id)).toEqual([0, 1, 2, 3].map((i) => `${AI_ID}${i}`))
+    expect(s.players.every((p) => p.kind === 'ai' && p.level === 'normal')).toBe(true)
+    const seen = run(s, 600)
+    const shots = seen.filter((e) => e.k === 'hit' || e.k === 'serve')
+    expect(shots.length).toBeGreaterThan(2)
+    expect(shots.every((e) => 'by' in e && !!e.by)).toBe(true)
+    expect(scoreSoon(s)).toBe(true)
   })
 })

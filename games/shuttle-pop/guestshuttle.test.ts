@@ -671,6 +671,7 @@ describe('GuestShuttle own-hit prediction', () => {
       (s: SpState) =>
         (s.shuttle.pending = {
           atTick: s.tick + 3,
+          id: 'p0',
           side: 0,
           kind: 'clear',
           grade: 'good',
@@ -747,6 +748,7 @@ describe('GuestShuttle own prediction vs a bonk', () => {
     const pending = (s: SpState) => {
       s.shuttle.pending = {
         atTick: s.tick + 3,
+        id: 'p1',
         side: 1,
         kind: 'clear',
         grade: 'good',

@@ -4,7 +4,7 @@ import { translator, type Dictionary } from '@forge/core/i18n'
 
 export const VI: Dictionary = {
   // Options
-  'Playing alone': 'Chơi một mình',
+  'Computer level': 'Trình độ máy',
   'Easy AI': 'Máy dễ',
   'Normal AI': 'Máy vừa',
   'Hard AI': 'Máy khó',

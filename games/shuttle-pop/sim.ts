@@ -15,11 +15,12 @@ import {
   type Act,
   type Strike,
 } from './ability'
-import { botStep, newBotMemory, type BotMemory } from './ai'
+import { botStep, newBotMemory, readyDepth, type BotMemory } from './ai'
 import { CHARGE, chargeOf } from './charge'
 import { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld } from './court'
 import { t } from './i18n'
-import { courtDims, courtSizeOf, type CourtSize } from './courtsize'
+import { courtSizeOf, type CourtSize } from './courtsize'
+import { courtFor, flipServe, MAX_SEATS, modeOf, seatOf, serverOf } from './doubles'
 import { COURT, DT, settleOnFloor, stepShuttle, type CourtDims, type Flight, type Vec3 } from './physics'
 import { hitPower, perfectWindowOf, POWER_SWING, pressureOf, recoveryAfter } from './power'
 import { isAvailable, nextAvailable, PRESETS as PRESET_TABLE } from './presets'
@@ -95,6 +96,8 @@ export interface SpPlayer {
   name: string
   kind: 'human' | 'ai'
   side: 0 | 1
+  /** Position in the team (doubles.ts seatOf); always 0 in 1v1. */
+  slot: 0 | 1
   x: number
   z: number
   vx: number
@@ -132,12 +135,21 @@ export interface SpPlayer {
 export type SpEvent = { id: number; tick: number } &
   /** charge: the swing's hold-to-charge power 0..1 (absent = 0). */
   (
-    | { k: 'hit'; side: 0 | 1; grade: Grade; shot: ShotKind; charge?: number; power?: number; act?: Strike }
+    | {
+        k: 'hit'
+        side: 0 | 1
+        grade: Grade
+        shot: ShotKind
+        charge?: number
+        power?: number
+        act?: Strike
+        by?: string
+      }
     /** An ability press took effect (a jump / lunge also swings: a hit or whiff follows). */
-    | { k: 'act'; side: 0 | 1; act: AbilityKind }
+    | { k: 'act'; side: 0 | 1; act: AbilityKind; by?: string }
     /** The feet are back on the floor (ability.ts landTick). */
-    | { k: 'actLand'; side: 0 | 1; act: AbilityKind }
-    | { k: 'whiff'; side: 0 | 1 }
+    | { k: 'actLand'; side: 0 | 1; act: AbilityKind; by?: string }
+    | { k: 'whiff'; side: 0 | 1; by?: string }
     /**
      * A racket swing stunned a player: `side` / `who` = the stunned one's side / player id, `by` = the
      * swinger's player id (`id` is the event's own).
@@ -146,8 +158,9 @@ export type SpEvent = { id: number; tick: number } &
     | { k: 'land'; x: number; z: number; in: boolean }
     | { k: 'net' }
     | { k: 'point'; side: 0 | 1 }
-    | { k: 'serve'; side: 0 | 1; shot?: ShotKind }
+    | { k: 'serve'; side: 0 | 1; shot?: ShotKind; by?: string }
   )
+// `by` on hit / whiff / serve / act / actLand: the player's id (always set by the sim; optional for old fixtures).
 type EventBody = SpEvent extends infer E ? (E extends SpEvent ? Omit<E, 'id' | 'tick'> : never) : never
 
 export interface SpState {
@@ -155,7 +168,8 @@ export interface SpState {
   phase: 'serve' | 'rally' | 'point' | 'over'
   /** Ticks spent in the current phase. */
   phaseT: number
-  players: [SpPlayer, SpPlayer]
+  /** 2 (1v1: side 0, side 1) or MAX_SEATS (2v2: index = room seat, doubles.ts seatOf). */
+  players: SpPlayer[]
   /** The host-chosen court (room option `court`, courtsize.ts); sent in `st` so guests predict on it. */
   court: CourtDims
   shuttle: Flight & {
@@ -167,6 +181,9 @@ export interface SpState {
     /** A connected swing whose contact tick is still ahead. aimX = held view-relative x at the swing. */
     pending: null | {
       atTick: number
+      /** The swinger's player id. */
+      id: string
+      /** The swinger's side (team). */
       side: 0 | 1
       kind: ShotKind
       grade: Grade
@@ -185,6 +202,10 @@ export interface SpState {
   }
   score: [number, number]
   server: 0 | 1
+  /** Per side: the slot that serves when that side serves (doubles rotation, doubles.ts flipServe); 1v1 [0, 0]. */
+  serveSlot: [0 | 1, 0 | 1]
+  /** The level of seats played by the computer, also a 2v2 seat a human leaves. */
+  aiLevel: Level
   winner: -1 | 0 | 1
   /** Last EVENT_TICKS ticks of events; renderers dedupe by id. */
   events: SpEvent[]
@@ -194,13 +215,18 @@ export interface SpState {
   /** Seeded rng state (mulberry32 seed). Host-only. */
   rng: number
   /**
-   * Host-only: shuttle flight and each side's position (by side) as of each of the last HISTORY_TICKS
-   * ticks (for swing rewind: reach is judged from where the swinger stood then).
+   * Host-only: shuttle flight and each player's position (indexed like `players`) as of each of the last
+   * HISTORY_TICKS ticks (for swing rewind: reach is judged from where the swinger stood then).
    */
-  history: { tick: number; pos: Vec3; vel: Vec3; who: [{ x: number; z: number }, { x: number; z: number }] }[]
+  history: { tick: number; pos: Vec3; vel: Vec3; who: { x: number; z: number }[] }[]
 }
 
 const other = (side: 0 | 1): 0 | 1 => (side === 0 ? 1 : 0)
+
+/** The player due to serve: the serving side's `serveSlot` player (1v1: the side's only player). */
+export function serverPlayer(state: SpState): SpPlayer {
+  return serverOf(state.players, state.server, state.serveSlot)
+}
 
 function rand(state: SpState): number {
   const r = { seed: state.rng }
@@ -276,16 +302,23 @@ export function stepPlayer(
   }
 }
 
-/** Server in their box (even own score → right), receiver in the diagonal box; shuttle in hand. */
+/**
+ * Server in their box (even own score → right), receiver (the receiving side's serveSlot player) in the
+ * diagonal box; 2v2 partners wait on the other half at ready depth. Shuttle in hand.
+ */
 function resetForServe(state: SpState) {
   const server = state.server
   const { xSign } = serveBox(server, state.score[server])
-  const { shortLine } = state.court
+  const { shortLine, halfWidth } = state.court
+  const srv = serverPlayer(state)
+  const rcv = serverOf(state.players, other(server), state.serveSlot)
   for (const p of state.players) {
-    const serving = p.side === server
-    const pos = serving
-      ? toWorld(p.side, xSign * SERVE_X, -(shortLine + SERVE_BACK))
-      : toWorld(p.side, xSign * RECEIVE_X, -(shortLine + RECEIVE_BACK))
+    const pos =
+      p === srv
+        ? toWorld(p.side, xSign * SERVE_X, -(shortLine + SERVE_BACK))
+        : p === rcv
+          ? toWorld(p.side, xSign * RECEIVE_X, -(shortLine + RECEIVE_BACK))
+          : toWorld(p.side, -xSign * (halfWidth / 2), -readyDepth(state.court))
     p.x = pos.x
     p.z = pos.z
     p.vx = 0
@@ -304,7 +337,7 @@ function resetForServe(state: SpState) {
 }
 
 function holdShuttle(state: SpState) {
-  const p = state.players[state.server]
+  const p = serverPlayer(state)
   const fwd = toWorld(p.side, 0, HAND_FWD)
   const s = state.shuttle
   s.pos.x = p.x + fwd.x
@@ -321,11 +354,13 @@ const makePlayer = (
   kind: 'human' | 'ai',
   side: 0 | 1,
   level?: Level,
+  slot: 0 | 1 = 0,
 ): SpPlayer => ({
   id,
   name,
   kind,
   side,
+  slot,
   x: 0,
   z: 0,
   vx: 0,
@@ -343,19 +378,49 @@ const makePlayer = (
 
 const LEVELS: readonly Level[] = ['easy', 'normal', 'hard']
 
+/**
+ * 2v2 seats, index = room seat (doubles.ts seatOf): each human in its room seat (a missing / taken /
+ * out-of-range seat → the lowest free one; more humans than seats are left out), every empty seat a computer.
+ */
+function doublesSeats(infos: PlayerInfo[], level: Level): SpPlayer[] {
+  const seats: (SpPlayer | undefined)[] = new Array<undefined>(MAX_SEATS).fill(undefined)
+  const sit = (info: PlayerInfo, seat: number) => {
+    const { side, slot } = seatOf(seat)
+    seats[seat] = makePlayer(info.id, info.name, 'human', side, undefined, slot)
+  }
+  const loose: PlayerInfo[] = []
+  for (const info of infos) {
+    const seat = info.slot
+    if (Number.isInteger(seat) && seat >= 0 && seat < MAX_SEATS && !seats[seat]) sit(info, seat)
+    else loose.push(info)
+  }
+  for (const info of loose) {
+    const free = seats.indexOf(undefined)
+    if (free >= 0) sit(info, free)
+  }
+  return seats.map((p, seat) => {
+    if (p) return p
+    const { side, slot } = seatOf(seat)
+    return makePlayer(`${AI_ID}${seat}`, t('Computer'), 'ai', side, level, slot)
+  })
+}
+
 export function createState(players: PlayerInfo[], seed: number, options: GameOptions = {}): SpState {
   const level: Level = LEVELS.includes(options.solo as Level) ? (options.solo as Level) : 'normal'
+  const doubles = modeOf(options.mode) === '2v2'
   const state: SpState = {
     tick: 0,
     phase: 'serve',
     phaseT: 0,
-    players: [
-      makePlayer(players[0].id, players[0].name, 'human', 0),
-      players.length >= 2
-        ? makePlayer(players[1].id, players[1].name, 'human', 1)
-        : makePlayer(AI_ID, t('Computer'), 'ai', 1, level),
-    ],
-    court: courtDims(courtSizeOf(options.court)),
+    players: doubles
+      ? doublesSeats(players, level)
+      : [
+          makePlayer(players[0].id, players[0].name, 'human', 0),
+          players.length >= 2
+            ? makePlayer(players[1].id, players[1].name, 'human', 1)
+            : makePlayer(AI_ID, t('Computer'), 'ai', 1, level),
+        ],
+    court: courtFor(doubles ? '2v2' : '1v1', courtSizeOf(options.court)),
     shuttle: {
       pos: { x: 0, y: 0, z: 0 },
       vel: { x: 0, y: 0, z: 0 },
@@ -366,6 +431,8 @@ export function createState(players: PlayerInfo[], seed: number, options: GameOp
     },
     score: [0, 0],
     server: 0,
+    serveSlot: [0, 0],
+    aiLevel: level,
     winner: -1,
     events: [],
     nextEventId: 1,
@@ -374,8 +441,16 @@ export function createState(players: PlayerInfo[], seed: number, options: GameOp
     history: [],
   }
   // Online: a coin flip picks the first server. Against the computer the player serves first.
-  if (players.length >= 2) state.server = rand(state) < 0.5 ? 0 : 1
-  for (const p of state.players) if (p.kind === 'ai') p.bot = newBotMemory(seed, p.side)
+  const humans = state.players.filter((p) => p.kind === 'human')
+  if (doubles && humans.length === 1) {
+    state.server = humans[0].side
+    state.serveSlot[humans[0].side] = humans[0].slot
+  } else if (players.length >= 2) state.server = rand(state) < 0.5 ? 0 : 1
+  // Seat index: 1v1's computer is index 1 = its side (the same stream as before 2v2).
+  state.players.forEach((p, i) => {
+    if (p.kind === 'ai') p.bot = newBotMemory(seed, i)
+  })
+  if (doubles) separateAi(state)
   resetForServe(state)
   return state
 }
@@ -395,6 +470,29 @@ export function setupBots(levelA: Level, levelB: Level, seed: number, size: Cour
     p.level = i === 0 ? levelA : levelB
     p.bot = newBotMemory(seed, p.side)
   })
+  return state
+}
+
+/** Test helper: all four 2v2 seats are computers (seat i → `ai${i}`, level levels[i]), on the given court. */
+export function setupDoubles(
+  levels: readonly [Level, Level, Level, Level],
+  seed: number,
+  size: CourtSize = 'normal',
+): SpState {
+  const seats = levels.map((_, i): PlayerInfo => ({
+    id: `${AI_ID}${i}`,
+    name: t('Computer'),
+    slot: i,
+    ready: true,
+    connected: true,
+  }))
+  const state = createState(seats, seed, { court: size, mode: '2v2' })
+  state.players.forEach((p, i) => {
+    p.kind = 'ai'
+    p.level = levels[i]
+    p.bot = newBotMemory(seed, i)
+  })
+  separateAi(state)
   return state
 }
 
@@ -434,7 +532,7 @@ function serve(state: SpState, p: SpPlayer, held: { x: number; z: number }) {
   state.phase = 'rally'
   state.phaseT = 0
   state.stats.shots = 1
-  emit(state, { k: 'serve', side: p.side, shot: kind })
+  emit(state, { k: 'serve', side: p.side, shot: kind, by: p.id })
 }
 
 const sq = (n: number) => n * n
@@ -508,7 +606,7 @@ export function resolveSwing(
   const s = state.shuttle
   const c = s.lastHitter === p.side || s.pending ? null : contactFor(state, p, rewind, act)
   if (!c) {
-    emit(state, { k: 'whiff', side: p.side })
+    emit(state, { k: 'whiff', side: p.side, by: p.id })
     return
   }
   // A jump / lunge plays its own shot (ability.ts abilityShot) instead of the held direction's.
@@ -517,6 +615,7 @@ export function resolveSwing(
     : { kind: chooseShot(held, c.y, c.grade), grade: c.grade, charge }
   s.pending = {
     atTick: Math.max(c.tick, state.tick),
+    id: p.id,
     side: p.side,
     kind: shot.kind,
     grade: shot.grade,
@@ -561,22 +660,27 @@ function contactFor(
  */
 export function contactCandidates(state: SpState, p: SpPlayer, rewind: number): ContactCandidate[] {
   const hist = state.history
-  return hist.map((h, i) => ({ tick: h.tick, pos: h.pos, at: seenAt(hist, i, rewind, state.tick, p) }))
+  const at = seatIndex(state, p)
+  return hist.map((h, i) => ({ tick: h.tick, pos: h.pos, at: seenAt(hist, i, rewind, state.tick, p, at) }))
 }
 
-/** `p`'s spot (by side) at tick hist[i].tick + rewind: from the history (contiguous ticks), or now. */
+/** `p`'s index in `players` (= its index in history `who`); 1v1 = its side. */
+const seatIndex = (state: SpState, p: SpPlayer): number => state.players.findIndex((q) => q.id === p.id)
+
+/** `p`'s spot (`who[at]`, at = seatIndex) at tick hist[i].tick + rewind: from the history (contiguous ticks), or now. */
 function seenAt(
   hist: SpState['history'],
   i: number,
   rewind: number,
   now: number,
   p: SpPlayer,
+  at: number,
 ): { x: number; z: number } {
   const want = hist[i].tick + rewind
   if (want >= now) return p
   const j = i + rewind
-  if (j < hist.length && hist[j].tick === want) return hist[j].who[p.side]
-  for (const h of hist) if (h.tick === want) return h.who[p.side]
+  if (j < hist.length && hist[j].tick === want) return hist[j].who[at] ?? p
+  for (const h of hist) if (h.tick === want) return h.who[at] ?? p
   return p
 }
 
@@ -601,10 +705,10 @@ function tapOnPress(state: SpState, p: SpPlayer): boolean {
 function firePending(state: SpState) {
   const s = state.shuttle
   const pend = s.pending!
-  const p = state.players[pend.side]
-  if (sq(s.pos.x - p.x) + sq(s.pos.z - p.z) > sq(reachOf(pend.act).radius + PENDING_SLACK)) {
+  const p = state.players.find((q) => q.id === pend.id)
+  if (!p || sq(s.pos.x - p.x) + sq(s.pos.z - p.z) > sq(reachOf(pend.act).radius + PENDING_SLACK)) {
     s.pending = null
-    emit(state, { k: 'whiff', side: pend.side })
+    emit(state, { k: 'whiff', side: pend.side, by: pend.id })
     return
   }
   hit(state)
@@ -655,6 +759,7 @@ function hit(state: SpState) {
     charge: pend.charge,
     power,
     ...(pend.act ? { act: pend.act } : {}),
+    by: pend.id,
   })
   // Fast-forwarded ticks are not written to history: the opponent cannot rewind-hit on them (rare, accepted).
   if (from) for (let t = from.tick; t < state.tick && state.phase === 'rally'; t++) flightStep(state)
@@ -678,6 +783,7 @@ function flightStep(state: SpState): void {
 
 function scorePoint(state: SpState, side: 0 | 1) {
   state.score = award(state.score, side)
+  state.serveSlot = flipServe(state.serveSlot, state.server, side, state.players.length === MAX_SEATS)
   state.server = side
   state.phase = 'point'
   state.phaseT = 0
@@ -699,15 +805,11 @@ function landed(state: SpState) {
 
 function recordHistory(state: SpState) {
   const { pos, vel } = state.shuttle
-  const [a, b] = state.players
   state.history.push({
     tick: state.tick,
     pos: { ...pos },
     vel: { ...vel },
-    who: [
-      { x: a.x, z: a.z },
-      { x: b.x, z: b.z },
-    ],
+    who: state.players.map((p) => ({ x: p.x, z: p.z })),
   })
   if (state.history.length > HISTORY_TICKS) state.history.splice(0, state.history.length - HISTORY_TICKS)
 }
@@ -718,7 +820,7 @@ function recordHistory(state: SpState) {
  */
 export function canCharge(state: SpState, p: SpPlayer): boolean {
   return (
-    (state.phase === 'rally' || (state.phase === 'serve' && p.side === state.server)) &&
+    (state.phase === 'rally' || (state.phase === 'serve' && p.id === serverPlayer(state).id)) &&
     !acting(p.act, state.tick) &&
     !stunned(p.stunAt, state.tick)
   )
@@ -777,11 +879,11 @@ function resolveAct(
   const hist = state.history
   const i = rewind > 0 ? hist.findIndex((h) => h.tick === state.tick - rewind) : -1
   const flight = i >= 0 ? hist[i] : s
-  const at = i >= 0 ? seenAt(hist, i, rewind, state.tick, p) : p
+  const at = i >= 0 ? seenAt(hist, i, rewind, state.tick, p, seatIndex(state, p)) : p
   const canHit = canStrike(state, p, hitter)
   const pick = pickAbility(flight, at, p.side, s.lastHitter, canHit)
   p.act = { k: pick.k, at: state.tick, dx: pick.dx, dz: pick.dz }
-  emit(state, { k: 'act', side: p.side, act: pick.k })
+  emit(state, { k: 'act', side: p.side, act: pick.k, by: p.id })
   if (pick.k === 'hop') return false
   p.swingAt = state.tick
   resolveSwing(state, p, held, rewind, 0, rewind, pick.k)
@@ -820,14 +922,15 @@ export function shownName(p: SpPlayer): string {
 }
 
 /**
- * The computer never wears a human's look: an AI seat on a taken preset moves to the next free one.
- * (Two humans may match; the view tints the far one.)
+ * The computer never wears a human's look, nor an earlier computer's: an AI seat on a taken preset moves
+ * to the next free one. (Two humans may match; the view tints the far one.)
  */
 export function separateAi(state: SpState): void {
-  const taken = (n: number) => state.players.some((h) => h.kind === 'human' && h.preset === n)
-  for (const q of state.players)
-    if (q.kind === 'ai')
-      if (!isAvailable(q.preset) || taken(q.preset)) q.preset = nextAvailable(q.preset, taken)
+  state.players.forEach((q, i) => {
+    if (q.kind !== 'ai') return
+    const taken = (n: number) => state.players.some((h, j) => (h.kind === 'human' || j < i) && h.preset === n)
+    if (!isAvailable(q.preset) || taken(q.preset)) q.preset = nextAvailable(q.preset, taken)
+  })
 }
 
 /**
@@ -900,9 +1003,11 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
       acts.push({ p, held: clampDir(input.x, input.z), rewind: humanRewind(state, p, input.tick) })
     }
   }
+  const srv = serverPlayer(state)
   for (const p of state.players) {
-    if (p.act && state.tick === landTick(p.act)) emit(state, { k: 'actLand', side: p.side, act: p.act.k })
-    if (state.phase === 'serve' && p.side === state.server) {
+    if (p.act && state.tick === landTick(p.act))
+      emit(state, { k: 'actLand', side: p.side, act: p.act.k, by: p.id })
+    if (state.phase === 'serve' && p === srv) {
       // The server stands still in the box until the serve.
       p.vx = 0
       p.vz = 0
@@ -914,10 +1019,10 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
   if (state.phase === 'serve') {
     const before = s.lastHitter
     holdShuttle(state)
-    const sw = swings.find((w) => w.p.side === state.server)
+    const sw = swings.find((w) => w.p === srv)
     if (sw) serve(state, sw.p, sw.held)
     // Nobody stalls the match: an idle server short-serves automatically.
-    else if (state.phaseT >= SERVE_TIMEOUT) serve(state, state.players[state.server], { x: 0, z: 0 })
+    else if (state.phaseT >= SERVE_TIMEOUT) serve(state, srv, { x: 0, z: 0 })
     // Presses in the serve hop (nothing to strike yet; a serve this tick is the server's own hit).
     for (const a of acts) if (canAct(state, a.p)) resolveAct(state, a.p, a.held, a.rewind, before)
   } else if (state.phase === 'rally') {
@@ -928,7 +1033,7 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
     const swung: SpPlayer[] = []
     for (const { p, held, rewind, charge, lag } of swings) {
       swung.push(p)
-      if (s.lastHitter !== hitter) emit(state, { k: 'whiff', side: p.side })
+      if (s.lastHitter !== hitter) emit(state, { k: 'whiff', side: p.side, by: p.id })
       else resolveSwing(state, p, held, rewind, charge, lag)
     }
     for (const p of presses)
@@ -969,14 +1074,33 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
   return state
 }
 
+/**
+ * A human left a 2v2 seat: the computer (state.aiLevel) plays it on as `ai${i}` (the leaver's id no
+ * longer drives it), a held charge is dropped; a contact it already made still fires.
+ */
+function takeSeat(state: SpState, i: number): void {
+  const p = state.players[i]
+  const id = `${AI_ID}${i}`
+  const pend = state.shuttle.pending
+  if (pend && pend.id === p.id) pend.id = id
+  p.id = id
+  p.kind = 'ai'
+  p.level = state.aiLevel
+  p.bot = newBotMemory(state.rng, i)
+  p.move = { x: 0, z: 0 }
+  p.chargeAt = p.pressAt = -1
+}
+
 export const shuttlePopGame: GameDefinition<SpState, SpInput> = {
   id: 'shuttle-pop',
   tickRate: TICK_RATE,
   options: [
     {
       id: 'solo',
-      label: t('Playing alone'),
+      label: t('Computer level'),
       aloneOnly: true,
+      // While the computer plays a seat: alone in 1v1, any empty seat in 2v2.
+      shownWhen: (n, o) => n <= 1 || (modeOf(o.mode) === '2v2' && n < MAX_SEATS),
       default: 'normal',
       choices: [
         { value: 'easy', label: t('Easy AI') },
@@ -996,7 +1120,11 @@ export const shuttlePopGame: GameDefinition<SpState, SpInput> = {
     },
   ],
   minPlayers: 1,
-  maxPlayers: 2,
+  maxPlayers: MAX_SEATS,
+  seating: (o) => {
+    const doubles = modeOf(o.mode) === '2v2'
+    return { seats: doubles ? MAX_SEATS : 2, teams: doubles ? 2 : 1, botFill: doubles }
+  },
   countdown: 3,
   setup: createState,
   tick: step,
@@ -1008,9 +1136,11 @@ export const shuttlePopGame: GameDefinition<SpState, SpInput> = {
   },
   removePlayer(state, id) {
     if (state.phase === 'over') return
-    const side = state.players.findIndex((p) => p.id === id)
-    if (side < 0) return
-    state.winner = other(side as 0 | 1)
+    const i = state.players.findIndex((p) => p.id === id)
+    if (i < 0) return
+    // 2v2: the computer takes the seat and the match goes on.
+    if (state.players.length === MAX_SEATS) return takeSeat(state, i)
+    state.winner = other(i as 0 | 1)
     state.phase = 'over'
   },
 }

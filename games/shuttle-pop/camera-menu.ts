@@ -11,7 +11,7 @@ import { NO_TWEAK } from './world'
  * (prefs.ts) and applied live by the renderer; sliders show the raw saved value, the court-framing
  * clamp is applied at render time.
  */
-export function cameraPanel(): { nodes: HTMLElement[]; focus(): void } {
+export function cameraPanel(): { nodes: HTMLElement[] } {
   const axis = (key: 'height' | 'tilt', label: string, ariaLabel: string) =>
     slider({
       label,
@@ -32,14 +32,14 @@ export function cameraPanel(): { nodes: HTMLElement[]; focus(): void } {
     height.set(toStep(p.camera.height))
     tilt.set(toStep(p.camera.tilt))
   })
-  return { nodes: [height.row, tilt.row, note, reset], focus: () => height.input.focus() }
+  return { nodes: [height.row, tilt.row, note, reset] }
 }
 
 /**
  * A small camera button over the top-right of the game view (`view`) that opens the camera panel
  * below it. The view takes every pointer as a swing / stick, so the overlay keeps its own pointer
  * events to itself, and while the panel is open a press outside only closes it (never swings).
- * Keys typed in the panel are already ignored by the game (input.ts: buttons and fields are UI).
+ * While open, a capture guard keeps every key (except Esc/Tab) away from the game's window listeners.
  * Focus never stays on the button after closing, so Space keeps swinging.
  */
 export function mountCameraButton(view: HTMLElement): { root: HTMLElement; destroy(): void } {
@@ -58,22 +58,35 @@ export function mountCameraButton(view: HTMLElement): { root: HTMLElement; destr
     e.stopPropagation()
     menu.close()
   }
+  // While open no key reaches the game (window listeners in input.ts, wherever focus is). Capture,
+  // no preventDefault: sliders and buttons keep their native keys; Esc/Tab stay for the popover.
+  const guardKeys = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape' && e.key !== 'Tab') e.stopPropagation()
+  }
   const menu = popover(
     {
       button,
       label: t('Camera view'),
       class: 'sp-cam-pop',
-      onOpen: () => panel.focus(),
+      // The panel itself, not a control: Space must not press Reset.
+      onOpen: () => menu.panel.focus({ preventScroll: true }),
       onToggle: (open) => {
-        if (open) document.addEventListener('pointerdown', swallowOutside, true)
-        else {
+        if (open) {
+          document.addEventListener('pointerdown', swallowOutside, true)
+          window.addEventListener('keydown', guardKeys, true)
+          window.addEventListener('keyup', guardKeys, true)
+        } else {
           document.removeEventListener('pointerdown', swallowOutside, true)
+          window.removeEventListener('keydown', guardKeys, true)
+          window.removeEventListener('keyup', guardKeys, true)
           blurIfHere()
         }
       },
     },
     ...panel.nodes,
   )
+  menu.panel.tabIndex = -1
+  menu.panel.classList.add('sp-cam-panel')
   // After the popover's own Esc handler (which refocuses the button): let go of focus.
   const onEsc = (e: KeyboardEvent) => {
     if (e.key === 'Escape' && !menu.isOpen) blurIfHere()
@@ -88,6 +101,8 @@ export function mountCameraButton(view: HTMLElement): { root: HTMLElement; destr
     root,
     destroy() {
       document.removeEventListener('pointerdown', swallowOutside, true)
+      window.removeEventListener('keydown', guardKeys, true)
+      window.removeEventListener('keyup', guardKeys, true)
       document.removeEventListener('keydown', onEsc)
       menu.destroy()
       root.remove()

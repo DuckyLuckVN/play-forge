@@ -74,20 +74,37 @@ describe('camera button', () => {
     expect(seen).not.toHaveBeenCalled()
   })
 
-  it('Space / J typed in the open panel are not game input', () => {
+  it('while open no key reaches the real input (Space, J, arrows, WASD), wherever focus is', () => {
     const sent = vi.fn()
-    const stop = bindInput(view, sent, () => 0)
+    const input = bindInput(view, sent, () => 0)
     button().click()
-    const slider = panel().querySelector('input')!
-    for (const code of ['Space', 'KeyJ', 'ArrowLeft']) {
-      key('keydown', { code, key: code }, slider)
-      key('keyup', { code, key: code }, slider)
+    const targets = [panel().querySelector('input')!, panel(), button(), document.body]
+    for (const code of ['Space', 'KeyJ', 'ArrowLeft', 'KeyA', 'KeyW']) {
+      for (const t of targets) {
+        key('keydown', { code, key: code }, t)
+        key('keyup', { code, key: code }, t)
+      }
     }
-    key('keydown', { code: 'Space', key: ' ' }, button())
     expect(sent).not.toHaveBeenCalled()
+    button().click() // closed: keys play again
     key('keydown', { code: 'ArrowLeft', key: 'ArrowLeft' })
-    expect(sent).toHaveBeenCalled() // control: the same key on the page does move
-    stop.stop()
+    expect(sent).toHaveBeenCalled()
+    input.stop()
+  })
+
+  it('J keyup alone does not swing while open, but does once closed', () => {
+    const sent = vi.fn()
+    const input = bindInput(view, sent, () => 0)
+    button().click()
+    key('keyup', { code: 'KeyJ', key: 'j' }, document.body)
+    expect(sent).not.toHaveBeenCalled()
+    input.stop()
+  })
+
+  it('opening focuses the panel, not Reset, and Space does not reset the camera', () => {
+    button().click()
+    expect(document.activeElement).toBe(panel())
+    expect(document.activeElement).not.toBe(panel().querySelector('.wide'))
   })
 })
 

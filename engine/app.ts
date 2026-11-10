@@ -26,6 +26,16 @@ import { button } from './ui/components'
 import { langMenu } from './ui/lang-menu'
 import { h, icon, iconButton, toast } from './ui/dom'
 import { fullscreenButton } from './ui/fullscreen'
+import {
+  guideButton,
+  guideCard,
+  guideSeen,
+  howToPlayMode,
+  markGuideSeen,
+  openGuide,
+  withPauseRow,
+  type GuideStep,
+} from './ui/guide'
 import { t } from './ui/i18n'
 import { chipLook, scoreLabel } from './ui/scoreline'
 import { icons } from './ui/icons'
@@ -65,8 +75,14 @@ export interface GameAppOptions<S, I> {
   title: string
   /** One line under the title on the start screen. */
   tagline?: string
-  /** How to play, shown on the start and pause screens. */
+  /** How to play, shown on the start and pause screens. Ignored when `guide` is set. */
   controls?: string
+  /**
+   * How to play as rows of keycaps and mouse / touch icons (see engine/ui/guide.ts). The start and
+   * pause screens get a "How to play" button, and the card shows once before the first match (the
+   * shell adds a Pause row). Text is translated by the game.
+   */
+  guide?: GuideStep[]
   /**
    * Gameplay music. Menus and lobbies use the shared lounge track. `null`: no
    * background music while playing (the game makes its own, e.g. beat-synced).
@@ -245,6 +261,15 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
 
   playMusic(LOUNGE)
 
+  // ---------- Control guide ----------
+  const mode = howToPlayMode(opts.guide, opts.controls)
+  const guide = mode === 'guide' ? withPauseRow(opts.guide!) : null
+  /** Closes the first-play guide while it holds back a solo match. */
+  let closeFirstGuide: (() => void) | null = null
+  const howToPlay = () => guide && guideButton(guide)
+  /** The old paragraph, for games that pass `controls` only. */
+  const controlsText = (cls: string) => mode === 'text' && h('p', { class: cls, textContent: opts.controls })
+
   // ---------- Session lifecycle ----------
   let session: Session<S, I> | null = null
   let cleanup: (() => void) | null = null
@@ -336,7 +361,18 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       settingsSlot.replaceChildren()
       unmount()
     }
-    if (extra.offline) s.start()
+    if (extra.offline) {
+      // First match of this game: the guide first, the countdown once it's dismissed.
+      if (guide && !guideSeen(def.id))
+        closeFirstGuide = openGuide(guide, {
+          onClose() {
+            closeFirstGuide = null
+            markGuideSeen(def.id)
+            if (session === s && s.phase === 'lobby') s.start()
+          },
+        })
+      else s.start()
+    }
     render()
   }
 
@@ -344,6 +380,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     cleanup?.()
     session?.leave()
     session = cleanup = null
+    closeFirstGuide?.()
     room = ''
     store.save(null)
     countdownEl.replaceChildren()
@@ -406,6 +443,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     }
 
     if (lobby.phase === 'countdown' && (prev.phase !== 'countdown' || prev.countdown !== lobby.countdown)) {
+      // Online the guide shows in the room (never holding up the match); once one starts it's seen.
+      if (guide) markGuideSeen(def.id)
       playSound(UI_SOUNDS.tick)
       showCount(String(lobby.countdown))
     }
@@ -465,7 +504,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       case 'finished':
         return s.offline ? showSoloResult(s) : showRoom(s)
       case 'lobby':
-        return showRoom(s)
+        // Solo waits in 'lobby' only while the first-play guide is open (over the stage).
+        return s.offline ? show(null) : showRoom(s)
     }
   }
 
@@ -641,7 +681,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         online && h('div', { class: 'pf-or', textContent: t("or join a friend's room") }),
         online && h('div', { class: 'pf-row' }, code, joinBtn),
         error && h('p', { class: 'pf-note error', textContent: error }),
-        opts.controls && h('p', { class: 'pf-note', textContent: opts.controls }),
+        howToPlay(),
+        controlsText('pf-note'),
       ),
       'menu',
     )
@@ -887,6 +928,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         h('p', { class: 'pf-note', textContent: note }),
         offlineNote(),
         action,
+        // First time in this game: the controls right here while waiting (seen once a match starts).
+        guide && !finished && (guideSeen(def.id) ? howToPlay() : guideCard(guide)),
         button(t('Leave room'), leave, 'quiet'),
       ),
       finished ? `results-${s.lobby.round}` : 'room',
@@ -918,8 +961,9 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         'div',
         { class: 'pf-panel' },
         h('h2', { class: 'pf-heading', textContent: t('Paused') }),
-        opts.controls && h('p', { class: 'pf-lede', textContent: opts.controls }),
+        controlsText('pf-lede'),
         resume,
+        howToPlay(),
         button(t('Quit to menu'), leave, 'quiet'),
       ),
       'paused',

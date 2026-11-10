@@ -1,0 +1,306 @@
+// Control guide: "how to play" rows with keycaps and mouse / touch icons instead of a paragraph.
+// Games describe their controls as GuideSteps (GameAppOptions.guide); the shell shows them on the
+// start screen, the pause screen and, once per game, before the first match.
+import { prefersTouch } from '../core/device'
+import { button } from './components'
+import { h, icon } from './dom'
+import { t } from './i18n'
+import { inputIcons } from './icons'
+
+/** Keys pressed as one group, shown side by side, e.g. ['W', 'A', 'S', 'D'] or ['Space']. */
+export type KeyCombo = string[]
+export type MouseAction = 'click' | 'hold' | 'drag' | 'scroll' | 'right'
+export type TouchAction = 'tap' | 'doubleTap' | 'hold' | 'swipe' | 'swipeUp' | 'drag' | 'dragLeft' | 'button'
+
+/**
+ * One control. Desktop shows `keys` (combos joined by "or") and `mouse`; touch screens show `touch`.
+ * A step with nothing for the current device is hidden, so desktop-only and touch-only steps mix.
+ * Text is already translated by the game.
+ */
+export interface GuideStep {
+  action: string
+  keys?: KeyCombo[]
+  mouse?: MouseAction
+  touch?: TouchAction
+  /** Short text beside the touch icon, e.g. "left side". */
+  touchLabel?: string
+  /** Held rather than pressed: shows "hold" before the inputs. */
+  hold?: boolean
+  /** A smaller line under the action, e.g. "Let go to hit". */
+  note?: string
+}
+
+export interface Keycap {
+  text: string
+  /** Read out instead of `text` (arrow glyphs). */
+  spoken?: string
+}
+
+export type GuideInput =
+  | { kind: 'keys'; keys: Keycap[] }
+  | { kind: 'or' }
+  | { kind: 'mouse'; action: MouseAction }
+  | { kind: 'touch'; action: TouchAction; label?: string }
+
+export interface GuideRow {
+  action: string
+  note?: string
+  hold: boolean
+  inputs: GuideInput[]
+}
+
+const ARROWS: Record<string, [glyph: string, spoken: () => string]> = {
+  Up: ['↑', () => t('Up arrow')],
+  Down: ['↓', () => t('Down arrow')],
+  Left: ['←', () => t('Left arrow')],
+  Right: ['→', () => t('Right arrow')],
+}
+
+/** A key name as printed on its cap: arrows become glyphs, everything else stays as written. */
+export function keycap(name: string): Keycap {
+  const arrow = ARROWS[name]
+  return arrow ? { text: arrow[0], spoken: arrow[1]() } : { text: name }
+}
+
+/** The rows to show on this device, with "or" between alternatives. */
+export function guideRows(steps: readonly GuideStep[], touch: boolean): GuideRow[] {
+  const rows: GuideRow[] = []
+  for (const s of steps) {
+    const alts: GuideInput[] = []
+    if (touch) {
+      if (s.touch) alts.push({ kind: 'touch', action: s.touch, label: s.touchLabel })
+    } else {
+      for (const combo of s.keys ?? []) if (combo.length) alts.push({ kind: 'keys', keys: combo.map(keycap) })
+      if (s.mouse) alts.push({ kind: 'mouse', action: s.mouse })
+    }
+    if (!alts.length) continue
+    const inputs = alts.flatMap((a, i): GuideInput[] => (i ? [{ kind: 'or' }, a] : [a]))
+    rows.push({ action: s.action, note: s.note, hold: !!s.hold, inputs })
+  }
+  return rows
+}
+
+/** The game's steps plus the shell's own Pause row (Esc / P; keyboards only). */
+export function withPauseRow(steps: readonly GuideStep[]): GuideStep[] {
+  return [...steps, { action: t('Pause'), keys: [['Esc'], ['P']] }]
+}
+
+/**
+ * What the start and pause screens show for a game's controls: the guide button when it has guide
+ * steps, else its old `controls` paragraph (games not yet converted), else nothing.
+ */
+export function howToPlayMode(guide?: readonly GuideStep[], controls?: string): 'guide' | 'text' | null {
+  return guide?.length ? 'guide' : controls ? 'text' : null
+}
+
+// ---------- First-play flag ----------
+
+const SEEN_PREFIX = 'play-forge:guide-seen:'
+/** Also remembered in memory, so a page without storage still shows the guide only once. */
+const seenThisPage = new Set<string>()
+
+type FlagStorage = Pick<Storage, 'getItem' | 'setItem'>
+const storage = (): FlagStorage | undefined => globalThis.localStorage
+
+/** Has this player already seen game `id`'s guide? (Unreadable storage counts as not seen.) */
+export function guideSeen(id: string, store: FlagStorage | undefined = storage()): boolean {
+  if (seenThisPage.has(id)) return true
+  try {
+    return store?.getItem(SEEN_PREFIX + id) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function markGuideSeen(id: string, store: FlagStorage | undefined = storage()): void {
+  seenThisPage.add(id)
+  try {
+    store?.setItem(SEEN_PREFIX + id, '1')
+  } catch {
+    // storage unavailable: remembered for this page only
+  }
+}
+
+/** Test hook: forget the in-memory flags. */
+export function resetGuideMemory(): void {
+  seenThisPage.clear()
+}
+
+// ---------- Rendering ----------
+
+const mouseSpoken = (a: MouseAction): string => {
+  switch (a) {
+    case 'click':
+      return t('Click')
+    case 'hold':
+      return t('Hold the mouse button')
+    case 'drag':
+      return t('Drag with the mouse')
+    case 'scroll':
+      return t('Scroll')
+    case 'right':
+      return t('Right-click')
+  }
+}
+
+const touchSpoken = (a: TouchAction): string => {
+  switch (a) {
+    case 'tap':
+      return t('Tap')
+    case 'doubleTap':
+      return t('Double-tap')
+    case 'hold':
+      return t('Touch and hold')
+    case 'swipe':
+      return t('Swipe')
+    case 'swipeUp':
+      return t('Swipe up')
+    case 'drag':
+      return t('Drag')
+    case 'dragLeft':
+      return t('Drag on the left side')
+    case 'button':
+      return t('Tap the button')
+  }
+}
+
+const MOUSE_ICON: Record<MouseAction, string> = {
+  click: inputIcons.mouseClick,
+  hold: inputIcons.mouseClick,
+  drag: inputIcons.mouseDrag,
+  scroll: inputIcons.mouseScroll,
+  right: inputIcons.mouseRight,
+}
+const TOUCH_ICON: Record<TouchAction, string> = {
+  tap: inputIcons.tap,
+  doubleTap: inputIcons.doubleTap,
+  hold: inputIcons.touchHold,
+  swipe: inputIcons.swipe,
+  swipeUp: inputIcons.swipeUp,
+  drag: inputIcons.stick,
+  dragLeft: inputIcons.leftSide,
+  button: inputIcons.touchButton,
+}
+
+/** Text for screen readers only (the icon beside it is aria-hidden). */
+const spoken = (text: string) => h('span', { class: 'pf-sr', textContent: text })
+
+function keyEl(k: Keycap): HTMLElement {
+  const kbd = h('kbd', { class: k.text.length > 1 ? 'pf-key wide' : 'pf-key' })
+  if (!k.spoken) {
+    kbd.textContent = k.text
+    return kbd
+  }
+  const glyph = h('span', { textContent: k.text })
+  glyph.setAttribute('aria-hidden', 'true')
+  kbd.append(glyph, spoken(k.spoken))
+  return kbd
+}
+
+function inputEl(input: GuideInput): HTMLElement {
+  switch (input.kind) {
+    case 'keys':
+      return h('span', { class: 'pf-keys' }, ...input.keys.map(keyEl))
+    case 'or':
+      return h('span', { class: 'pf-guide-or', textContent: t('or') })
+    case 'mouse':
+      return h(
+        'span',
+        { class: 'pf-guide-icon' },
+        icon(MOUSE_ICON[input.action]),
+        spoken(mouseSpoken(input.action)),
+      )
+    case 'touch':
+      return h(
+        'span',
+        { class: 'pf-guide-icon' },
+        icon(TOUCH_ICON[input.action]),
+        input.label
+          ? h('span', { class: 'pf-guide-touch', textContent: input.label })
+          : spoken(touchSpoken(input.action)),
+      )
+  }
+}
+
+/** The list of control rows for this device (default: touch screens get touch rows). */
+export function guideList(steps: readonly GuideStep[], touch = prefersTouch()): HTMLElement {
+  return h(
+    'ul',
+    { class: 'pf-guide' },
+    ...guideRows(steps, touch).map((row) =>
+      h(
+        'li',
+        { class: 'pf-guide-row' },
+        h(
+          'span',
+          { class: 'pf-guide-action' },
+          row.action,
+          row.note && h('small', { class: 'pf-guide-note', textContent: row.note }),
+        ),
+        h(
+          'span',
+          { class: 'pf-guide-inputs' },
+          row.hold && h('span', { class: 'pf-guide-hold', textContent: t('hold') }),
+          ...row.inputs.map(inputEl),
+        ),
+      ),
+    ),
+  )
+}
+
+/** Title plus rows, e.g. inline in a room panel. */
+export function guideCard(steps: readonly GuideStep[], touch = prefersTouch()): HTMLElement {
+  return h(
+    'section',
+    { class: 'pf-guide-card' },
+    h('h2', { class: 'pf-guide-title', textContent: t('How to play') }),
+    guideList(steps, touch),
+  )
+}
+
+export interface OpenGuideOptions {
+  /** Runs once when the card closes (button, Enter / Space / Esc, or a tap anywhere). */
+  onClose?: () => void
+  touch?: boolean
+}
+
+/**
+ * Shows the guide as a modal card over everything under the top bar. Keys pressed while it is open
+ * don't reach the game or the shell (Esc closes the card, it doesn't pause). Returns a close function.
+ */
+export function openGuide(steps: readonly GuideStep[], opts: OpenGuideOptions = {}): () => void {
+  const before = document.activeElement as HTMLElement | null
+  let closed = false
+  const close = () => {
+    if (closed) return
+    closed = true
+    window.removeEventListener('keydown', onKey, true)
+    layer.remove()
+    before?.focus?.({ preventScroll: true })
+    opts.onClose?.()
+  }
+  const onKey = (e: KeyboardEvent) => {
+    e.stopPropagation()
+    if (e.code === 'Escape' || e.code === 'Enter' || e.code === 'Space' || e.code === 'NumpadEnter') {
+      e.preventDefault()
+      close()
+    }
+  }
+  const ok = button(t('Got it'), close, 'primary wide')
+  const card = h('div', { class: 'pf-panel pf-guide-panel enter' }, guideCard(steps, opts.touch), ok)
+  card.setAttribute('role', 'dialog')
+  card.setAttribute('aria-modal', 'true')
+  card.setAttribute('aria-label', t('How to play'))
+  const layer = h('div', { class: 'pf-guide-layer', onclick: close }, card)
+  document.body.append(layer)
+  window.addEventListener('keydown', onKey, true)
+  ok.focus({ preventScroll: true })
+  return close
+}
+
+/** A "How to play" button that opens the guide card. */
+export function guideButton(steps: readonly GuideStep[]): HTMLButtonElement {
+  const b = h('button', { class: 'pf-btn sm pf-guide-btn', type: 'button', onclick: () => openGuide(steps) })
+  b.append(icon(inputIcons.keyboard), h('span', { textContent: t('How to play') }))
+  return b
+}

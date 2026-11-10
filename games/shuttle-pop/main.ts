@@ -175,9 +175,55 @@ createGameApp<SpState, SpInput>({
   tagline: t(
     'Chibi badminton. Time your swing for a Perfect, smash on high balls. Play the computer or a friend online.',
   ),
-  controls: t(
-    'Move with WASD or the arrow keys. Swing with Space, J or a click: tap for a quick swing, or hold to charge a power shot and let go to hit (you move slower while charging). Hold forward as you swing to smash or drive, back to clear, nothing to drop; left or right aims. On a phone: drag on the left side to move, tap or hold the racket button to swing; the stick direction picks the shot the same way.',
-  ),
+  // Desktop rows (keys / mouse) and touch rows (stick / racket button); each device sees its own.
+  guide: [
+    {
+      action: t('Move'),
+      keys: [
+        ['W', 'A', 'S', 'D'],
+        ['Up', 'Left', 'Down', 'Right'],
+      ],
+      touch: 'dragLeft',
+      touchLabel: t('left side'),
+    },
+    {
+      action: t('Swing'),
+      note: t('Tap for a quick swing'),
+      keys: [['Space'], ['J']],
+      mouse: 'click',
+      touch: 'button',
+    },
+    {
+      action: t('Power shot'),
+      note: t('Let go to hit. You move slower while charging.'),
+      hold: true,
+      keys: [['Space'], ['J']],
+      mouse: 'hold',
+      touch: 'button',
+    },
+    { action: t('Smash or drive'), note: t('as you swing'), hold: true, keys: [['W'], ['Up']] },
+    { action: t('Clear (high and deep)'), note: t('as you swing'), hold: true, keys: [['S'], ['Down']] },
+    {
+      action: t('Aim left or right'),
+      note: t('as you swing'),
+      hold: true,
+      keys: [
+        ['A', 'D'],
+        ['Left', 'Right'],
+      ],
+    },
+    {
+      action: t('Drop shot'),
+      note: t('Swing with no direction held'),
+      keys: [['Space'], ['J']],
+      mouse: 'click',
+    },
+    {
+      action: t('Pick the shot'),
+      note: t('Stick forward: smash or drive. Back: clear. Sideways: aim. Centred: drop.'),
+      touch: 'drag',
+    },
+  ],
   // Stock upbeat gameplay loop.
   music: ARCADE,
   preload,

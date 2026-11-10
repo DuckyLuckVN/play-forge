@@ -15,6 +15,7 @@ export {
   type Tone,
 } from './audio/sound'
 export { ARCADE, LOUNGE } from './audio/tracks'
+export { prefersTouch } from './core/device'
 export { Emitter } from './core/emitter'
 export {
   detectLang,
@@ -88,7 +89,21 @@ export {
   onFullscreenChange,
   toggleFullscreen,
 } from './ui/fullscreen'
+export {
+  guideButton,
+  guideCard,
+  guideList,
+  guideRows,
+  guideSeen,
+  keycap,
+  markGuideSeen,
+  openGuide,
+  type GuideStep,
+  type KeyCombo,
+  type MouseAction,
+  type TouchAction,
+} from './ui/guide'
 export { landscapeGuard, lockLandscape, needsRotate, unlockLandscape, watchPortrait } from './ui/landscape'
 export { popover, type Popover, type PopoverOptions } from './ui/popover'
-export { icons } from './ui/icons'
+export { icons, inputIcons } from './ui/icons'
 export { applyTheme, FONT, PLAYER_COLORS, playerColor, theme } from './ui/theme'

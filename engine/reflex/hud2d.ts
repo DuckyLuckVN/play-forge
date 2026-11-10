@@ -1,3 +1,4 @@
+import { prefersTouch } from '../core/device'
 import { formatNumber } from '../core/i18n'
 // Screen-space HUD for 2D reaction games (e.g. Synthstride): hearts and
 // combo multiplier up top; a bottom-centre cluster (score | skill ring with its
@@ -65,14 +66,8 @@ export function skillRingHit(x: number, y: number, w: number, h: number): boolea
   return Math.hypot(x - cx, y - cy) < METER_R * 1.5
 }
 
-/** Touch-only devices get the touch label; anything with a keyboard gets the keycap. */
-export function prefersTouch(): boolean {
-  try {
-    return globalThis.matchMedia?.('(hover: none) and (pointer: coarse)').matches ?? false
-  } catch {
-    return false
-  }
-}
+/** Touch-only devices get the touch label; anything with a keyboard gets the keycap. (Kept here for existing imports.) */
+export { prefersTouch }
 
 /** Top of the bottom HUD cluster: keep gameplay above this. */
 export const hudBottomTop = (h: number) => skillRingAt(1, h)[1] - METER_R - 12

@@ -15,8 +15,22 @@ export const VI: Dictionary = {
   // Start screen
   'Chibi badminton. Time your swing for a Perfect, smash on high balls. Play the computer or a friend online.':
     'Cầu lông chibi. Vung vợt đúng lúc để được Perfect, đập mạnh khi cầu cao. Chơi với máy hoặc với bạn bè trực tuyến.',
-  'Move with WASD or the arrow keys. Swing with Space, J or a click: tap for a quick swing, or hold to charge a power shot and let go to hit (you move slower while charging). Hold forward as you swing to smash or drive, back to clear, nothing to drop; left or right aims. On a phone: drag on the left side to move, tap or hold the racket button to swing; the stick direction picks the shot the same way.':
-    'Di chuyển bằng WASD hoặc phím mũi tên. Vung vợt bằng Space, J hoặc nhấp chuột: chạm nhanh để vung nhẹ, hoặc giữ để tích lực cú đánh mạnh rồi thả ra để đánh (khi tích lực bạn di chuyển chậm hơn). Giữ tiến khi vung để đập cầu hoặc tạt cầu, giữ lùi để đánh cầu cao sâu, không giữ để bỏ nhỏ; trái hoặc phải để nhắm hướng. Trên điện thoại: kéo ở nửa trái để di chuyển, chạm hoặc giữ nút vợt để vung; hướng cần điều khiển chọn cú đánh theo cách tương tự.',
+  // Control guide (main.ts)
+  Move: 'Di chuyển',
+  'left side': 'nửa trái',
+  Swing: 'Vung vợt',
+  'Tap for a quick swing': 'Nhấn nhanh để vung nhẹ',
+  'Power shot': 'Cú đánh mạnh',
+  'Let go to hit. You move slower while charging.': 'Thả ra để đánh. Khi tích lực bạn đi chậm hơn.',
+  'Smash or drive': 'Đập cầu hoặc tạt cầu',
+  'as you swing': 'khi vung vợt',
+  'Clear (high and deep)': 'Đánh cầu cao sâu',
+  'Aim left or right': 'Nhắm trái hoặc phải',
+  'Drop shot': 'Bỏ nhỏ',
+  'Swing with no direction held': 'Vung vợt khi không giữ hướng nào',
+  'Pick the shot': 'Chọn cú đánh',
+  'Stick forward: smash or drive. Back: clear. Sideways: aim. Centred: drop.':
+    'Cần tiến: đập hoặc tạt cầu. Lùi: cầu cao sâu. Sang ngang: nhắm hướng. Ở giữa: bỏ nhỏ.',
 
   // Character picker (preset names in actors.ts)
   'Choose your player': 'Chọn nhân vật',

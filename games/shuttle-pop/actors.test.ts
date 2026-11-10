@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { BufferGeometry, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, Object3D, Vector3 } from 'three'
+import {
+  BufferGeometry,
+  Mesh,
+  MeshBasicMaterial,
+  MeshPhysicalMaterial,
+  Object3D,
+  Vector3,
+  type Material,
+} from 'three'
 import { createChibi, PRESETS, restPose, setToyShading } from './actors'
 import { STRIKE_END } from './arm'
 import { SwingDriver } from './moves'
@@ -11,12 +19,7 @@ import { modelOf } from './model/model'
 function rig(preset = 0) {
   const chibi = createChibi(preset)
   const named = (n: string) => chibi.root.getObjectByName(n)!
-  let streak: Mesh | null = null
-  chibi.root.traverse((o) => {
-    if (o instanceof Mesh && o.material instanceof MeshBasicMaterial && o.material.vertexColors && !o.name)
-      streak = o
-  })
-  return { chibi, frame: named('racketHead'), head: named('head'), streak: streak! }
+  return { chibi, frame: named('racketHead'), head: named('head'), streak: named('streak') as Mesh }
 }
 
 /** Meshes that would draw (visible all the way up). */
@@ -285,5 +288,49 @@ describe('toy shading toggle (governor)', () => {
       expect(u.toyRim.value).toBeGreaterThan(0)
       expect(u.toyLobes.value).toBe(1)
     }
+  })
+})
+
+describe('fade (local player covering the shuttle)', () => {
+  it('setOpacity(<1) swaps every kit/face/extra mesh to transparent variants; 1 restores the exact originals', () => {
+    const { chibi } = rig(0)
+    const meshes: Mesh[] = []
+    chibi.root.traverse((o) => {
+      if (o instanceof Mesh && o.name !== 'hull') meshes.push(o)
+    })
+    const before = meshes.map((m) => m.material)
+    chibi.setOpacity(0.5)
+    const faded = meshes.filter((m) => m.name !== 'streak' && m.name !== 'shadow')
+    expect(faded.length).toBeGreaterThan(10)
+    for (const m of faded) {
+      const mat = m.material as Material
+      expect(mat.transparent && mat.opacity, m.name).toBe(0.5)
+      expect(mat.depthWrite, m.name).toBe(true)
+    }
+    chibi.setOpacity(1)
+    expect(meshes.map((m) => m.material)).toEqual(before)
+    for (let i = 0; i < meshes.length; i++) expect(meshes[i].material).toBe(before[i])
+  })
+
+  it('a preset swap while faded stays faded; the far twin (alt) never fades by itself', () => {
+    const { chibi } = rig(0)
+    chibi.setOpacity(0.6)
+    chibi.setPreset(2)
+    expect(((chibi.root.getObjectByName('head') as Mesh).material as Material).opacity).toBe(0.6)
+    expect(((chibi.root.getObjectByName('face') as Mesh).material as Material).opacity).toBe(0.6)
+    chibi.setOpacity(1)
+    const twin = rig(1).chibi
+    twin.setPreset(1, true)
+    expect(((twin.root.getObjectByName('head') as Mesh).material as Material).transparent).toBe(false)
+  })
+
+  it('fade variants reuse the toy program key (no new shader family) and keep the draw-call count', () => {
+    const { chibi } = rig(0)
+    const calls = drawn(chibi.root).length
+    chibi.setOpacity(0.5)
+    const m = (chibi.root.getObjectByName('head') as Mesh).material as MeshPhysicalMaterial
+    expect(m.customProgramCacheKey()).toBe('toy')
+    expect(drawn(chibi.root).length).toBe(calls)
+    chibi.setOpacity(1)
   })
 })

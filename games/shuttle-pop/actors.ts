@@ -127,6 +127,13 @@ export interface Chibi {
   setPose(p: ChibiPose, t: number): void
   /** Swap the look. `alt` = the far twin when both sides wear the same preset (tinted + outlined). */
   setPreset(preset: number, alt?: boolean): void
+  /**
+   * Fade the whole chibi (the local player covering the shuttle, render3d.ts). `a >= 1` = the normal shared
+   * materials; `a < 1` = the look's shared fade variants at opacity `a` (same toy program family, so warm()
+   * compiles them once). The fade variants are shared by every chibi: only ONE chibi (the local player) may
+   * be faded at a time. Independent of head size / pose; setPreset keeps the current opacity.
+   */
+  setOpacity(a: number): void
 }
 
 const OUTLINE = 0x3b2f4a
@@ -242,11 +249,11 @@ function cached<M extends Material>(key: string, make: () => M): M {
  * The unlit face / light material; the far twin's face dims with its body. `blend`: the toy faces' blush
  * fades out at its edge (vertex alpha, ModelGeos.faceBlend); every other face and the lights draw opaque.
  */
-function faceMat(alt: boolean, blend: boolean): MeshBasicMaterial {
-  return cached(`face${alt ? 'Alt' : ''}${blend ? 'Blend' : ''}`, () => {
+function faceMat(alt: boolean, blend: boolean, fade = false): MeshBasicMaterial {
+  return cached(`face${alt ? 'Alt' : ''}${blend ? 'Blend' : ''}${fade ? 'Fade' : ''}`, () => {
     const color = new Color(0xffffff)
     if (alt) color.lerp(ALT_SHADE_COLOR, ALT_SHADE)
-    return new MeshBasicMaterial({ color, vertexColors: true, transparent: blend })
+    return new MeshBasicMaterial({ color, vertexColors: true, transparent: blend || fade })
   })
 }
 /**
@@ -307,9 +314,12 @@ export function setToyEnvironment(env: Texture | null, intensity = 1): void {
 }
 let toyEnv: { env: Texture | null; intensity: number } = { env: null, intensity: 1 }
 
-/** Toy vertex-colour material (the far twin's is shaded toward ALT_SHADE_COLOR). */
-function kitMat(alt: boolean): MeshPhysicalMaterial {
-  return cached(alt ? 'kitAlt' : 'kit', () => {
+/**
+ * Toy vertex-colour material (the far twin's is shaded toward ALT_SHADE_COLOR). `fade`: the see-through
+ * variant (Chibi.setOpacity): transparent but still depth-writing, so the faded body hides its own far side.
+ */
+function kitMat(alt: boolean, fade = false): MeshPhysicalMaterial {
+  return cached(`kit${alt ? 'Alt' : ''}${fade ? 'Fade' : ''}`, () => {
     const color = new Color(0xffffff)
     if (alt) color.lerp(ALT_SHADE_COLOR, ALT_SHADE)
     const m = new MeshPhysicalMaterial({
@@ -323,6 +333,7 @@ function kitMat(alt: boolean): MeshPhysicalMaterial {
       sheenRoughness: 0.55,
       envMap: toyEnv.env,
       envMapIntensity: toyEnv.intensity,
+      transparent: fade,
     })
     m.onBeforeCompile = (sh) => {
       Object.assign(sh.uniforms, toyUniforms)
@@ -367,6 +378,7 @@ export function createChibi(preset: number): Chibi {
         new MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.42, depthWrite: false }),
     ),
   )
+  shadow.name = 'shadow'
   shadow.rotation.x = -Math.PI / 2
   shadow.position.y = 0.011
   const rig = new Group()
@@ -441,6 +453,7 @@ export function createChibi(preset: number): Chibi {
 
   // Swing streak: a ribbon swept by the racket head, in rig space. Own geometry + material (per chibi).
   const streak = makeStreak()
+  streak.mesh.name = 'streak'
   rig.add(streak.mesh)
 
   // Head: shape + hair + headwear (one mesh), the morphing face, the twin outline.
@@ -483,6 +496,33 @@ export function createChibi(preset: number): Chibi {
   headMesh.castShadow = true
   racketMesh.castShadow = true
 
+  /** Current look's shade, face blend and opacity (setOpacity). */
+  let isAlt = false
+  let faceBlend = false
+  let opacity = 1
+
+  /** Kit / face / light materials for the current shade + opacity (normal, or the shared fade variants). */
+  function applyMaterials() {
+    const fade = opacity < 1
+    const mat = kitMat(isAlt, fade)
+    const glow = faceMat(isAlt, false, fade)
+    const faceM = faceMat(isAlt, faceBlend, fade)
+    if (fade) mat.opacity = glow.opacity = faceM.opacity = opacity
+    for (const m of bones) m.material = mat
+    face.material = faceM
+    for (const v of pivots) {
+      v.mesh.material = mat
+      v.glow.material = glow
+    }
+  }
+
+  function setOpacity(a: number) {
+    const next = a >= 1 ? 1 : Math.max(0, a)
+    if (next === opacity) return
+    opacity = next
+    applyMaterials()
+  }
+
   function setPreset(n: number, alt = false) {
     const p = PRESETS[Math.min(PRESETS.length - 1, Math.max(0, n | 0))]
     const g = modelOf(p)
@@ -514,13 +554,13 @@ export function createChibi(preset: number): Chibi {
       arms[i].foreArm.geometry = g.foreArm[i]
       arms[i].hand.geometry = g.hand[i]
     }
-    const mat = kitMat(alt)
-    for (const m of bones) m.material = mat
+    isAlt = alt
+    faceBlend = g.faceBlend
+    applyMaterials()
     if (face.geometry !== g.face) {
       face.geometry = g.face
       face.updateMorphTargets()
     }
-    face.material = faceMat(alt, g.faceBlend)
     hull.geometry = g.hull
     hull.visible = alt
     used = 0
@@ -536,9 +576,7 @@ export function createChibi(preset: number): Chibi {
         v.pivot.rotation.set(0, 0, 0)
         v.pivot.visible = true
         v.mesh.geometry = e.geo
-        v.mesh.material = mat
         v.glow.geometry = e.glow ?? empty
-        v.glow.material = faceMat(alt, false)
         v.glow.visible = e.glow !== null
         v.shell.geometry = e.hull ?? empty
         v.shell.visible = alt && e.hull !== null
@@ -724,7 +762,7 @@ export function createChibi(preset: number): Chibi {
 
   setPreset(preset)
   setPose(restPose(), 0)
-  return { root, setPose, setPreset }
+  return { root, setPose, setPreset, setOpacity }
 }
 
 /**

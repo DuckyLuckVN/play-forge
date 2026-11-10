@@ -16,20 +16,29 @@
 // Online guests: the own chibi comes from GuestPredictor (predict.ts: moves the frame the input does,
 // gait fed by the predicted velocity); the shuttle comes from GuestShuttle (guestshuttle.ts: a smooth RenderClock + local deterministic flight
 // between host states, so jitter never rubber-bands it); remote players on guests are drawn from RemoteTracks (remotes.ts).
+// Findability (visibility.ts): a soft halo on the shuttle, an x-ray core while any player covers it on screen,
+// and the local player fades while covering it mid-rally (Chibi.setOpacity).
 
 import {
   BackSide,
   CircleGeometry,
   Color,
+  DataTexture,
+  FrontSide,
+  Group,
+  LinearFilter,
   Mesh,
   PMREMGenerator,
   MeshBasicMaterial,
   PlaneGeometry,
   ShadowMaterial,
   SphereGeometry,
+  Sprite,
+  SpriteMaterial,
   TorusGeometry,
   Vector3,
   type BufferGeometry,
+  type Side,
 } from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { startRenderLoop } from '@forge/core/loop'
@@ -82,6 +91,7 @@ import { Park } from './scenery'
 import { TAPPED, type SpEvent, type SpState } from './sim'
 import { chargeSound, eventSound, SHUTTLE_SOUNDS, swingSound } from './sounds'
 import { ShuttleTrail, type TrailLook } from './trail'
+import { fadeTarget, fadeTo, haloPixels, occlusion, VIS, type ScreenRect } from './visibility'
 import {
   CAMERA,
   CHEER,
@@ -172,8 +182,8 @@ const TRAIL_SAMPLES = 7
 const TRAIL_STEP = 1 / 60
 /** Trail look per shot: colour, opacity, head dot radius (m). Smash = hot and thick. */
 const TRAIL: Record<'plain' | 'perfect' | 'smash' | 'power', TrailLook> = {
-  plain: { color: new Color('#e4dcff'), opacity: 0.4, size: 0.06 },
-  perfect: { color: new Color('#ffd166'), opacity: 0.7, size: 0.075 },
+  plain: { color: new Color('#f4efff'), opacity: 0.6, size: 0.07 },
+  perfect: { color: new Color('#ffd166'), opacity: 0.8, size: 0.075 },
   smash: { color: new Color('#ff4d6d'), opacity: 0.85, size: 0.1 },
   /** A full-charge hit: hot orange and thickest. */
   power: { color: new Color('#ff7a45'), opacity: 0.95, size: 0.12 },
@@ -290,6 +300,14 @@ export class Court3D {
   private selfId = ''
   private players: [PlayerView, PlayerView]
   private shuttle: Mesh
+  /** X-ray core: the shuttle drawn through whoever stands in front of it (only while covered). */
+  private ghost = new Group()
+  /** Local player's opacity while covering the shuttle (visibility.ts), and the chibi it is applied to. */
+  private localFade = 1
+  private fadedIdx = -1
+  /** Per-frame scratch for updateVisibility (no allocation in the loop). */
+  private visP = new Vector3()
+  private visRect: ScreenRect = { x0: 0, y0: 0, x1: 0, y1: 0, depth: 0 }
   private shadow: Mesh
   private ring: Mesh
   private ringMat: MeshBasicMaterial
@@ -418,6 +436,44 @@ export class Court3D {
       new MeshBasicMaterial({ color: PALETTE.shuttleRim, side: BackSide }),
     )
     this.shuttle.add(rim)
+    // Soft glow around the shuttle: depth-tested (never through posts / court), after the net (renderOrder 1)
+    // and the trail (2) so neither blends over it.
+    const haloTex = new DataTexture(haloPixels(), VIS.halo.px, VIS.halo.px)
+    haloTex.magFilter = haloTex.minFilter = LinearFilter
+    haloTex.needsUpdate = true
+    const halo = new Sprite(
+      new SpriteMaterial({
+        map: haloTex,
+        color: VIS.halo.color,
+        opacity: VIS.halo.opacity,
+        transparent: true,
+        depthWrite: false,
+      }),
+    )
+    halo.scale.setScalar(VIS.halo.size)
+    halo.renderOrder = 3
+    // X-ray: the same core + rim shapes, unlit and drawn over everything (rim first, core on top).
+    const xray = (geo: BufferGeometry, color: string, order: number, side: Side) => {
+      const m = new Mesh(
+        geo,
+        new MeshBasicMaterial({
+          color,
+          side,
+          depthTest: false,
+          depthWrite: false,
+          transparent: true,
+          opacity: 0.9,
+        }),
+      )
+      m.renderOrder = order
+      return m
+    }
+    this.ghost.add(
+      xray(rim.geometry, PALETTE.shuttleRim, 4, BackSide),
+      xray(this.shuttle.geometry, PALETTE.shuttle, 5, FrontSide),
+    )
+    this.ghost.visible = false
+    this.shuttle.add(halo, this.ghost)
     this.shadow = new Mesh(
       new CircleGeometry(0.12, 16),
       new MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.22, depthWrite: false }),
@@ -492,6 +548,9 @@ export class Court3D {
     this.ring.visible = true
     this.trail.mesh.visible = true
     this.dust.mesh.visible = true
+    // The x-ray core and the fade variants of the (non-twin) chibi materials.
+    this.ghost.visible = true
+    this.players[0].chibi.setOpacity(0.5)
     // The twin outline + kit materials (both shades), so no material compiles mid-match.
     this.players[1].chibi.setPreset(1, true)
     for (const p of this.players) {
@@ -503,6 +562,8 @@ export class Court3D {
     // chibis' slow-device shading is uniforms only: the same programs).
     await this.view.renderer.compileAsync(this.view.scene, this.view.camera)
     this.view.render(0)
+    this.ghost.visible = false
+    this.players[0].chibi.setOpacity(1)
     // Upload every look's merged geometries now (a first-time preset would otherwise upload mid-match).
     for (const k of AVAILABLE_IDS) {
       this.players[0].chibi.setPreset(k)
@@ -581,7 +642,11 @@ export class Court3D {
     this.punch.reset()
     this.dust.reset()
     this.lastPop[0] = this.lastPop[1] = -Infinity
+    this.ghost.visible = false
+    this.localFade = 1
+    this.fadedIdx = -1
     for (const p of this.players) {
+      p.chibi.setOpacity(1)
       p.swing.reset()
       p.swingAt = NaN
       p.jumpAge = Infinity
@@ -839,6 +904,7 @@ export class Court3D {
     this.park.update(cheerLevel(this.rally, this.time - this.pointAt, this.pointHits), this.time, dt)
 
     this.placeCamera(localX * CAMERA.followX, pos.y, dt)
+    this.updateVisibility(curr, dt)
     if (import.meta.env.DEV && !this.callsLogged && curr.phase === 'rally') this.logDrawCalls(dt)
     else this.view.render(dt)
   }
@@ -1102,6 +1168,66 @@ export class Court3D {
     const mine = z < 0
     this.ringMat.color.copy(mine ? this.ringColor.mine : this.ringColor.theirs)
     this.ringMat.opacity = mine ? 0.95 : 0.45
+  }
+
+  /**
+   * Keep the shuttle findable (after placeCamera): the x-ray core shows while any player's body box covers
+   * it on screen; the local player fades while covering it during a rally (visibility.ts). Works for any
+   * number of players; allocates nothing.
+   */
+  private updateVisibility(curr: SpState, dt: number) {
+    const cam = this.view.camera
+    cam.updateMatrixWorld()
+    const v = this.visP
+    // Shuttle: camera-space depth, then NDC.
+    v.copy(this.shuttle.position).applyMatrix4(cam.matrixWorldInverse)
+    const sDepth = -v.z
+    v.applyMatrix4(cam.projectionMatrix)
+    const sx = v.x
+    const sy = v.y
+    const fadeOn = !this.spectating && this.localIdx < this.players.length
+    let maxOcc = 0
+    let occLocal = 0
+    if (sDepth > 0) {
+      const r = this.visRect
+      const tanY = Math.tan((cam.fov * Math.PI) / 360)
+      for (let i = 0; i < Math.min(curr.players.length, this.players.length); i++) {
+        const root = this.players[i].chibi.root
+        const k = root.scale.y
+        const { x, y, z } = root.position
+        // Body centre: depth + NDC x; bottom / top: NDC y.
+        v.set(x, y + ((VIS.body.bottom + VIS.body.top) / 2) * k, z).applyMatrix4(cam.matrixWorldInverse)
+        r.depth = -v.z
+        if (r.depth <= 0) continue
+        v.applyMatrix4(cam.projectionMatrix)
+        const hw = (VIS.body.halfW * k) / (r.depth * tanY * cam.aspect)
+        r.x0 = v.x - hw
+        r.x1 = v.x + hw
+        v.set(x, y + VIS.body.bottom * k, z).project(cam)
+        r.y0 = v.y
+        v.set(x, y + VIS.body.top * k, z).project(cam)
+        r.y1 = v.y
+        if (r.y1 < r.y0) {
+          const t = r.y0
+          r.y0 = r.y1
+          r.y1 = t
+        }
+        const occ = occlusion(sx, sy, sDepth, r)
+        if (occ > maxOcc) maxOcc = occ
+        if (fadeOn && i === this.localIdx) occLocal = occ
+      }
+    }
+    this.ghost.visible = maxOcc >= VIS.ghostAt && this.shuttle.visible
+    // Only the local player fades (the fade materials are shared); a stale one (side / seat change) restores.
+    const want = fadeOn ? this.localIdx : -1
+    if (this.fadedIdx !== want) {
+      if (this.fadedIdx >= 0) this.players[this.fadedIdx]?.chibi.setOpacity(1)
+      this.fadedIdx = want
+      this.localFade = 1
+    }
+    if (want < 0) return
+    this.localFade = fadeTo(this.localFade, fadeTarget(occLocal, curr.phase === 'rally'), Math.max(0, dt))
+    this.players[want].chibi.setOpacity(this.localFade > 0.995 ? 1 : this.localFade)
   }
 
   /** Clamps the wanted tweak to what keeps the court framed. Allocates: call on change only, never per frame. */

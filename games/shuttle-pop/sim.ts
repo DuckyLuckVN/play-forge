@@ -7,7 +7,7 @@ import { CHARGE, chargeOf } from './charge'
 import { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld } from './court'
 import { t } from './i18n'
 import { COURT, DT, settleOnFloor, stepShuttle, type Flight, type Vec3 } from './physics'
-import { PRESETS as PRESET_TABLE } from './presets'
+import { isAvailable, nextAvailable, PRESETS as PRESET_TABLE } from './presets'
 import { award, serveBox, winner } from './rules'
 import {
   chooseShot,
@@ -584,17 +584,21 @@ export function separateAi(state: SpState): void {
   const taken = (n: number) => state.players.some((h) => h.kind === 'human' && h.preset === n)
   for (const q of state.players)
     if (q.kind === 'ai')
-      for (let i = 0; i < PRESETS && taken(q.preset); i++) q.preset = (q.preset + 1) % PRESETS
+      if (!isAvailable(q.preset) || taken(q.preset)) q.preset = nextAvailable(q.preset, taken)
 }
 
 /**
  * Puts player `id` in look `preset` (truncated, clamped to 0..PRESETS−1; a non-number / NaN / ±Infinity
- * is ignored), then separates the computer.
+ * is ignored), then separates the computer. A hidden preset (presets.ts AVAILABLE_IDS) maps to the first
+ * available one the other human isn't wearing.
  */
 export function seedPreset(state: SpState, id: string, preset: number): void {
   const p = state.players.find((q) => q.id === id)
   if (!p || typeof preset !== 'number' || !Number.isFinite(preset)) return
-  p.preset = Math.min(PRESETS - 1, Math.max(0, Math.trunc(preset)))
+  const want = Math.min(PRESETS - 1, Math.max(0, Math.trunc(preset)))
+  p.preset = isAvailable(want)
+    ? want
+    : nextAvailable(want, (n) => state.players.some((o) => o !== p && o.kind === 'human' && o.preset === n))
   separateAi(state)
 }
 

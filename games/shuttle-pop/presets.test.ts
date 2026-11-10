@@ -6,7 +6,7 @@ import { EARS, HEADS, MUZZLES, STYLES } from './model/head'
 import { RIG, TALL_RIG } from './model/dims'
 import { legless, rigOf } from './model/look'
 import { modelOf, type ModelGeos } from './model/model'
-import { PRESETS } from './presets'
+import { AVAILABLE_IDS, AVAILABLE_PRESETS, isAvailable, nextAvailable, PRESETS } from './presets'
 import { PRESETS as SIM_PRESETS } from './sim'
 import { VI } from './i18n'
 
@@ -102,3 +102,28 @@ describe('preset table', () => {
  * triangles, are the budget that matters on phones (two chibis ≈ 45k triangles).
  */
 const BUDGET = { tris: 22500, head: 10000, extraMeshes: 4 }
+
+describe('availability flag', () => {
+  it('only the four humans are available now', () => {
+    expect(AVAILABLE_IDS).toEqual([0, 1, 2, 3])
+    expect(AVAILABLE_PRESETS.map((p) => p.name)).toEqual(['Berry', 'Cloud', 'Sunny', 'Mint'])
+    expect(PRESETS.length).toBe(12)
+    expect(isAvailable(4)).toBe(false)
+    expect(isAvailable(-1)).toBe(false)
+  })
+
+  it('nextAvailable cycles the available ids and skips taken ones', () => {
+    expect(nextAvailable(0, () => false)).toBe(1)
+    expect(nextAvailable(3, () => false)).toBe(0)
+    expect(nextAvailable(0, (n) => n === 1)).toBe(2)
+    expect(nextAvailable(7, (n) => n === 0)).toBe(1)
+    expect(nextAvailable(2, () => true)).toBe(2)
+  })
+
+  it('a hidden look still builds on demand', () => {
+    const hidden = PRESETS.find((p) => !isAvailable(p.id))!
+    const m = modelOf(hidden)
+    expect(m.head.getAttribute('position').count).toBeGreaterThan(0)
+    expect(modelOf(hidden)).toBe(m)
+  })
+})

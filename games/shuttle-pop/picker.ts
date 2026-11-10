@@ -1,7 +1,7 @@
 // The character strip on the start screen (createGameApp menuExtras): one card per preset with a
 // flat SVG portrait matching its 3D look (built from the look's keys). The choice lives in localStorage; main sends it as a `pick` input when play starts.
 import { h } from '@forge/ui/dom'
-import { PRESETS } from './actors'
+import { AVAILABLE_PRESETS, isAvailable } from './presets'
 import {
   bellyOf,
   limbOf,
@@ -24,12 +24,12 @@ import { t } from './i18n'
 
 const KEY = 'play-forge:shuttle-pop:preset'
 
-/** The stored preset, or 0 when missing, invalid or storage is blocked. */
+/** The stored preset, or 0 when missing, invalid, hidden or storage is blocked. */
 export function loadPreset(): number {
   try {
     const raw = localStorage.getItem(KEY)
     const n = raw === null || raw === '' ? NaN : Number(raw)
-    return Number.isInteger(n) && n >= 0 && n < PRESETS.length ? n : 0
+    return Number.isInteger(n) && isAvailable(n) ? n : 0
   } catch {
     return 0
   }
@@ -534,7 +534,7 @@ ${layer('back')}${layer('legs')}${layer('body')}${layer('head')}${layer('face')}
 /** Preset cards; a click saves the choice (used from the next match start). */
 export function pickerStrip(): HTMLElement {
   let selected = loadPreset()
-  const cards = PRESETS.map((p) => {
+  const cards = AVAILABLE_PRESETS.map((p) => {
     const art = h('span', { class: 'sp-char-art' })
     // Static markup built from the constant preset table (no user text).
     art.innerHTML = portrait(p.look)

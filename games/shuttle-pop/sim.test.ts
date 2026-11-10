@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { InputEvent, PlayerInfo } from '@forge/net/session'
 import { CHARGE, chargeOf } from './charge'
 import { COURT, predictLanding } from './physics'
+import { AVAILABLE_IDS, isAvailable } from './presets'
 import {
   canSwing,
   gradeRewind,
@@ -146,21 +147,35 @@ describe('movement', () => {
 })
 
 describe('pick', () => {
-  const LAST = PRESETS - 1
-
-  it('clamps the preset to 0..PRESETS−1 (host validation)', () => {
+  it('clamps the preset to 0..PRESETS−1, then a hidden one maps to an available look (host validation)', () => {
     const s = duel()
     game.tick(s, [ev('p0', { t: 'pick', preset: 99 }), ev('p1', { t: 'pick', preset: 1.7 })])
-    expect(s.players[0].preset).toBe(LAST)
+    expect(s.players[0].preset).toBe(0)
     expect(s.players[1].preset).toBe(1)
     game.tick(s, [ev('p0', { t: 'pick', preset: -2 })])
     expect(s.players[0].preset).toBe(0)
-    game.tick(s, [ev('p0', { t: 'pick', preset: LAST + 0.9 })])
-    expect(s.players[0].preset).toBe(LAST)
+    game.tick(s, [ev('p0', { t: 'pick', preset: PRESETS - 1 + 0.9 })])
+    expect(isAvailable(s.players[0].preset)).toBe(true)
   })
 
-  it('old clients picking 0..3 keep exactly that look', () => {
-    for (let n = 0; n < 4; n++) {
+  it('a hidden pick maps to the first available look the other human is not wearing', () => {
+    const s = duel()
+    for (const id of [4, 7, 11]) {
+      s.players[1].preset = 0
+      game.tick(s, [ev('p0', { t: 'pick', preset: id })])
+      expect(isAvailable(s.players[0].preset)).toBe(true)
+      expect(s.players[0].preset).not.toBe(0)
+    }
+    s.players[1].preset = 0
+    seedPreset(s, 'p0', 5)
+    expect(s.players[0].preset).toBe(1)
+    s.players[1].preset = 1
+    seedPreset(s, 'p0', 5)
+    expect(s.players[0].preset).toBe(0)
+  })
+
+  it('every available pick keeps exactly that look', () => {
+    for (const n of AVAILABLE_IDS) {
       const s = duel()
       game.tick(s, [ev('p0', { t: 'pick', preset: n })])
       expect(s.players[0].preset).toBe(n)
@@ -189,19 +204,31 @@ describe('pick', () => {
     expect(s.players[1].preset).toBe(2)
   })
 
-  it('separateAi moves a clashing computer to the next free preset, wrapping past the last', () => {
+  it('separateAi moves a clashing computer to the next free available preset, wrapping', () => {
     const s = game.setup(players(1), 1, {})
-    s.players[0].preset = LAST
-    s.players[1].preset = LAST
+    const last = AVAILABLE_IDS[AVAILABLE_IDS.length - 1]
+    s.players[0].preset = last
+    s.players[1].preset = last
     separateAi(s)
-    expect(s.players[1].preset).toBe(0)
+    expect(s.players[1].preset).toBe(AVAILABLE_IDS[0])
     separateAi(s)
-    expect(s.players[1].preset).toBe(0)
-    for (let n = 0; n < PRESETS; n++) {
+    expect(s.players[1].preset).toBe(AVAILABLE_IDS[0])
+    AVAILABLE_IDS.forEach((n, i) => {
       s.players[0].preset = n
       s.players[1].preset = n
       separateAi(s)
-      expect(s.players[1].preset).toBe((n + 1) % PRESETS)
+      expect(s.players[1].preset).toBe(AVAILABLE_IDS[(i + 1) % AVAILABLE_IDS.length])
+    })
+  })
+
+  it('the computer never wears a hidden preset, whatever the human picks', () => {
+    for (let pick = -1; pick <= PRESETS + 1; pick++) {
+      const s = game.setup(players(1), 1, {})
+      s.players[1].preset = 9 // even a stale hidden seat is moved
+      seedPreset(s, 'p0', pick)
+      expect(isAvailable(s.players[0].preset)).toBe(true)
+      expect(isAvailable(s.players[1].preset)).toBe(true)
+      expect(s.players[1].preset).not.toBe(s.players[0].preset)
     }
   })
 
@@ -210,12 +237,12 @@ describe('pick', () => {
     seedPreset(s, 'p0', 1)
     expect(s.players.map((p) => p.preset)).toEqual([1, 2])
     seedPreset(s, 'p0', 99)
-    expect(s.players[0].preset).toBe(LAST)
-    seedPreset(s, 'nobody', 0)
-    expect(s.players[0].preset).toBe(LAST)
+    expect(s.players[0].preset).toBe(0)
+    seedPreset(s, 'nobody', 3)
+    expect(s.players[0].preset).toBe(0)
   })
 
-  it('two humans may pick the same preset', () => {
+  it('two humans may pick the same available preset', () => {
     const s = duel()
     game.tick(s, [ev('p0', { t: 'pick', preset: 2 }), ev('p1', { t: 'pick', preset: 2 })])
     expect(s.players.map((p) => p.preset)).toEqual([2, 2])

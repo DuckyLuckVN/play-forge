@@ -295,3 +295,27 @@ export const PRESETS: readonly Preset[] = [
     },
   },
 ]
+
+/**
+ * Presets players can pick and the computer wears. Only the four humans for now; the animals/creatures
+ * (4..11) stay built and tested but hidden. To bring them back, add their ids here (one place, nothing else changes).
+ */
+export const AVAILABLE_IDS: readonly number[] = [0, 1, 2, 3]
+
+export const AVAILABLE_PRESETS: readonly Preset[] = PRESETS.filter((p) => AVAILABLE_IDS.includes(p.id))
+
+export const isAvailable = (id: number): boolean => AVAILABLE_IDS.includes(id)
+
+/**
+ * First available id after `from` (wrapping; a hidden `from` starts at the first available) that `taken`
+ * doesn't claim. When all are taken: `from` if available, else the first available.
+ */
+export function nextAvailable(from: number, taken: (id: number) => boolean): number {
+  const n = AVAILABLE_IDS.length
+  const at = AVAILABLE_IDS.indexOf(from)
+  for (let i = 1; i <= n; i++) {
+    const id = AVAILABLE_IDS[(at + i) % n]
+    if (!taken(id)) return id
+  }
+  return at < 0 ? AVAILABLE_IDS[0] : from
+}

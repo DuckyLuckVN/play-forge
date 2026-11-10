@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { PRESETS } from './presets'
+import { AVAILABLE_IDS, PRESETS } from './presets'
 import { loadPreset, portrait, savePreset } from './picker'
 
 const KEY = 'play-forge:shuttle-pop:preset'
@@ -41,17 +41,17 @@ describe('preset storage', () => {
     expect(loadPreset()).toBe(0)
   })
 
-  it('keeps every valid saved choice, old 0..3 picks included', () => {
+  it('keeps every available saved choice (the four humans)', () => {
     const store = memoryStorage()
     vi.stubGlobal('localStorage', store)
-    for (let n = 0; n < PRESETS.length; n++) {
+    for (const n of AVAILABLE_IDS) {
       store.setItem(KEY, String(n))
       expect(loadPreset()).toBe(n)
     }
   })
 
-  it.each([String(PRESETS.length), '99', '-1', '1.5', 'abc', ''])(
-    'returns 0 for an invalid stored value %j',
+  it.each(['4', '7', String(PRESETS.length - 1), String(PRESETS.length), '99', '-1', '1.5', 'abc', ''])(
+    'returns 0 for a hidden or invalid stored value %j',
     (raw) => {
       const store = memoryStorage()
       store.setItem(KEY, raw)

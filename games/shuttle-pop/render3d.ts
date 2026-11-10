@@ -47,6 +47,7 @@ import {
   type Chibi,
   type ChibiPose,
 } from './actors'
+import { AVAILABLE_IDS } from './presets'
 import { chargeOf, chargeStage, CHARGE, isFull } from './charge'
 import { ChargeRing } from './chargering'
 import { TICK_RATE } from './court'
@@ -499,7 +500,7 @@ export class Court3D {
     await this.view.renderer.compileAsync(this.view.scene, this.view.camera)
     this.view.render(0)
     // Upload every look's merged geometries now (a first-time preset would otherwise upload mid-match).
-    for (let k = 0; k < PRESETS.length; k++) {
+    for (const k of AVAILABLE_IDS) {
       this.players[0].chibi.setPreset(k)
       this.players[1].chibi.setPreset(k, true)
       this.view.render(0)

@@ -6,8 +6,11 @@ import {
   findContact,
   gradeOf,
   launchFor,
+  launchShot,
+  minDepthOf,
   onHalf,
   pickContact,
+  POWER,
   REACH,
   shotTarget,
   type ShotKind,
@@ -264,7 +267,7 @@ describe('launchFor charge (hold-to-charge power)', () => {
 
   for (const side of [0, 1] as const)
     it(
-      `side ${side}: full charge keeps the guarantees (≤ 45 m/s, clears the net, ≥ 1 m past it)`,
+      `side ${side}: full charge keeps the guarantees (speed cap, clears the net, past the min depth)`,
       () => {
         const dir = side === 0 ? 1 : -1
         for (const kind of kinds)
@@ -276,27 +279,25 @@ describe('launchFor charge (hold-to-charge power)', () => {
                   const vel = launchFor(kind, grade, from, shotTarget(kind, side, x / 2.4), zero, 1)
                   const land = predictLanding({ pos: from, vel })
                   const tag = `${kind} ${grade} side${side} x${x} y${y} z${from.z}`
-                  expect(speed(vel), tag).toBeLessThanOrEqual(45 + 1e-9)
+                  expect(speed(vel), tag).toBeLessThanOrEqual(45 * (1 + (POWER.speed[kind] ?? 0)) + 1e-9)
                   expect(land.netHit, tag).toBe(false)
-                  expect(land.pos.z * dir, tag).toBeGreaterThanOrEqual(1.0)
+                  expect(land.pos.z * dir, tag).toBeGreaterThanOrEqual(minDepthOf(kind, 1))
                 }
       },
       SLOW,
     )
 
-  it('a full-charge Perfect gets there sooner (smash / clear) or comes off faster (a high drive), and lands in', () => {
+  it('a full-charge Perfect smash gets there sooner / a drive comes off faster, and lands in', () => {
     // gain: 'sooner' = ≥ 10% fewer ticks to land; 'faster' = ≥ 5% more launch speed; 'same' = the net
-    // already caps how flat it can go (a smash from the back court, a low drive, a drop): never worse.
+    // already caps how flat it can go (a smash from the back court, a low drive): never worse.
+    // (Clear / drop trade time for depth / tightness: their own tests below.)
     const spots = [
       { kind: 'smash', from: { x: 0, y: 2.5, z: -3 }, gain: 'sooner' },
       { kind: 'smash', from: { x: 0, y: 2.2, z: -1.5 }, gain: 'sooner' },
       { kind: 'smash', from: { x: 1, y: 2.3, z: -5 }, gain: 'same' },
-      { kind: 'clear', from: { x: 0, y: 1.5, z: -5 }, gain: 'sooner' },
-      { kind: 'clear', from: { x: 0, y: 1.3, z: -2 }, gain: 'sooner' },
       { kind: 'drive', from: { x: 0, y: 2.0, z: -3.5 }, gain: 'faster' },
       { kind: 'drive', from: { x: 0, y: 2.5, z: -5.5 }, gain: 'faster' },
       { kind: 'drive', from: { x: 0, y: 1.0, z: -5.5 }, gain: 'same' },
-      { kind: 'drop', from: { x: 0, y: 2.5, z: -1.5 }, gain: 'same' },
     ] as const
     for (const { kind, from, gain } of spots) {
       const t = shotTarget(kind, 0, 0.5)
@@ -315,9 +316,9 @@ describe('launchFor charge (hold-to-charge power)', () => {
 
   for (const side of [0, 1] as const)
     it(
-      `side ${side}: a full-charge Perfect never takes longer to land than the tap, from anywhere on the own half`,
+      `side ${side}: a full-charge Perfect smash / drive never takes longer to land than the tap, from anywhere on the own half`,
       () => {
-        for (const kind of kinds)
+        for (const kind of ['smash', 'drive'] as const)
           for (const z of [-6.5, -5, -3.5, -2, -0.8])
             for (const x of [-2.2, 0, 2.2])
               for (const y of [0.6, 1.5, 2.6]) {
@@ -365,6 +366,121 @@ describe('launchFor charge (hold-to-charge power)', () => {
     },
     SLOW,
   )
+
+  const pitch = (v: { x: number; y: number; z: number }) => Math.atan2(v.y, Math.hypot(v.x, v.z))
+  /** Peak height and landing descent angle (rad) of a launch from `from`. */
+  const arc = (from: { x: number; y: number; z: number }, vel: { x: number; y: number; z: number }) => {
+    const f: Flight = { pos: { ...from }, vel: { ...vel } }
+    let apex = f.pos.y
+    let last = f.vel
+    while (f.pos.y > 0 && !stepShuttle(f).netHit) {
+      apex = Math.max(apex, f.pos.y)
+      last = { ...f.vel }
+    }
+    return { apex, descent: Math.atan(Math.abs(last.y) / Math.hypot(last.x, last.z)) }
+  }
+
+  it('full-charge Perfect smash / drive comes off the racket ≥ 25 % / 15 % faster than the tap and lands in', () => {
+    for (const [kind, min] of [
+      ['smash', 1.25],
+      ['drive', 1.15],
+    ] as const)
+      for (const from of [
+        { x: 0, y: 2.5, z: -3 },
+        { x: 1, y: 2.3, z: -5 },
+        { x: -1, y: 2.2, z: -1.5 },
+      ]) {
+        const t = shotTarget(kind, 0, 0.5)
+        const tap = launchShot(kind, 'perfect', from, t, zero, 0)
+        const full = launchShot(kind, 'perfect', from, t, zero, 1)
+        const land = predictLanding({ pos: from, vel: full.vel })
+        const tag = `${kind} ${JSON.stringify(from)}`
+        expect(speed(full.vel), tag).toBeGreaterThanOrEqual(speed(tap.vel) * min)
+        expect(full.gain, tag).toBeGreaterThan(0.7)
+        expect(tap.gain, tag).toBe(0)
+        expect(isIn(land.pos, 1), tag).toBe(true)
+      }
+  })
+
+  it('full-charge smash is steeper (launch pitch lower) than the tap', () => {
+    for (const from of [
+      { x: 0, y: 2.5, z: -3 },
+      { x: 1, y: 2.3, z: -5 },
+      { x: -1, y: 2.2, z: -1.5 },
+    ]) {
+      const t = shotTarget('smash', 0, 0.5)
+      const tap = launchShot('smash', 'perfect', from, t, zero, 0)
+      const full = launchShot('smash', 'perfect', from, t, zero, 1)
+      expect(pitch(full.vel), JSON.stringify(from)).toBeLessThan(pitch(tap.vel))
+    }
+  })
+
+  it('full-charge Perfect clear lands deeper (≥ 6.2 m) and peaks higher than the tap, still in', () => {
+    for (const from of [
+      { x: 0, y: 1.5, z: -5 },
+      { x: 0, y: 1.3, z: -2 },
+      { x: 1, y: 0.8, z: -6 },
+    ]) {
+      const t = shotTarget('clear', 0, 0.5)
+      const tap = launchShot('clear', 'perfect', from, t, zero, 0)
+      const full = launchShot('clear', 'perfect', from, t, zero, 1)
+      const a = predictLanding({ pos: from, vel: tap.vel }).pos
+      const b = predictLanding({ pos: from, vel: full.vel }).pos
+      const tag = JSON.stringify(from)
+      expect(b.z, tag).toBeGreaterThanOrEqual(6.2)
+      expect(b.z, tag).toBeGreaterThan(a.z)
+      expect(arc(from, full.vel).apex, tag).toBeGreaterThan(arc(from, tap.vel).apex)
+      expect(isIn(b, 1), tag).toBe(true)
+      expect(full.gain, tag).toBe(1)
+    }
+  })
+
+  it('full-charge Perfect drop lands closer to the net (≤ tap − 0.2 m, ≥ 0.6 m past it) and falls steeper', () => {
+    for (const from of [
+      { x: 0, y: 2.5, z: -1.5 },
+      { x: 0, y: 1.8, z: -4 },
+      { x: -1, y: 2.2, z: -6 },
+    ]) {
+      const t = shotTarget('drop', 0, 0.5)
+      const tap = launchShot('drop', 'perfect', from, t, zero, 0)
+      const full = launchShot('drop', 'perfect', from, t, zero, 1)
+      const a = predictLanding({ pos: from, vel: tap.vel })
+      const b = predictLanding({ pos: from, vel: full.vel })
+      const tag = JSON.stringify(from)
+      expect(b.netHit, tag).toBe(false)
+      expect(b.pos.z, tag).toBeLessThanOrEqual(a.pos.z - 0.2)
+      expect(b.pos.z, tag).toBeGreaterThanOrEqual(0.6)
+      expect(arc(from, full.vel).descent, tag).toBeGreaterThanOrEqual(arc(from, tap.vel).descent)
+    }
+  })
+
+  it('half charge sits between tap and full (smash speed, clear depth, drop depth)', () => {
+    const from = { x: 0, y: 2.5, z: -3 }
+    const at = (kind: ShotKind, c: number) =>
+      launchShot(kind, 'perfect', from, shotTarget(kind, 0, 0.5), zero, c)
+    const s = [0, 0.5, 1].map((c) => speed(at('smash', c).vel))
+    expect(s[1]).toBeGreaterThan(s[0])
+    expect(s[1]).toBeLessThan(s[2])
+    const depth = (kind: ShotKind) =>
+      [0, 0.5, 1].map((c) => predictLanding({ pos: from, vel: at(kind, c).vel }).pos.z)
+    const cl = depth('clear')
+    expect(cl[1]).toBeGreaterThan(cl[0])
+    expect(cl[1]).toBeLessThan(cl[2])
+    const dr = depth('drop')
+    expect(dr[1]).toBeLessThan(dr[0])
+    expect(dr[1]).toBeGreaterThan(dr[2])
+  })
+
+  it('launchFor is launchShot(...).vel', () => {
+    const from = { x: 0.3, y: 1.9, z: -3 }
+    for (const kind of kinds)
+      for (const c of [0, 0.6, 1]) {
+        const t = shotTarget(kind, 0, 0.3)
+        expect(launchFor(kind, 'good', from, t, rngOf(0.3, 0.6), c)).toEqual(
+          launchShot(kind, 'good', from, t, rngOf(0.3, 0.6), c).vel,
+        )
+      }
+  })
 
   it('charge widens the aim error of Good / Late, never of Perfect', () => {
     const from = { x: 0, y: 1.5, z: -3 }
@@ -421,7 +537,8 @@ describe('pickContact', () => {
 
   it('matches the old contactFor on recorded rallies', () => {
     // 200 swings near the shuttle in a seeded bot rally (rewind 0 / 4 / 7), expected values recorded
-    // from the sim's contactFor before it became an adapter over pickContact.
+    // from the sim's contactFor before it became an adapter over pickContact (re-recorded when the
+    // power swing changed charged launches; the early-rally spot checks are unchanged).
     const s = setupBots('hard', 'hard', 1)
     const got: { tick: number; side: number; rewind: number; c: ReturnType<typeof strip> }[] = []
     for (let i = 0; i < 600 && got.length < 200; i++) {
@@ -440,14 +557,14 @@ describe('pickContact', () => {
     const hits = got.filter((g) => g.c)
     const grades = { perfect: 0, good: 0, late: 0 }
     for (const g of hits) grades[g.c!.grade]++
-    expect(hits).toHaveLength(85)
-    expect(grades).toEqual({ perfect: 19, good: 24, late: 42 })
-    expect(hits.reduce((a, g) => a + g.c!.tick, 0)).toBe(15169)
-    expect(hits.reduce((a, g) => a + g.c!.y, 0)).toBeCloseTo(105.74758317815683, 9)
+    expect(hits).toHaveLength(107)
+    expect(grades).toEqual({ perfect: 25, good: 24, late: 58 })
+    expect(hits.reduce((a, g) => a + g.c!.tick, 0)).toBe(23815)
+    expect(hits.reduce((a, g) => a + g.c!.y, 0)).toBeCloseTo(148.7099912698525, 9)
     const at = (tick: number, side: number, rewind: number) =>
       got.find((g) => g.tick === tick && g.side === side && g.rewind === rewind)?.c
     // perfect from the past (rewound)
-    expect(at(264, 1, 4)).toEqual({ tick: 262, y: 1.679200376769848, grade: 'perfect' })
+    expect(at(225, 0, 4)).toEqual({ tick: 224, y: 2.726254906579812, grade: 'perfect' })
     // good in the future
     expect(at(63, 0, 0)).toEqual({ tick: 75, y: 0.8461322289050712, grade: 'good' })
     // late

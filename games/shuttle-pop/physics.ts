@@ -82,6 +82,22 @@ export function predictLanding(
   return land(f, maxTicks, true)
 }
 
+/** Velocity of `speed` m/s from `from` toward `target` (horizontal heading) at `elevationDeg` pitch. */
+export function launchVel(
+  from: Vec3,
+  target: { x: number; z: number },
+  elevationDeg: number,
+  speed: number,
+): Vec3 {
+  const dx = target.x - from.x
+  const dz = target.z - from.z
+  const want = Math.hypot(dx, dz)
+  const ux = want > 0 ? dx / want : 0
+  const uz = want > 0 ? dz / want : 0
+  const el = (elevationDeg * Math.PI) / 180
+  return { x: ux * Math.cos(el) * speed, y: Math.sin(el) * speed, z: uz * Math.cos(el) * speed }
+}
+
 /**
  * Launch velocity from `from` toward `target` at a fixed elevation, binary-searching speed
  * (<= maxSpeed) so the landing distance matches. Net ignored. Unreachable -> maxSpeed.
@@ -92,17 +108,8 @@ export function solveLaunch(
   elevationDeg: number,
   maxSpeed: number,
 ): Vec3 {
-  const dx = target.x - from.x
-  const dz = target.z - from.z
-  const want = Math.hypot(dx, dz)
-  const ux = want > 0 ? dx / want : 0
-  const uz = want > 0 ? dz / want : 0
-  const el = (elevationDeg * Math.PI) / 180
-  const velAt = (s: number): Vec3 => ({
-    x: ux * Math.cos(el) * s,
-    y: Math.sin(el) * s,
-    z: uz * Math.cos(el) * s,
-  })
+  const want = Math.hypot(target.x - from.x, target.z - from.z)
+  const velAt = (s: number): Vec3 => launchVel(from, target, elevationDeg, s)
   const reach = (s: number): number => {
     const p = land({ pos: from, vel: velAt(s) }, DEFAULT_MAX_TICKS, false).pos
     return Math.hypot(p.x - from.x, p.z - from.z)

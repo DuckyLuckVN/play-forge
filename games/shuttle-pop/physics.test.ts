@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { COURT, DRAG, DT, G, isIn, predictLanding, solveLaunch, stepShuttle, type Flight } from './physics'
+import {
+  COURT,
+  DRAG,
+  DT,
+  G,
+  isIn,
+  launchVel,
+  predictLanding,
+  solveLaunch,
+  stepShuttle,
+  type Flight,
+} from './physics'
 
 const copy = (f: Flight): Flight => ({ pos: { ...f.pos }, vel: { ...f.vel } })
 
@@ -38,6 +49,16 @@ describe('shuttle physics', () => {
     const p = predictLanding({ pos: from, vel: v })
     expect(Math.hypot(p.pos.x - 1, p.pos.z - 4)).toBeLessThan(0.05)
     expect(p.netHit).toBe(false)
+  })
+
+  it('launchVel points at the target with the given speed and pitch', () => {
+    const from = { x: 0.5, y: 1.2, z: -5 }
+    for (const el of [-12, 0, 30, 60]) {
+      const v = launchVel(from, { x: -1, z: 3 }, el, 20)
+      expect(Math.hypot(v.x, v.y, v.z)).toBeCloseTo(20, 9)
+      expect((Math.atan2(v.y, Math.hypot(v.x, v.z)) * 180) / Math.PI).toBeCloseTo(el, 9)
+      expect(Math.atan2(v.x, v.z)).toBeCloseTo(Math.atan2(-1.5, 8), 9)
+    }
   })
 
   it('solveLaunch returns max speed when unreachable', () => {

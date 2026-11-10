@@ -682,7 +682,8 @@ describe('lag-compensated hits (launch from the rewound contact)', () => {
   })
 
   it('AI and on-time swings are unchanged', () => {
-    // Recorded before hits launched from the rewound contact (AI swings have rewind 0: a no-op for them).
+    // Recorded before hits launched from the rewound contact (AI swings have rewind 0: a no-op for them);
+    // re-recorded when the power swing changed charged launches (the bots charge).
     const fingerprint: number[][] = []
     const finals: SpState[] = []
     for (let seed = 1; seed <= 20; seed++) {
@@ -693,26 +694,26 @@ describe('lag-compensated hits (launch from the rewound contact)', () => {
       finals.push(s)
     }
     expect(fingerprint).toEqual([
-      [1, 0, 3, 4, 2, 1, 1703683420],
-      [0, 2, 0, 5, 1, 2, 1071847751],
+      [1, 1, 1, 4, 2, 1, 1703683420],
+      [0, 1, 6, 3, 2, 2, 440012081],
       [1, 0, 4, 4, 0, 1, 1071847752],
       [1, 0, 6, 2, 1, 1, 1071847753],
       [0, 0, 8, 0, 3, 3, 1071847754],
-      [0, 1, 0, 9, 3, 2, 440012085],
+      [0, 0, 10, 0, 3, 2, -191823585],
       [1, 0, 4, 3, 1, 1, 1703683426],
       [1, 1, 0, 5, 1, 2, 1703683427],
-      [0, 0, 12, 0, 2, 4, -1455494922],
-      [0, 0, 9, 0, 1, 3, 440012089],
+      [0, 0, 12, 0, 3, 4, -1455494922],
+      [0, 0, 9, 0, 2, 3, 440012089],
       [0, 0, 10, 0, 4, 1, -191823580],
-      [1, 0, 3, 5, 1, 0, 1071847761],
-      [1, 0, 4, 4, 2, 1, 1071847762],
+      [1, 0, 1, 7, 2, 1, 1071847761],
+      [1, 0, 3, 4, 2, 1, 1703683432],
       [1, 1, 3, 2, 1, 2, -1959448193],
-      [0, 0, 10, 0, 2, 3, -191823576],
+      [0, 0, 8, 0, 2, 2, 1071847764],
       [0, 0, 8, 0, 2, 2, 1071847765],
       [1, 1, 0, 4, 3, 2, 1703683436],
       [0, 0, 10, 0, 3, 4, -191823573],
-      [0, 0, 9, 0, 1, 3, 440012098],
-      [1, 0, 3, 6, 3, 1, 440012099],
+      [0, 0, 7, 0, 1, 3, 1703683438],
+      [0, 0, 11, 0, 3, 4, -823659241],
     ])
     const shuttle = (s: SpState) => ({
       pos: s.shuttle.pos,
@@ -720,14 +721,14 @@ describe('lag-compensated hits (launch from the rewound contact)', () => {
       lastHitter: s.shuttle.lastHitter,
     })
     expect(shuttle(finals[0])).toEqual({
-      pos: { x: -0.02991209322884257, y: 1.9330094871611747, z: -1.1357248502609028 },
-      vel: { x: 4.5812968825571465, y: -8.343497383700601, z: 26.28560699328785 },
-      lastHitter: 0,
+      pos: { x: -0.35118484681342194, y: 1.293311339477553, z: 1.5552314125963136 },
+      vel: { x: 2.861929622214458, y: 3.046933112049844, z: -6.611121650518929 },
+      lastHitter: 1,
     })
     expect(shuttle(finals[1])).toEqual({
-      pos: { x: 0.952332812850733, y: 0, z: -4.023736045721154 },
-      vel: { x: 0, y: 0, z: 0 },
-      lastHitter: 1,
+      pos: { x: 0.1563333411183592, y: 1.564770261847787, z: -0.21171669018006292 },
+      vel: { x: -2.3021549874187275, y: 3.005311528440692, z: 11.021572563582597 },
+      lastHitter: 0,
     })
     expect(shuttle(finals[2])).toEqual({
       pos: { x: 0.25382244258068576, y: 1.167678871796932, z: -2.5788653583391055 },
@@ -919,12 +920,15 @@ describe('hold-to-charge', () => {
     expect(half.charge).toBeCloseTo((20 - CHARGE.start) / (CHARGE.full - CHARGE.start), 9)
   })
 
-  it('a charged clear gets to the far end sooner than a tapped one from the same spot', () => {
+  it('a charged clear lands deeper and hangs longer than a tapped one from the same spot', () => {
     const full = chargedHit(40, undefined, -1)
     const tap = chargedHit(1, undefined, -1)
     expect(full.hit).toMatchObject({ shot: 'clear', charge: 1 })
     expect(tap.hit).toMatchObject({ shot: 'clear', charge: 0 })
-    expect(predictLanding(full.s.shuttle).ticks).toBeLessThan(predictLanding(tap.s.shuttle).ticks)
+    const a = predictLanding(tap.s.shuttle)
+    const b = predictLanding(full.s.shuttle)
+    expect(b.pos.z).toBeLessThan(a.pos.z) // side 1 hits toward z < 0
+    expect(b.ticks).toBeGreaterThan(a.ticks)
   })
 
   it('timing is graded at the release tick (rewound for a lagged guest), the charge from the hold', () => {

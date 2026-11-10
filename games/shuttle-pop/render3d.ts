@@ -69,6 +69,7 @@ import { Net } from './net'
 import { prefs } from './prefs'
 import { ringShown, type RingMode } from './landing'
 import { mountCameraButton } from './camera-menu'
+import { headAnchorY, ReactionBubbles, toScreen } from './bubbles'
 import { boardView, Scoreboard } from './scoreboard'
 import { t } from './i18n'
 import { damp, Gait, GaitEvent } from './locomotion'
@@ -371,6 +372,12 @@ export class Court3D {
   /** Each player's opacity while covering the shuttle (visibility.ts stepFades), and this frame's cover. */
   private fades = [1, 1]
   private occ = [0, 0]
+  /** Reaction bubbles over the chibis (bubbles.ts), and the shuttle's NDC point from updateVisibility (shOn: in front, drawn). */
+  private bubbles = new ReactionBubbles()
+  private shNdcX = 0
+  private shNdcY = 0
+  private shOn = false
+  private bubSh = { x: 0, y: 0 }
   /** Per-frame scratch for updateVisibility (no allocation in the loop). */
   private visP = new Vector3()
   private visRect: ScreenRect = { x0: 0, y0: 0, x1: 0, y1: 0, depth: 0 }
@@ -578,6 +585,7 @@ export class Court3D {
     scene.add(this.trail.mesh, this.fx.points, this.dust.mesh)
     this.view.onResize((_w, h) => this.fx.setScale(h * this.view.renderer.getPixelRatio()))
     this.view.root.appendChild(this.hud.root)
+    this.view.root.appendChild(this.bubbles.root)
     mountCameraButton(this.view.root)
   }
 
@@ -751,6 +759,7 @@ export class Court3D {
     this.ring.visible = false
     this.ringOn = false
     this.hud.reset()
+    this.bubbles.reset()
     this.board.reset()
     this.net.reset()
     this.hudPhase = ''
@@ -1054,6 +1063,7 @@ export class Court3D {
 
     this.placeCamera(localX * CAMERA.followX, pos.y, dt)
     this.updateVisibility(curr, dt)
+    this.placeBubbles(curr)
     if (import.meta.env.DEV && !this.callsLogged && curr.phase === 'rally') this.logDrawCalls(dt)
     else this.view.render(dt)
   }
@@ -1445,6 +1455,9 @@ export class Court3D {
     v.applyMatrix4(cam.projectionMatrix)
     const sx = v.x
     const sy = v.y
+    this.shNdcX = sx
+    this.shNdcY = sy
+    this.shOn = sDepth > 0 && this.shuttle.visible
     if (sDepth > 0 && this.shuttle.visible) {
       const r = this.visRect
       const tanY = Math.tan((cam.fov * Math.PI) / 360)
@@ -1483,6 +1496,42 @@ export class Court3D {
     for (let i = 0; i < this.players.length; i++) {
       const f = this.fades[i]
       this.players[i].chibi.setOpacity(f > 0.995 ? 1 : f)
+    }
+  }
+
+  /** Shows a reaction bubble over `playerId`'s chibi. False when there is no match state, no such player or an unknown id. */
+  react(playerId: string, reactionId: string): boolean {
+    const players = this.smooth?.curr?.players
+    if (!players) return false
+    const i = players.findIndex((p) => p.id === playerId)
+    if (i < 0 || i >= this.players.length) return false
+    return this.bubbles.show(i, reactionId, this.time)
+  }
+
+  /** Per frame, after updateVisibility: each live bubble hangs above its chibi's head (follows the jump). Allocates only for live bubbles. */
+  private placeBubbles(curr: SpState) {
+    const cam = this.view.camera
+    const w = this.view.width
+    const h = this.view.height
+    const sh = this.shOn ? this.bubSh : null
+    if (sh) {
+      sh.x = ((this.shNdcX + 1) / 2) * w
+      sh.y = ((1 - this.shNdcY) / 2) * h
+    }
+    for (let i = 0; i < Math.min(curr.players.length, this.players.length); i++) {
+      if (!this.bubbles.live(i)) continue
+      const chibi = this.players[i].chibi
+      const root = chibi.root
+      const v = this.visP
+      v.set(
+        root.position.x,
+        headAnchorY(root.position.y, chibi.lift, chibi.top, root.scale.y),
+        root.position.z,
+      )
+      v.applyMatrix4(cam.matrixWorldInverse)
+      const depth = -v.z
+      v.applyMatrix4(cam.projectionMatrix)
+      this.bubbles.place(i, this.time, toScreen(v, depth, w, h), this.fades[i], sh)
     }
   }
 

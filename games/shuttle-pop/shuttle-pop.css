@@ -667,3 +667,68 @@
 .sp-cam-panel:focus-visible {
   outline: none;
 }
+
+/* ---------- Reaction bubbles (bubbles.ts): above each chibi's head, follow the jump ---------- */
+.sp-bubbles {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 2; /* below .sp-cam (3) */
+}
+.sp-bubble {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 48px;
+  height: 48px;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+.sp-bubble[hidden] {
+  display: none;
+}
+.sp-bubble-disc {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 7px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.28);
+  transform-origin: 50% 100%;
+  animation: sp-bubble-in 160ms cubic-bezier(0.34, 1.7, 0.64, 1) both;
+}
+.sp-bubble-disc::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  transform: translateX(-50%) rotate(45deg);
+  border-radius: 0 0 3px 0;
+}
+.sp-bubble-disc .pf-rx-art {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+@keyframes sp-bubble-in {
+  from {
+    transform: scale(0.3);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sp-bubble-disc {
+    animation: none;
+  }
+}

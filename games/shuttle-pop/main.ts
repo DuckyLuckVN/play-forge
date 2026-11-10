@@ -79,7 +79,9 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
     const me = smooth.curr?.players.find((p) => p.id === session.selfId)
     if (!guest || !predictor || !me) return
     const player = { x: predictor.x, z: predictor.z }
-    guest.shuttle.predictHit({ side: me.side, held, charge, player, tap, pressTick })
+    // Heard at once; the host's answering hit is then skipped (Court3D's echo).
+    if (guest.shuttle.predictHit({ side: me.side, held, charge, player, tap, pressTick }))
+      court?.ownHitPredicted(guest.shuttle.predicted()!)
   }
   const send = (input: SpInput) => {
     // Animate our own swing button this frame (not when the session or the sim would drop it); the

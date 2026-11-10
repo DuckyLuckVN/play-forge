@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { GuestShuttle, PREDICT, type OwnSwing } from './guestshuttle'
+import { answersPrediction, GuestShuttle, PREDICT, type OwnSwing } from './guestshuttle'
 import { solveLaunch, type Vec3 } from './physics'
+import { hitPower } from './power'
+import { launchShot, shotTarget } from './shots'
 import { RenderClock } from './renderclock'
-import { createState, step, type SpInput, type SpState } from './sim'
+import { createState, MAX_REWIND, step, type SpEvent, type SpInput, type SpState } from './sim'
 import type { InputEvent } from '@forge/net/session'
 
 const DT = 1 / 60
@@ -321,6 +323,8 @@ function coSim(o: {
   let next = 0
   let swingFrame = -1
   let predicted = false
+  /** gs.predicted() on the first frame the host's hit confirmed the prediction. */
+  let confirmed: ReturnType<GuestShuttle['predicted']> | undefined
   /** Frame index at which each host tick arrived. */
   const arrivedAt = new Map<number, number>()
   const end = (o.ticks ?? 110) * TICK_MS
@@ -343,6 +347,7 @@ function coSim(o: {
       clock.onState(st.tick)
       gs.push(st)
       arrivedAt.set(st.tick, frames.length)
+      if (confirmed === undefined && gs['pred'] && gs['pred'].until !== Infinity) confirmed = gs.predicted()
     }
     clock.update(DT)
     gs.update(DT)
@@ -368,7 +373,7 @@ function coSim(o: {
   const own = (k: 'hit' | 'whiff') =>
     host[host.length - 1].events.find((e) => e.k === k && 'side' in e && e.side === 1) ??
     host.flatMap((h) => h.events).find((e) => e.k === k && 'side' in e && e.side === 1)
-  return { frames, host, base, hostAt, own, swingFrame, predicted, arrivedAt, gs }
+  return { frames, host, base, hostAt, own, swingFrame, predicted, arrivedAt, gs, confirmed }
 }
 
 /** First state tick the closest approach of the shuttle to seat b (history tick = state tick + 1). */
@@ -395,7 +400,11 @@ describe('GuestShuttle own-hit prediction', () => {
       const C = closest(incoming(), ON)
       const r = coSim({ state: incoming(), guestAt: ON, held: { x: 0, z: -1 }, when: (k) => k >= C, seed })
       expect(r.predicted, `seed ${seed}`).toBe(true)
-      expect(r.own('hit'), `seed ${seed}`).toMatchObject({ grade: 'perfect' })
+      const hit = r.own('hit')!
+      expect(hit, `seed ${seed}`).toMatchObject({ grade: 'perfect' })
+      // Confirmed by the host: still the prediction (the sound echo matches the hit with the same rule).
+      expect(r.confirmed, `seed ${seed}`).toMatchObject({ side: 1, grade: 'perfect', power: 0 })
+      expect(answersPrediction(hit, 'hit', 1, r.confirmed!.from), `seed ${seed}`).toBe(true)
       const maxHostZ = Math.max(...r.host.map((h) => h.shuttle.pos.z))
       const after = r.frames.slice(r.swingFrame + 1, r.swingFrame + 40)
       for (let i = 1; i < after.length; i++) {
@@ -562,10 +571,60 @@ describe('GuestShuttle own-hit prediction', () => {
       clock.tick = C + 5 - 1 // seenTick() = round(tick) + 1
       gs.update(DT)
       expect(gs.predictHit({ side: 1, held: { x: 0, z: -1 }, charge: 0, player: ON, tap: false })).toBe(true)
+      expect(gs.predicted()).toMatchObject({
+        side: 1,
+        grade: expect.any(String),
+        shot: expect.any(String),
+        power: 0,
+      })
       return gs['pred']!.grade
     }
     expect(predictAt(true)).toBe('good')
     expect(predictAt(false)).toBe('perfect')
+  })
+
+  it("a charged swing's prediction carries the sim's power (launchShot gain × grade share)", () => {
+    const C = closest(incoming(), ON)
+    const clock = new RenderClock(60)
+    const gs = new GuestShuttle(clock)
+    expect(gs.predicted()).toBeNull()
+    for (const st of host(incoming(), C + 8)) {
+      clock.onState(st.tick)
+      gs.push(st)
+    }
+    clock.tick = C - 1 // seenTick() = round(tick) + 1
+    gs.update(DT)
+    const held = { x: 0.4, z: -1 }
+    expect(gs.predictHit({ side: 1, held, charge: 1, player: ON, tap: false })).toBe(true)
+    const p = gs.predicted()!
+    const { gain } = launchShot(
+      p.shot,
+      p.grade,
+      gs['pred']!.flight.pos,
+      shotTarget(p.shot, 1, held.x),
+      () => 0,
+      1,
+    )
+    expect(p.power).toBe(hitPower(p.grade, gain))
+    expect(p.power).toBeGreaterThan(0)
+    gs.reset()
+    expect(gs.predicted()).toBeNull()
+  })
+
+  it('answersPrediction: own event of that kind from the rewind window on', () => {
+    const at = (tick: number, side: 0 | 1 = 1): SpEvent => ({
+      id: 1,
+      tick,
+      k: 'hit',
+      side,
+      grade: 'good',
+      shot: 'clear',
+    })
+    expect(answersPrediction(at(100 - MAX_REWIND), 'hit', 1, 100)).toBe(true)
+    expect(answersPrediction(at(100 - MAX_REWIND - 1), 'hit', 1, 100)).toBe(false)
+    expect(answersPrediction(at(100, 0), 'hit', 1, 100)).toBe(false)
+    expect(answersPrediction(at(100), 'whiff', 1, 100)).toBe(false)
+    expect(answersPrediction({ id: 2, tick: 100, k: 'whiff', side: 1 }, 'whiff', 1, 100)).toBe(true)
   })
 
   it('no prediction when the opponent hit last or a hit is pending', () => {

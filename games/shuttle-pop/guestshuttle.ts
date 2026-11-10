@@ -6,17 +6,18 @@
 import { settleOnFloor, stepShuttle, type Flight, type Vec3 } from './physics'
 import type { RemoteTracks } from './remotes'
 import type { RenderClock } from './renderclock'
-import { perfectWindowOf } from './power'
+import { hitPower, perfectWindowOf } from './power'
 import {
   chooseShot,
-  launchFor,
+  launchShot,
   pickContact,
   shotTarget,
   WINDOW,
   type ContactCandidate,
   type Grade,
+  type ShotKind,
 } from './shots'
-import { clampDir, launchTick, MAX_REWIND, tapContact, type SpState } from './sim'
+import { clampDir, launchTick, MAX_REWIND, tapContact, type SpEvent, type SpState } from './sim'
 import { interpShuttle } from './world'
 
 export type ShuttleSample = Pick<SpState, 'tick' | 'phase' | 'shuttle' | 'events'>
@@ -53,13 +54,29 @@ export interface OwnSwing {
   pressTick?: number
 }
 
-/** A predicted own hit: a local flight sample that wins `at(k)` for k in [from − 1, until). */
-interface Prediction {
+/** A predicted own hit, as the guest plays it at once (sound) before the host's answer. */
+export type PredictedHit = {
   side: 0 | 1
   /** The predicted timing grade (the host's, graded with the same Perfect window). */
   grade: Grade
-  /** History tick the shot launches from (the sim's fromTick); the flight below is state tick from − 1. */
+  shot: ShotKind
+  /** Hit power 0..1 (power.ts hitPower of launchShot's gain), as the sim computes it. */
+  power: number
+  /** History tick the shot launches from (the sim's fromTick). */
   from: number
+}
+
+/**
+ * The one rule for "this host event answers the prediction launched from `from`": an own `k` event
+ * from the swing's rewind window on (events linger EVENT_TICKS, so older own events do not count).
+ */
+export function answersPrediction(e: SpEvent, k: 'hit' | 'whiff', side: 0 | 1, from: number): boolean {
+  return e.k === k && e.side === side && e.tick >= from - MAX_REWIND
+}
+
+/** A predicted own hit: a local flight sample that wins `at(k)` for k in [from − 1, until). */
+interface Prediction extends PredictedHit {
+  /** The flight at state tick from − 1 (pre-launch position, launch velocity). */
   flight: Flight
   /** Infinity while unconfirmed; once the host's hit arrives, its tick (a bridge to the host flight). */
   until: number
@@ -218,9 +235,25 @@ export class GuestShuttle {
     const held = clampDir(sw.held.x, sw.held.z)
     const kind = chooseShot(held, c.y, c.grade)
     const target = shotTarget(kind, sw.side, held.x)
-    flight.vel = launchFor(kind, c.grade, flight.pos, target, () => 0, sw.charge)
-    this.pred = { side: sw.side, grade: c.grade, from, flight, until: Infinity, shift: { x: 0, y: 0, z: 0 } }
+    const { vel, gain } = launchShot(kind, c.grade, flight.pos, target, () => 0, sw.charge)
+    flight.vel = vel
+    const power = hitPower(c.grade, gain)
+    this.pred = {
+      side: sw.side,
+      grade: c.grade,
+      shot: kind,
+      power,
+      from,
+      flight,
+      until: Infinity,
+      shift: { x: 0, y: 0, z: 0 },
+    }
     return true
+  }
+
+  /** The current prediction (still returned once the host confirmed it, until dropped); null if none. */
+  predicted(): PredictedHit | null {
+    return this.pred
   }
 
   /**
@@ -231,8 +264,7 @@ export class GuestShuttle {
   private resolve(s: ShuttleSample): void {
     const p = this.pred
     if (!p || p.until !== Infinity) return
-    const mine = (k: 'hit' | 'whiff') =>
-      s.events.find((e) => e.k === k && e.side === p.side && e.tick >= p.from - MAX_REWIND)
+    const mine = (k: 'hit' | 'whiff') => s.events.find((e) => answersPrediction(e, k, p.side, p.from))
     const hit = mine('hit')
     if (hit) {
       // The host flight is known from its hit tick on; before it, the prediction shifted to meet it there.

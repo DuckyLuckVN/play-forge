@@ -80,7 +80,8 @@ import {
   type Hop,
 } from './moves'
 import { COURT, predictLanding, type Vec3 } from './physics'
-import type { GuestView } from './guestshuttle'
+import type { GuestView, PredictedHit } from './guestshuttle'
+import { HitEcho } from './hitecho'
 import type { GuestPredictor } from './predict'
 import { SpringPunch } from './punch'
 import type { Grade, ShotKind } from './shots'
@@ -99,7 +100,7 @@ import { SURROUND } from './props'
 import { SP_QUALITY } from './quality'
 import { Park } from './scenery'
 import { TAPPED, type SpEvent, type SpState } from './sim'
-import { chargeSound, eventSound, type LastShot, SHUTTLE_SOUNDS, swingSound } from './sounds'
+import { chargeSound, eventSound, hitSound, type LastShot, SHUTTLE_SOUNDS, swingSound } from './sounds'
 import { newTrailStyle, RibbonTrail, trailStyle } from './trail'
 import { haloOpacity, haloPixels, occlusion, stepFades, VIS, type ScreenRect } from './visibility'
 import {
@@ -397,6 +398,8 @@ export class Court3D {
   private predictor: GuestPredictor | null = null
   /** Online guests only: the shuttle's smooth clock + flight (null = host / vs-AI: plain interpolation). */
   private guest: GuestView | null = null
+  /** Online guest: the predicted own hit already heard, so the host's answering hit stays silent. */
+  private readonly echo = new HitEcho()
   /** Scratch for GuestView.remotes.sample (no per-frame allocation). */
   private readonly remote = { x: 0, z: 0, vx: 0, vz: 0 }
   /** Whether our inputs reach the sim now (no prediction while they'd be dropped). */
@@ -655,6 +658,7 @@ export class Court3D {
     this.guest?.clock.reset()
     this.guest?.shuttle.reset()
     this.guest?.remotes.reset()
+    this.echo.reset()
     this.lastShotId = 0
     this.lastShot = null
     this.lastHitter = -2
@@ -1120,8 +1124,11 @@ export class Court3D {
           if (splitsOn(e.k, e.side, s.players[n].side) && canSplit(v.gait.speed, v.foot.lunge, airborne))
             v.foot.splitStep()
         }
-      const sound = eventSound(e, this.side, this.lastShot)
-      if (sound) playSound(sound.sound, sound.vol)
+      // Every event feeds the echo (a serve / whiff / expiry forgets it); only the predicted hit is muted.
+      if (!this.echo.heard(e)) {
+        const sound = eventSound(e, this.side, this.lastShot)
+        if (sound) playSound(sound.sound, sound.vol)
+      }
       if (e.k === 'hit') {
         this.lastShotBuf.shot = e.shot
         this.lastShotBuf.power = e.power ?? 0
@@ -1139,6 +1146,16 @@ export class Court3D {
       else if (e.k === 'whiff' && !this.spectating && e.side === this.side)
         this.popAt(this.localIdx, 'miss', false)
     }
+  }
+
+  /**
+   * Online guest: our own hit was just predicted (GuestShuttle.predictHit), so it is heard now, not
+   * ~1 RTT later; the host's answering hit event is then skipped (its pops / punch still play).
+   */
+  ownHitPredicted(h: PredictedHit): void {
+    const { sound, vol } = hitSound(h.shot, h.grade, h.power, true)
+    playSound(sound, vol)
+    this.echo.note(h)
   }
 
   /** A new shot: the trail regrows from the contact in that shot's look (kind null = a serve). */

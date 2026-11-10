@@ -2,7 +2,7 @@
  * Tiny Web Audio synthesiser. Sounds and music are generated, not loaded, so
  * games stay single-file and work offline.
  *
- * Signal path: sources → sfx bus → limiter → master → speakers (music bus → master).
+ * Signal path: sources → sfx bus → soft clip → master → speakers (music bus → master).
  * Volume settings are shared by every game and remembered in localStorage.
  */
 
@@ -37,8 +37,24 @@ export interface AudioSettings {
 /** Most effect tones sounding at once; extra tones are dropped (layers are listed most important first). */
 export const MAX_VOICES = 24
 
-/** Safety-net limiter on the effects bus: transparent below the threshold (dBFS). */
-export const SFX_LIMITER = { threshold: -6, knee: 4, ratio: 12, attack: 0.002, release: 0.12 }
+/**
+ * Safety-net soft clip on the effects bus: exactly linear (no gain change) up to `threshold` (linear
+ * amplitude, 0.5 = -6 dBFS), then a smooth tanh knee that never exceeds 1. Unlike a compressor it adds
+ * no makeup gain, so effects keep their loudness in every game.
+ */
+export const SFX_CLIP_THRESHOLD = 0.5
+
+/** WaveShaper table over input -1..1 (n points, odd n keeps 0 exact): identity to `t`, then t + (1-t)·tanh((|x|-t)/(1-t)), C1 at `t`. */
+export function softClipCurve(n: number, t = SFX_CLIP_THRESHOLD): Float32Array<ArrayBuffer> {
+  const out = new Float32Array(n)
+  const k = 1 - t
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1
+    const a = Math.abs(x)
+    out[i] = a <= t ? x : Math.sign(x) * (t + k * Math.tanh((a - t) / k))
+  }
+  return out
+}
 
 /** How many of `wanted` new tones may start with `active` already sounding. */
 export function voicesAllowed(active: number, wanted: number, cap = MAX_VOICES): number {
@@ -115,15 +131,10 @@ export function audioContext(): AudioContext | null {
     master = ctx.createGain()
     sfxBus = ctx.createGain()
     musicBus = ctx.createGain()
-    if (typeof ctx.createDynamicsCompressor === 'function') {
-      const limiter = ctx.createDynamicsCompressor()
-      for (const k of Object.keys(SFX_LIMITER) as (keyof typeof SFX_LIMITER)[]) {
-        limiter[k].value = SFX_LIMITER[k]
-      }
-      sfxBus.connect(limiter).connect(master)
-    } else {
-      sfxBus.connect(master)
-    }
+    const clip = ctx.createWaveShaper()
+    clip.curve = softClipCurve(2049)
+    clip.oversample = '2x'
+    sfxBus.connect(clip).connect(master)
     musicBus.connect(master)
     master.connect(ctx.destination)
     applyLevels()

@@ -252,7 +252,7 @@ export class GuestShuttle {
   }
 
   /** The current prediction (still returned once the host confirmed it, until dropped); null if none. */
-  predicted(): PredictedHit | null {
+  predicted(): Readonly<PredictedHit> | null {
     return this.pred
   }
 

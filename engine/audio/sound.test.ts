@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_VOICES, SFX_LIMITER, duckedMusicGain, pruneVoices, voicesAllowed } from './sound'
+import {
+  MAX_VOICES,
+  SFX_CLIP_THRESHOLD,
+  softClipCurve,
+  duckedMusicGain,
+  pruneVoices,
+  voicesAllowed,
+} from './sound'
 
 describe('duckedMusicGain', () => {
   it('scales the music level by the duck factor', () => {
@@ -43,9 +50,30 @@ describe('pruneVoices', () => {
   })
 })
 
-describe('SFX_LIMITER', () => {
-  it('only catches peaks: threshold below full scale, fast attack', () => {
-    expect(SFX_LIMITER.threshold).toBe(-6)
-    expect(SFX_LIMITER.attack).toBeLessThan(0.01)
+describe('softClipCurve (effects bus soft clip, no makeup gain)', () => {
+  const n = 2049
+  const c = softClipCurve(n)
+  const xOf = (i: number) => (i / (n - 1)) * 2 - 1
+  it('is exactly linear up to the threshold', () => {
+    for (let i = 0; i < n; i++) {
+      if (Math.abs(xOf(i)) <= SFX_CLIP_THRESHOLD) expect(Math.abs(c[i] - xOf(i))).toBeLessThan(1e-6)
+    }
+  })
+  it('is monotonic and never exceeds full scale', () => {
+    for (let i = 1; i < n; i++) expect(c[i]).toBeGreaterThanOrEqual(c[i - 1])
+    for (const y of c) expect(Math.abs(y)).toBeLessThanOrEqual(1)
+  })
+  it('is continuous (no slope jump) at the threshold', () => {
+    const m = 20001
+    const d = softClipCurve(m)
+    const h = 2 / (m - 1)
+    const i = Math.round(((SFX_CLIP_THRESHOLD + 1) / 2) * (m - 1))
+    expect(Math.abs(d[i + 1] - d[i] - (d[i] - d[i - 1]))).toBeLessThan(1e-3 * h)
+    expect(Math.abs((d[i + 1] - d[i]) / h - 1)).toBeLessThan(1e-2)
+  })
+  it('is odd-symmetric and compresses peaks below 1', () => {
+    for (let i = 0; i < n; i++) expect(c[i]).toBeCloseTo(-c[n - 1 - i], 6)
+    expect(c[n - 1]).toBeGreaterThan(SFX_CLIP_THRESHOLD)
+    expect(c[n - 1]).toBeLessThanOrEqual(1)
   })
 })

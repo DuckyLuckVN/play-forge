@@ -80,8 +80,9 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
     if (!guest || !predictor || !me) return
     const player = { x: predictor.x, z: predictor.z }
     // Heard at once; the host's answering hit is then skipped (Court3D's echo).
-    if (guest.shuttle.predictHit({ side: me.side, held, charge, player, tap, pressTick }))
-      court?.ownHitPredicted(guest.shuttle.predicted()!)
+    if (!guest.shuttle.predictHit({ side: me.side, held, charge, player, tap, pressTick })) return
+    const hit = guest.shuttle.predicted()
+    if (hit) court?.ownHitPredicted(hit)
   }
   const send = (input: SpInput) => {
     // Animate our own swing button this frame (not when the session or the sim would drop it); the

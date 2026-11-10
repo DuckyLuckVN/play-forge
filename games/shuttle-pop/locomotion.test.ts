@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { MOVE_SPEED } from './court'
-import { damp, dampAngle, GAIT, Gait, GaitEvent, strideParams, wrapAngle } from './locomotion'
+import {
+  damp,
+  dampAngle,
+  GAIT,
+  Gait,
+  GaitEvent,
+  GLIDE,
+  glideParams,
+  strideParams,
+  wrapAngle,
+} from './locomotion'
 
 describe('strideParams', () => {
   it('is all zero at rest and grows monotonically up to full run', () => {
@@ -178,5 +188,38 @@ describe('Gait', () => {
         [Math.SQRT1_2 * 0.97, 0.25, 60],
       ]),
     ).toBe(0)
+  })
+})
+
+describe('legless glide (slime hop, ghost float)', () => {
+  it('is continuous over phase, speed and time; a still slime rests on the ground, a ghost always hovers', () => {
+    const o = { lift: 0, squash: 0 }
+    for (const kind of ['hop', 'float'] as const) {
+      let prev: [number, number] | null = null
+      for (let f = 0; f <= 1200; f++) {
+        const t = f / 120
+        const speed = 0.5 - 0.5 * Math.cos(t * 0.8)
+        glideParams(kind, speed, t * 1.9, t, o)
+        if (prev) {
+          expect(Math.abs(o.lift - prev[0]), `${kind} lift @${t}`).toBeLessThan(0.02)
+          // A landing squash is quick (≤ 0.1 per 120 Hz frame) but never a full-size pop (0.16).
+          expect(Math.abs(o.squash - prev[1]), `${kind} squash @${t}`).toBeLessThan(0.1)
+        }
+        if (kind === 'float') expect(o.lift).toBeGreaterThan(0.05)
+        prev = [o.lift, o.squash]
+      }
+    }
+    glideParams('hop', 0, 0.3, 1, o)
+    expect(o.lift).toBeCloseTo(0)
+    expect(o.squash).toBeCloseTo(0)
+  })
+
+  it('a moving slime lands at the step phases and is airborne in between', () => {
+    const o = { lift: 0, squash: 0 }
+    expect(glideParams('hop', 1, 0, 0, o).lift).toBeCloseTo(0)
+    expect(o.squash).toBeGreaterThan(0)
+    expect(glideParams('hop', 1, 0.5, 0, o).lift).toBeCloseTo(0)
+    expect(glideParams('hop', 1, 0.25, 0, o).lift).toBeCloseTo(GLIDE.hop.h)
+    expect(o.squash).toBeLessThan(0)
   })
 })

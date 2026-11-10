@@ -6,14 +6,15 @@ import { BoxGeometry, CylinderGeometry, TorusGeometry } from 'three'
 import { RACKET } from './dims'
 import type { Look } from './look'
 import { part, shade, type Part } from './merge'
+import { PALETTE } from './palette'
 
 /** Frame: ring radius, tube, oval scale (x across, y along the shaft); string spacing. */
 const FRAME = { r: 0.16, tube: 0.013, sx: 0.82, sy: 1.1, step: 0.03 }
 const GRIP = { r: 0.021, len: 0.12 }
 const SHAFT = { r: 0.0065 }
 /** String colour and thickness (across the bed, through it). */
-const STRING = { color: 0xd9d4c6, w: 0.006, d: 0.003 }
-const SHAFT_COL = 0xc9ccd6
+const STRING = { color: PALETTE.string, w: 0.006, d: 0.003 }
+const SHAFT_COL = PALETTE.shaft
 
 export function racketParts(l: Look): Part[] {
   const frameCol = l.accent

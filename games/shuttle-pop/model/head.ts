@@ -2,8 +2,16 @@
 // the hair + headwear style, each picked by the look's key. All merged into one mesh by model.ts; the
 // face features (eyes, brows, mouth, blush) are a separate morphing mesh (face.ts).
 
-import { ConeGeometry, CylinderGeometry, Quaternion, SphereGeometry, TorusGeometry, Vector3 } from 'three'
-import { HEAD_R } from './dims'
+import {
+  BoxGeometry,
+  ConeGeometry,
+  CylinderGeometry,
+  Quaternion,
+  SphereGeometry,
+  TorusGeometry,
+  Vector3,
+} from 'three'
+import { BOX_HEAD, HEAD_R } from './dims'
 import {
   bellyOf,
   limbOf,
@@ -13,15 +21,21 @@ import {
   type MuzzleKind,
   type StyleKind,
 } from './look'
-import { dir, part, place, shade, turn, type Part } from './merge'
+import { dir, part, place, shade, tint, turn, type Part } from './merge'
+import { roundBox } from './shapes'
 
 const R = HEAD_R
 const HALF_PI = Math.PI / 2
 const Y = new Vector3(0, 1, 0)
 const Z = new Vector3(0, 0, 1)
 
+const B = BOX_HEAD
 export const HEADS: Record<HeadKind, (l: Look) => Part[]> = {
   round: (l) => [part(new SphereGeometry(R, 32, 24), l.skin)],
+  /** Robot: a rounded box, a little darker underneath. */
+  box: (l) => [
+    part(roundBox(B.a, B.b, B.c, B.n, 32, 24), (_x, y) => (y < -B.b * 0.7 ? shade(l.skin, 0.12) : l.skin)),
+  ],
 }
 
 export const EARS: Record<EarKind, (l: Look) => Part[]> = {
@@ -30,6 +44,18 @@ export const EARS: Record<EarKind, (l: Look) => Part[]> = {
       part(new SphereGeometry(0.055, 10, 8), l.skin, { p: [s * 0.352, -0.03, -0.01], s: [0.6, 1, 0.8] }),
     ),
   none: () => [],
+  /** Robot: round bolts on the sides with an accent ring. */
+  bolt: (l) =>
+    [-1, 1].flatMap((s) => [
+      part(new CylinderGeometry(0.075, 0.075, 0.05, 20), shade(l.skin, 0.25), {
+        p: [s * B.a, -0.02, 0],
+        r: [0, 0, HALF_PI],
+      }),
+      part(new CylinderGeometry(0.04, 0.04, 0.03, 16), l.accent, {
+        p: [s * (B.a + 0.03), -0.02, 0],
+        r: [0, 0, HALF_PI],
+      }),
+    ]),
   /** Panda: round dark ears on top. */
   panda: (l) =>
     [-1, 1].map((s) => {
@@ -58,6 +84,7 @@ export const MUZZLE_DIMS: Record<Exclude<MuzzleKind, 'none'>, MuzzleDims> = {
   cat: { y: -0.135, z: 0.275, a: 0.12, b: 0.07, c: 0.085 },
   fox: { y: -0.14, z: 0.26, a: 0.125, b: 0.075, c: 0.115 },
   panda: { y: -0.135, z: 0.27, a: 0.135, b: 0.075, c: 0.085 },
+  dragon: { y: -0.14, z: 0.27, a: 0.155, b: 0.08, c: 0.1 },
 }
 
 function muzzle(d: MuzzleDims, color: number): Part[] {
@@ -69,6 +96,7 @@ export const MUZZLES: Record<MuzzleKind, (l: Look) => Part[]> = {
   cat: (l) => muzzle(MUZZLE_DIMS.cat, bellyOf(l)),
   fox: (l) => muzzle(MUZZLE_DIMS.fox, bellyOf(l)),
   panda: (l) => muzzle(MUZZLE_DIMS.panda, bellyOf(l)),
+  dragon: (l) => muzzle(MUZZLE_DIMS.dragon, bellyOf(l)),
 }
 
 /** Hair shell: a sphere cap of `theta` rad from the crown, tipped back `tilt` rad (forehead shows). */
@@ -248,6 +276,61 @@ export const STYLES: Record<StyleKind, (l: Look) => Part[]> = {
       )
     return out
   },
+  /** Dragon: two curved cream horns and a row of little fins down the back of the head. */
+  horns: (l) => {
+    const out: Part[] = []
+    for (const s of [-1, 1]) {
+      const d = dir(0.2 * Math.PI, s * 0.7)
+      const aim = d
+        .clone()
+        .add(new Vector3(0, 0.8, -0.5))
+        .normalize()
+      const p = d
+        .clone()
+        .multiplyScalar(R * 0.95)
+        .addScaledVector(aim, 0.06)
+      out.push(part(new ConeGeometry(0.045, 0.15, 12), l.hair, { p: [p.x, p.y, p.z], r: turn(Y, aim) }))
+    }
+    for (let i = 0; i < 3; i++) {
+      const d = dir((0.32 + i * 0.16) * Math.PI, Math.PI)
+      const p = d.clone().multiplyScalar(R * 0.97)
+      out.push(
+        part(new ConeGeometry(0.06 - i * 0.01, 0.13, 12), l.accent, {
+          p: [p.x, p.y, p.z],
+          r: turn(Y, d),
+          s: [0.45, 1, 1],
+        }),
+      )
+    }
+    return out
+  },
+  /** Slime: a jelly drop tip on top and glossy highlights. */
+  drop: (l) => [
+    part(new ConeGeometry(0.1, 0.16, 18), l.skin, { p: [0, R + 0.03, -0.02], r: [-0.25, 0, 0.15] }),
+    part(new SphereGeometry(0.06, 12, 8), tint(l.skin, 0.75), {
+      p: [-0.17, 0.22, 0.2],
+      r: [0.5, -0.4, 0.6],
+      s: [1, 0.55, 0.3],
+    }),
+    part(new SphereGeometry(0.025, 8, 6), tint(l.skin, 0.8), { p: [-0.1, 0.29, 0.17], s: [1, 1, 0.4] }),
+  ],
+  /** Robot: panel seams over the top and a chin vent. */
+  visor: (l) => {
+    const seam = shade(l.skin, 0.35)
+    const box = new BoxGeometry(1, 1, 1)
+    return [
+      part(box, seam, { p: [0, B.b - 0.004, 0], s: [0.012, 0.012, B.c * 1.4] }),
+      part(box, seam, { p: [0, 0.2, -B.c + 0.01], s: [B.a * 1.2, 0.012, 0.012] }),
+      ...[-0.04, 0, 0.04].map((x) =>
+        part(box, seam, { p: [x, -B.b + 0.05, B.c - 0.04], s: [0.02, 0.012, 0.05] }),
+      ),
+    ]
+  },
+  /** Ghost: a little curled wisp on top. */
+  wisp: (l) => [
+    part(new ConeGeometry(0.06, 0.13, 14), l.skin, { p: [0.02, R + 0.04, 0], r: [0, 0, -0.5] }),
+    part(new SphereGeometry(0.03, 10, 8), l.skin, { p: [0.07, R + 0.085, 0] }),
+  ],
 }
 
 /** A flat stripe lying on the head at (polar, az): tabby markings. */

@@ -4,11 +4,12 @@
 // into their bone instead (head.ts / body.ts): an extra costs a draw call, so only things that move are
 // extras. Budget: ≤ 3 extra meshes per look.
 
-import { CapsuleGeometry, ConeGeometry, SphereGeometry, Vector3 } from 'three'
+import { CapsuleGeometry, ConeGeometry, CylinderGeometry, SphereGeometry, Vector3 } from 'three'
 import type { Channel } from '../flair'
-import { HEAD_R } from './dims'
+import { BOX_HEAD, HEAD_R } from './dims'
 import { bellyOf, type ExtraKind, type Look } from './look'
-import { dir, part, shade, turn, type Part, type Triple } from './merge'
+import { PALETTE } from './palette'
+import { dir, part, shade, tint, turn, type Part, type Triple } from './merge'
 
 export interface ExtraSpec {
   /** The bone it hangs on. */
@@ -25,7 +26,7 @@ export interface ExtraSpec {
 }
 
 const Y = new Vector3(0, 1, 0)
-const EAR_PINK = 0xffb3c6
+const EAR_PINK = PALETTE.earPink
 
 /** Head point at (polar, az) just inside the surface, and the ear's lean (normal tipped up by `up`). */
 function earBase(polar: number, az: number, up: number): { at: Triple; aim: Vector3 } {
@@ -162,6 +163,68 @@ export const EXTRAS: Record<ExtraKind, ExtraSpec> = {
     at: [0, 0.01, -0.14],
     channel: 'wag',
     parts: (l) => [part(new SphereGeometry(0.065, 14, 10), bellyOf(l), { p: [0, 0.01, -0.03] })],
+  },
+  /** Dragon: a tail sweeping back and up, a row of spikes, an arrow tip; it wags. */
+  dragonTail: {
+    parent: 'hips',
+    at: [0, 0.0, -0.13],
+    channel: 'wag',
+    parts: (l) => {
+      const pts: [number, number, number, number][] = []
+      for (let i = 0; i < 7; i++) {
+        const u = i / 6
+        pts.push([0, 0.02 + 0.12 * u * u, -0.03 - 0.24 * u, 0.07 - 0.04 * u])
+      }
+      const out = beads(pts, () => l.skin)
+      for (let i = 1; i < 6; i++) {
+        const [, y, z, r] = pts[i]
+        out.push(
+          part(new ConeGeometry(0.022, 0.05, 4), l.accent, {
+            p: [0, y + r * 0.9, z],
+            r: [-0.4, 0, 0],
+            s: [0.45, 1, 1],
+          }),
+        )
+      }
+      const [, ty, tz] = pts[6]
+      out.push(
+        part(new ConeGeometry(0.05, 0.08, 4), l.accent, {
+          p: [0, ty + 0.02, tz - 0.05],
+          r: [-1.9, 0, 0],
+          s: [1, 1, 0.35],
+        }),
+      )
+      return out
+    },
+  },
+  /** Dragon: little wing nubs on the back; they flutter. */
+  wings: {
+    parent: 'torso',
+    at: [0.07, 0.25, -0.14],
+    pair: true,
+    channel: 'flap',
+    parts: (l) => {
+      const bone = shade(l.skin, 0.2)
+      const membrane = tint(l.accent, 0.35)
+      const lobe = new SphereGeometry(0.1, 16, 10)
+      return [
+        part(new CapsuleGeometry(0.02, 0.16, 4, 8), bone, { p: [0.08, 0.06, -0.03], r: [0, 0.35, -1.0] }),
+        part(lobe, membrane, { p: [0.1, 0.0, -0.05], r: [0, 0.35, -0.45], s: [1.1, 0.8, 0.2] }),
+        part(lobe, membrane, { p: [0.07, -0.05, -0.04], r: [0, 0.35, -0.2], s: [0.7, 0.6, 0.18] }),
+        part(new ConeGeometry(0.016, 0.045, 8), l.hair, { p: [0.155, 0.125, -0.06], r: [0, 0.35, -1.0] }),
+      ]
+    },
+  },
+  /** Robot: an antenna on top that sways; its bulb blinks (unlit glow mesh). */
+  antenna: {
+    parent: 'head',
+    at: [0, BOX_HEAD.b - 0.01, 0],
+    channel: 'sway',
+    parts: (l) => [
+      part(new CylinderGeometry(0.04, 0.05, 0.03, 16), shade(l.skin, 0.25), { p: [0, 0.01, 0] }),
+      part(new CylinderGeometry(0.009, 0.009, 0.14, 8), shade(l.skin, 0.35), { p: [0, 0.09, 0] }),
+    ],
+    glow: (l) => [part(new SphereGeometry(0.035, 14, 10), l.accent, { p: [0, 0.18, 0] })],
   },
 }
 

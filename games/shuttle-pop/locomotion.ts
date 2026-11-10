@@ -62,6 +62,47 @@ export function strideParams(speed: number, out: Stride): Stride {
   return out
 }
 
+/**
+ * Legless locomotion (pure), driven by the same gait speed share and stride phase as legs. Hop (slime):
+ * two hops per stride cycle (|sin|: lands at the step phases, so step puffs line up), squashing on each
+ * landing and stretching in the air. Float (ghost): always hovering, a slow idle bob that hands over to a
+ * stride-synced bob as it moves. Continuous in speed, phase and time.
+ */
+export const GLIDE = {
+  hop: { h: 0.11, squash: 0.16, stretch: 0.05, land: 0.3 },
+  float: { base: 0.1, idle: 0.025, idleW: 2.4, stride: 0.03 },
+} as const
+
+export interface Glide {
+  /** Rig lift (m). */
+  lift: number
+  /** + squash / − stretch. */
+  squash: number
+}
+
+export function glideParams(
+  kind: 'hop' | 'float',
+  speed: number,
+  phase: number,
+  t: number,
+  out: Glide,
+): Glide {
+  const s = Math.min(1, Math.max(0, speed))
+  if (kind === 'hop') {
+    const H = GLIDE.hop
+    const a = Math.abs(Math.sin(Math.PI * 2 * phase))
+    const landing = Math.max(0, 1 - a / H.land)
+    out.lift = H.h * s * a
+    out.squash = s * (H.squash * landing * landing - H.stretch * a)
+  } else {
+    const F = GLIDE.float
+    out.lift =
+      F.base + F.idle * (1 - s) * Math.sin(t * F.idleW) + F.stride * s * Math.sin(Math.PI * 4 * phase)
+    out.squash = 0
+  }
+  return out
+}
+
 /** Angle into (−π, π]. */
 export function wrapAngle(a: number): number {
   const TAU = Math.PI * 2

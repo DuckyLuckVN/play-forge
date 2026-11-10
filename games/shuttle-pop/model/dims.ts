@@ -18,3 +18,5 @@ export const LEG = { thigh: 0.11, shin: 0.13 }
  * far rim along the handle axis.
  */
 export const RACKET = { mount: 0.35, head: 0.42, tip: 0.59 }
+/** Robot head: a rounded box (superellipsoid half sizes, exponent), centred like the round head. */
+export const BOX_HEAD = { a: 0.37, b: 0.33, c: 0.34, n: 4 }

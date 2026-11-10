@@ -4,24 +4,47 @@
 // under a new key. The rig and the animations never change.
 
 /** Head shape. The face decals follow it (face.ts surfaces). */
-export type HeadKind = 'round'
+export type HeadKind = 'round' | 'box'
 /** Static ears merged into the head mesh. Animated ears are extras (extras.ts). */
-export type EarKind = 'human' | 'none' | 'panda'
+export type EarKind = 'human' | 'none' | 'panda' | 'bolt'
 /** A snout bump on the face (the mouth decal sits on it). */
-export type MuzzleKind = 'none' | 'cat' | 'fox' | 'panda'
+export type MuzzleKind = 'none' | 'cat' | 'fox' | 'panda' | 'dragon'
 /** Hair + headwear (+ anything else worn on the head). */
 export type StyleKind =
-  'bowPigtails' | 'capFringe' | 'bandSpiky' | 'beanieBob' | 'tabby' | 'tuft' | 'leaf' | 'foxFringe'
-/** Human chibi; animal (nose + cat mouth), + whiskers (kitty), + eye patches (panda). */
-export type FaceKind = 'chibi' | 'animal' | 'kitty' | 'panda'
-export type HandKind = 'mitten' | 'paw'
-export type FootKind = 'sneaker' | 'paw'
+  | 'bowPigtails'
+  | 'capFringe'
+  | 'bandSpiky'
+  | 'beanieBob'
+  | 'tabby'
+  | 'tuft'
+  | 'leaf'
+  | 'foxFringe'
+  | 'horns'
+  | 'drop'
+  | 'visor'
+  | 'wisp'
+/**
+ * Human chibi; animal (nose + cat mouth), + whiskers (kitty), + eye patches (panda); glowing eyes on a
+ * dark visor (robot); browless jelly / ghost faces.
+ */
+export type FaceKind = 'chibi' | 'animal' | 'kitty' | 'panda' | 'visor' | 'jelly' | 'ghost'
+export type HandKind = 'mitten' | 'paw' | 'claw' | 'metal' | 'nub'
+export type FootKind = 'sneaker' | 'paw' | 'claw' | 'boot'
 /** Torso + hips shape. */
-export type BodyKind = 'human' | 'chubby'
+export type BodyKind = 'human' | 'chubby' | 'dragon' | 'robot' | 'slime' | 'ghost'
 /** Two jointed legs, or none: a hopping blob or a floating sheet (hips chains hidden). */
 export type LegKind = 'pair' | 'hop' | 'float'
 /** Animated extra bones (own mesh + pose channel): tails, ears, wings, an antenna. */
-export type ExtraKind = 'catEars' | 'bunnyEars' | 'foxEars' | 'catTail' | 'bunnyTail' | 'foxTail'
+export type ExtraKind =
+  | 'catEars'
+  | 'bunnyEars'
+  | 'foxEars'
+  | 'catTail'
+  | 'bunnyTail'
+  | 'foxTail'
+  | 'dragonTail'
+  | 'wings'
+  | 'antenna'
 
 /** Badminton kit colours (optional: animals may wear one, creatures don't). */
 export interface Kit {

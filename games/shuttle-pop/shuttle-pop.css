@@ -44,8 +44,9 @@
 }
 .sp-chars-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  /* 12 characters: 6 × 2 on desktop / phone landscape, 4 × 3 on narrow screens. */
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
 }
 .sp-char {
   --sp-tint: var(--sp-berry);
@@ -88,6 +89,24 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+@media (max-width: 520px) {
+  .sp-chars-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+/* Short landscape phones: smaller cards so two rows fit with the menu. */
+@media (max-height: 480px) {
+  .sp-char {
+    padding: 3px 2px 4px;
+  }
+  .sp-char-art svg {
+    width: 40px;
+    height: 45px;
+  }
+  .sp-char-name {
+    font-size: 12px;
+  }
 }
 @media (max-width: 420px) {
   .sp-chars-grid {

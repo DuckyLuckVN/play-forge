@@ -6,10 +6,12 @@
 // `faceLayout` is pure (plain arrays, testable); `faceGeometry` wraps it for three.js.
 
 import { BufferAttribute, BufferGeometry, Color, Float32BufferAttribute } from 'three'
-import { HEAD_R } from './dims'
+import { BOX_HEAD, HEAD_R } from './dims'
 import { MUZZLE_DIMS } from './head'
 import { limbOf, type FaceKind, type HeadKind, type Look } from './look'
-import { shade } from './merge'
+import { shade, tint } from './merge'
+import { PALETTE } from './palette'
+import { roundBoxZ } from './shapes'
 
 export type Expr = 'neutral' | 'happy' | 'sad' | 'effort' | 'blink'
 /** Morph target order (index = morphTargetInfluences slot). */
@@ -21,7 +23,7 @@ export interface FaceLayout {
   idx: number[]
 }
 
-const COL = { eye: 0x2b2233, shine: 0xffffff, mouth: 0x8c2f3f, blush: 0xff9eb5, nose: 0x2b2233 }
+const COL = PALETTE
 
 /** What a face kind draws. Every expression of one kind has the same parts (morph-safe). */
 export interface FaceStyle {
@@ -36,6 +38,12 @@ export interface FaceStyle {
   whiskers: boolean
   /** Dark patches behind the eyes (look.limb). */
   patch: boolean
+  /** A dark rounded visor plate behind the eyes. */
+  visor: boolean
+  /** Eyes + mouth glow in the iris colour (on a visor). */
+  glow: boolean
+  /** Two lash flicks at each eye's outer top corner (follow the eye's expression shape). */
+  lashes: boolean
 }
 const HUMAN_FACE: FaceStyle = {
   brows: true,
@@ -45,18 +53,39 @@ const HUMAN_FACE: FaceStyle = {
   mouth: 'chibi',
   whiskers: false,
   patch: false,
+  visor: false,
+  glow: false,
+  lashes: false,
 }
-const ANIMAL_FACE: FaceStyle = { ...HUMAN_FACE, brows: false, eyeUp: 0.02, nose: true, mouth: 'cat' }
+const ANIMAL_FACE: FaceStyle = {
+  ...HUMAN_FACE,
+  brows: false,
+  eyeUp: 0.02,
+  nose: true,
+  mouth: 'cat',
+  lashes: true,
+}
 export const FACE_STYLES: Record<FaceKind, FaceStyle> = {
   chibi: HUMAN_FACE,
   animal: ANIMAL_FACE,
   kitty: { ...ANIMAL_FACE, whiskers: true },
   panda: { ...ANIMAL_FACE, patch: true, blush: false },
+  visor: { ...HUMAN_FACE, brows: false, blush: false, visor: true, glow: true },
+  jelly: { ...HUMAN_FACE, brows: false, eyeUp: 0.01, lashes: true },
+  ghost: { ...HUMAN_FACE, brows: false, lashes: true },
 }
+/** Robot visor plate: half width / height, centre y, squareness (ring exponent < 1), colour. */
+const VISOR = { a: 0.27, b: 0.125, y: -0.01, k: 0.35, color: PALETTE.visor }
 /** Whiskers: 3 per side from the muzzle edge outward (x from / to, y, slope), thickness. */
 const WHISKER = { x0: 0.11, x1: 0.25, y: -0.115, gap: 0.022, tilt: 0.12, th: 0.0055 }
 /** Panda eye patch: half width / height, offset from the eye centre (outward, down), tilt (rad). */
 const PATCH = { a: 0.088, b: 0.108, dx: 0.012, dy: -0.012, tilt: 0.45 }
+/** Lash flicks: (outward, up) offset from the eye centre in eye radii, half length / thickness, tilt (rad). */
+const LASHES: readonly (readonly [number, number, number])[] = [
+  [0.78, 0.72, 0.5],
+  [0.98, 0.32, 0.18],
+]
+const LASH = { a: 0.024, b: 0.0065 }
 /** Eye: half width / height, centre (± x, y). */
 const EYE = { a: 0.066, b: 0.086, x: 0.138, y: -0.012 }
 const BROW = { w: 0.05, x: 0.138, y: 0.108, th: 0.019 }
@@ -151,6 +180,7 @@ const sphere =
 
 const HEAD_SURFACES: Record<HeadKind, Surface> = {
   round: sphere(HEAD_R),
+  box: (u, v, lift) => roundBoxZ(BOX_HEAD.a, BOX_HEAD.b, BOX_HEAD.c, BOX_HEAD.n, u, v, lift),
 }
 
 /** The surface the face decals sit on for this look: the head, with the muzzle bump (if any) on top. */
@@ -170,8 +200,10 @@ export function faceLayout(look: Look, e: Expr): FaceLayout {
   const out: FaceLayout = { pos: [], col: [], idx: [] }
   const surf = surfaceOf(look)
   const st = FACE_STYLES[look.face]
-  /** Eyes sit one layer up over patches. */
-  const L = st.patch ? 1 : 0
+  /** Eyes sit one layer up over patches / a visor. */
+  const L = st.patch || st.visor ? 1 : 0
+  const eyeCol = st.glow ? look.iris : COL.eye
+  const irisCol = st.glow ? tint(look.iris, 0.6) : look.iris
   const eyeY = EYE.y + st.eyeUp
   const vert = (u: number, v: number, layer: number, hex: number) => {
     out.pos.push(u, v, surf(u, v, 0.004 + layer * 0.0025))
@@ -210,6 +242,18 @@ export function faceLayout(look: Look, e: Expr): FaceLayout {
     }
   }
 
+  if (st.visor) {
+    const vy = VISOR.y + st.eyeUp
+    disc(0, vy, VISOR.a, VISOR.b, 0, VISOR.color, (u, v) => {
+      // Ring point → squircle (same vertex count as any disc).
+      const cu = u / VISOR.a
+      const cv = (v - vy) / VISOR.b
+      return [
+        Math.sign(cu) * Math.abs(cu) ** VISOR.k * VISOR.a,
+        vy + Math.sign(cv) * Math.abs(cv) ** VISOR.k * VISOR.b,
+      ]
+    })
+  }
   for (const s of [-1, 1]) {
     const ex = s * EYE.x
     if (st.patch) {
@@ -229,8 +273,8 @@ export function faceLayout(look: Look, e: Expr): FaceLayout {
       const [dx, dy] = f(u - ex, v - eyeY)
       return [ex + dx, eyeY + dy]
     }
-    disc(ex, eyeY, EYE.a, EYE.b, L, COL.eye, at)
-    disc(ex, eyeY - 0.034, 0.048, 0.039, L + 1, look.iris, at)
+    disc(ex, eyeY, EYE.a, EYE.b, L, eyeCol, at)
+    disc(ex, eyeY - 0.034, 0.048, 0.039, L + 1, irisCol, at)
     for (const [hx, hy, hr] of [
       [0.019, 0.032, 0.024],
       [-0.023, -0.041, 0.011],
@@ -238,6 +282,19 @@ export function faceLayout(look: Look, e: Expr): FaceLayout {
       const [cx, cy] = at(ex + hx, eyeY + hy)
       disc(cx, cy, hr * shine, hr * shine, L + 2, COL.shine, (u, v) => [u, v])
     }
+    if (st.lashes)
+      for (const [ox, oy, tilt] of LASHES) {
+        // Anchored on the eye's (morphed) outline, so a happy squint carries them down.
+        const [cx, cy] = at(ex + s * ox * EYE.a, eyeY + oy * EYE.b)
+        const ca = Math.cos(tilt * s)
+        const sa = Math.sin(tilt * s)
+        const lx = cx + s * LASH.a * 0.8
+        disc(lx, cy, LASH.a, LASH.b, L, eyeCol, (u, v) => {
+          const du = u - lx
+          const dv = v - cy
+          return [lx + du * ca - dv * sa, cy + du * sa + dv * ca]
+        })
+      }
     if (st.brows) {
       // Brow: thicker at the inner end.
       const xs: number[] = []
@@ -294,7 +351,7 @@ export function faceLayout(look: Look, e: Expr): FaceLayout {
     tops.push(MOUTH_Y + m.top(t) * MOUTH_K)
     bots.push(MOUTH_Y + m.bot(t) * MOUTH_K)
   }
-  strip(xs, tops, bots, 0, COL.mouth)
+  strip(xs, tops, bots, L, st.glow ? look.iris : COL.mouth)
   return out
 }
 

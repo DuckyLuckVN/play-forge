@@ -812,14 +812,18 @@ export class Court3D {
   private onGait(view: PlayerView, flags: number, x: number, z: number, vx: number, vz: number) {
     if (flags === 0) return
     const B = DUST.burst
+    // A floating look (ghost) never touches the ground: springs, but no dust.
+    const floats = PRESETS[view.preset]?.look.legs === 'float'
     if (flags & (GaitEvent.Start | GaitEvent.Kick)) {
       view.squash.kick(flags & GaitEvent.Start ? MOTION.kickStart : MOTION.kickTurn)
       // Kicked back from both feet.
-      this.footPuff(view, 1, x, z, vx * B.throw, vz * B.throw, B.size, B.life)
-      this.footPuff(view, -1, x, z, vx * B.throw, vz * B.throw, B.size, B.life)
+      if (!floats) {
+        this.footPuff(view, 1, x, z, vx * B.throw, vz * B.throw, B.size, B.life)
+        this.footPuff(view, -1, x, z, vx * B.throw, vz * B.throw, B.size, B.life)
+      }
     }
     if (flags & GaitEvent.Stop) view.lean.kick(MOTION.kickStop)
-    if (view.gait.speed < DUST.stepFrom) return
+    if (floats || view.gait.speed < DUST.stepFrom) return
     const S = DUST.step
     if (flags & GaitEvent.StepL) this.footPuff(view, 1, x, z, vx * S.throw, vz * S.throw, S.size, S.life)
     if (flags & GaitEvent.StepR) this.footPuff(view, -1, x, z, vx * S.throw, vz * S.throw, S.size, S.life)

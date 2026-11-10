@@ -31,7 +31,7 @@ import {
 import { basePose, CH, streakGlow, swingPose, upper, type BaseIn, type SwingIn, type Upper } from './arm'
 import { lateralShare } from './footwork'
 import { legAngles, legOut, type LegIn } from './legs'
-import { strideParams, type Stride } from './locomotion'
+import { glideParams, strideParams, type Glide, type Stride } from './locomotion'
 import { ARM, HEAD_Y, HIP_X, HIP_Y, LEG, RACKET, SHOULDER_X, SHOULDER_Y } from './model/dims'
 import { extraOut, extraPose, type FlairIn } from './flair'
 import type { ExtraSpec } from './model/extras'
@@ -188,6 +188,7 @@ const legIn: LegIn = {
   lunge: 0,
 }
 const legO = legOut()
+const glideO: Glide = { lift: 0, squash: 0 }
 const base = upper()
 const ang = upper()
 const v3 = new Vector3()
@@ -353,6 +354,7 @@ export function createChibi(preset: number): Chibi {
   })
   let used = 0
   let hasLegs = true
+  let legKind: 'pair' | 'hop' | 'float' = 'pair'
 
   // Real shadows (when the renderer has them on) from the three shapes that read in a long low-sun
   // shadow: body, head and racket. Everything else would only add shadow-pass draw calls.
@@ -364,6 +366,8 @@ export function createChibi(preset: number): Chibi {
     const p = PRESETS[Math.min(PRESETS.length - 1, Math.max(0, n | 0))]
     const g = modelOf(p)
     hasLegs = !legless(p.look)
+    legKind = p.look.legs
+    hips.rotation.set(0, 0, 0)
     for (const l of legs) l.hip.visible = hasLegs
     hips.geometry = g.hips
     chest.geometry = g.torso
@@ -497,8 +501,20 @@ export function createChibi(preset: number): Chibi {
     // Whole rig: bob (2 per stride, lowest at the plants), jump, hops, shuffle hop, split step, bounce.
     let y = (stride.bob * (1 - Math.cos(4 * Math.PI * p.stride))) / 2
     y += p.jump * JUMP_H + hopO.height * (HOP_H + p.cheer * HOP_H_WIN) * happy
-    y += legO.lift + p.split * SPLIT_H + bounce * BOUNCE.h * bounceW
-    rig.position.y = y - (hasLegs ? legO.drop : 0)
+    y += p.split * SPLIT_H + bounce * BOUNCE.h * bounceW
+    let glideSquash = 0
+    let drop = 0
+    if (hasLegs) {
+      y += legO.lift
+      drop = legO.drop
+    } else {
+      // No legs: hop (slime) or float (ghost) from the same gait; the ghost's hem trails the move.
+      glideParams(legKind === 'hop' ? 'hop' : 'float', p.run, p.stride, t, glideO)
+      y += glideO.lift
+      glideSquash = glideO.squash
+      if (legKind === 'float') hips.rotation.set(0.35 * p.fwd * p.run, 0, -0.3 * p.side * p.run)
+    }
+    rig.position.y = y - drop
     rig.rotation.x =
       LEAN_FWD * p.fwd +
       p.lean +
@@ -511,7 +527,13 @@ export function createChibi(preset: number): Chibi {
     rig.rotation.y = celebrateSpin(t) * p.cheer
 
     // Squash / stretch about the feet (rig origin): springs, crouch, landings, breathing.
-    let sq = p.squash + hopO.squash * happy + SQUASH_CROUCH * p.crouch + SQUASH_READY * ready + 0.05 * sad
+    let sq =
+      p.squash +
+      glideSquash +
+      hopO.squash * happy +
+      SQUASH_CROUCH * p.crouch +
+      SQUASH_READY * ready +
+      0.05 * sad
     sq -= Math.sin(t * (sad ? 1.6 : 3)) * BREATHE * calm
     rig.scale.set(1 + sq * 0.5, 1 - sq, 1 + sq * 0.5)
 

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
+  guideCard,
   guideList,
   guideRows,
   guideSeen,
@@ -199,7 +200,7 @@ describe('guideList rendering', () => {
     expect([glyph.textContent, glyph.attrs['aria-hidden']]).toEqual(['↑', 'true'])
     expect([said.className, said.textContent]).toEqual(['pf-sr', 'Up arrow'])
     expect(kbds.find((k) => k.textContent === 'Space')!.className).toBe('pf-key wide')
-    expect(all(list).some((e) => e.className === 'pf-guide-hold' && e.textContent === 'hold')).toBe(true)
+    expect(all(list).some((e) => e.className === 'pf-hold-badge')).toBe(true)
   })
 
   it('touch: icons with their label or spoken name, no keycaps', () => {
@@ -214,38 +215,49 @@ describe('guideList rendering', () => {
     expect(els.some((e) => e.className === 'pf-sr' && e.textContent === 'Tap the button')).toBe(true)
   })
 
-  const chips = (list: FakeEl) => all(list).filter((e) => e.className === 'pf-held')
+  const badges = (el: FakeEl) => all(el).filter((e) => e.className === 'pf-hold-badge')
   const spokenTexts = (el: FakeEl) =>
     all(el)
       .filter((e) => e.className === 'pf-sr')
       .map((e) => e.textContent)
+  const legends = (el: FakeEl) => all(el).filter((e) => e.className === 'pf-guide-legend')
 
-  it('held row: each alternative gets its own hold chip, read out as "hold <key>"', () => {
+  it('held row: every held key and the mouse icon carry their own badge, read out as "hold <key>"', () => {
     const list = guideList([STEPS[2]], false) as unknown as FakeEl
-    const found = chips(list)
-    expect(found).toHaveLength(2) // Space, mouse
-    expect(found.every((c) => (c.children[0] as FakeEl).className === 'pf-guide-hold')).toBe(true)
-    expect(spokenTexts(found[0])).toEqual(['hold Space'])
-    expect(spokenTexts(found[1])).toEqual(['hold Hold the mouse button'])
+    expect(badges(list)).toHaveLength(2) // Space, mouse
+    expect(spokenTexts(list)).toEqual(['hold Space', 'hold Hold the mouse button'])
+    const [space] = all(list).filter((e) => e.tagName === 'KBD')
+    expect(space.className).toBe('pf-key wide held')
   })
 
-  it('tap row has no hold chips', () => {
+  it('held combo: each key gets a badge', () => {
+    const list = guideList([{ action: 'x', hold: true, keys: [['A', 'D']] }], false) as unknown as FakeEl
+    expect(badges(list)).toHaveLength(2)
+  })
+
+  it('tap row has no badges', () => {
     const list = guideList([STEPS[1]], false) as unknown as FakeEl
-    expect(chips(list)).toHaveLength(0)
+    expect(badges(list)).toHaveLength(0)
   })
 
-  it('mixed combo: only the held key sits in a chip', () => {
+  it('mixed combo: only the held key is badged', () => {
     const step: GuideStep = { action: 'x', keys: [['W', { key: 'Space', hold: true }]] }
     const list = guideList([step], false) as unknown as FakeEl
-    const [chip] = chips(list)
-    expect(chips(list)).toHaveLength(1)
-    expect(all(chip).filter((e) => e.tagName === 'KBD')).toHaveLength(1)
-    expect(spokenTexts(chip)).toEqual(['hold Space'])
+    expect(badges(list)).toHaveLength(1)
+    expect(spokenTexts(list)).toEqual(['hold Space'])
   })
 
-  it('touch hold: chip around the icon with a spoken hold', () => {
+  it('touch hold: badge on the icon with a spoken hold', () => {
     const list = guideList([STEPS[2]], true) as unknown as FakeEl
-    expect(chips(list)).toHaveLength(1)
+    expect(badges(list)).toHaveLength(1)
     expect(spokenTexts(list)).toEqual(['hold Tap the button'])
+  })
+
+  it('card shows one legend line only when something is held', () => {
+    const held = guideCard(STEPS, false) as unknown as FakeEl
+    expect(legends(held)).toHaveLength(1)
+    expect(badges(legends(held)[0])).toHaveLength(1)
+    const tapOnly = guideCard([STEPS[1]], false) as unknown as FakeEl
+    expect(legends(tapOnly)).toHaveLength(0)
   })
 })

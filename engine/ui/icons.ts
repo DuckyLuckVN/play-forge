@@ -54,6 +54,8 @@ const HAND =
   '<path d="M10 14V7a1.5 1.5 0 0 1 3 0v5"/><path d="M13 11.5a1.5 1.5 0 0 1 3 0V13"/><path d="M16 12.5a1.5 1.5 0 0 1 3 0V17a5 5 0 0 1-5 5h-1.5a5 5 0 0 1-3.9-1.9L5.2 16.6a1.5 1.5 0 0 1 2.3-1.9L10 17"/>'
 
 export const inputIcons = {
+  /** Press-and-hold mark: a half-filled ring (badge on held keys, and in the guide legend). */
+  holdBadge: fine(`<circle cx="12" cy="12" r="9"/><path d="M12 12V3.5a8.5 8.5 0 0 1 0 17z" ${FILL}/>`),
   mouseClick: fine(`${MOUSE}<path d="M12 3a5.5 5.5 0 0 0-5.5 5.5v1H12z" ${FILL}/>`),
   mouseRight: fine(`${MOUSE}<path d="M12 3a5.5 5.5 0 0 1 5.5 5.5v1H12z" ${FILL}/>`),
   mouseScroll: fine(`${MOUSE}<path d="M12 5v3" stroke-width="3"/>`),

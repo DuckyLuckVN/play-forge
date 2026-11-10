@@ -72,32 +72,39 @@
     color: var(--pf-haze);
     font-size: var(--pf-fs-xs);
   }
-  /* A held input: one chip, a yolk "HOLD" tag fused to the left of the keycaps / icon. */
-  .pf-held {
+  /* Held inputs: a small half-ring badge on the corner (legend under the list explains it). */
+  .pf-hold-badge {
     display: inline-flex;
-    align-items: stretch;
-    gap: var(--pf-space-2);
-    padding-right: var(--pf-space-2);
-    border: 2px solid var(--pf-yolk);
-    border-radius: var(--pf-radius-sm);
-    background: color-mix(in srgb, var(--pf-yolk) 12%, transparent);
-    overflow: hidden;
+    color: var(--pf-yolk);
   }
-  .pf-held > :not(.pf-guide-hold) {
-    align-self: center;
+  .pf-hold-badge svg {
+    width: 100%;
+    height: 100%;
   }
-  .pf-guide-hold {
-    display: inline-flex;
+  .held > .pf-hold-badge {
+    position: absolute;
+    top: -7px;
+    right: -6px;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: var(--pf-pit);
+  }
+  .pf-guide-legend {
+    display: flex;
     align-items: center;
-    padding: 0 var(--pf-space-2);
-    background: var(--pf-yolk);
-    color: var(--pf-pit);
-    font-size: var(--pf-fs-xs);
-    font-weight: var(--pf-fw-bold);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    justify-content: center;
+    gap: var(--pf-space-2);
+    margin: 0;
+    color: var(--pf-haze);
+    font-size: var(--pf-fs-sm);
+  }
+  .pf-guide-legend .pf-hold-badge {
+    width: 16px;
+    height: 16px;
   }
   .pf-guide-icon {
+    position: relative;
     display: inline-flex;
     align-items: center;
     gap: var(--pf-space-2);
@@ -125,6 +132,12 @@
     border: 2px solid var(--pf-rim);
     border-bottom-width: 4px;
     border-radius: var(--pf-radius-sm);
+  }
+  .pf-key {
+    position: relative;
+  }
+  .pf-key.held {
+    margin-right: 4px;
   }
   .pf-key.wide {
     padding: 0 var(--pf-space-4);

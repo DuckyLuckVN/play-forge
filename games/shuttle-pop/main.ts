@@ -6,8 +6,10 @@ import { t } from './i18n'
 import { TouchPad } from './hud'
 import { bindInput } from './input'
 import { loadPreset, pickerStrip } from './picker'
+import { GuestShuttle, type GuestView } from './guestshuttle'
 import { GuestPredictor } from './predict'
 import { Court3D, type LocalSwing } from './render3d'
+import { RenderClock } from './renderclock'
 import { scoreText, summaryRows } from './results'
 import { winner } from './rules'
 import {
@@ -47,7 +49,15 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
   const live = () => session.phase === 'playing' && !session.lobby.paused
   // Online guests predict their own player (the host and vs-computer already see their state at once).
   const predictor = session.isHost || session.offline ? null : new GuestPredictor()
-  const detach = court.attach(stage, smooth, session.selfId, (cb) => (onSwing = cb), predictor, live)
+  // ...and draw the shuttle from a smooth clock + deterministic flight, so jitter never rubber-bands it.
+  const guest: GuestView | null =
+    session.isHost || session.offline
+      ? null
+      : (() => {
+          const clock = new RenderClock(session.tickRate)
+          return { clock, shuttle: new GuestShuttle(clock) }
+        })()
+  const detach = court.attach(stage, smooth, session.selfId, (cb) => (onSwing = cb), predictor, live, guest)
   court.surface.setAttribute('role', 'img')
   court.surface.setAttribute('aria-label', t('Badminton court'))
 
@@ -83,7 +93,9 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
   court.surface.append(pad.root)
   // Every human swing carries the tick on screen (the host rewinds up to MAX_REWIND): a guest's covers
   // its lag, the host's own its interpolation (0–1 ticks), so both sides get screen-aligned timing.
-  const seen = () => (smooth.curr ? swingTick(smooth.curr.tick, smooth.alpha()) : undefined)
+  // A guest's is the tick of the shuttle it sees (RenderClock), the same meaning as swingTick.
+  const seen = () =>
+    guest ? guest.clock.seenTick() : smooth.curr ? swingTick(smooth.curr.tick, smooth.alpha()) : undefined
   const input = bindInput(court.surface, send, seen, pad)
   // Our character on every play start (inputs are dropped before). The host's look is already seeded
   // in setup; a guest's shows from "Go!". Idempotent, so resumes may resend it.

@@ -50,6 +50,11 @@ export class RenderClock {
     this.tick = Math.min(this.tick, this.newest + CLOCK.maxAhead)
   }
 
+  /** History tick of the shown shuttle: what a swing sent now should carry (same meaning as swingTick). */
+  seenTick(): number {
+    return Math.round(this.tick) + 1
+  }
+
   reset(): void {
     this.tick = 0
     this.newest = 0

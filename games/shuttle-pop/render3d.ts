@@ -14,7 +14,8 @@
 // Motion: one Gait per player (locomotion.ts) fed by the interpolated sim velocity, so the remote / bot
 // player animates exactly like the local one; swing / leap curves are moves.ts; dust puffs are dust.ts.
 // Online guests: the own chibi comes from GuestPredictor (predict.ts: moves the frame the input does,
-// gait fed by the predicted velocity); the shuttle and the opponent stay pure interpolation.
+// gait fed by the predicted velocity); the shuttle comes from GuestShuttle (guestshuttle.ts: a smooth RenderClock + local deterministic flight
+// between host states, so jitter never rubber-bands it); the opponent stays pure interpolation.
 
 import {
   BackSide,
@@ -68,6 +69,7 @@ import {
   type Hop,
 } from './moves'
 import { COURT, predictLanding, type Vec3 } from './physics'
+import type { GuestView } from './guestshuttle'
 import type { GuestPredictor } from './predict'
 import { SpringPunch } from './punch'
 import { SURROUND } from './props'
@@ -332,6 +334,8 @@ export class Court3D {
   private spectating = false
   /** Online guest only: our own player's prediction (null = draw it from the interpolated state). */
   private predictor: GuestPredictor | null = null
+  /** Online guests only: the shuttle's smooth clock + flight (null = host / vs-AI: plain interpolation). */
+  private guest: GuestView | null = null
   /** Whether our inputs reach the sim now (no prediction while they'd be dropped). */
   private live: () => boolean = () => false
   private board = new Scoreboard()
@@ -508,11 +512,13 @@ export class Court3D {
     onLocalSwing: (cb: (what: LocalSwing) => void) => void,
     predictor: GuestPredictor | null = null,
     live: () => boolean = () => false,
+    guest: GuestView | null = null,
   ): () => void {
     this.smooth = smooth
     this.selfId = selfId
     this.predictor = predictor
     this.live = live
+    this.guest = guest
     this.reset()
     this.seeded = false
     stage.appendChild(this.view.root)
@@ -524,12 +530,17 @@ export class Court3D {
       stop()
       this.smooth = null
       this.predictor = null
+      this.guest?.clock.reset()
+      this.guest?.shuttle.reset()
+      this.guest = null
       this.parking.appendChild(this.view.root)
     }
   }
 
   /** Forget the last match (a rematch restarts ticks and event ids). */
   private reset() {
+    this.guest?.clock.reset()
+    this.guest?.shuttle.reset()
     this.lastShotId = 0
     this.lastHitter = -2
     this.lastTick = -1
@@ -763,7 +774,22 @@ export class Court3D {
     // Shuttle (+ its shadow for depth).
     const ps = prev.shuttle.pos
     const cs = curr.shuttle.pos
-    const { pos, snap } = interpShuttle(ps, cs, a, this.tmp)
+    let pos: Vec3 = this.tmp
+    let snap: boolean
+    const g = this.guest
+    if (g) {
+      // States first (the clock samples its error at frame start), then the frame.
+      g.clock.onState(prev.tick)
+      g.clock.onState(curr.tick)
+      g.shuttle.push(prev)
+      g.shuttle.push(curr)
+      g.clock.update(dt)
+      g.shuttle.update(dt)
+      pos = g.shuttle.pos
+      snap = g.shuttle.snapped
+    } else {
+      snap = interpShuttle(ps, cs, a, this.tmp).snap
+    }
     this.shuttle.position.set(pos.x * flip, Math.max(SHUTTLE_R, pos.y), pos.z * flip)
     this.shadow.position.x = pos.x * flip
     this.shadow.position.z = pos.z * flip

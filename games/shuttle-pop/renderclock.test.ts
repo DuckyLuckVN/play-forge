@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CLOCK, RenderClock } from './renderclock'
+import { swingTick } from './world'
 
 const DT = 1 / 60
 
@@ -9,6 +10,21 @@ function seeded(seed: number): () => number {
 }
 
 describe('RenderClock', () => {
+  it('seenTick agrees with swingTick on a clean link', () => {
+    const c = new RenderClock(60)
+    let checked = 0
+    for (let f = 1; f <= 120; f++) {
+      c.onState(f)
+      c.update(f % 7 === 0 ? DT * 0.8 : DT)
+      // Legacy timeline: prev.tick + alpha, with curr = the newest state.
+      const alpha = Math.min(1, Math.max(0, c.tick - (c.newest - 1)))
+      if (Math.abs(alpha - 0.5) < 1e-6) continue
+      expect(c.seenTick()).toBe(swingTick(c.newest, alpha))
+      checked++
+    }
+    expect(checked).toBeGreaterThan(100)
+  })
+
   it('tracks newest - 1 on a clean 60 Hz link', () => {
     const c = new RenderClock(60)
     for (let f = 1; f <= 30; f++) {

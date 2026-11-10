@@ -2,7 +2,7 @@
 // is re-simulated locally with the sim's own rule (deterministic), so a late packet never freezes or
 // lurches the shuttle. A hit / serve event starts a new flight, so a sample is never run past one.
 import { settleOnFloor, stepShuttle, type Flight, type Vec3 } from './physics'
-import type { RenderClock } from './renderclock'
+import { RenderClock } from './renderclock'
 import type { SpState } from './sim'
 import { interpShuttle } from './world'
 
@@ -27,6 +27,12 @@ interface Stored {
   vel: Vec3
   /** Ticks of the events that start a new flight (a net hit is not one: stepShuttle reproduces it). */
   breaks: number[]
+}
+
+/** What an online guest's render loop owns beyond the interpolated state (grows: Task 7 adds remotes). */
+export interface GuestView {
+  clock: RenderClock
+  shuttle: GuestShuttle
 }
 
 const isFlight = (p: SpState['phase']) => p === 'rally' || p === 'point'

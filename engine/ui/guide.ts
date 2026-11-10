@@ -199,12 +199,8 @@ const TOUCH_ICON: Record<TouchAction, string> = {
 /** Text for screen readers only (the icon beside it is aria-hidden). */
 const spoken = (text: string) => h('span', { class: 'pf-sr', textContent: text })
 
-/** The small half-ring on the corner of a held input (visual only; the text beside it says "hold"). */
-const holdBadge = () => icon(inputIcons.holdBadge, 'pf-hold-badge')
-
 function keyEl(k: Keycap): HTMLElement {
-  const cls = `pf-key${k.text.length > 1 ? ' wide' : ''}${k.hold ? ' held' : ''}`
-  const kbd = h('kbd', { class: cls })
+  const kbd = h('kbd', { class: k.text.length > 1 ? 'pf-key wide' : 'pf-key' })
   if (!k.spoken && !k.hold) {
     kbd.textContent = k.text
     return kbd
@@ -213,14 +209,33 @@ function keyEl(k: Keycap): HTMLElement {
   glyph.setAttribute('aria-hidden', 'true')
   const said = k.spoken ?? k.text
   kbd.append(glyph, spoken(k.hold ? `${t('hold')} ${said}` : said))
-  if (k.hold) kbd.append(holdBadge())
   return kbd
+}
+
+/**
+ * A held input: a "HOLD" tag fused to the left of the input, one chip, so "HOLD Space or HOLD J"
+ * reads per key. The tag is visual only; screen readers get "hold" from the input's own text.
+ */
+function heldChip(...content: (HTMLElement | false)[]): HTMLElement {
+  const tag = h('span', { class: 'pf-guide-hold', textContent: t('hold') })
+  tag.setAttribute('aria-hidden', 'true')
+  return h('span', { class: 'pf-held' }, tag, ...content)
+}
+
+/** Keys: a group of held keys shares one tag; a mixed group tags each held key on its own. */
+function keysEl(keys: Keycap[]): HTMLElement {
+  if (keys.every((k) => k.hold)) return heldChip(h('span', { class: 'pf-keys' }, ...keys.map(keyEl)))
+  return h(
+    'span',
+    { class: 'pf-keys' },
+    ...keys.map((k) => (k.hold ? heldChip(h('span', { class: 'pf-keys' }, keyEl(k))) : keyEl(k))),
+  )
 }
 
 function inputEl(input: GuideInput): HTMLElement {
   switch (input.kind) {
     case 'keys':
-      return h('span', { class: 'pf-keys' }, ...input.keys.map(keyEl))
+      return keysEl(input.keys)
     case 'or':
       return h('span', { class: 'pf-guide-or', textContent: t('or') })
     case 'mouse':
@@ -230,20 +245,20 @@ function inputEl(input: GuideInput): HTMLElement {
   }
 }
 
-/** Mouse / touch input: icon plus its label or spoken name; held ones carry the hold badge, read "hold …". */
+/** Mouse / touch input: icon plus its label or spoken name; held ones sit in a hold chip, read "hold …". */
 function iconEl(svg: string, said: string, hold: boolean, label?: string): HTMLElement {
-  const el = h('span', { class: hold ? 'pf-guide-icon held' : 'pf-guide-icon' }, icon(svg))
-  if (hold) el.append(holdBadge())
-  // A visible label replaces the spoken name, so the hold cue is read out on its own then.
-  if (label) {
-    el.append(h('span', { class: 'pf-guide-touch', textContent: label }))
-    if (hold) el.append(spoken(t('hold')))
-  } else el.append(spoken(hold ? `${t('hold')} ${said}` : said))
-  return el
+  const el = h(
+    'span',
+    { class: 'pf-guide-icon' },
+    icon(svg),
+    label
+      ? h('span', { class: 'pf-guide-touch', textContent: label })
+      : spoken(hold ? `${t('hold')} ${said}` : said),
+  )
+  if (!hold) return el
+  // A visible label replaces the spoken name, so the hold cue is read out on its own.
+  return heldChip(label ? spoken(t('hold')) : false, el)
 }
-
-const isHeld = (i: GuideInput): boolean =>
-  i.kind === 'keys' ? i.keys.some((k) => k.hold) : i.kind !== 'or' && i.hold
 
 /** The list of control rows for this device (default: touch screens get touch rows). */
 export function guideList(steps: readonly GuideStep[], touch = prefersTouch()): HTMLElement {
@@ -273,21 +288,6 @@ export function guideCard(steps: readonly GuideStep[], touch = prefersTouch()): 
     { class: 'pf-guide-card' },
     h('h2', { class: 'pf-guide-title', textContent: t('How to play') }),
     guideList(steps, touch),
-    legend(steps, touch),
-  )
-}
-
-/** "◔ hold" key to the badge, shown once when any input in the list is held. */
-function legend(steps: readonly GuideStep[], touch: boolean): HTMLElement | false {
-  const held = guideRows(steps, touch).some((r) => r.inputs.some(isHeld))
-  return (
-    held &&
-    h(
-      'p',
-      { class: 'pf-guide-legend' },
-      icon(inputIcons.holdBadge, 'pf-hold-badge'),
-      h('span', { textContent: `= ${t('hold')}` }),
-    )
   )
 }
 

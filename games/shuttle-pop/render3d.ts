@@ -57,6 +57,7 @@ import { Hud, newEvents, newestShotId, trackerAction, type PopKind } from './hud
 import { ScoreCards } from './boardprop'
 import { Net } from './net'
 import { prefs } from './prefs'
+import { ringShown, type RingMode } from './landing'
 import { mountCameraButton } from './camera-menu'
 import { boardView, Scoreboard } from './scoreboard'
 import { t } from './i18n'
@@ -293,6 +294,12 @@ export class Court3D {
   private ring: Mesh
   private ringMat: MeshBasicMaterial
   private ringColor = { mine: new Color(PALETTE.ringMine), theirs: new Color(PALETTE.ringTheirs) }
+  /** Personal landing-ring setting (Hidden / Near drop / Always). */
+  private ringMode: RingMode = prefs.get().ring
+  /** The ring's prediction is valid (rally, a hitter, ball not stopped by the net). */
+  private ringOn = false
+  /** Sim tick the shuttle lands at; compared with the tick being shown (render clock online) so Near drop matches the visible flight. */
+  private ringLandTick = Infinity
   /** Newest hit/serve event id already turned into a landing ring. */
   private lastShotId = 0
   private lastHitter = -2
@@ -395,6 +402,7 @@ export class Court3D {
     // Lives as long as the page: no unsubscribe.
     prefs.onChange((p) => {
       this.camWant = p.camera
+      this.ringMode = p.ring
       this.refitCamera()
     })
 
@@ -563,6 +571,7 @@ export class Court3D {
     this.pointHits = 0
     this.pointAt = -Infinity
     this.ring.visible = false
+    this.ringOn = false
     this.hud.reset()
     this.board.reset()
     this.net.reset()
@@ -821,7 +830,11 @@ export class Court3D {
     this.updateHud(curr)
 
     this.updateRing(curr, flip)
-    this.ring.visible = this.ring.visible && curr.phase === 'rally'
+    const shownTick = g0 ? g0.clock.tick : prev.tick + (curr.tick - prev.tick) * a
+    this.ring.visible =
+      this.ringOn &&
+      curr.phase === 'rally' &&
+      ringShown(this.ringMode, (this.ringLandTick - shownTick) / TICK_RATE)
 
     this.park.update(cheerLevel(this.rally, this.time - this.pointAt, this.pointHits), this.time, dt)
 
@@ -1075,7 +1088,7 @@ export class Court3D {
     this.lastShotId = newest
     this.lastHitter = hitter
     if (s.phase !== 'rally' || hitter === -1) {
-      this.ring.visible = false
+      this.ringOn = false
       return
     }
     const land = predictLanding(s.shuttle)
@@ -1083,7 +1096,8 @@ export class Court3D {
     const z = land.pos.z * flip
     this.ring.position.x = x
     this.ring.position.z = z
-    this.ring.visible = !land.netHit
+    this.ringOn = !land.netHit
+    this.ringLandTick = s.tick + land.ticks
     // Coming to my half: bright yellow; going away: faint white.
     const mine = z < 0
     this.ringMat.color.copy(mine ? this.ringColor.mine : this.ringColor.theirs)

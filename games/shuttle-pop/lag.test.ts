@@ -2,8 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { smoothState } from '@forge/net/smoothing'
 import type { Session } from '@forge/net/session'
 import { solveLaunch, type Vec3 } from './physics'
-import { createState, step, type SpState } from './sim'
+import { createState, MOVE_SPEED, step, type SpState } from './sim'
 import { GuestShuttle } from './guestshuttle'
+import { RemoteTracks } from './remotes'
 import { RenderClock } from './renderclock'
 import { interpShuttle } from './world'
 
@@ -175,5 +176,101 @@ describe('guest shuttle smoothness under jitter', () => {
       expect(m.minRatio, `seed ${seed}`).toBeGreaterThanOrEqual(0.4)
       expect(m.backward, `seed ${seed}`).toBe(0)
     }
+  })
+})
+
+/** Host player 'a' running forward (move z:1) across its half: one state per tick. */
+function runnerTicks(n: number): SpState[] {
+  const s = createState(
+    [
+      { id: 'a', name: 'A', slot: 0, ready: true },
+      { id: 'b', name: 'B', slot: 1, ready: true },
+    ] as never,
+    1,
+  )
+  s.phase = 'rally'
+  s.phaseT = 0
+  s.players[0].z = -7.4
+  const out: SpState[] = []
+  for (let i = 0; i < n; i++) {
+    step(s, i === 0 ? ([{ player: 'a', input: { t: 'move', x: 0, z: 1 } }] as never) : [])
+    out.push(structuredClone(s))
+  }
+  return out
+}
+
+/** Player 'a' drawn per frame, as the legacy lerp or the RemoteTracks path. */
+function runnerView(kind: 'legacy' | 'remotes'): View {
+  let emit: (s: SpState) => void = () => {}
+  const session = {
+    state: null,
+    tickRate: 60,
+    on: (_: string, fn: (s: SpState) => void) => ((emit = fn), () => {}),
+  } as unknown as Session<SpState, never>
+  const sm = smoothState(session)
+  const rc = new RenderClock(60)
+  const rt = new RemoteTracks(rc)
+  const o = { x: 0, z: 0, vx: 0, vz: 0 }
+  const pos = { x: 0, y: 0, z: 0 }
+  let last = NaN
+  return {
+    deliver: (s) => {
+      emit(s)
+      rc.onState(s.tick)
+      rt.push(s.tick, s.players)
+    },
+    draw: () => {
+      if (kind === 'legacy') {
+        const a = sm.alpha()
+        const p0 = sm.prev?.players[0] ?? sm.curr!.players[0]
+        pos.z = p0.z + (sm.curr!.players[0].z - p0.z) * a
+        return { pos, tick: (sm.prev?.tick ?? sm.curr!.tick) + a }
+      }
+      rc.update(Number.isNaN(last) ? 0 : (clock.now - last) / 1000)
+      last = clock.now
+      rt.sample('a', o)
+      pos.z = o.z
+      return { pos, tick: rc.tick }
+    },
+  }
+}
+
+function runnerSmoothness(kind: 'legacy' | 'remotes', frameHz: number) {
+  vi.spyOn(performance, 'now').mockImplementation(() => clock.now)
+  const run = runnerTicks(80)
+  const ticks = run.map((s) => s.tick)
+  let maxRatio = 0
+  let minRatio = Infinity
+  let backward = 0
+  for (let seed = 1; seed <= 5; seed++) {
+    const frames = render(run, arrivals(ticks, seed), frameHz, runnerView(kind))
+    const dtS = 1 / frameHz
+    // Once at speed (past the ~ACCEL_TICKS ramp), away from the ends.
+    for (let i = 30 * (frameHz / 60); i < frames.length - 3; i++) {
+      const d = frames[i].pos.z - frames[i - 1].pos.z
+      const ratio = d / (MOVE_SPEED * dtS)
+      maxRatio = Math.max(maxRatio, ratio)
+      minRatio = Math.min(minRatio, ratio)
+      if (d < 0) backward++
+    }
+  }
+  return { maxRatio, minRatio, backward }
+}
+
+describe('remote chibi under jitter', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it.fails('legacy two-sample lerp stays smooth under 25 ms jitter (documents the freeze / lurch)', () => {
+    const m = runnerSmoothness('legacy', 60)
+    expect(m.maxRatio).toBeLessThanOrEqual(1.6)
+    expect(m.minRatio).toBeGreaterThanOrEqual(0.4)
+    expect(m.backward).toBe(0)
+  })
+
+  it.each([60, 120])('remote chibi moves smoothly under 25 ms jitter at %i Hz', (frameHz) => {
+    const m = runnerSmoothness('remotes', frameHz)
+    expect(m.maxRatio).toBeLessThanOrEqual(1.6)
+    expect(m.minRatio).toBeGreaterThanOrEqual(0.4)
+    expect(m.backward).toBe(0)
   })
 })

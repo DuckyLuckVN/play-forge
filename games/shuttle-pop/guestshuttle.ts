@@ -5,6 +5,7 @@
 // host's answer then replaces it through the same capped, never-snapping correction offset.
 import { CHARGE } from './charge'
 import { settleOnFloor, stepShuttle, type Flight, type Vec3 } from './physics'
+import type { RemoteTracks } from './remotes'
 import { RenderClock } from './renderclock'
 import { chooseShot, launchFor, pickContact, shotTarget, WINDOW, type ContactCandidate } from './shots'
 import { clampDir, MAX_REWIND, type SpState } from './sim'
@@ -73,10 +74,12 @@ interface Stored {
   breaks: number[]
 }
 
-/** What an online guest's render loop owns beyond the interpolated state (grows: Task 7 adds remotes). */
+/** What an online guest's render loop owns beyond the interpolated state . */
 export interface GuestView {
   clock: RenderClock
   shuttle: GuestShuttle
+  /** Remote players on the same clock. */
+  remotes: RemoteTracks
 }
 
 const isFlight = (p: SpState['phase']) => p === 'rally' || p === 'point'

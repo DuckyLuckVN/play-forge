@@ -18,6 +18,8 @@ export function lerpV(a: Vec3, b: Vec3, t: number, out: Vec3): Vec3 {
 
 /** Shuttle moves <= 0.75 m a tick in flight; more is a reset into the server's hand. */
 export const SHUTTLE_SNAP = 2
+/** A player jumping further than this (m, |dx| + |dz|) between two ticks was placed (new serve): snap, don't glide. */
+export const PLAYER_SNAP = 1.5
 
 /** Shuttle draw position between two states; a jump over SHUTTLE_SNAP (a placement) snaps to `curr`. */
 export function interpShuttle(

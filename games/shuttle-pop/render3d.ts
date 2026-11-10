@@ -87,6 +87,7 @@ import {
   interpShuttle,
   isTwinAlt,
   moodOf,
+  PLAYER_SNAP,
   rallyHits,
   viewOf,
   type CameraPose,
@@ -109,8 +110,6 @@ const POST_OUT = 0.25
 const SHUTTLE_R = 0.08
 /** Rim shell radius over the shuttle's. */
 const SHUTTLE_RIM = 1.35
-/** A player jumping further than this between two ticks was placed (new serve): snap, don't glide. */
-const PLAYER_SNAP = 1.5
 /**
  * Motion feel. Weight damping rates (1/s) for the ready stance, the smash crouch and moods; squash and
  * lean springs (stiffness, damping ratio, sub-step) and their kicks (velocity): + squash / − stretch,
@@ -336,6 +335,8 @@ export class Court3D {
   private predictor: GuestPredictor | null = null
   /** Online guests only: the shuttle's smooth clock + flight (null = host / vs-AI: plain interpolation). */
   private guest: GuestView | null = null
+  /** Scratch for GuestView.remotes.sample (no per-frame allocation). */
+  private readonly remote = { x: 0, z: 0, vx: 0, vz: 0 }
   /** Whether our inputs reach the sim now (no prediction while they'd be dropped). */
   private live: () => boolean = () => false
   private board = new Scoreboard()
@@ -532,6 +533,7 @@ export class Court3D {
       this.predictor = null
       this.guest?.clock.reset()
       this.guest?.shuttle.reset()
+      this.guest?.remotes.reset()
       this.guest = null
       this.parking.appendChild(this.view.root)
     }
@@ -541,6 +543,7 @@ export class Court3D {
   private reset() {
     this.guest?.clock.reset()
     this.guest?.shuttle.reset()
+    this.guest?.remotes.reset()
     this.lastShotId = 0
     this.lastHitter = -2
     this.lastTick = -1
@@ -632,7 +635,7 @@ export class Court3D {
     let side: 0 | 1 = 0
     this.localIdx = 0
     this.spectating = true
-    for (let i = 0; i < 2; i++)
+    for (let i = 0; i < curr.players.length; i++)
       if (curr.players[i].id === this.selfId) {
         side = curr.players[i].side
         this.localIdx = i
@@ -645,8 +648,20 @@ export class Court3D {
     }
     const flip = this.flip
 
+    // Online guest: feed the states first (the clock samples its error at frame start), then advance it.
+    const g0 = this.guest
+    if (g0) {
+      g0.clock.onState(prev.tick)
+      g0.clock.onState(curr.tick)
+      g0.shuttle.push(prev)
+      g0.shuttle.push(curr)
+      g0.remotes.push(prev.tick, prev.players)
+      g0.remotes.push(curr.tick, curr.players)
+      g0.clock.update(dt)
+    }
+
     let localX = 0
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < curr.players.length; i++) {
       const cp = curr.players[i]
       const pp = prev.players[i]
       const view = this.players[i]
@@ -660,8 +675,12 @@ export class Court3D {
         // A jump mid-rally is a packet gap, not a placement: correct()'s ≥ 1 m snap handles it.
         pred.update(dt, cp, curr.tick, (placed && curr.phase !== 'rally') || held)
       }
-      const x = (pred ? pred.x : pp.x + (cp.x - pp.x) * t) * flip
-      const z = (pred ? pred.z : pp.z + (cp.z - pp.z) * t) * flip
+      // The predicted local player, else a guest's remote on the render clock, else the plain lerp.
+      const rem = !pred && g0 !== null && g0.remotes.sample(cp.id, this.remote)
+      const px = pred ? pred.x : rem ? this.remote.x : pp.x + (cp.x - pp.x) * t
+      const pz = pred ? pred.z : rem ? this.remote.z : pp.z + (cp.z - pp.z) * t
+      const x = px * flip
+      const z = pz * flip
       const root = view.chibi.root
       root.position.set(x, 0, z)
       if (i === this.localIdx) localX = x
@@ -726,8 +745,8 @@ export class Court3D {
         view.gait.reset(netYaw)
         view.fresh = false
       }
-      const vx = (pred ? pred.vx : pp.vx + (cp.vx - pp.vx) * t) * flip
-      const vz = (pred ? pred.vz : pp.vz + (cp.vz - pp.vz) * t) * flip
+      const vx = (pred ? pred.vx : rem ? this.remote.vx : pp.vx + (cp.vx - pp.vx) * t) * flip
+      const vz = (pred ? pred.vz : rem ? this.remote.vz : pp.vz + (cp.vz - pp.vz) * t) * flip
       const g = view.gait
       const flags = g.update(vx, vz, netYaw, swinging || mood !== 'idle', dt)
       // Footwork: a far, low reach just before my contact lunges toward it (a smash leaps instead).
@@ -776,17 +795,10 @@ export class Court3D {
     const cs = curr.shuttle.pos
     let pos: Vec3 = this.tmp
     let snap: boolean
-    const g = this.guest
-    if (g) {
-      // States first (the clock samples its error at frame start), then the frame.
-      g.clock.onState(prev.tick)
-      g.clock.onState(curr.tick)
-      g.shuttle.push(prev)
-      g.shuttle.push(curr)
-      g.clock.update(dt)
-      g.shuttle.update(dt)
-      pos = g.shuttle.pos
-      snap = g.shuttle.snapped
+    if (g0) {
+      g0.shuttle.update(dt)
+      pos = g0.shuttle.pos
+      snap = g0.shuttle.snapped
     } else {
       snap = interpShuttle(ps, cs, a, this.tmp).snap
     }

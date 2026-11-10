@@ -9,6 +9,7 @@ import { bindInput } from './input'
 import { loadPreset, pickerStrip } from './picker'
 import { GuestShuttle, type GuestView } from './guestshuttle'
 import { GuestPredictor } from './predict'
+import { RemoteTracks } from './remotes'
 import { Court3D, type LocalSwing } from './render3d'
 import { RenderClock } from './renderclock'
 import { scoreText, summaryRows } from './results'
@@ -51,13 +52,13 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
   const live = () => session.phase === 'playing' && !session.lobby.paused
   // Online guests predict their own player (the host and vs-computer already see their state at once).
   const predictor = session.isHost || session.offline ? null : new GuestPredictor()
-  // ...and draw the shuttle from a smooth clock + deterministic flight, so jitter never rubber-bands it.
+  // ...and draw the shuttle (and the other players) from a smooth clock + deterministic flight, so jitter never rubber-bands it.
   const guest: GuestView | null =
     session.isHost || session.offline
       ? null
       : (() => {
           const clock = new RenderClock(session.tickRate)
-          return { clock, shuttle: new GuestShuttle(clock) }
+          return { clock, shuttle: new GuestShuttle(clock), remotes: new RemoteTracks(clock) }
         })()
   const detach = court.attach(stage, smooth, session.selfId, (cb) => (onSwing = cb), predictor, live, guest)
   court.surface.setAttribute('role', 'img')

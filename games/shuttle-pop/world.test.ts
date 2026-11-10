@@ -21,11 +21,12 @@ import {
   correct,
   dampFocus,
   interpShuttle,
-  isTwinAlt,
+  hitterIndex,
   lerpV,
   moodOf,
   rallyHits,
   swingTick,
+  twinAlt,
   viewOf,
 } from './world'
 
@@ -348,11 +349,46 @@ describe('poses', () => {
     expect(moodOf('over', 0, 1, 1)).toBe('sad')
   })
 
-  it('isTwinAlt: only the far player, only on the same preset', () => {
-    expect(isTwinAlt(2, 2, 1, 0)).toBe(true)
-    expect(isTwinAlt(2, 2, 0, 0)).toBe(false)
-    expect(isTwinAlt(2, 2, 0, 1)).toBe(true)
-    expect(isTwinAlt(1, 2, 1, 0)).toBe(false)
+  it('twinAlt: 1v1 — only the far player, only on the same preset', () => {
+    expect(twinAlt([2, 2], 1, 0)).toBe(true)
+    expect(twinAlt([2, 2], 0, 0)).toBe(false)
+    expect(twinAlt([2, 2], 0, 1)).toBe(true)
+    expect(twinAlt([1, 2], 1, 0)).toBe(false)
+  })
+
+  it('twinAlt: 4 distinct looks → nobody tinted', () => {
+    for (let local = 0; local < 4; local++)
+      for (let i = 0; i < 4; i++) expect(twinAlt([0, 1, 2, 3], i, local)).toBe(false)
+  })
+
+  it('twinAlt: the local player owns the look first, else the lowest index', () => {
+    const tinted = (presets: number[], local: number) => presets.map((_, i) => twinAlt(presets, i, local))
+    expect(tinted([1, 1, 3, 0], 0)).toEqual([false, true, false, false])
+    expect(tinted([1, 1, 3, 0], 1)).toEqual([true, false, false, false])
+    expect(tinted([2, 2, 2, 0], 3)).toEqual([false, true, true, false])
+    expect(tinted([2, 2, 2, 0], 2)).toEqual([true, true, false, false])
+    // spectator (localIdx −1): the lowest index owns it
+    expect(tinted([2, 2, 2, 0], -1)).toEqual([false, true, true, false])
+  })
+})
+
+describe('hitterIndex', () => {
+  const players = [
+    { id: 'a', side: 0 as const },
+    { id: 'b', side: 1 as const },
+    { id: 'c', side: 0 as const },
+    { id: 'd', side: 1 as const },
+  ]
+
+  it('finds the hitter by id', () => {
+    expect(hitterIndex(players, { side: 0, by: 'c' })).toBe(2)
+    expect(hitterIndex(players, { side: 1, by: 'd' })).toBe(3)
+  })
+
+  it("falls back to the side's first player on a missing or unknown id", () => {
+    expect(hitterIndex(players, { side: 1 })).toBe(1)
+    expect(hitterIndex(players, { side: 0, by: 'zz' })).toBe(0)
+    expect(hitterIndex(players.slice(0, 2), { side: 1, by: 'd' })).toBe(1)
   })
 })
 

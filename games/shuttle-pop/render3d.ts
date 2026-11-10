@@ -105,7 +105,8 @@ import {
 import { BOARD, surroundOf } from './props'
 import { SP_QUALITY } from './quality'
 import { Park } from './scenery'
-import { TAPPED, type SpEvent, type SpState } from './sim'
+import { isOwnEvent, TAPPED, type SpEvent, type SpState } from './sim'
+import { MAX_SEATS } from './doubles'
 import {
   abilitySound,
   chargeSound,
@@ -134,12 +135,13 @@ import {
   cheerLevel,
   dampFocus,
   framingTightness,
+  hitterIndex,
   interpShuttle,
-  isTwinAlt,
   moodOf,
   NO_TWEAK,
   PLAYER_SNAP,
   rallyHits,
+  twinAlt,
   viewOf,
   type CameraPose,
   type CameraTweak,
@@ -290,7 +292,7 @@ const FULL_SPARK_Y = 0.9
 interface PlayerView {
   chibi: Chibi
   preset: number
-  /** Drawn as the tinted far twin (both sides on the same preset). */
+  /** Drawn as the tinted twin (an earlier player wears the same look: world.ts twinAlt). */
   alt: boolean
   /** Racket swing timeline (wind-up / hold / strike). */
   swing: SwingDriver
@@ -366,7 +368,12 @@ export class Court3D {
   private parking: HTMLElement
   private smooth: Smoothed<SpState> | null = null
   private selfId = ''
-  private players: [PlayerView, PlayerView]
+  /** One view per seat (MAX_SEATS, built once); views past the match's players are hidden. */
+  private players: PlayerView[]
+  /** How many views the last frame showed (−1 = not yet): hiding / showing runs on a change only. */
+  private shownViews = -1
+  /** This frame's looks, one per player (twinAlt; reused). */
+  private presets: number[] = []
   /** The shuttlecock (model/shuttlecock.ts), its quaternion posed by orient.ts. */
   private shuttle: Mesh
   /** Last drawn (render-space, unclamped) shuttle position: the per-frame delta is the velocity it turns to. */
@@ -383,8 +390,8 @@ export class Court3D {
   private halo!: Sprite
   private shMode: ShuttleMode = 'hand'
   /** Each player's opacity while covering the shuttle (visibility.ts stepFades), and this frame's cover. */
-  private fades = [1, 1]
-  private occ = [0, 0]
+  private fades: number[] = []
+  private occ: number[] = []
   /** Reaction bubbles over the chibis (bubbles.ts), and the shuttle's NDC point from updateVisibility (shOn: in front, drawn). */
   private bubbles = new ReactionBubbles()
   private shNdcX = 0
@@ -475,7 +482,7 @@ export class Court3D {
   private hudS0 = -1
   private hudS1 = -1
   private hudSide = -1
-  /** Both seats' looks (preset0 * 64 + preset1): the board's colour dots. */
+  /** Every player's look, packed (1, then × 64 + preset per player): the board's colour dots. */
   private hudLooks = -1
   private fx = new Particles3D(160)
   /** The trail ribbon, styled by the last hit's kind / grade / power (null = a serve) (trail.ts). */
@@ -491,7 +498,7 @@ export class Court3D {
   private sparkAt = 0
   private proj = new Vector3()
   /** When each player's latest pop showed (for stacking). */
-  private lastPop: [number, number] = [-Infinity, -Infinity]
+  private lastPop: number[] = new Array<number>(MAX_SEATS).fill(-Infinity)
   private punch = new SpringPunch(PUNCH.k, PUNCH.zeta, PUNCH.step)
   private dust = new DustPuffs(DUST.capacity, DUST.color, DUST.opacity)
   /** Smash leap sample (reused). */
@@ -540,7 +547,7 @@ export class Court3D {
       this.refitCamera()
     })
 
-    this.players = [makePlayer(0), makePlayer(1)]
+    this.players = Array.from({ length: MAX_SEATS }, (_, i) => makePlayer(i))
     this.fades = this.players.map(() => 1)
     this.occ = this.players.map(() => 0)
     for (const p of this.players) {
@@ -680,12 +687,12 @@ export class Court3D {
     this.ring.visible = true
     this.trail.mesh.visible = true
     this.dust.mesh.visible = true
-    // The fade variants of the (non-twin) chibi materials (one toy program: every chibi's fade reuses it).
-    this.players[0].chibi.setOpacity(0.5)
-    this.players[1].chibi.setOpacity(0.5)
-    // The twin outline + kit materials (both shades), so no material compiles mid-match.
-    this.players[1].chibi.setPreset(1, true)
-    for (const p of this.players) {
+    // Every view's fade materials (per chibi, one toy program), and the twin outline + kit materials (both
+    // shades) on every view but the first, so no material compiles mid-match, 1v1 or 2v2.
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i]
+      p.chibi.setOpacity(0.5)
+      if (i > 0) p.chibi.setPreset(i, true)
       p.chibi.root.traverse((o) => (o.visible = true))
       p.ring.shown = true
       p.cd.shown = true
@@ -695,9 +702,9 @@ export class Court3D {
     // chibis' slow-device shading is uniforms only: the same programs).
     await this.view.renderer.compileAsync(this.view.scene, this.view.camera)
     this.view.render(0)
-    this.players[0].chibi.setOpacity(1)
-    this.players[1].chibi.setOpacity(1)
+    for (const p of this.players) p.chibi.setOpacity(1)
     // Upload every look's merged geometries now (a first-time preset would otherwise upload mid-match).
+    // Per look, not per view: geometries are shared, two views cover both shades.
     for (const k of AVAILABLE_IDS) {
       this.players[0].chibi.setPreset(k)
       this.players[1].chibi.setPreset(k, true)
@@ -706,11 +713,14 @@ export class Court3D {
     this.ring.visible = false
     this.trail.mesh.visible = false
     this.dust.mesh.visible = false
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < this.players.length; i++) {
       this.players[i].chibi.setPreset(i)
       this.players[i].ring.shown = false
       this.players[i].cd.shown = false
+      // Seats 3–4 stay hidden until a 2v2 match shows them (showViews).
+      this.players[i].chibi.root.visible = i < 2
     }
+    this.shownViews = -1
   }
 
   /**
@@ -781,10 +791,11 @@ export class Court3D {
     this.shVel.x = this.shVel.y = this.shVel.z = 0
     this.punch.reset()
     this.dust.reset()
-    this.lastPop[0] = this.lastPop[1] = -Infinity
+    this.lastPop.fill(-Infinity)
     this.drawnOk = false
     this.fades.fill(1)
     this.occ.fill(0)
+    this.shownViews = -1
     for (const p of this.players) {
       p.chibi.setOpacity(1)
       p.swing.reset()
@@ -824,6 +835,25 @@ export class Court3D {
     playSound(swingSound(charge))
   }
 
+  /**
+   * Views 0..n−1 shown, the rest hidden with their rings and stars (a 1v1 ↔ 2v2 rematch reuses the
+   * pool: nothing is built or disposed). Runs on a change of `n` only.
+   */
+  private showViews(n: number) {
+    if (n === this.shownViews) return
+    this.shownViews = n
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i]
+      const on = i < n
+      p.chibi.root.visible = on
+      if (on) continue
+      p.ring.update(-1, 0, 0, 0)
+      p.cd.update(-1, 0, 0, 0)
+      p.stars.group.visible = false
+      p.fresh = true
+    }
+  }
+
   /** Swing `view` now: let a hold go (or press), remember its power for the streak, catch up a hit already seen. */
   private strikeOut(view: PlayerView, charge: number) {
     if (view.swing.holding) view.swing.release()
@@ -858,7 +888,9 @@ export class Court3D {
     let side: 0 | 1 = 0
     this.localIdx = 0
     this.spectating = true
-    for (let i = 0; i < curr.players.length; i++)
+    // One view per seat: never more players than views (MAX_SEATS), so every index below is bounded.
+    const n = Math.min(curr.players.length, this.players.length)
+    for (let i = 0; i < n; i++)
       if (curr.players[i].id === this.selfId) {
         side = curr.players[i].side
         this.localIdx = i
@@ -888,7 +920,11 @@ export class Court3D {
     // Host ticks on screen: a guest's render clock (remotes, the shuttle), else the interpolated tick.
     const renderTick = prev.tick + (curr.tick - prev.tick) * a
     const shownTick = g0 ? g0.clock.tick : renderTick
-    for (let i = 0; i < Math.min(curr.players.length, this.players.length); i++) {
+    this.showViews(n)
+    const presets = this.presets
+    presets.length = n
+    for (let i = 0; i < n; i++) presets[i] = curr.players[i].preset
+    for (let i = 0; i < n; i++) {
       const cp = curr.players[i]
       const pp = prev.players[i]
       const view = this.players[i]
@@ -918,7 +954,7 @@ export class Court3D {
       const root = view.chibi.root
       root.position.set(x + (act ? act.dx * slide : 0), 0, z + (act ? act.dz * slide : 0))
       if (i === this.localIdx) localX = x
-      const alt = isTwinAlt(curr.players[0].preset, curr.players[1].preset, i, this.localIdx)
+      const alt = twinAlt(presets, i, this.spectating ? -1 : this.localIdx)
       if (cp.preset !== view.preset || alt !== view.alt) {
         view.preset = cp.preset
         view.alt = alt
@@ -965,7 +1001,8 @@ export class Court3D {
       // its wind-up, or hurries, so the strike meets the shuttle on the contact tick (a hit that already
       // happened tells the driver in onHit). A smash also schedules the leap so its rise tops out there
       // (once per pending shot).
-      const pend = curr.shuttle.pending
+      // The swinger's own contact (by id: a teammate on the same side doesn't wind up for it).
+      const pend = curr.shuttle.pending?.id === cp.id ? curr.shuttle.pending : null
       const due = pendingDue(pend, cp.side, prev.tick + (curr.tick - prev.tick) * a, TICK_RATE)
       view.swing.update(dt, due)
       const loading = due !== undefined && pend!.kind === 'smash'
@@ -1256,7 +1293,7 @@ export class Court3D {
       this.rally = rallyHits(this.rally, e.k)
       // The opponent hits / serves: split step, landing ready.
       if (e.k === 'hit' || e.k === 'serve')
-        for (let n = 0; n < 2; n++) {
+        for (let n = 0; n < Math.min(s.players.length, this.players.length); n++) {
           const v = this.players[n]
           const airborne = (v.jumpAge >= 0 && v.jumpAge < SMASH.end) || v.arc.lift > 0 || v.arc.dive > 0
           if (splitsOn(e.k, e.side, s.players[n].side) && canSplit(v.gait.speed, v.foot.lunge, airborne))
@@ -1280,10 +1317,10 @@ export class Court3D {
         this.pointSide = e.side
         if (this.pointHits >= CHEER.rally) playSound(SHUTTLE_SOUNDS.cheer)
       } else if (e.k === 'hit') {
-        this.onHit(s, e.side, e.grade, e.shot === 'smash', e.power ?? 0, e.act === 'jump')
+        this.onHit(s, e, e.grade, e.shot === 'smash', e.power ?? 0, e.act === 'jump')
         this.setTrailShot(e.shot, e.grade, e.power ?? 0)
       } else if (e.k === 'serve') this.setTrailShot(e.shot ?? null, null, 0)
-      else if (e.k === 'whiff' && !this.spectating && e.side === this.side)
+      else if (e.k === 'whiff' && !this.spectating && isOwnEvent(e, this.side, this.selfId))
         this.popAt(this.localIdx, 'miss', false)
       else if (e.k === 'actLand') this.onActLand(s, e.side, e.act, e.tick)
       else if (e.k === 'bonk') this.onBonk(s, e.who)
@@ -1361,14 +1398,16 @@ export class Court3D {
 
   private onHit(
     s: SpState,
-    side: 0 | 1,
+    e: { side: 0 | 1; by?: string },
     grade: Exclude<PopKind, 'power' | 'miss'>,
     smash: boolean,
     power: number,
     jump = false,
   ) {
-    const j = s.players[0].side === side ? 0 : 1
-    const mine = this.spectating || side === this.side
+    const j = hitterIndex(s.players, e)
+    if (j < 0 || j >= this.players.length) return
+    const own = !this.spectating && isOwnEvent(e, this.side, this.selfId)
+    const mine = this.spectating || own
     const big = isPowerHit(power)
     this.popAt(j, big ? 'power' : grade, smash)
     // The hit is happening now: a racket still on its way to contact hurries to meet it (a press seen
@@ -1396,7 +1435,7 @@ export class Court3D {
           (jump ? JUMP_PUNCH : 1),
       )
     } else if (power > 0) this.punch.kick(POWER_FX.hitKick * power * (mine ? 1 : 0.5))
-    if (big && !this.spectating && side === this.side) {
+    if (big && own) {
       try {
         navigator.vibrate?.(POWER_FX.buzz)
       } catch {
@@ -1425,7 +1464,8 @@ export class Court3D {
    * server, score, our side or the looks change. The opponent's serve shows as the board's shuttle icon.
    */
   private updateHud(s: SpState) {
-    const looks = s.players[0].preset * 64 + s.players[1].preset
+    let looks = 1
+    for (let i = 0; i < s.players.length; i++) looks = looks * 64 + s.players[i].preset
     if (
       s.phase === this.hudPhase &&
       s.server === this.hudServer &&

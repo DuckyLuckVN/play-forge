@@ -255,9 +255,30 @@ export function moodOf(
   return won === -1 ? 'idle' : won === side ? 'happy' : 'sad'
 }
 
-/** Same preset on both sides: the far player (`i` ≠ the near `localIdx`) is drawn as the tinted twin. */
-export function isTwinAlt(preset0: number, preset1: number, i: number, localIdx: number): boolean {
-  return preset0 === preset1 && i !== localIdx
+/**
+ * Player `i` of `presets` (one look per player) is drawn as the tinted twin when an earlier owner of
+ * the same look exists: the local player (`localIdx`; −1 = spectator) owns their look first, else the
+ * lowest index owns it. 1v1 matches the old rule: same look on both sides → the far player is tinted.
+ */
+export function twinAlt(presets: readonly number[], i: number, localIdx: number): boolean {
+  if (i === localIdx) return false
+  const look = presets[i]
+  if (localIdx >= 0 && localIdx < presets.length && presets[localIdx] === look) return true
+  for (let j = 0; j < i; j++) if (presets[j] === look) return true
+  return false
+}
+
+/** Index of the player who made event `e` (`e.by`), else the first player on `e.side` (−1: none). */
+export function hitterIndex(
+  players: readonly { id: string; side: 0 | 1 }[],
+  e: { side: 0 | 1; by?: string },
+): number {
+  let first = -1
+  for (let i = 0; i < players.length; i++) {
+    if (e.by !== undefined && players[i].id === e.by) return i
+    if (first < 0 && players[i].side === e.side) first = i
+  }
+  return first
 }
 
 /** Crowd tuning: cheers from a rally of `rally` hits, and for `pointTime` s after every point. */

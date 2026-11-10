@@ -97,6 +97,29 @@ export const VI: Dictionary = {
   'Play again': 'Chơi lại',
   'Back to menu': 'Về menu',
   'Game over': 'Kết thúc',
+
+  // Control guide (engine/ui/guide.ts). Key names on keycaps stay as printed (Space, Esc, W…).
+  'How to play': 'Cách chơi',
+  'Got it': 'Đã hiểu',
+  or: 'hoặc',
+  hold: 'giữ',
+  'Up arrow': 'Mũi tên lên',
+  'Down arrow': 'Mũi tên xuống',
+  'Left arrow': 'Mũi tên trái',
+  'Right arrow': 'Mũi tên phải',
+  Click: 'Nhấp chuột',
+  'Hold the mouse button': 'Giữ chuột',
+  'Drag with the mouse': 'Kéo chuột',
+  Scroll: 'Cuộn chuột',
+  'Right-click': 'Nhấp chuột phải',
+  Tap: 'Chạm',
+  'Double-tap': 'Chạm hai lần',
+  'Touch and hold': 'Chạm và giữ',
+  Swipe: 'Vuốt',
+  'Swipe up': 'Vuốt lên',
+  Drag: 'Kéo',
+  'Drag on the left side': 'Kéo ở nửa trái màn hình',
+  'Tap the button': 'Chạm nút',
 }
 
 export const t = translator(VI)

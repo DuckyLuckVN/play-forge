@@ -1,0 +1,143 @@
+@layer pf.components {
+  /* ---------- Control guide: rows of keycaps and input icons (engine/ui/guide.ts) ---------- */
+
+  /* Modal layer over the overlay (start / pause screens) and the stage (first play). */
+  .pf-guide-layer {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--pf-space-6);
+    background: rgb(10 12 30 / 0.6);
+    z-index: var(--pf-z-guide);
+    overflow-y: auto;
+    animation: pf-fade 200ms ease-out;
+  }
+  .pf-guide-panel {
+    width: min(480px, 100%);
+    gap: var(--pf-space-5);
+    margin: auto;
+  }
+  .pf-guide-card {
+    display: grid;
+    gap: var(--pf-space-4);
+  }
+  .pf-guide-title {
+    margin: 0;
+    font-size: var(--pf-fs-xl);
+    font-weight: var(--pf-fw-bold);
+    text-align: center;
+  }
+
+  .pf-guide {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+  }
+  .pf-guide-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--pf-space-5);
+    padding: var(--pf-space-4) 0;
+    min-height: 44px;
+  }
+  .pf-guide-row + .pf-guide-row {
+    border-top: 2px dashed var(--pf-rim);
+  }
+  .pf-guide-action {
+    display: grid;
+    gap: var(--pf-space-1);
+    font-weight: var(--pf-fw-semi);
+    font-size: var(--pf-fs-base);
+    line-height: 1.2;
+  }
+  .pf-guide-note {
+    color: var(--pf-haze);
+    font-size: var(--pf-fs-sm);
+    font-weight: 400;
+  }
+  .pf-guide-inputs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--pf-space-3);
+    flex-shrink: 0;
+    max-width: 62%;
+  }
+  .pf-guide-or,
+  .pf-guide-hold {
+    color: var(--pf-haze);
+    font-size: var(--pf-fs-xs);
+  }
+  .pf-guide-hold {
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: var(--pf-fw-semi);
+    color: var(--pf-yolk);
+  }
+  .pf-guide-icon {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--pf-space-2);
+    color: var(--pf-sky);
+  }
+  .pf-guide-touch {
+    color: var(--pf-haze);
+    font-size: var(--pf-fs-sm);
+  }
+
+  /* Keycaps: chunky like the buttons, at text size. */
+  .pf-keys {
+    display: inline-flex;
+    gap: 3px;
+  }
+  .pf-key {
+    display: inline-grid;
+    place-items: center;
+    min-width: 28px;
+    height: 28px;
+    padding: 0 var(--pf-space-3);
+    font: var(--pf-fw-semi) var(--pf-fs-md) / 1 var(--pf-font);
+    color: var(--pf-chalk);
+    background: var(--pf-pit);
+    border: 2px solid var(--pf-rim);
+    border-bottom-width: 4px;
+    border-radius: var(--pf-radius-sm);
+  }
+  .pf-key.wide {
+    padding: 0 var(--pf-space-4);
+  }
+
+  .pf-guide-btn {
+    justify-self: center;
+  }
+
+  /* Read by screen readers, not shown. */
+  .pf-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* Phones on their side: tighter rows so the whole card fits. */
+  @media (max-height: 500px) {
+    .pf-guide-layer {
+      padding: var(--pf-space-4);
+    }
+    .pf-guide-panel {
+      --pf-panel-pad: var(--pf-space-6);
+      gap: var(--pf-space-4);
+    }
+    .pf-guide-row {
+      min-height: 38px;
+      padding: var(--pf-space-2) 0;
+    }
+  }
+}

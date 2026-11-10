@@ -46,7 +46,7 @@ function firstArg(src: string, i: number): string {
 // Places where a string literal becomes visible text or an accessible name.
 const SINKS = [
   // { textContent: '…' }, { title: '…' }, headline: '…', option label: '…'
-  /\b(?:textContent|innerText|title|placeholder|alt|ariaLabel|tagline|controls|headline|label)\s*:\s*(['"`])((?:\\.|(?!\1).)*)\1/g,
+  /\b(?:textContent|innerText|title|placeholder|alt|ariaLabel|tagline|controls|headline|label|action)\s*:\s*(['"`])((?:\\.|(?!\1).)*)\1/g,
   // el.textContent = '…'
   /\.(?:textContent|innerText|title|placeholder|alt)\s*=\s*(['"`])((?:\\.|(?!\1).)*)\1/g,
   // setAttribute('aria-label', '…')

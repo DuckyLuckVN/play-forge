@@ -83,6 +83,8 @@ Solo-only games set `maxPlayers: 1`: the start screen then shows just **Play**, 
 
 Landscape-only games call `landscapeGuard(stage, onChange)` (`engine/ui/landscape.ts`): a "Rotate your phone" card while a touch phone is upright, plus a landscape lock in fullscreen (`lockLandscape`, released on cleanup); pause or let go of held controls in `onChange` (see `games/shuttle-pop`). A seat that isn't in the lobby (the computer) gets its own colour and avatar on the top-bar score chip by returning `name`, `slot` and `avatar` from `scores()`.
 
+Controls go in `createGameApp({ guide })` as `GuideStep`s (`engine/ui/guide.ts`): rows of keycaps (`keys: [['W', 'A', 'S', 'D'], ['Up', 'Left', 'Down', 'Right']]`, arrows print as glyphs), a mouse icon (`mouse: 'click'`) and a touch icon (`touch: 'button'`), each device seeing only its own rows. The shell adds a Pause (Esc / P) row, a "How to play" button on the start and pause screens, and shows the card once before a player's first match (`play-forge:guide-seen:<id>`; solo waits for "Got it", online shows it in the room so it never holds up a match). The older `controls` text still works for games without a guide (see `games/shuttle-pop`).
+
 Heavy setup (building a 3D scene, compiling shaders) goes in `createGameApp({ preload })`: it starts at page load and the start button shows "Loading…" until it's done, so play never freezes on start.
 
 ## Deploy

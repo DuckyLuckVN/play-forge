@@ -67,6 +67,7 @@
     --pf-z-notice: 5; /* first-seen hints over a board */
     --pf-z-overlay: 10; /* modal overlay */
     --pf-z-countdown: 11;
+    --pf-z-guide: 11; /* control guide card over the overlay (engine/ui/guide.ts) */
     --pf-z-rotate: 12; /* phones: rotate-your-phone card, under the bar */
     --pf-z-bar: 15; /* top bar: above the overlay */
     --pf-z-toast: 20;

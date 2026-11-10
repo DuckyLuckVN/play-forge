@@ -39,6 +39,12 @@ describe('untranslatedText', () => {
     ])
   })
 
+  it('flags a control guide step action', () => {
+    expect(untranslatedText("guide: [{ action: 'Move', keys: [['W']] }, { action: t('Swing') }]")).toEqual([
+      'Move',
+    ])
+  })
+
   it('passes translated text, symbols, numbers, comments and allowed names', () => {
     const src = [
       "h('p', { textContent: t('Game over') })",

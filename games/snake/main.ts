@@ -16,7 +16,16 @@ createGameApp<SnakeState, Direction>({
   def: snakeGame,
   title: 'Snake',
   tagline: t('Eat, grow, and be the last snake moving.'),
-  controls: t('Steer with the arrow keys or WASD. On a phone, swipe.'),
+  guide: [
+    {
+      action: t('Steer'),
+      keys: [
+        ['W', 'A', 'S', 'D'],
+        ['Up', 'Left', 'Down', 'Right'],
+      ],
+      touch: 'swipe',
+    },
+  ],
   mount(session, stage) {
     const view = createCanvas2D(stage, 32 * CELL, 24 * CELL)
     const smooth = smoothState(session)

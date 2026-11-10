@@ -5,8 +5,7 @@ import { translator, type Dictionary } from '@forge/core/i18n'
 export const VI: Dictionary = {
   // Start screen
   'Eat, grow, and be the last snake moving.': 'Ăn, lớn lên, và là con rắn cuối cùng còn bò.',
-  'Steer with the arrow keys or WASD. On a phone, swipe.':
-    'Lái bằng phím mũi tên hoặc WASD. Trên điện thoại, vuốt màn hình.',
+  Steer: 'Lái',
 
   // Options
   Speed: 'Tốc độ',

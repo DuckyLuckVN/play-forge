@@ -21,8 +21,12 @@ export const VI: Dictionary = {
   // Start screen
   'Five in a row on notebook paper. Beat the computer, a friend beside you, or anyone online.':
     'Năm con liên tiếp trên giấy ô ly. Thắng máy, thắng bạn ngồi cạnh, hoặc bất kỳ ai trực tuyến.',
-  'Click a square to play (on a phone, tap twice). Arrow keys and Enter work too. Press D to draw on the board, U to undo.':
-    'Bấm vào một ô để đánh (trên điện thoại, chạm hai lần). Cũng dùng được phím mũi tên và Enter. Nhấn D để vẽ lên bàn cờ, U để đi lại.',
+  'Place a piece': 'Đánh một quân',
+  'On a phone, tap twice': 'Trên điện thoại, chạm hai lần',
+  'Move the cursor': 'Di chuyển con trỏ',
+  'Draw on the board': 'Vẽ lên bàn cờ',
+  'Five in a row wins': 'Năm quân liên tiếp là thắng',
+  'Across, down or diagonal': 'Ngang, dọc hoặc chéo',
 
   // Players and turns
   Computer: 'Máy',
@@ -57,6 +61,7 @@ export const VI: Dictionary = {
 
   // Toolbar
   'Undo ({n})': 'Đi lại ({n})',
+  Undo: 'Đi lại',
   Resign: 'Đầu hàng',
   'Sure? Tap again': 'Chắc chưa? Bấm lần nữa',
   Draw: 'Vẽ',

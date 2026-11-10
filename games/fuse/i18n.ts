@@ -19,8 +19,12 @@ export const VI: Dictionary = {
   // Start screen
   'Slide, fuse, chase huge numbers. Smash rocks, chain combos, race your friends.':
     'Trượt, ghép, săn những con số khổng lồ. Đập đá, nối combo, đua cùng bạn bè.',
-  'Swipe or use the arrow keys to slide every tile. Two equal tiles fuse into one. Merges next to a rock crack it. B (or the bomb button) blasts one tile. U undoes.':
-    'Vuốt hoặc dùng phím mũi tên để trượt mọi ô. Hai ô bằng nhau ghép thành một. Ghép cạnh hòn đá sẽ làm nó nứt. B (hoặc nút bom) phá một ô. U để đi lại.',
+  'Slide every tile': 'Trượt mọi ô',
+  'Two equal tiles fuse into one': 'Hai ô bằng nhau ghép thành một',
+  'Merges next to a rock crack it': 'Ghép cạnh hòn đá sẽ làm nó nứt',
+  'Blast one tile': 'Phá một ô',
+  bomb: 'bom',
+  undo: 'đi lại',
 
   // Board and HUD
   'Fuse board': 'Bàn chơi Fuse',
@@ -49,6 +53,7 @@ export const VI: Dictionary = {
   'Tap a tile to blast': 'Chạm một ô để phá',
   'Blast ({n})': 'Bom ({n})',
   'Undo ({n})': 'Đi lại ({n})',
+  Undo: 'Đi lại',
 
   // Results
   'New best! {score} points': 'Kỷ lục mới! {score} điểm',

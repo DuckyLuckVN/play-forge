@@ -246,12 +246,21 @@ createGameApp<StrideState, StrideInput>({
   def: synthstride,
   title: 'Synthstride',
   tagline: t('Step to the beat. Dodge what lands on it.'),
-  controls: t(
-    `←↑↓→ / WASD, tap or swipe: step
-🥁 Step on the beat: points + groove
-⚠️ Dashed → striped → strike · ◐ = between beats
-🎵 Notes in order · ⚡ Space: Overdrive`,
-  ),
+  guide: [
+    {
+      action: t('Step'),
+      note: t('Tap or swipe'),
+      keys: [
+        ['W', 'A', 'S', 'D'],
+        ['Up', 'Left', 'Down', 'Right'],
+      ],
+      touch: 'swipe',
+    },
+    { action: t('🥁 Step on the beat'), note: t('Points + groove'), tip: true },
+    { action: t('⚠️ Dashed → striped → strike'), note: t('◐ = between beats'), tip: true },
+    { action: t('🎵 Collect notes in order'), tip: true },
+    { action: t('⚡ Overdrive'), keys: [['Space']], touch: 'tap', touchLabel: t('the ring') },
+  ],
   // The soundtrack is played from the game's own beat clock (see scheduleBeat).
   music: null,
   mount,

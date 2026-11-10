@@ -40,6 +40,17 @@ describe('keycap', () => {
 })
 
 describe('guideRows', () => {
+  it('shows a tip on every device, even with no inputs', () => {
+    const steps = [
+      { action: 'Move', keys: [['W']] },
+      { action: 'Step on the beat', note: 'points + groove', tip: true },
+    ]
+    for (const touch of [false, true]) {
+      const tip = guideRows(steps, touch).find((r) => r.action === 'Step on the beat')
+      expect(tip).toEqual({ action: 'Step on the beat', note: 'points + groove', hold: false, inputs: [] })
+    }
+  })
+
   it('desktop: keys and mouse joined by "or", touch-only rows hidden', () => {
     const rows = guideRows(STEPS, false)
     expect(rows.map((r) => r.action)).toEqual(['Move', 'Swing', 'Charge', 'Smash'])

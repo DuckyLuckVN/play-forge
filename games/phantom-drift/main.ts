@@ -169,9 +169,24 @@ createGameApp<DriftState, DriftInput>({
   bumpScores: false,
   title: 'Phantom Drift',
   tagline: t('Drift through the rift. Dodge, graze, go Phantom.'),
-  controls: t(
-    'Move with ←/→ or A/D, swipe, tap either side, or hold and slide. Space, ↑ or swipe up turns you Phantom when the ring is full.',
-  ),
+  guide: [
+    {
+      action: t('Move'),
+      note: t('Or swipe, or hold and slide'),
+      keys: [
+        ['A', 'D'],
+        ['Left', 'Right'],
+      ],
+      touch: 'tap',
+      touchLabel: t('either side'),
+    },
+    {
+      action: t('Go Phantom'),
+      note: t('When the ring is full'),
+      keys: [['Space'], ['Up']],
+      touch: 'swipeUp',
+    },
+  ],
   music: DRIFT_TRACK,
   preload,
   mount,

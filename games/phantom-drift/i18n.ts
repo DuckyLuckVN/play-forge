@@ -4,8 +4,11 @@ import { translator, type Dictionary } from '@forge/core/i18n'
 
 export const VI: Dictionary = {
   'Drift through the rift. Dodge, graze, go Phantom.': 'Lướt qua khe nứt. Né, sượt qua, hóa Bóng ma.',
-  'Move with ←/→ or A/D, swipe, tap either side, or hold and slide. Space, ↑ or swipe up turns you Phantom when the ring is full.':
-    'Di chuyển bằng ←/→ hoặc A/D, vuốt, chạm hai bên, hoặc giữ và trượt. Space, ↑ hoặc vuốt lên để hóa Bóng ma khi vòng đầy.',
+  Move: 'Di chuyển',
+  'Or swipe, or hold and slide': 'Hoặc vuốt, hoặc giữ và trượt',
+  'either side': 'hai bên',
+  'Go Phantom': 'Hóa Bóng ma',
+  'When the ring is full': 'Khi vòng đầy',
   'Phantom Drift rift': 'Khe nứt Phantom Drift',
   // Run summary
   Distance: 'Quãng đường',

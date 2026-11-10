@@ -1,7 +1,7 @@
 // Computer opponent: per-tick inputs for an AI seat. Pure; rng injected (the sim's seeded rng).
 // The plan (where to stand, when to swing, which shot) is computed once per incoming shot, reactTicks
 // after the opponent's hit, and cached in BotMemory (plain data, lives in SpPlayer → JSON-safe).
-import { COURT, isIn, predictLanding, stepShuttle, type Flight } from './physics'
+import { COURT, isIn, predictLanding, stepShuttle, type CourtDims, type Flight } from './physics'
 import { findContact, REACH, WINDOW, type Grade } from './shots'
 import { CHARGE } from './charge'
 import { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld } from './court'
@@ -68,7 +68,7 @@ export interface BotMemory {
 /** Server swings this many ticks into the serve phase (well under SERVE_TIMEOUT). */
 export const BOT_SERVE_TICKS = 30
 const LONG_SERVE_P = 0.35
-/** Ready position depth, metres from the net. */
+/** Ready position depth on the Normal court, metres from the net (readyDepth scales it). */
 const BASE_Z = 3.2
 /** Stand this far beside the shuttle's path at the meet point (closest approach = meet tick). */
 const SIDE_OFFSET = 0.4
@@ -88,8 +88,13 @@ const CHARGE_NEAR = 0.35
 /** Move input eases off within this distance of the target (no overshoot). */
 const ARRIVE = 0.5
 const STOP = 0.03
-const MOVE_LIMIT_X = COURT.halfWidth + 0.75
-const MOVE_LIMIT_Z = COURT.halfLen + 0.75
+/** How far past the lines (m) the bot will plan to stand. */
+const MOVE_PAST_LINE = 0.75
+
+/** Ready position depth (m from the net) on `court`: BASE_Z stretched with the court's length. */
+export function readyDepth(court: CourtDims): number {
+  return BASE_Z * (court.halfLen / COURT.halfLen)
+}
 
 /** seed: the match seed; each side gets its own stream. */
 export const newBotMemory = (seed: number, side: 0 | 1): BotMemory => ({
@@ -129,16 +134,17 @@ function swingOffset(g: GradeRoll, rng: () => number): number {
   return randInt(rng, WINDOW.pastGrace + 1, WINDOW.pastGrace + 3)
 }
 
-/** Within NEAR_LINE of a side or back line. */
-const nearLine = (p: { x: number; z: number }) =>
-  Math.abs(Math.abs(p.x) - COURT.halfWidth) <= NEAR_LINE ||
-  Math.abs(Math.abs(p.z) - COURT.halfLen) <= NEAR_LINE
+/** Within NEAR_LINE of one of `court`'s side or back lines. */
+const nearLine = (p: { x: number; z: number }, court: CourtDims) =>
+  Math.abs(Math.abs(p.x) - court.halfWidth) <= NEAR_LINE ||
+  Math.abs(Math.abs(p.z) - court.halfLen) <= NEAR_LINE
 
 const onMyHalf = (z: number, side: 0 | 1) => (side === 0 ? z < 0 : z > 0)
 
-function clampTarget(t: { x: number; z: number }, side: 0 | 1) {
-  t.x = Math.max(-MOVE_LIMIT_X, Math.min(MOVE_LIMIT_X, t.x))
-  const a = Math.max(NET_MARGIN + 0.05, Math.min(MOVE_LIMIT_Z, Math.abs(t.z)))
+function clampTarget(t: { x: number; z: number }, side: 0 | 1, court: CourtDims) {
+  const limX = court.halfWidth + MOVE_PAST_LINE
+  t.x = Math.max(-limX, Math.min(limX, t.x))
+  const a = Math.max(NET_MARGIN + 0.05, Math.min(court.halfLen + MOVE_PAST_LINE, Math.abs(t.z)))
   t.z = side === 0 ? -a : a
 }
 
@@ -190,10 +196,10 @@ function plan(s: SpState, side: 0 | 1, level: BotLevel, mem: BotMemory, rng: () 
   mem.plannedSwingTick = -1
   mem.plannedChargeTick = -1
   // Leave shots that go into the net or out (near-line calls can be misjudged on low levels).
-  let callIn = isIn(land.pos, side)
-  if (nearLine(land.pos) && rng() < L.misjudge) callIn = !callIn
+  let callIn = isIn(land.pos, side, s.court)
+  if (nearLine(land.pos, s.court) && rng() < L.misjudge) callIn = !callIn
   if (land.netHit || !callIn) {
-    mem.target = { x: 0, z: back * BASE_Z }
+    mem.target = { x: 0, z: back * readyDepth(s.court) }
     return
   }
   const grade = rollGrade(level, rng)
@@ -203,7 +209,7 @@ function plan(s: SpState, side: 0 | 1, level: BotLevel, mem: BotMemory, rng: () 
   const meet = meetSpot(s, side, level, meetY, land.ticks)
   const high = smashTry && grade !== 'whiff' && meet !== null && meet.y >= REACH.smashY
   const target = meet ? { x: meet.x, z: meet.z } : { x: land.pos.x, z: land.pos.z + back * SIDE_OFFSET }
-  clampTarget(target, side)
+  clampTarget(target, side, s.court)
   mem.target = target
   const c = findContact(s.shuttle, target, 0, land.ticks)
   if (!c) return
@@ -272,10 +278,11 @@ export function botStep(
   if (s.phase !== 'rally') return charging ? [STILL, UNCHARGE] : [STILL]
   const opp: 0 | 1 = side === 0 ? 1 : 0
   const back = side === 0 ? -1 : 1
+  const home = { x: 0, z: back * readyDepth(s.court) }
   if (s.shuttle.lastHitter !== opp) {
     mem.targetAt = -1
-    const home = moveToward(s, side, level, { x: 0, z: back * BASE_Z })
-    return charging ? [home, UNCHARGE] : [home]
+    const toHome = moveToward(s, side, level, home)
+    return charging ? [toHome, UNCHARGE] : [toHome]
   }
   // The shot's event outlives reactTicks; once it scrolls out of the log the cached plan still holds.
   const shot = lastShotTick(s, opp)
@@ -286,7 +293,7 @@ export function botStep(
   }
   const planned = mem.targetAt >= 0 && (shot < 0 || mem.targetAt === planAt)
   // Still reacting: drift back toward base until the plan is made.
-  const to = planned ? mem.target : { x: 0, z: back * BASE_Z }
+  const to = planned ? mem.target : home
   const out: SpInput[] = [moveToward(s, side, level, to)]
   const me = s.players[side]
   if (

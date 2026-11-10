@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { botStep, LEVELS, NEAR_LINE, newBotMemory, type BotLevel } from './ai'
+import { botStep, LEVELS, NEAR_LINE, newBotMemory, readyDepth, type BotLevel } from './ai'
 import type { InputEvent } from '@forge/net/session'
 import { COURT } from './physics'
+import { COURT_SIZES, courtDims } from './courtsize'
+import { toWorld } from './court'
 import {
   setupBots,
   shuttlePopGame as game,
@@ -169,6 +171,54 @@ describe('computer opponent', () => {
         if (m.winner === hardSide) hardWins++
       }
       expect(hardWins / n).toBeGreaterThanOrEqual(0.8)
+    },
+    SLOW,
+  )
+})
+
+describe('bigger courts', () => {
+  it('ready spot scales with the court', () => {
+    expect(readyDepth(COURT)).toBe(3.2)
+    const xl = courtDims('xl')
+    expect(readyDepth(xl)).toBeCloseTo(3.2 * 1.3)
+    const s = setupBots('normal', 'normal', 3, 'xl')
+    const home = { x: 0, z: readyDepth(xl) }
+    // Find side 1's first hit, then watch its move input while its own shot is in the air.
+    let lastId = s.nextEventId - 1
+    let hitAt = -1
+    while (hitAt < 0 && s.phase !== 'over' && s.tick < MATCH_CAP) {
+      game.tick(s, [])
+      for (const e of s.events) if (e.id > lastId && e.k === 'hit' && e.side === 1) hitAt = e.tick
+      lastId = s.nextEventId - 1
+    }
+    expect(hitAt).toBeGreaterThanOrEqual(0)
+    let checked = 0
+    for (let i = 0; i < 20 && s.phase === 'rally' && s.shuttle.lastHitter === 1; i++) {
+      const me = s.players[1]
+      const mem = structuredClone(me.bot!)
+      const [move] = botStep(s, 1, 'normal', mem, () => 0.5)
+      const v = toWorld(1, move.t === 'move' ? move.x : 0, move.t === 'move' ? move.z : 0)
+      const to = { x: home.x - me.x, z: home.z - me.z }
+      const d = Math.hypot(to.x, to.z)
+      if (d > 0.1) {
+        // Heads straight for the XL ready spot (not Normal's 3.2 m).
+        expect((v.x * to.x + v.z * to.z) / (Math.hypot(v.x, v.z) * d)).toBeGreaterThan(0.999)
+        checked++
+      }
+      game.tick(s, [])
+    }
+    expect(checked).toBeGreaterThanOrEqual(5)
+  })
+
+  it(
+    'bot v bot matches finish with real rallies at every size',
+    () => {
+      for (const size of COURT_SIZES) {
+        const s = setupBots('hard', 'hard', 11, size)
+        while (s.phase !== 'over' && s.tick < 20 * 60 * TICK_RATE) game.tick(s, [])
+        expect(s.phase, size).toBe('over')
+        expect(s.stats.longest, size).toBeGreaterThanOrEqual(4)
+      }
     },
     SLOW,
   )

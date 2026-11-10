@@ -5,7 +5,9 @@
 import { describe, expect, it } from 'vitest'
 import { random } from '@forge/core/rng'
 import type { InputEvent } from '@forge/net/session'
-import { COURT, isIn, predictLanding, stepShuttle, type Flight } from './physics'
+import { isIn, predictLanding, stepShuttle, type Flight } from './physics'
+import { readyDepth } from './ai'
+import { type CourtSize } from './courtsize'
 import { findContact, launchFor, REACH, shotTarget, type ShotKind } from './shots'
 import {
   createState,
@@ -152,7 +154,7 @@ function moveTo(s: SpState, side: 0 | 1, to: { x: number; z: number }): SpInput 
 /** The scripted human's inputs this tick. */
 function humanStep(s: SpState, side: 0 | 1, m: HumanMem, H: Profile): SpInput[] {
   const back = side === 0 ? -1 : 1
-  const base = { x: 0, z: back * BASE_Z }
+  const base = { x: 0, z: back * readyDepth(s.court) }
   if (s.phase === 'serve') {
     m.planFor = -1
     m.releaseAt = -1
@@ -185,9 +187,9 @@ function humanStep(s: SpState, side: 0 | 1, m: HumanMem, H: Profile): SpInput[] 
     m.planFor = shot
     const land = predictLanding(s.shuttle)
     const nearLine =
-      Math.abs(Math.abs(land.pos.x) - COURT.halfWidth) < H.unsureLine ||
-      Math.abs(Math.abs(land.pos.z) - COURT.halfLen) < H.unsureLine
-    m.play = !land.netHit && (nearLine ? random(m.rng) < 0.5 : isIn(land.pos, side))
+      Math.abs(Math.abs(land.pos.x) - s.court.halfWidth) < H.unsureLine ||
+      Math.abs(Math.abs(land.pos.z) - s.court.halfLen) < H.unsureLine
+    m.play = !land.netHit && (nearLine ? random(m.rng) < 0.5 : isIn(land.pos, side, s.court))
     const spot = meet(s, side)
     m.target = { x: spot.x + gauss(m) * H.posSigma, z: spot.z + gauss(m) * H.posSigma }
     if (random(m.rng) < H.depthMiss) m.target.z += (random(m.rng) < 0.5 ? -1 : 1) * H.depthBy
@@ -237,10 +239,11 @@ interface BalanceStats {
   speeds: Partial<Record<ShotKind, number[]>>
 }
 
-/** One match: scripted human (side 0) vs the computer at `level`. */
-function humanVsBot(H: Profile, level: Level, seed: number): BalanceStats {
+/** One match: scripted human (side 0) vs the computer at `level`, on the `size` court. */
+function humanVsBot(H: Profile, level: Level, seed: number, size: CourtSize = 'normal'): BalanceStats {
   const s = createState([{ id: 'me', name: 'Me', slot: 0, ready: true, connected: true }], seed, {
     solo: level,
+    court: size,
   })
   const m = newHuman(seed)
   const st: BalanceStats = { humanWon: false, points: [0, 0], shots: [], seconds: 0, speeds: {} }
@@ -277,15 +280,21 @@ interface Row {
   minutes: number
 }
 
-/** `n` deterministic matches of profile `H` vs `level`; launch speeds are pooled into `speeds`. */
-function gauge(H: Profile, level: Level, n: number, speeds: Partial<Record<ShotKind, number[]>> = {}): Row {
+/** `n` deterministic matches of profile `H` vs `level` on `size`; launch speeds are pooled into `speeds`. */
+function gauge(
+  H: Profile,
+  level: Level,
+  n: number,
+  speeds: Partial<Record<ShotKind, number[]>> = {},
+  size: CourtSize = 'normal',
+): Row {
   let win = 0
   let mine = 0
   let all = 0
   const shots: number[] = []
   const secs: number[] = []
   for (let i = 1; i <= n; i++) {
-    const r = humanVsBot(H, level, 1000 * i + 7)
+    const r = humanVsBot(H, level, 1000 * i + 7, size)
     if (r.humanWon) win++
     mine += r.points[0]
     all += r.points[0] + r.points[1]
@@ -464,4 +473,20 @@ describe('power swing balance', () => {
         expect(Math.abs(r.share - b.share), `${name} v ${l} share`).toBeLessThanOrEqual(0.05)
       }
   }, 90_000)
+})
+
+/** Matches per size gauge (sanity bars, not tuning bands). */
+const N_SIZE = 40
+
+// Bigger courts = more running for both sides: casual should still beat Easy and still lose to Hard.
+describe('court size sanity gauges', () => {
+  for (const size of ['large', 'xl'] as const)
+    it(`${size}: casual still beats Easy, Hard still beats casual, matches end`, () => {
+      const easy = gauge(PROFILES.casual, 'easy', N_SIZE, {}, size)
+      const hard = gauge(PROFILES.casual, 'hard', N_SIZE, {}, size)
+      if (process.env.BALANCE_LOG) console.warn(JSON.stringify({ size, easy, hard }))
+      expect(easy.win).toBeGreaterThanOrEqual(0.75)
+      expect(hard.win).toBeLessThanOrEqual(0.5)
+      for (const r of [easy, hard]) expect(r.minutes).toBeLessThanOrEqual(6)
+    }, 60_000)
 })

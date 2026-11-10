@@ -3,6 +3,7 @@
 // after the opponent's hit, and cached in BotMemory (plain data, lives in SpPlayer → JSON-safe).
 import { COURT, isIn, predictLanding, stepShuttle, type Flight } from './physics'
 import { findContact, REACH, WINDOW, type Grade } from './shots'
+import { CHARGE } from './charge'
 import { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld } from './court'
 import type { SpInput, SpState } from './sim'
 
@@ -15,20 +16,23 @@ export const LEVELS = {
     grade: { perfect: 0.1, good: 0.55, late: 0.22, whiff: 0.13 },
     smash: 0.15,
     misjudge: 0.3,
+    charge: 0.15,
   },
   normal: {
     reactTicks: 14,
     speedMul: 0.88,
-    grade: { perfect: 0.3, good: 0.5, late: 0.12, whiff: 0.08 },
+    grade: { perfect: 0.28, good: 0.5, late: 0.13, whiff: 0.09 },
     smash: 0.4,
     misjudge: 0,
+    charge: 0.25,
   },
   hard: {
     reactTicks: 10,
     speedMul: 0.93,
-    grade: { perfect: 0.56, good: 0.29, late: 0.07, whiff: 0.08 },
+    grade: { perfect: 0.59, good: 0.27, late: 0.06, whiff: 0.08 },
     smash: 0.85,
     misjudge: 0,
+    charge: 0.7,
   },
 } satisfies Record<
   string,
@@ -39,6 +43,8 @@ export const LEVELS = {
     smash: number
     /** Chance to get in/out wrong for a shuttle landing within NEAR_LINE of a line. */
     misjudge: number
+    /** Chance to hold-to-charge a smash / clear / drive (drops are never charged). */
+    charge: number
   }
 >
 
@@ -53,6 +59,8 @@ export interface BotMemory {
   plannedSwingTick: number
   /** View-relative held direction for the planned swing. */
   plannedHeld: { x: number; z: number }
+  /** Tick to start charging the planned swing (once in place); -1 = a tap / already pressed. */
+  plannedChargeTick: number
   /** This bot's own rng stream (mulberry32 seed): no draw-order coupling with the other seat. */
   rng: number
 }
@@ -73,6 +81,10 @@ const ARRIVE_TICKS = 12
 const SMASH_MEET_Y = 2.6
 /** Non-smash shot weights (held z: clear −1, drop 0, drive +1). */
 const SHOT_MIX = { clear: 0.4, drop: 0.3, drive: 0.3 }
+/** Charge holds (ticks): a little past the start up to a little past full. */
+const CHARGE_HOLD = { min: CHARGE.full - 6, max: CHARGE.full + 6 }
+/** Only start charging this close to the standing spot (m): charging slows the run. */
+const CHARGE_NEAR = 0.35
 /** Move input eases off within this distance of the target (no overshoot). */
 const ARRIVE = 0.5
 const STOP = 0.03
@@ -85,6 +97,7 @@ export const newBotMemory = (seed: number, side: 0 | 1): BotMemory => ({
   target: { x: 0, z: 0 },
   plannedSwingTick: -1,
   plannedHeld: { x: 0, z: 0 },
+  plannedChargeTick: -1,
   rng: (seed ^ Math.imul(0x9e3779b9, side + 1)) | 0,
 })
 
@@ -174,6 +187,7 @@ function plan(s: SpState, side: 0 | 1, level: BotLevel, mem: BotMemory, rng: () 
   const land = predictLanding(s.shuttle)
   const back = side === 0 ? -1 : 1 // world z sign of "away from the net"
   mem.plannedSwingTick = -1
+  mem.plannedChargeTick = -1
   // Leave shots that go into the net or out (near-line calls can be misjudged on low levels).
   let callIn = isIn(land.pos, side)
   if (nearLine(land.pos) && rng() < L.misjudge) callIn = !callIn
@@ -205,6 +219,11 @@ function plan(s: SpState, side: 0 | 1, level: BotLevel, mem: BotMemory, rng: () 
     heldZ = r < SHOT_MIX.clear ? -1 : r < SHOT_MIX.clear + SHOT_MIX.drop ? 0 : 1
   }
   mem.plannedHeld = { x: heldX, z: heldZ }
+  // Power: hold the swing button through the set-up (drawn last: the other rolls keep their order).
+  const hold = randInt(rng, CHARGE_HOLD.min, CHARGE_HOLD.max)
+  // Only on a clean (Perfect) roll: a charged Good / Late sprays (shots.ts POWER.jitter).
+  if (heldZ !== 0 && grade === 'perfect' && rng() < L.charge)
+    mem.plannedChargeTick = mem.plannedSwingTick - hold
 }
 
 /** Move input (view-relative, length = speedMul when far) toward a world-space point. */
@@ -228,6 +247,8 @@ function lastShotTick(s: SpState, opp: 0 | 1): number {
 }
 
 const STILL: SpInput = { t: 'move', x: 0, z: 0 }
+const CHARGE_IN: SpInput = { t: 'charge' }
+const UNCHARGE: SpInput = { t: 'charge', cancel: true }
 
 /** The AI seat's inputs for this tick. Mutates `mem` (the plan cache). */
 export function botStep(
@@ -237,20 +258,23 @@ export function botStep(
   mem: BotMemory,
   rng: () => number,
 ): SpInput[] {
+  // A charge left over (the rally ended before the planned swing) would slow the next rally: drop it.
+  const charging = s.players[side].chargeAt >= 0
   if (s.phase === 'serve') {
     mem.targetAt = -1
     if (s.server === side && s.phaseT === BOT_SERVE_TICKS) {
       const z = rng() < LONG_SERVE_P ? -1 : 0
       return [STILL, { t: 'swing', x: 0, z, tick: s.tick }]
     }
-    return [STILL]
+    return charging ? [STILL, UNCHARGE] : [STILL]
   }
-  if (s.phase !== 'rally') return [STILL]
+  if (s.phase !== 'rally') return charging ? [STILL, UNCHARGE] : [STILL]
   const opp: 0 | 1 = side === 0 ? 1 : 0
   const back = side === 0 ? -1 : 1
   if (s.shuttle.lastHitter !== opp) {
     mem.targetAt = -1
-    return [moveToward(s, side, level, { x: 0, z: back * BASE_Z })]
+    const home = moveToward(s, side, level, { x: 0, z: back * BASE_Z })
+    return charging ? [home, UNCHARGE] : [home]
   }
   // The shot's event outlives reactTicks; once it scrolls out of the log the cached plan still holds.
   const shot = lastShotTick(s, opp)
@@ -263,8 +287,19 @@ export function botStep(
   // Still reacting: drift back toward base until the plan is made.
   const to = planned ? mem.target : { x: 0, z: back * BASE_Z }
   const out: SpInput[] = [moveToward(s, side, level, to)]
+  const me = s.players[side]
+  if (
+    planned &&
+    mem.plannedChargeTick >= 0 &&
+    s.tick >= mem.plannedChargeTick &&
+    s.tick < mem.plannedSwingTick &&
+    Math.hypot(mem.target.x - me.x, mem.target.z - me.z) <= CHARGE_NEAR
+  ) {
+    mem.plannedChargeTick = -1
+    out.push(CHARGE_IN)
+  }
   if (planned && s.tick === mem.plannedSwingTick) {
     out.push({ t: 'swing', x: mem.plannedHeld.x, z: mem.plannedHeld.z, tick: s.tick })
-  }
+  } else if (charging && !(planned && s.tick < mem.plannedSwingTick)) out.push(UNCHARGE)
   return out
 }

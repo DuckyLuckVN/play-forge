@@ -106,7 +106,9 @@ describe('computer opponent', () => {
       let wins0 = 0
       let points = 0
       let points0 = 0
-      const n = 40
+      // Mirror-exact sim (mirror.test.ts): a side gap is sampling noise. Win rates swing ~±5.6% (1σ) at
+      // 80 matches (other seed ranges: 42–50%), so the win band is wider than the point-share band.
+      const n = 80
       for (const seed of seeds(n, 300)) {
         const m = play('hard', 'hard', seed, HARD_CAP)
         expect(m.winner, `seed ${seed} ended within 10 min`).not.toBe(-1)
@@ -119,10 +121,12 @@ describe('computer opponent', () => {
             total += c
           }
       }
+      if (process.env.BALANCE_LOG)
+        console.warn(JSON.stringify({ wins0: wins0 / n, share0: points0 / points }))
       expect(total).toBeGreaterThanOrEqual(500)
       expect((total - (tally.perfect ?? 0)) / total).toBeGreaterThanOrEqual(0.03)
-      expect(wins0 / n).toBeGreaterThanOrEqual(0.4)
-      expect(wins0 / n).toBeLessThanOrEqual(0.6)
+      expect(wins0 / n).toBeGreaterThanOrEqual(0.35)
+      expect(wins0 / n).toBeLessThanOrEqual(0.65)
       expect(points0 / points).toBeGreaterThanOrEqual(0.45)
       expect(points0 / points).toBeLessThanOrEqual(0.55)
     },
@@ -237,5 +241,53 @@ describe('rolled whiff', () => {
     }
     expect(seen.some((e) => e.k === 'whiff' && e.side === 1)).toBe(true)
     expect(seen.some((e) => e.k === 'hit' && e.side === 1)).toBe(false)
+  })
+})
+
+describe('bot hold-to-charge', () => {
+  it('levels charge more the harder they are; never a sure thing', () => {
+    expect(LEVELS.easy.charge).toBeLessThan(LEVELS.normal.charge)
+    expect(LEVELS.normal.charge).toBeLessThan(LEVELS.hard.charge)
+    expect(LEVELS.hard.charge).toBeLessThan(1)
+  })
+
+  it('presses charge before its planned swing and releases on the planned tick (charged hit)', () => {
+    // A high, slow lob: plenty of time to set up and charge.
+    const s = incoming(0.3, 1.5, 4, { x: 0, y: 3, z: 3 })
+    const mem = newBotMemory(1, 1)
+    const inputs: SpInput[] = []
+    const seen: SpEvent[] = []
+    let lastId = s.nextEventId - 1
+    // rng 0.01: perfect, smash try, charge yes (shortest hold, CHARGE.full − 6 ticks)
+    while (s.phase === 'rally' && s.shuttle.lastHitter !== 1) {
+      const out = botStep(s, 1, 'hard', mem, () => 0.01)
+      inputs.push(...out.filter((i) => i.t !== 'move'))
+      game.tick(
+        s,
+        out.map((input) => ({ player: s.players[1].id, input })),
+      )
+      for (const e of s.events) if (e.id > lastId) seen.push(e)
+      lastId = s.nextEventId - 1
+    }
+    const kinds = inputs.map((i) => i.t)
+    expect(kinds.indexOf('charge')).toBeGreaterThanOrEqual(0)
+    expect(kinds.indexOf('charge')).toBeLessThan(kinds.indexOf('swing'))
+    const hit = seen.find((e) => e.k === 'hit' && e.side === 1) as { charge?: number } | undefined
+    expect(hit?.charge ?? 0).toBeGreaterThan(0)
+  })
+
+  it('rng that rolls no charge: a plain tap swing (no charge input)', () => {
+    const s = incoming(0.3, 1.5, 4, { x: 0, y: 3, z: 3 })
+    const mem = newBotMemory(1, 1)
+    const kinds: string[] = []
+    while (s.phase === 'rally' && s.shuttle.lastHitter !== 1) {
+      const out = botStep(s, 1, 'easy', mem, () => 0.6)
+      for (const i of out) if (i.t !== 'move') kinds.push(i.t)
+      game.tick(
+        s,
+        out.map((input) => ({ player: s.players[1].id, input })),
+      )
+    }
+    expect(kinds).not.toContain('charge')
   })
 })

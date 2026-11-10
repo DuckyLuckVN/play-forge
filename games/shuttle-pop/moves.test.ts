@@ -100,6 +100,33 @@ describe('SwingDriver', () => {
     expect(d.load).toBe(0.6)
   })
 
+  it('a hold let go during the wind-up (a tap) swings like a press: finishes the wind-up first', () => {
+    const d = new SwingDriver()
+    d.hold()
+    d.update(0.01)
+    d.release()
+    d.update(0.01)
+    expect(d.strike).toBe(-1)
+    expect(d.load).toBeGreaterThan(0)
+    d.update(SWING.load)
+    expect(d.strike).toBeGreaterThan(0)
+  })
+
+  it('holding is true from hold() until release() / cancel(); cancel() lets the load go without a strike', () => {
+    const d = new SwingDriver()
+    expect(d.holding).toBe(false)
+    d.hold()
+    expect(d.holding).toBe(true)
+    for (let i = 0; i < 30; i++) d.update(1 / 60)
+    expect(d.load).toBe(1)
+    d.cancel()
+    expect(d.holding).toBe(false)
+    for (let i = 0; i < 60; i++) d.update(1 / 60)
+    expect(d.strike).toBe(-1)
+    expect(d.load).toBe(0)
+    expect(d.busy).toBe(false)
+  })
+
   it('ignores presses until the racket reaches contact; a later press keeps the old strike as prev', () => {
     const d = new SwingDriver()
     d.press()

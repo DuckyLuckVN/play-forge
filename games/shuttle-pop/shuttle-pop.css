@@ -208,6 +208,27 @@
 .sp-pop-perfect.show {
   animation-duration: 1000ms;
 }
+/* Full-charge Perfect: the Perfect pop, hotter and bigger. */
+.sp-pop-power {
+  font-size: 46px;
+  color: var(--sp-orange);
+  background: linear-gradient(
+    180deg,
+    var(--sp-cream) 5%,
+    var(--sp-gold) 40%,
+    var(--sp-orange) 70%,
+    var(--sp-rose)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 1.5px var(--sp-rust);
+  filter: drop-shadow(0 0 14px rgb(255 122 69 / 0.85)) drop-shadow(0 3px 0 rgb(122 0 30 / 0.5));
+  text-shadow: none;
+}
+.sp-pop-power.show {
+  animation-duration: 1100ms;
+}
 .sp-pop-good {
   color: var(--sp-mint);
 }
@@ -258,6 +279,9 @@
   }
   .sp-pop-perfect {
     font-size: 32px;
+  }
+  .sp-pop-power {
+    font-size: 36px;
   }
   .sp-badge {
     font-size: 13px;

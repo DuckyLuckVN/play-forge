@@ -7,10 +7,11 @@ import { TouchPad } from './hud'
 import { bindInput } from './input'
 import { loadPreset, pickerStrip } from './picker'
 import { GuestPredictor } from './predict'
-import { Court3D } from './render3d'
+import { Court3D, type LocalSwing } from './render3d'
 import { scoreText, summaryRows } from './results'
 import { winner } from './rules'
 import {
+  canCharge,
   canSwing,
   createState,
   seedPreset,
@@ -40,7 +41,7 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
   }
   hostId = session.isHost ? session.selfId : null
   const smooth = smoothState(session)
-  let onSwing: (() => void) | null = null
+  let onSwing: ((what: LocalSwing) => void) | null = null
   // sendInput drops inputs during the countdown and while paused.
   const live = () => session.phase === 'playing' && !session.lobby.paused
   // Online guests predict their own player (the host and vs-computer already see their state at once).
@@ -49,17 +50,28 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
   court.surface.setAttribute('role', 'img')
   court.surface.setAttribute('aria-label', t('Badminton court'))
 
-  // The last state's view of our seat: serving / rallying and off cooldown (else the sim ignores it).
-  const swingCounts = () => {
+  // The last state's view of our seat: may it charge (rally / own serve), would a swing count (also off
+  // cooldown)? Else the sim ignores it.
+  const seatCan = (can: typeof canSwing) => {
     const s = smooth.curr
     const me = s?.players.find((p) => p.id === session.selfId)
-    return !!s && !!me && canSwing(s, me)
+    return !!s && !!me && can(s, me)
   }
   const send = (input: SpInput) => {
-    // Animate our own swing this frame (not when the session or the sim would drop it).
-    if (input.t === 'swing' && live() && swingCounts()) onSwing?.()
-    // The prediction moves with exactly the moves the host gets.
-    if (input.t === 'move' && live()) predictor?.setMove(input.x, input.z)
+    // Animate our own swing button this frame (not when the session or the sim would drop it); the
+    // prediction slows with the charge and moves with exactly the moves the host gets.
+    if (input.t === 'charge') {
+      if (input.cancel) {
+        predictor?.setCharging(false)
+        onSwing?.('cancel')
+      } else if (live() && seatCan(canCharge)) {
+        predictor?.setCharging(true)
+        onSwing?.('charge')
+      }
+    } else if (input.t === 'swing') {
+      predictor?.setCharging(false)
+      onSwing?.(live() && seatCan(canSwing) ? 'swing' : 'cancel')
+    } else if (input.t === 'move' && live()) predictor?.setMove(input.x, input.z)
     session.sendInput(input)
   }
   // Touch: floating stick (left) + swing button (bottom-right), over the court.
@@ -160,7 +172,7 @@ createGameApp<SpState, SpInput>({
     'Chibi badminton. Time your swing for a Perfect, smash on high balls. Play the computer or a friend online.',
   ),
   controls: t(
-    'Move with WASD or the arrow keys. Swing with Space, J or a click. Hold forward as you swing to smash or drive, back to clear, nothing to drop; left or right aims. On a phone: drag on the left side to move, tap the racket button to swing; the stick direction picks the shot the same way.',
+    'Move with WASD or the arrow keys. Swing with Space, J or a click: tap for a quick swing, or hold to charge a power shot and let go to hit (you move slower while charging). Hold forward as you swing to smash or drive, back to clear, nothing to drop; left or right aims. On a phone: drag on the left side to move, tap or hold the racket button to swing; the stick direction picks the shot the same way.',
   ),
   // Stock upbeat gameplay loop.
   music: ARCADE,

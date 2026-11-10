@@ -84,7 +84,10 @@ describe('held keys', () => {
     expect(got).toEqual([])
     net.live = true
     keys.resync()
-    expect(got).toEqual([{ t: 'move', x: 1, z: 0 }])
+    expect(got).toEqual([
+      { t: 'move', x: 1, z: 0 },
+      { t: 'charge', cancel: true },
+    ])
   })
 
   it('resync sends a stop for a key let go while paused (or on blur)', () => {
@@ -95,7 +98,7 @@ describe('held keys', () => {
     keys.clear()
     net.live = true
     keys.resync()
-    expect(got.at(-1)).toEqual({ t: 'move', x: 0, z: 0 })
+    expect(got.at(-2)).toEqual({ t: 'move', x: 0, z: 0 })
   })
 
   it('swings with the held direction and the tick on screen', () => {
@@ -231,5 +234,69 @@ describe('move coalescing (at most one move per sim tick)', () => {
     expect(pending()).toBe(0)
     advance(MOVE_GAP_MS)
     expect(moves()).toHaveLength(1)
+  })
+})
+
+describe('hold-to-charge swing button', () => {
+  function setup() {
+    const got: SpInput[] = []
+    const keys = new HeldKeys(
+      (i) => got.push(i),
+      () => 7,
+      slowClock(),
+    )
+    return { got, keys }
+  }
+
+  it('press charges, release swings with the held direction and the tick on screen', () => {
+    const { got, keys } = setup()
+    keys.press('KeyW')
+    expect(keys.swingDown('Space')).toBe(true)
+    expect(got.at(-1)).toEqual({ t: 'charge' })
+    expect(keys.charging).toBe(true)
+    expect(keys.swingUp('Space')).toBe(true)
+    expect(got.at(-1)).toEqual({ t: 'swing', x: 0, z: 1, tick: 7 })
+    expect(keys.charging).toBe(false)
+  })
+
+  it('one source at a time: a second button while charging neither re-charges nor swings', () => {
+    const { got, keys } = setup()
+    keys.swingDown('Space')
+    expect(keys.swingDown('KeyJ')).toBe(false)
+    expect(keys.swingUp('KeyJ')).toBe(false)
+    expect(got.filter((i) => i.t === 'charge')).toHaveLength(1)
+    expect(got.some((i) => i.t === 'swing')).toBe(false)
+    keys.swingUp('Space')
+    expect(got.filter((i) => i.t === 'swing')).toHaveLength(1)
+  })
+
+  it('a release with no press (e.g. a key held from before focus) does nothing', () => {
+    const { got, keys } = setup()
+    expect(keys.swingUp('Space')).toBe(false)
+    expect(got).toEqual([])
+  })
+
+  it('cancel (blur / pointer cancel) lets go without swinging; clear() cancels too', () => {
+    const { got, keys } = setup()
+    keys.swingDown('touch:3')
+    keys.cancelSwing()
+    expect(got.at(-1)).toEqual({ t: 'charge', cancel: true })
+    expect(keys.swingUp('touch:3')).toBe(false)
+    keys.swingDown('mouse')
+    keys.clear()
+    expect(got.at(-1)).toEqual({ t: 'charge', cancel: true })
+    expect(got.some((i) => i.t === 'swing')).toBe(false)
+    keys.cancelSwing() // nothing held: nothing sent
+    expect(got.filter((i) => i.t === 'charge' && i.cancel)).toHaveLength(2)
+  })
+
+  it('resync re-sends the charge state (a cancel dropped while paused still reaches the sim)', () => {
+    const { got, keys } = setup()
+    keys.resync()
+    expect(got).toContainEqual({ t: 'charge', cancel: true })
+    got.length = 0
+    keys.swingDown('Space')
+    keys.resync()
+    expect(got.filter((i) => i.t === 'charge')).toEqual([{ t: 'charge' }, { t: 'charge' }])
   })
 })

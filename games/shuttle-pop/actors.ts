@@ -75,6 +75,8 @@ export interface ChibiPose {
   strike: number
   prev: number
   coil: number
+  /** The last swing's hold-to-charge power 0..1: a brighter, longer swing streak. */
+  power: number
   /** 0 = plain swing, 1 = overhead smash (damped by the renderer). */
   smash: number
   /** Jump height share 0..1. */
@@ -104,6 +106,7 @@ export function restPose(): ChibiPose {
     strike: -1,
     prev: -1,
     coil: 0,
+    power: 0,
     smash: 0,
     jump: 0,
     squash: 0,
@@ -170,7 +173,8 @@ const HEAD_COUNTER = 0.6
  * Swing streak: a ribbon swept by the racket head (from `inner` m along the handle axis to the far rim)
  * over the last `life` s of the swing, `samples` + 1 points along it; peak opacity.
  */
-const STREAK = { samples: 10, life: 0.09, opacity: 0.75, inner: 0.5 }
+/** `power`: extra life / opacity share at a full-charge swing. */
+const STREAK = { samples: 10, life: 0.09, opacity: 0.75, inner: 0.5, power: 0.6 }
 
 // Scratch for setPose (shared: setPose never re-enters).
 const stride: Stride = { freq: 0, amp: 0, bob: 0 }
@@ -519,14 +523,15 @@ export function createChibi(preset: number): Chibi {
     const glow = p.strike >= 0 ? streakGlow(p.strike) : 0
     const trail = glow > 0.02
     const N = STREAK.samples
+    const boost = 1 + STREAK.power * p.power
     for (let k = trail ? N : 0; k >= 0; k--) {
-      const back = (k * STREAK.life) / N
+      const back = (k * STREAK.life * boost) / N
       swingIn.strike = k === 0 ? p.strike : p.strike - back
       swingIn.prev = k === 0 || p.prev < 0 ? p.prev : Math.max(0, p.prev - back)
       swingPose(base, swingIn, p.smash, ang)
       applyUpper(ang)
       if (trail) {
-        const fade = STREAK.opacity * glow * (1 - k / (N + 1))
+        const fade = Math.min(1, STREAK.opacity * boost * glow) * (1 - k / (N + 1))
         const c = racketPoint(STREAK.inner)
         streak.set(N - k, c.x, c.y, c.z, fade * 0.35)
         const r = racketPoint(RACKET_TIP)

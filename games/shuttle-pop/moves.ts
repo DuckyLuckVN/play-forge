@@ -50,10 +50,12 @@ export class SwingDriver {
   private held = false
   /** Load cap while held. */
   private cap = 1
+  /** Easing out of a cancelled hold (no strike). */
+  private unload = false
 
   /** Start a swing. Ignored while winding up / holding or before the racket reaches contact. */
   press() {
-    if (this.age !== Infinity && this.strike < CONTACT_T) return
+    if (!this.unload && this.age !== Infinity && this.strike < CONTACT_T) return
     if (this.strike >= 0) this.prev = this.strike
     this.age = 0
     this.clock = 0
@@ -64,6 +66,7 @@ export class SwingDriver {
     this.target = NaN
     this.held = false
     this.cap = 1
+    this.unload = false
   }
 
   /** Back to idle at once (a new match). */
@@ -72,21 +75,37 @@ export class SwingDriver {
     this.load = this.coil = 0
     this.strike = this.prev = -1
     this.held = false
+    this.unload = false
+  }
+
+  /** Held by hold() (charging), not yet released or cancelled. */
+  get holding(): boolean {
+    return this.held
   }
 
   /** Press and keep the loaded pose (up to `loadTarget`) until release(). */
   hold(loadTarget = 1) {
-    if (this.age === Infinity || this.strike >= CONTACT_T) this.press()
+    if (this.unload || this.age === Infinity || this.strike >= CONTACT_T) this.press()
     if (this.strike >= 0) return
     this.held = true
     this.cap = loadTarget
   }
 
-  /** Let a hold go: the strike starts now, from the current (possibly capped) load. */
+  /** Drop a hold without striking (a cancelled charge): the load eases back to rest over SWING.load. */
+  cancel() {
+    if (!this.held) return
+    this.held = false
+    this.unload = true
+  }
+
+  /**
+   * Let a hold go: the strike starts now, from the current (possibly capped) load. Let go while still
+   * winding up (a tap), it swings like a press: wind-up, then strike on the contact's schedule.
+   */
   release() {
     if (!this.held) return
     this.held = false
-    this.releaseAt = Math.max(this.clock, 0)
+    if (this.clock >= SWING.load) this.releaseAt = this.clock
   }
 
   /** True from the press until the follow-through ends (the body faces the net meanwhile). */
@@ -107,6 +126,16 @@ export class SwingDriver {
       if (this.prev >= STRIKE_END) this.prev = -1
     }
     if (this.age === Infinity) return
+    if (this.unload) {
+      this.load = Math.max(0, this.load - dt / SWING.load)
+      this.coil = Math.max(0, this.coil - dt)
+      if (this.load === 0) {
+        this.age = Infinity
+        this.coil = 0
+        this.unload = false
+      }
+      return
+    }
     const known = this.target === this.target
     const striking = this.clock >= this.releaseAt && !this.held
     if (!striking && !this.held) {

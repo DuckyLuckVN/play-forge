@@ -1,7 +1,8 @@
 // Keyboard + mouse + touch (stick + swing button) → SpInput. Directions are view-relative (x = screen right, z = toward the net).
 // `move` goes out only when the held direction changes, at most once per sim tick (a stick dragged at
-// 120 Hz coalesces to the latest); a swing goes out at once with the held direction and the tick the
-// player is looking at.
+// 120 Hz coalesces to the latest). The swing button is hold-to-charge: pressing it sends `charge`,
+// letting go sends the swing at once with the held direction and the tick the player is looking at
+// (a tap = a plain swing); losing the button any other way (blur, pointer cancel) cancels the charge.
 import { knobOffset, quantise, STICK_RADIUS, StickTracker } from './joystick'
 import { TICK_RATE, type SpInput } from './sim'
 
@@ -75,6 +76,8 @@ export class HeldKeys {
   private sentZ = 0
   private sentAt = -Infinity
   private cancelFlush: (() => void) | null = null
+  /** The swing button source charging now ('Space', 'mouse', 'touch'…), null = none. */
+  private chargeSrc: string | null = null
 
   /** `nowTick` = the swing's tick (undefined = none yet: judged now, no rewind). */
   constructor(
@@ -103,11 +106,40 @@ export class HeldKeys {
     this.update()
   }
 
-  /** Let go of everything, stick included (window blur / leaving play: no keyup will come). */
+  /** Let go of everything, stick and swing button included (window blur / leaving play: no keyup will come). */
   clear(): void {
     this.held.clear()
     this.stickDir = { x: 0, z: 0 }
+    this.cancelSwing()
     this.update()
+  }
+
+  /** A swing button is held (charging). */
+  get charging(): boolean {
+    return this.chargeSrc !== null
+  }
+
+  /** Swing button `src` went down: start charging. False = ignored (another button is already held). */
+  swingDown(src: string): boolean {
+    if (this.chargeSrc !== null) return false
+    this.chargeSrc = src
+    this.send({ t: 'charge' })
+    return true
+  }
+
+  /** Swing button `src` came up: swing (the hold so far is the charge). False = not the held one. */
+  swingUp(src: string): boolean {
+    if (this.chargeSrc !== src) return false
+    this.chargeSrc = null
+    this.swing()
+    return true
+  }
+
+  /** The held swing button (only `src`'s, when given) was lost without a release: stop charging, no swing. */
+  cancelSwing(src?: string): void {
+    if (this.chargeSrc === null || (src !== undefined && src !== this.chargeSrc)) return
+    this.chargeSrc = null
+    this.send({ t: 'charge', cancel: true })
   }
 
   swing(): void {
@@ -121,6 +153,12 @@ export class HeldKeys {
 
   /** Send the held direction again now (stop when nothing is held). */
   resync(): void {
+    this.sendMove()
+    // The swing button too: a press made, or a let-go lost, while inputs were dropped (paused).
+    this.send(this.chargeSrc !== null ? { t: 'charge' } : { t: 'charge', cancel: true })
+  }
+
+  private sendMove() {
     this.cancel()
     this.sentX = this.dir.x
     this.sentZ = this.dir.z
@@ -145,13 +183,13 @@ export class HeldKeys {
     this.dir = next
     if (this.cancelFlush) return // the pending flush sends the latest
     const wait = this.sentAt + MOVE_GAP_MS - this.clock.now()
-    if (wait <= 0) this.resync()
+    if (wait <= 0) this.sendMove()
     else this.cancelFlush = this.clock.later(() => this.flush(), wait)
   }
 
   private flush() {
     this.cancelFlush = null
-    if (this.dir.x !== this.sentX || this.dir.z !== this.sentZ) this.resync()
+    if (this.dir.x !== this.sentX || this.dir.z !== this.sentZ) this.sendMove()
   }
 }
 
@@ -177,9 +215,10 @@ export interface TouchView {
 const STICK_ZONE = 0.45
 
 /**
- * WASD / arrows move; Space, J or a left click on `target` swings. With a `pad`, touches on the left
- * of `target` drive a floating stick and the pad's swing button swings (both at once: each finger is
- * tracked by pointer id). `nowTick` = the swing's tick (world.ts swingTick; undefined before a state).
+ * WASD / arrows move; Space, J or a left click on `target` is the swing button (hold to charge, let go
+ * to swing). With a `pad`, touches on the left of `target` drive a floating stick and the pad's swing
+ * button is the swing button (both at once: each finger is tracked by pointer id). `nowTick` = the
+ * swing's tick (world.ts swingTick; undefined before a state).
  */
 export function bindInput(
   target: HTMLElement,
@@ -194,10 +233,13 @@ export function bindInput(
     if (isUi(e.target)) return
     if (SWING_KEYS.has(e.code)) {
       e.preventDefault()
-      if (!e.repeat) keys.swing()
+      if (!e.repeat) keys.swingDown(e.code)
     } else if (keys.press(e.code)) e.preventDefault()
   }
-  const onUp = (e: KeyboardEvent) => keys.release(e.code)
+  const onUp = (e: KeyboardEvent) => {
+    if (SWING_KEYS.has(e.code)) keys.swingUp(e.code)
+    else keys.release(e.code)
+  }
   const letGo = () => {
     stick.cancel()
     swingPointer = null
@@ -209,7 +251,9 @@ export function bindInput(
     if (e.pointerType === 'mouse') {
       if (e.button !== 0 || isUi(e.target)) return
       e.preventDefault()
-      keys.swing()
+      // Captured: the button-up comes back here even off the court.
+      target.setPointerCapture?.(e.pointerId)
+      keys.swingDown('mouse')
       return
     }
     if (!pad) return
@@ -225,7 +269,7 @@ export function bindInput(
       } catch {
         // Haptics are a nicety (blocked or missing on some browsers).
       }
-      keys.swing()
+      keys.swingDown('touch')
       return
     }
     if (isUi(e.target)) return
@@ -243,16 +287,25 @@ export function bindInput(
     const k = knobOffset(stick.origin, { x: e.clientX, y: e.clientY }, stick.radius)
     pad?.moveKnob(k.x, k.y)
   }
-  const onPointerUp = (e: PointerEvent) => {
+  /** A finger / the mouse let go (`swing`: lifted → swing; taken away by the browser → cancel). */
+  const lift = (e: PointerEvent, swing: boolean) => {
     if (stick.up(e.pointerId)) {
       keys.stick(0, 0)
       pad?.hideStick()
     }
-    if (e.pointerId === swingPointer) {
+    if (e.pointerType === 'mouse') {
+      if (swing) keys.swingUp('mouse')
+      else keys.cancelSwing('mouse')
+    } else if (e.pointerId === swingPointer) {
       swingPointer = null
       pad?.setPressed(false)
+      if (swing) keys.swingUp('touch')
+      else keys.cancelSwing('touch')
     }
   }
+  const onPointerUp = (e: PointerEvent) => lift(e, true)
+  // The browser took the pointer away (a system gesture, capture lost): no swing.
+  const onPointerLost = (e: PointerEvent) => lift(e, false)
   const noMenu = (e: Event) => e.preventDefault()
   // Tab hidden or phone rotated mid-drag: no pointerup will come for the held fingers.
   const onHidden = () => {
@@ -265,13 +318,14 @@ export function bindInput(
   window.addEventListener('orientationchange', letGo)
   document.addEventListener('visibilitychange', onHidden)
   target.addEventListener('pointerdown', onPointer)
+  // lostpointercapture also follows every captured pointerup (already handled then): it only cancels
+  // a pointer lost without one.
+  target.addEventListener('pointerup', onPointerUp)
+  target.addEventListener('pointercancel', onPointerLost)
+  target.addEventListener('lostpointercapture', onPointerLost)
   if (pad) {
     target.classList.add('sp-touchable')
     target.addEventListener('pointermove', onMove)
-    target.addEventListener('pointerup', onPointerUp)
-    target.addEventListener('pointercancel', onPointerUp)
-    // The browser took the finger away (e.g. a system gesture): same as lifting it.
-    target.addEventListener('lostpointercapture', onPointerUp)
     target.addEventListener('contextmenu', noMenu)
   }
   return {
@@ -287,8 +341,8 @@ export function bindInput(
       target.removeEventListener('pointerdown', onPointer)
       target.removeEventListener('pointermove', onMove)
       target.removeEventListener('pointerup', onPointerUp)
-      target.removeEventListener('pointercancel', onPointerUp)
-      target.removeEventListener('lostpointercapture', onPointerUp)
+      target.removeEventListener('pointercancel', onPointerLost)
+      target.removeEventListener('lostpointercapture', onPointerLost)
       target.removeEventListener('contextmenu', noMenu)
       target.classList.remove('sp-touchable')
     },

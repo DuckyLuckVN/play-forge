@@ -1,14 +1,15 @@
 // Guest-side prediction of the local player: the own chibi moves the frame the stick / key moves,
 // instead of a round trip later. Pure (no three.js); render3d feeds it each frame.
 //
-// It integrates the sent move with the sim's own stepPlayer at the tick rate, and reconciles with the
-// host time-aligned: the host's state for tick T is compared with the prediction from `lag` local
+// It integrates the sent move (and the charging slowdown) with the sim's own stepPlayer at the tick
+// rate, and reconciles with the host time-aligned: the host's state for tick T is compared with the prediction from `lag` local
 // steps ago (where it stood when the host made that state), not with where it is now. `lag` (the
 // round trip in ticks) is measured from the host echoing a sent move back in the player's `move`:
 // only a change of the host's `move` counts as an echo, and a send equal to the move already queued
 // (or, with nothing queued, the one the host has) is not queued, so value-equal echoes (a tap shorter
 // than the round trip, a resync of a stop) can't fake a zero lag.
 // The error found there is closed with `correct` (keep / blend / snap) and shifts the whole prediction.
+import { CHARGE } from './charge'
 import { DT } from './physics'
 import { stepPlayer, type SpPlayer } from './sim'
 import { correct, CORRECT } from './world'
@@ -52,6 +53,13 @@ export class GuestPredictor {
   private ackZ = 0
   private past = { x: 0, z: 0 }
   private fixed = { x: 0, z: 0 }
+
+  /** The local swing button is charging (as just sent to the host): run at CHARGE.moveMul, like the sim. */
+  charging = false
+
+  setCharging(on: boolean): void {
+    this.charging = on
+  }
 
   /** The local player's held direction as just sent to the host (view-relative, length ≤ 1). */
   setMove(x: number, z: number): void {
@@ -103,7 +111,7 @@ export class GuestPredictor {
     this.acc += dt
     let n = 0
     while (this.acc >= DT - EPS && n < MAX_STEPS) {
-      stepPlayer(p, DT)
+      stepPlayer(p, DT, this.charging ? CHARGE.moveMul : 1)
       this.steps++
       this.record()
       this.acc -= DT

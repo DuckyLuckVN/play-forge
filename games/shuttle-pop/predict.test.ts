@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { DT } from './physics'
 import { GuestPredictor, type AuthPlayer } from './predict'
-import { stepPlayer } from './sim'
+import { CHARGE } from './charge'
+import { MOVE_SPEED, stepPlayer } from './sim'
 
 const auth = (x: number, z: number, move = { x: 0, z: 0 }): AuthPlayer => ({
   side: 1,
@@ -138,5 +139,31 @@ describe('guest prediction', () => {
     pred.setMove(1, 0)
     pred.update(5, auth(0, 3), 1, false)
     expect(Number.isFinite(pred.x)).toBe(true)
+  })
+})
+
+describe('guest prediction while charging', () => {
+  it('slows to CHARGE.moveMul exactly like the sim while the local swing is charging, full speed after', () => {
+    const pred = new GuestPredictor()
+    const a = auth(-2, 3)
+    pred.update(DT, a, 1, true)
+    pred.setMove(1, 0) // side 1: view-right is world +x (room to run)
+    const ref = body(-2, 3)
+    ref.move = { x: 1, z: 0 }
+    const step = (n: number, mul: number) => {
+      for (let i = 0; i < n; i++) {
+        pred.update(DT, a, 1, false)
+        stepPlayer(ref, DT, mul)
+      }
+    }
+    step(10, 1)
+    pred.setCharging(true)
+    step(15, CHARGE.moveMul)
+    expect(Math.hypot(pred.vx, pred.vz)).toBeCloseTo(MOVE_SPEED * CHARGE.moveMul, 6)
+    pred.setCharging(false)
+    step(10, 1)
+    expect(pred.x).toBeCloseTo(ref.x, 9)
+    expect(pred.vx).toBeCloseTo(ref.vx, 9)
+    expect(Math.hypot(pred.vx, pred.vz)).toBeCloseTo(MOVE_SPEED, 6)
   })
 })

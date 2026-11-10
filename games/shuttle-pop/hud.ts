@@ -51,7 +51,8 @@ export function matchPoint(score: readonly [number, number], side: 0 | 1): boole
   return winner(next) === side
 }
 
-export type PopKind = 'perfect' | 'good' | 'late' | 'miss'
+/** 'power' = a full-charge Perfect. */
+export type PopKind = 'power' | 'perfect' | 'good' | 'late' | 'miss'
 
 /** Pops on screen at once (a fast exchange shows a few). */
 const POPS = 6
@@ -60,6 +61,8 @@ const EDGE = { x: 70, top: 48, bottom: 36 }
 
 function popText(kind: PopKind): string {
   switch (kind) {
+    case 'power':
+      return t('Power!')
     case 'perfect':
       return t('Perfect!')
     case 'good':

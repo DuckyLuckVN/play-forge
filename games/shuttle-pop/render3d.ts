@@ -6,7 +6,9 @@
 // The park around the court (sky, lights, crowd) is scenery.ts. Real shadows come from the players
 // only and stop (between rallies) once the quality governor sees slow frames.
 // Juice: timing pops + badges (hud.ts), Perfect sparkles, a shuttle trail (hot after a smash), a sprung
-// camera punch on smashes and the sounds (sounds.ts), all driven by new sim events.
+// camera punch on smashes and the sounds (sounds.ts), all driven by new sim events. Hold-to-charge: a
+// charge ring at the feet (chargering.ts) with rising sounds, the racket held loaded until the release,
+// and punch / burst / trail / streak scaled by the charge (a full-charge Perfect is the biggest).
 // Motion: one Gait per player (locomotion.ts) fed by the interpolated sim velocity, so the remote / bot
 // player animates exactly like the local one; swing / leap curves are moves.ts; dust puffs are dust.ts.
 // Online guests: the own chibi comes from GuestPredictor (predict.ts: moves the frame the input does,
@@ -35,6 +37,8 @@ import type { Smoothed } from '@forge/net/smoothing'
 import { playSound } from '@forge/audio/sound'
 import { createScene3D, Particles3D, QualityGovernor, type Scene3D } from '@forge/render3d'
 import { createChibi, restPose, type Chibi, type ChibiPose } from './actors'
+import { chargeOf, chargeStage, CHARGE, isFull } from './charge'
+import { ChargeRing } from './chargering'
 import { TICK_RATE } from './court'
 import { DustPuffs } from './dust'
 import { Hud, matchPoint, newEvents, newestShotId, trackerAction, type PopKind } from './hud'
@@ -56,7 +60,7 @@ import { SpringPunch } from './punch'
 import { SURROUND } from './props'
 import { Park } from './scenery'
 import { shownName, type SpEvent, type SpState } from './sim'
-import { eventSound, SHUTTLE_SOUNDS } from './sounds'
+import { chargeSound, eventSound, SHUTTLE_SOUNDS, swingSound } from './sounds'
 import { ShuttleTrail, type TrailLook } from './trail'
 import {
   CAMERA,
@@ -133,6 +137,10 @@ const DUST = {
 }
 /** A local swing press already animated; ignore the matching swingAt change for this long. */
 const LOCAL_SWING_GRACE = 0.4
+/** A swing pressed this soon after its hit event (same frame, any order) still catches up to it (s). */
+const HIT_GRACE = 0.25
+/** What the local player's swing button just did (main.ts → attach's callback). */
+export type LocalSwing = 'charge' | 'swing' | 'cancel'
 /** Chibis are ~1.3 m in model space; drawn a bit larger so they read from the far camera. */
 const CHIBI_SCALE = 1.15
 /** Court surface beyond the lines (m); the warm border (SURROUND) is props.ts. */
@@ -148,10 +156,12 @@ const TRAIL_DOTS = 18
 const TRAIL_SAMPLES = 7
 const TRAIL_STEP = 1 / 60
 /** Trail look per shot: colour, opacity, head dot radius (m). Smash = hot and thick. */
-const TRAIL: Record<'plain' | 'perfect' | 'smash', TrailLook> = {
+const TRAIL: Record<'plain' | 'perfect' | 'smash' | 'power', TrailLook> = {
   plain: { color: new Color('#e4dcff'), opacity: 0.4, size: 0.06 },
   perfect: { color: new Color('#ffd166'), opacity: 0.7, size: 0.075 },
   smash: { color: new Color('#ff4d6d'), opacity: 0.85, size: 0.1 },
+  /** A full-charge hit: hot orange and thickest. */
+  power: { color: new Color('#ff7a45'), opacity: 0.95, size: 0.12 },
 }
 
 /**
@@ -160,6 +170,12 @@ const TRAIL: Record<'plain' | 'perfect' | 'smash', TrailLook> = {
  * feels the same at any frame rate.
  */
 const PUNCH = { k: 380, zeta: 0.42, kickMine: 11, kickTheirs: 6, step: 1 / 240, dip: 0.35 }
+/**
+ * Charge juice: the punch grows by up to `punch` share with the charge (a full-charge Perfect smash by
+ * `powerSmash`×), a charged hit also punches (`hitKick` × charge, mine; half for theirs), the phone buzzes
+ * (ms) on our full-charge hit.
+ */
+const POWER_FX = { punch: 0.5, powerSmash: 1.6, hitKick: 5, buzz: 35 }
 
 /** Timing pops: anchor heights (m) for the near player (at the knees, under the shuttle path) and the far one (over the head). */
 const POP_Y = { near: 0.35, far: 2.1 }
@@ -178,6 +194,17 @@ const SPARKLE = {
   gravity: 2,
 }
 const SMASH_BURST = { count: 14, color: ['#ff4d6d', '#ffb3c1'], speed: 4.2, life: 0.3, size: 0.2 }
+/** Full-charge Perfect smash: a bigger, hotter burst on top. */
+const POWER_BURST = {
+  count: 26,
+  color: ['#ff7a45', '#ffd166', '#ffffff'],
+  speed: 5.6,
+  life: 0.42,
+  size: 0.26,
+}
+/** Charge reaching full: a small gold flash at the chest (m above the root). */
+const FULL_SPARK = { count: 12, color: ['#ffd166', '#fff3b0'], speed: 2.2, life: 0.3, size: 0.16, gravity: 1 }
+const FULL_SPARK_Y = 0.9
 
 interface PlayerView {
   chibi: Chibi
@@ -202,6 +229,12 @@ interface PlayerView {
   seed: number
   /** Reused every frame. */
   pose: ChibiPose
+  /** Charge shown now (0..1; −1 = not charging) and the charge sound stage reached. */
+  charge: number
+  stage: number
+  /** When this player's latest hit event was seen (s; see HIT_GRACE). */
+  hitAt: number
+  ring: ChargeRing
 }
 
 function makePlayer(preset: number): PlayerView {
@@ -221,6 +254,10 @@ function makePlayer(preset: number): PlayerView {
     lean: new SpringPunch(MOTION.lean.k, MOTION.lean.zeta, MOTION.step),
     seed: preset * 2.7,
     pose: restPose(),
+    charge: -1,
+    stage: 0,
+    hitAt: -Infinity,
+    ring: new ChargeRing(),
   }
 }
 
@@ -251,6 +288,8 @@ export class Court3D {
   private flip: 1 | -1 = 1
   private time = 0
   private localPressAt = -Infinity
+  /** When the local swing button went down (s); −1 = not charging. */
+  private localChargeAt = -1
   private camX = 0
   /** Damped shuttle height the camera frames. */
   private focus = 1
@@ -316,7 +355,7 @@ export class Court3D {
     })
 
     this.players = [makePlayer(0), makePlayer(1)]
-    for (const p of this.players) scene.add(p.chibi.root)
+    for (const p of this.players) scene.add(p.chibi.root, p.ring.root)
 
     this.shuttle = new Mesh(
       new SphereGeometry(SHUTTLE_R, 14, 10),
@@ -420,7 +459,10 @@ export class Court3D {
     this.trail.mesh.visible = true
     this.dust.mesh.visible = true
     // Every hat + the twin outline, so no material compiles mid-match.
-    for (const p of this.players) p.chibi.root.traverse((o) => (o.visible = true))
+    for (const p of this.players) {
+      p.chibi.root.traverse((o) => (o.visible = true))
+      p.ring.shown = true
+    }
     this.placeCamera(0, 1)
     // Scenery, crowd and the shadow variants of every lit material are all in the scene by now.
     await this.view.renderer.compileAsync(this.view.scene, this.view.camera)
@@ -428,20 +470,23 @@ export class Court3D {
     this.ring.visible = false
     this.trail.mesh.visible = false
     this.dust.mesh.visible = false
-    for (let i = 0; i < 2; i++) this.players[i].chibi.setPreset(i)
+    for (let i = 0; i < 2; i++) {
+      this.players[i].chibi.setPreset(i)
+      this.players[i].ring.shown = false
+    }
   }
 
   /**
    * Show the match on `stage`. `onLocalSwing` registers a callback main calls the moment the local
-   * player swings (the racket moves the same frame, before the state comes back). An online guest
-   * passes its `predictor` (fed by main with the moves it sends) and `live` (inputs reach the sim).
-   * Returns the cleanup.
+   * swing button charges, swings or cancels (the racket moves the same frame, before the state comes
+   * back). An online guest passes its `predictor` (fed by main with the moves it sends) and `live`
+   * (inputs reach the sim). Returns the cleanup.
    */
   attach(
     stage: HTMLElement,
     smooth: Smoothed<SpState>,
     selfId: string,
-    onLocalSwing: (cb: () => void) => void,
+    onLocalSwing: (cb: (what: LocalSwing) => void) => void,
     predictor: GuestPredictor | null = null,
     live: () => boolean = () => false,
   ): () => void {
@@ -454,11 +499,7 @@ export class Court3D {
     stage.appendChild(this.view.root)
     this.settle = QUALITY_SETTLE
     this.quality.restart()
-    onLocalSwing(() => {
-      this.players[this.localIdx].swing.press()
-      this.localPressAt = this.time
-      playSound(SHUTTLE_SOUNDS.swing)
-    })
+    onLocalSwing((what) => this.localSwing(what))
     const stop = startRenderLoop((dt) => this.frame(dt))
     return () => {
       stop()
@@ -476,6 +517,7 @@ export class Court3D {
     this.lastEventId = 0
     this.pointSide = -1
     this.localPressAt = -Infinity
+    this.localChargeAt = -1
     this.rally = 0
     this.pointHits = 0
     this.pointAt = -Infinity
@@ -496,7 +538,38 @@ export class Court3D {
       p.squash.reset()
       p.lean.reset()
       Object.assign(p.pose, restPose())
+      p.charge = -1
+      p.stage = 0
+      p.hitAt = -Infinity
+      p.ring.update(-1, 0, 0, 0)
     }
+  }
+
+  /** The local swing button: load and hold, strike on the release (whoosh by charge), or let go. */
+  private localSwing(what: LocalSwing) {
+    const view = this.players[this.localIdx]
+    if (what === 'charge') {
+      if (this.localChargeAt < 0) this.localChargeAt = this.time
+      view.swing.hold()
+      return
+    }
+    const charge = Math.max(0, view.charge)
+    this.localChargeAt = -1
+    if (what === 'cancel') {
+      view.swing.cancel()
+      return
+    }
+    this.strikeOut(view, charge)
+    this.localPressAt = this.time
+    playSound(swingSound(charge))
+  }
+
+  /** Swing `view` now: let a hold go (or press), remember its power for the streak, catch up a hit already seen. */
+  private strikeOut(view: PlayerView, charge: number) {
+    if (view.swing.holding) view.swing.release()
+    else view.swing.press()
+    view.pose.power = charge
+    if (this.time - view.hitAt < HIT_GRACE) view.swing.setDue(0)
   }
 
   private frame(dt: number) {
@@ -564,15 +637,30 @@ export class Court3D {
         view.alt = alt
         view.chibi.setPreset(cp.preset, alt)
       }
+      // Charging: ours from the local button (same frame), the opponent's from the state.
+      const local = i === this.localIdx && !this.spectating
+      const renderTick = prev.tick + (curr.tick - prev.tick) * a
+      const charge = local
+        ? this.localChargeAt >= 0
+          ? chargeOf((this.time - this.localChargeAt) * TICK_RATE)
+          : -1
+        : cp.chargeAt >= 0
+          ? chargeOf(renderTick - cp.chargeAt)
+          : -1
+      if (!local && cp.chargeAt >= 0 && cp.swingAt === view.swingAt && !view.swing.holding) view.swing.hold()
       // Swings seen in the state (the opponent's, or ours if the press wasn't animated already).
       if (cp.swingAt !== view.swingAt) {
         const pressed = i === this.localIdx && this.time - this.localPressAt < LOCAL_SWING_GRACE
         if (!Number.isNaN(view.swingAt) && !pressed) {
-          view.swing.press()
-          playSound(SHUTTLE_SOUNDS.swing, i === this.localIdx ? 1 : 0.5)
+          const power = Math.max(0, view.charge)
+          this.strikeOut(view, power)
+          playSound(swingSound(power), i === this.localIdx ? 1 : 0.5)
         }
         view.swingAt = cp.swingAt
       }
+      // The opponent let go without a swing that counted (cancel / cooldown): drop the hold.
+      if (!local && cp.chargeAt < 0 && view.swing.holding) view.swing.cancel()
+      this.chargeFx(view, charge, x, z, local || this.spectating)
       // A pending contact of mine (render time sits between the prev and curr ticks): the racket holds
       // its wind-up, or hurries, so the strike meets the shuttle on the contact tick (a hit that already
       // happened tells the driver in onHit). A smash also schedules the leap so its rise tops out there
@@ -672,6 +760,22 @@ export class Court3D {
     this.catcher.visible = on
   }
 
+  /** The charge ring, the rising charge sounds and the flash at full (`near` = ours: full volume). */
+  private chargeFx(view: PlayerView, charge: number, x: number, z: number, near: boolean) {
+    view.ring.update(charge, x, z, this.time)
+    const stage = charge >= 0 ? chargeStage(charge) : 0
+    if (stage > view.stage) {
+      const sound = chargeSound(stage)
+      if (sound) playSound(sound, near ? 1 : 0.5)
+      if (stage === CHARGE.steps.length) {
+        this.fx.burst(x, FULL_SPARK_Y * CHIBI_SCALE, z, FULL_SPARK)
+        view.squash.kick(MOTION.kickPerfect * 0.5)
+      }
+    }
+    view.stage = stage
+    view.charge = charge
+  }
+
   /** Gait signals → springs and dust: squash on a start or sharp turn, lean overshoot on a stop, foot puffs. */
   private onGait(view: PlayerView, flags: number, x: number, z: number, vx: number, vz: number) {
     if (flags === 0) return
@@ -744,31 +848,52 @@ export class Court3D {
       if (e.k === 'point') {
         this.pointSide = e.side
         if (this.pointHits >= CHEER.rally) playSound(SHUTTLE_SOUNDS.cheer)
-      } else if (e.k === 'hit') this.onHit(s, e.side, e.grade, e.shot === 'smash')
+      } else if (e.k === 'hit') this.onHit(s, e.side, e.grade, e.shot === 'smash', e.charge ?? 0)
       else if (e.k === 'serve') this.trail.setLook(TRAIL.plain)
       else if (e.k === 'whiff' && !this.spectating && e.side === this.side)
         this.popAt(this.localIdx, 'miss', false)
     }
   }
 
-  private onHit(s: SpState, side: 0 | 1, grade: PopKind, smash: boolean) {
+  private onHit(
+    s: SpState,
+    side: 0 | 1,
+    grade: Exclude<PopKind, 'power' | 'miss'>,
+    smash: boolean,
+    charge: number,
+  ) {
     const j = s.players[0].side === side ? 0 : 1
     const mine = this.spectating || side === this.side
-    this.popAt(j, grade, smash)
-    this.trail.setLook(smash ? TRAIL.smash : grade === 'perfect' ? TRAIL.perfect : TRAIL.plain)
-    // The hit is happening now: a racket still on its way to contact hurries to meet it.
-    this.players[j].swing.setDue(0)
+    const power = isFull(charge) && grade === 'perfect'
+    this.popAt(j, power ? 'power' : grade, smash)
+    this.trail.setLook(
+      isFull(charge) ? TRAIL.power : smash ? TRAIL.smash : grade === 'perfect' ? TRAIL.perfect : TRAIL.plain,
+    )
+    // The hit is happening now: a racket still on its way to contact hurries to meet it (a press seen
+    // later this frame catches up too: hitAt).
+    const view = this.players[j]
+    view.hitAt = this.time
+    view.swing.setDue(0)
     const p = this.shuttle.position
     if (grade === 'perfect') {
       this.fx.burst(p.x, p.y, p.z, SPARKLE)
       // A snappy stretch-then-squash on the hitter.
-      this.players[j].squash.kick(MOTION.kickPerfect)
+      view.squash.kick(MOTION.kickPerfect)
     }
+    const boost = 1 + POWER_FX.punch * charge
     if (smash) {
       // Keep a leap scheduled from the pending smash; a same-tick hit leaps now.
-      this.players[j].jumpAge = leapAtHit(this.players[j].jumpAge)
+      view.jumpAge = leapAtHit(view.jumpAge)
       this.fx.burst(p.x, p.y, p.z, SMASH_BURST)
-      this.punch.kick(mine ? PUNCH.kickMine : PUNCH.kickTheirs)
+      if (power) this.fx.burst(p.x, p.y, p.z, POWER_BURST)
+      this.punch.kick((mine ? PUNCH.kickMine : PUNCH.kickTheirs) * (power ? POWER_FX.powerSmash : boost))
+    } else if (charge > 0) this.punch.kick(POWER_FX.hitKick * charge * (mine ? 1 : 0.5))
+    if (power && !this.spectating && side === this.side) {
+      try {
+        navigator.vibrate?.(POWER_FX.buzz)
+      } catch {
+        // Haptics are a nicety (blocked or missing on some browsers).
+      }
     }
   }
 

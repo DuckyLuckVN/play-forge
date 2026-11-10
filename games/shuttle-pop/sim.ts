@@ -3,6 +3,7 @@
 import { random } from '@forge/core/rng'
 import type { GameDefinition, GameOptions, InputEvent, PlayerInfo } from '@forge/net/session'
 import { botStep, newBotMemory, type BotMemory } from './ai'
+import { CHARGE, chargeOf } from './charge'
 import { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld } from './court'
 import { t } from './i18n'
 import { COURT, DT, settleOnFloor, stepShuttle, type Flight, type Vec3 } from './physics'
@@ -57,6 +58,11 @@ export type SpInput =
   | { t: 'move'; x: number; z: number }
   /** `tick` = the history tick on the swinger's screen (world.ts swingTick); none = judged now (no rewind). */
   | { t: 'swing'; x: number; z: number; tick?: number }
+  /**
+   * Swing button down: start charging (the swing itself goes out on release). `cancel` = let go without
+   * swinging (focus lost). A swing with no charge before it is a tap (charge 0): older clients still work.
+   */
+  | { t: 'charge'; cancel?: boolean }
   | { t: 'pick'; preset: number }
 
 export interface SpPlayer {
@@ -72,20 +78,24 @@ export interface SpPlayer {
   move: { x: number; z: number }
   /** Tick of the last swing. */
   swingAt: number
+  /** Tick the swing button went down (charging until the release swing); −1 = not charging. */
+  chargeAt: number
   preset: number
   level?: Level
   /** AI seats: the bot's cached plan (see ai.ts). */
   bot?: BotMemory
 }
 
-export type SpEvent = { id: number; tick: number } & (
-  | { k: 'hit'; side: 0 | 1; grade: Grade; shot: ShotKind }
-  | { k: 'whiff'; side: 0 | 1 }
-  | { k: 'land'; x: number; z: number; in: boolean }
-  | { k: 'net' }
-  | { k: 'point'; side: 0 | 1 }
-  | { k: 'serve'; side: 0 | 1 }
-)
+export type SpEvent = { id: number; tick: number } &
+  /** charge: the swing's hold-to-charge power 0..1 (absent = 0). */
+  (
+    | { k: 'hit'; side: 0 | 1; grade: Grade; shot: ShotKind; charge?: number }
+    | { k: 'whiff'; side: 0 | 1 }
+    | { k: 'land'; x: number; z: number; in: boolean }
+    | { k: 'net' }
+    | { k: 'point'; side: 0 | 1 }
+    | { k: 'serve'; side: 0 | 1 }
+  )
 type EventBody = SpEvent extends infer E ? (E extends SpEvent ? Omit<E, 'id' | 'tick'> : never) : never
 
 export interface SpState {
@@ -97,7 +107,15 @@ export interface SpState {
   shuttle: Flight & {
     lastHitter: -1 | 0 | 1
     /** A connected swing whose contact tick is still ahead. aimX = held view-relative x at the swing. */
-    pending: null | { atTick: number; side: 0 | 1; kind: ShotKind; grade: Grade; aimX: number }
+    pending: null | {
+      atTick: number
+      side: 0 | 1
+      kind: ShotKind
+      grade: Grade
+      aimX: number
+      /** Hold-to-charge power 0..1 (charge.ts). */
+      charge: number
+    }
   }
   score: [number, number]
   server: 0 | 1
@@ -136,13 +154,21 @@ function clampDir(x: unknown, z: unknown): { x: number; z: number } {
   return len > 1 ? { x: fx / len, z: fz / len } : { x: fx, z: fz }
 }
 
+/** Run speed share for a player: CHARGE.moveMul while charging a swing. */
+export const speedMulOf = (p: Pick<SpPlayer, 'chargeAt'>): number => (p.chargeAt >= 0 ? CHARGE.moveMul : 1)
+
 /**
- * Movement integration: velocity eases toward move × MOVE_SPEED (full speed in ~ACCEL_TICKS ticks),
- * position stays on the player's own half (NET_MARGIN from the net, OUT_MARGIN past the lines).
+ * Movement integration: velocity eases toward move × MOVE_SPEED × speedMul (full speed in ~ACCEL_TICKS
+ * ticks), position stays on the player's own half (NET_MARGIN from the net, OUT_MARGIN past the lines).
  * Mutates p. Shared with guest prediction.
  */
-export function stepPlayer(p: Pick<SpPlayer, 'side' | 'x' | 'z' | 'vx' | 'vz' | 'move'>, dt: number): void {
-  const want = toWorld(p.side, p.move.x * MOVE_SPEED, p.move.z * MOVE_SPEED)
+export function stepPlayer(
+  p: Pick<SpPlayer, 'side' | 'x' | 'z' | 'vx' | 'vz' | 'move'>,
+  dt: number,
+  speedMul = 1,
+): void {
+  const top = MOVE_SPEED * speedMul
+  const want = toWorld(p.side, p.move.x * top, p.move.z * top)
   let dvx = want.x - p.vx
   let dvz = want.z - p.vz
   const dv = Math.hypot(dvx, dvz)
@@ -218,6 +244,7 @@ const makePlayer = (
   vz: 0,
   move: { x: 0, z: 0 },
   swingAt: -SWING_COOLDOWN,
+  chargeAt: -1,
   preset: side,
   ...(level ? { level } : {}),
 })
@@ -334,7 +361,13 @@ export function rewindTicks(hostTick: number, inputTick: number): number {
  * is scheduled as `pending`. Past candidates come only from `history`, so it must cover
  * rewind + pastGrace + 1 ticks.
  */
-export function resolveSwing(state: SpState, p: SpPlayer, held: { x: number; z: number }, rewind = 0) {
+export function resolveSwing(
+  state: SpState,
+  p: SpPlayer,
+  held: { x: number; z: number },
+  rewind = 0,
+  charge = 0,
+) {
   const s = state.shuttle
   if (s.lastHitter === p.side || s.pending) {
     emit(state, { k: 'whiff', side: p.side })
@@ -371,7 +404,7 @@ export function resolveSwing(state: SpState, p: SpPlayer, held: { x: number; z: 
     return
   }
   const kind = chooseShot(held, bestY, grade)
-  s.pending = { atTick: Math.max(bestTick, state.tick), side: p.side, kind, grade, aimX: held.x }
+  s.pending = { atTick: Math.max(bestTick, state.tick), side: p.side, kind, grade, aimX: held.x, charge }
   if (s.pending.atTick === state.tick) hit(state)
 }
 
@@ -392,7 +425,7 @@ function hit(state: SpState) {
   const s = state.shuttle
   const pend = s.pending!
   const target = shotTarget(pend.kind, pend.side, pend.aimX)
-  const v = launchFor(pend.kind, pend.grade, s.pos, target, () => rand(state))
+  const v = launchFor(pend.kind, pend.grade, s.pos, target, () => rand(state), pend.charge)
   s.vel.x = v.x
   s.vel.y = v.y
   s.vel.z = v.z
@@ -402,7 +435,7 @@ function hit(state: SpState) {
   state.history.length = 0
   state.stats.shots++
   if (pend.grade === 'perfect') state.stats.perfect[pend.side]++
-  emit(state, { k: 'hit', side: pend.side, grade: pend.grade, shot: pend.kind })
+  emit(state, { k: 'hit', side: pend.side, grade: pend.grade, shot: pend.kind, charge: pend.charge })
 }
 
 function scorePoint(state: SpState, side: 0 | 1) {
@@ -431,10 +464,14 @@ function recordHistory(state: SpState) {
   if (state.history.length > HISTORY_TICKS) state.history.splice(0, state.history.length - HISTORY_TICKS)
 }
 
+/** May `p` start charging now: in a rally, or the server in the serve (the cooldown may still run). */
+export function canCharge(state: SpState, p: SpPlayer): boolean {
+  return state.phase === 'rally' || (state.phase === 'serve' && p.side === state.server)
+}
+
 /** Would a swing by `p` resolve now: a rally swing or the server's serve, off cooldown. */
 export function canSwing(state: SpState, p: SpPlayer): boolean {
-  const live = state.phase === 'rally' || (state.phase === 'serve' && p.side === state.server)
-  return live && state.tick - p.swingAt >= SWING_COOLDOWN
+  return canCharge(state, p) && state.tick - p.swingAt >= SWING_COOLDOWN
 }
 
 /** A seat's name for display: the computer's is translated now (a language switch updates it). */
@@ -468,20 +505,28 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
   state.events = state.events.filter((e) => e.tick > state.tick - EVENT_TICKS)
 
   // 1. Inputs (from the network: check everything).
-  const swings: { p: SpPlayer; held: { x: number; z: number }; rewind: number }[] = []
+  const swings: { p: SpPlayer; held: { x: number; z: number }; rewind: number; charge: number }[] = []
   for (const { player, input } of [...inputs, ...botInputs(state)]) {
     const p = state.players.find((q) => q.id === player)
     if (!p || !input) continue
     if (input.t === 'move') p.move = clampDir(input.x, input.z)
     else if (input.t === 'pick') {
       if (finite(input.preset)) seedPreset(state, p.id, input.preset)
+    } else if (input.t === 'charge') {
+      if (input.cancel === true) p.chargeAt = -1
+      // A repeat press keeps the first start; between points / the receiver in the serve: ignored.
+      else if (p.chargeAt < 0 && canCharge(state, p)) p.chargeAt = state.tick
     } else if (input.t === 'swing') {
+      // The release: the hold so far is the charge (no press before = a tap). Press and release reach
+      // the host with the same lag, so the hold is measured in host ticks, never rewound.
+      const charge = p.chargeAt >= 0 ? chargeOf(state.tick - p.chargeAt) : 0
+      p.chargeAt = -1
       // Only swings that resolve (any rally swing, the server's serve) start the cooldown.
       if (!canSwing(state, p) || swings.some((w) => w.p === p)) continue
       p.swingAt = state.tick
       // Humans stamp the tick on their screen (clamped rewind); the computer is judged now.
       const rewind = p.kind === 'human' && input.tick !== undefined ? rewindTicks(state.tick, input.tick) : 0
-      swings.push({ p, held: clampDir(input.x, input.z), rewind })
+      swings.push({ p, held: clampDir(input.x, input.z), rewind, charge })
     }
   }
   for (const p of state.players) {
@@ -489,7 +534,7 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
       // The server stands still in the box until the serve.
       p.vx = 0
       p.vz = 0
-    } else stepPlayer(p, DT)
+    } else stepPlayer(p, DT, speedMulOf(p))
   }
 
   const s = state.shuttle
@@ -504,9 +549,9 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
     // 3. Swings: who can hit is decided by lastHitter + the shuttle's half, so at most one schedules.
     // A shuttle hit this tick can't be hit back on the same tick (else input order would decide).
     const hitter = s.lastHitter
-    for (const { p, held, rewind } of swings) {
+    for (const { p, held, rewind, charge } of swings) {
       if (s.lastHitter !== hitter) emit(state, { k: 'whiff', side: p.side })
-      else resolveSwing(state, p, held, rewind)
+      else resolveSwing(state, p, held, rewind, charge)
     }
     if (s.pending && s.pending.atTick <= state.tick) firePending(state)
   }

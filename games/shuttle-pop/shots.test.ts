@@ -235,3 +235,99 @@ describe('launchFor guarantees', () => {
     expect(l).toBeGreaterThanOrEqual(1)
   })
 })
+
+describe('launchFor charge (hold-to-charge power)', () => {
+  const kinds: ShotKind[] = ['smash', 'drive', 'clear', 'drop']
+  const grades: Grade[] = ['perfect', 'good', 'late']
+  const zero = () => 0
+  const speed = (v: { x: number; y: number; z: number }) => Math.hypot(v.x, v.y, v.z)
+
+  it('charge 0 is exactly today’s shot (default parameter)', () => {
+    const from = { x: 0.3, y: 1.4, z: -3 }
+    for (const kind of kinds) {
+      const t = shotTarget(kind, 0, 0.4)
+      expect(launchFor(kind, 'good', from, t, rngOf(0.3, 0.6), 0)).toEqual(
+        launchFor(kind, 'good', from, t, rngOf(0.3, 0.6)),
+      )
+    }
+  })
+
+  for (const side of [0, 1] as const)
+    it(
+      `side ${side}: full charge keeps the guarantees (≤ 45 m/s, clears the net, ≥ 1 m past it)`,
+      () => {
+        const dir = side === 0 ? 1 : -1
+        for (const kind of kinds)
+          for (const grade of grades)
+            for (const z of [-6.5, -4, -2.5, -1.2, -0.5])
+              for (const x of [-2.4, 0, 2.4])
+                for (const y of [0.6, 1.5, 2.8]) {
+                  const from = { x, y, z: side === 0 ? z : -z }
+                  const vel = launchFor(kind, grade, from, shotTarget(kind, side, x / 2.4), zero, 1)
+                  const land = predictLanding({ pos: from, vel })
+                  const tag = `${kind} ${grade} side${side} x${x} y${y} z${from.z}`
+                  expect(speed(vel), tag).toBeLessThanOrEqual(45 + 1e-9)
+                  expect(land.netHit, tag).toBe(false)
+                  expect(land.pos.z * dir, tag).toBeGreaterThanOrEqual(1.0)
+                }
+      },
+      SLOW,
+    )
+
+  it('a full-charge Perfect gets there sooner (smash / clear) or comes off faster (drive / drop), and lands in', () => {
+    // gain: 'sooner' = ≥ 10% fewer ticks to land; 'faster' = ≥ 5% more launch speed; 'same' = the net
+    // already caps how flat it can go (a smash from the back court): never worse than the tap.
+    const spots = [
+      { kind: 'smash', from: { x: 0, y: 2.5, z: -3 }, gain: 'sooner' },
+      { kind: 'smash', from: { x: 0, y: 2.2, z: -1.5 }, gain: 'sooner' },
+      { kind: 'smash', from: { x: 1, y: 2.3, z: -5 }, gain: 'same' },
+      { kind: 'clear', from: { x: 0, y: 1.5, z: -5 }, gain: 'sooner' },
+      { kind: 'clear', from: { x: 0, y: 1.3, z: -2 }, gain: 'sooner' },
+      { kind: 'drive', from: { x: 0, y: 1.3, z: -3.5 }, gain: 'faster' },
+      { kind: 'drive', from: { x: 0, y: 1.0, z: -5.5 }, gain: 'faster' },
+      { kind: 'drop', from: { x: 0, y: 2.2, z: -5 }, gain: 'faster' },
+    ] as const
+    for (const { kind, from, gain } of spots) {
+      const t = shotTarget(kind, 0, 0.5)
+      const tap = launchFor(kind, 'perfect', from, t, zero, 0)
+      const full = launchFor(kind, 'perfect', from, t, zero, 1)
+      const a = predictLanding({ pos: from, vel: tap })
+      const b = predictLanding({ pos: from, vel: full })
+      const tag = `${kind} ${JSON.stringify(from)}`
+      if (gain === 'sooner') expect(b.ticks, tag).toBeLessThan(a.ticks * 0.9)
+      else if (gain === 'faster') expect(speed(full), tag).toBeGreaterThan(speed(tap) * 1.05)
+      else expect(b.ticks, tag).toBeLessThanOrEqual(a.ticks)
+      expect(b.pos.z, tag).toBeGreaterThanOrEqual(a.pos.z - 1e-6)
+      expect(isIn(b.pos, 1), tag).toBe(true)
+    }
+  })
+
+  it(
+    'late is never faster than perfect at the same charge',
+    () => {
+      for (const kind of kinds)
+        for (const z of [-6.5, -3.5, -0.8])
+          for (const y of [0.6, 1.5, 2.8]) {
+            const from = { x: 0.5, y, z }
+            const t = shotTarget(kind, 0, 0)
+            const p = speed(launchFor(kind, 'perfect', from, t, zero, 1))
+            const l = speed(launchFor(kind, 'late', from, t, zero, 1))
+            expect(l, `${kind} ${z} ${y}`).toBeLessThanOrEqual(p + 1e-6)
+          }
+    },
+    SLOW,
+  )
+
+  it('charge widens the aim error of Good / Late, never of Perfect', () => {
+    const from = { x: 0, y: 1.5, z: -3 }
+    const t = shotTarget('drive', 0, 0)
+    const err = (g: Grade, c: number) => {
+      const v = launchFor('drive', g, from, t, rngOf(0, 0.999), c)
+      const l = predictLanding({ pos: from, vel: v }).pos
+      return Math.abs(l.x - t.x)
+    }
+    expect(err('good', 1)).toBeGreaterThan(err('good', 0) + 0.2)
+    expect(err('late', 1)).toBeGreaterThan(err('late', 0) + 0.2)
+    expect(err('perfect', 1)).toBeLessThan(0.35)
+  })
+})

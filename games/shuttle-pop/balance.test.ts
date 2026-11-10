@@ -31,6 +31,9 @@ interface Profile {
   depthBy: number
   /** Line calls this close (m) to a line are a coin flip. */
   unsureLine: number
+  /** Chance to hold-to-charge a swing at a high ball (a lob to smash / clear) and at anything else. */
+  chargeHigh: number
+  chargeLow: number
 }
 
 /**
@@ -38,8 +41,26 @@ interface Profile {
  * spread, misjudges depth now and then); "skilled" is a practised one (~100 ms spread, clean reads).
  */
 const PROFILES = {
-  casual: { reactTicks: 20, timingSigma: 9, posSigma: 0.3, depthMiss: 0.25, depthBy: 0.5, unsureLine: 0.2 },
-  skilled: { reactTicks: 15, timingSigma: 6, posSigma: 0.25, depthMiss: 0, depthBy: 0, unsureLine: 0.2 },
+  casual: {
+    reactTicks: 20,
+    timingSigma: 9,
+    posSigma: 0.3,
+    depthMiss: 0.25,
+    depthBy: 0.5,
+    unsureLine: 0.2,
+    chargeHigh: 0.35,
+    chargeLow: 0.2,
+  },
+  skilled: {
+    reactTicks: 15,
+    timingSigma: 6,
+    posSigma: 0.25,
+    depthMiss: 0,
+    depthBy: 0,
+    unsureLine: 0.2,
+    chargeHigh: 0.75,
+    chargeLow: 0.3,
+  },
 } satisfies Record<string, Profile>
 
 const SERVE_AT = 40
@@ -53,6 +74,9 @@ interface HumanMem {
   err: number
   contactAt: number
   swung: boolean
+  /** Ticks to hold the swing button before the release (0 = a tap); pressed = charge sent. */
+  hold: number
+  pressed: boolean
   rng: { seed: number }
 }
 
@@ -63,6 +87,8 @@ const newHuman = (seed: number): HumanMem => ({
   err: 0,
   contactAt: -1,
   swung: false,
+  hold: 0,
+  pressed: false,
   rng: { seed: seed ^ 0x5bd1e995 },
 })
 
@@ -74,7 +100,7 @@ function gauss(m: HumanMem): number {
 const scratch: Flight = { pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 } }
 
 /** Where to stand: a spot on the flight I can reach in time, as near the comfy height as possible. */
-function meet(s: SpState, side: 0 | 1): { x: number; z: number } {
+function meet(s: SpState, side: 0 | 1): { x: number; z: number; high: boolean } {
   const me = s.players[side]
   Object.assign(scratch.pos, s.shuttle.pos)
   Object.assign(scratch.vel, s.shuttle.vel)
@@ -82,7 +108,7 @@ function meet(s: SpState, side: 0 | 1): { x: number; z: number } {
   // Lobs are met high (a smash chance); everything else at chest height.
   let apex = s.shuttle.pos.y
   const speed = MOVE_SPEED / TICK_RATE
-  let best = { x: land.pos.x, z: land.pos.z }
+  let best = { x: land.pos.x, z: land.pos.z, high: false }
   let bestScore = Infinity
   const pts: { x: number; y: number; z: number; t: number }[] = []
   for (let t = 0; t < 400; t++) {
@@ -99,7 +125,7 @@ function meet(s: SpState, side: 0 | 1): { x: number; z: number } {
     const score = late <= 0 ? Math.abs(p.y - prefY) : 100 + late
     if (score < bestScore) {
       bestScore = score
-      best = { x: p.x, z: p.z }
+      best = { x: p.x, z: p.z, high: prefY > 2 }
     }
   }
   return best
@@ -147,6 +173,10 @@ function humanStep(s: SpState, side: 0 | 1, m: HumanMem, H: Profile): SpInput[] 
     m.err = Math.round(gauss(m) * H.timingSigma)
     m.contactAt = -1
     m.swung = false
+    m.pressed = false
+    // Hold-to-charge: a held press of ~0.2–0.6 s, more often on a high ball.
+    m.hold =
+      random(m.rng) < (spot.high ? H.chargeHigh : H.chargeLow) ? 12 + Math.floor(random(m.rng) * 24) : 0
   }
   if (!m.play) return [moveTo(s, side, base)]
   const out: SpInput[] = [moveTo(s, side, m.target)]
@@ -156,6 +186,10 @@ function humanStep(s: SpState, side: 0 | 1, m: HumanMem, H: Profile): SpInput[] 
   if (m.contactAt < 0 || m.contactAt > s.tick + 1) {
     const c = findContact(s.shuttle, me, 0, 120)
     if (c) m.contactAt = s.tick + 1 + c.dt
+  }
+  if (m.hold > 0 && !m.pressed && m.contactAt >= 0 && s.tick + 1 >= m.contactAt - m.err - m.hold) {
+    m.pressed = true
+    out.push({ t: 'charge' })
   }
   if (m.contactAt >= 0 && s.tick + 1 >= m.contactAt - m.err) {
     m.swung = true
@@ -284,7 +318,10 @@ describe('balance vs scripted players (tuning gauges)', () => {
     () => {
       const rows: Record<string, Row> = {}
       for (const [name, H] of Object.entries(PROFILES))
-        for (const l of ['easy', 'normal', 'hard'] as const) rows[`${name} v ${l}`] = gauge(H, l, N)
+        for (const l of ['easy', 'normal', 'hard'] as const)
+          // BALANCE_ONLY=casual-normal (etc.) logs one row.
+          if (!process.env.BALANCE_ONLY || process.env.BALANCE_ONLY === `${name}-${l}`)
+            rows[`${name} v ${l}`] = gauge(H, l, N)
       console.warn(JSON.stringify(rows, null, 1))
     },
     120_000,

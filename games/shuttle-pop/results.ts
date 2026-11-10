@@ -1,6 +1,6 @@
 // Results text (pure): the final score, stat rows, the end-of-match headline and the top-bar chips.
 import type { Outcome, Scoreline, SummaryRow } from '@forge'
-import { sideName } from './doubles'
+import { teamName } from './doubles'
 import { t } from './i18n'
 import { winner } from './rules'
 import { shownName, type SpState } from './sim'
@@ -39,7 +39,10 @@ export function outcomeOf(s: SpState, selfId: string): Outcome {
   const side = s.winner === 1 ? 1 : 0
   if (s.players.length > 2) {
     // 2v2 never ends early (the computer takes a leaver's seat).
-    const names = sideName(s.players.filter((p) => p.side === side).map(shownName))
+    const names = teamName(
+      s.players.filter((p) => p.side === side),
+      shownName,
+    )
     if (!me) return { headline: t('{names} win!', { names }), result: 'done' }
     if (me.side === side) return { headline: t('Your team wins {score}!', { score }), result: 'win' }
     return { headline: t('{names} win {score}.', { names, score }), result: 'lose' }

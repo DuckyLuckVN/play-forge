@@ -6,7 +6,7 @@
 // DOM only for what changed. The point pop is a CSS animation (time-based, frame-rate independent).
 
 import { h } from '@forge'
-import { sideName } from './doubles'
+import { teamName } from './doubles'
 import { t } from './i18n'
 import { PRESETS } from './presets'
 import { CAP, matchPoint, TARGET, winner } from './rules'
@@ -52,7 +52,7 @@ export function boardView(s: SpState, leftSide: 0 | 1): BoardView {
     const team = s.players.filter((q) => q.side === side)
     const p = team[0]
     return {
-      name: sideName(team.map(shownName)),
+      name: teamName(team, shownName),
       score: s.score[side],
       tint: tintCss(PRESETS[p.preset]?.tint ?? PRESETS[side].tint),
       serving: s.phase !== 'over' && s.server === side,

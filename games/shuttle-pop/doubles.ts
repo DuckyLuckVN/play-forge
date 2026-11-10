@@ -58,6 +58,15 @@ export function sideName(names: readonly string[]): string {
   return names.length > 1 ? t('{a} & {b}', { a: names[0], b: names[1] }) : (names[0] ?? '')
 }
 
+/** A team's label: "{a} & {b}", but one name when every member is a computer. */
+export function teamName<T extends { kind: 'human' | 'ai' }>(
+  team: readonly T[],
+  nameOf: (p: T) => string,
+): string {
+  const names = team.map(nameOf)
+  return team.length > 1 && team.every((p) => p.kind === 'ai') ? names[0] : sideName(names)
+}
+
 /**
  * tie: distance gap (m) under which slot 0 takes; centre: view-x dead zone; splitX: cover lane × halfWidth;
  * depth: the pair's waiting / cover depth × the 1v1 ready depth (ai.ts readyDepth).

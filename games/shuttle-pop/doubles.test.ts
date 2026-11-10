@@ -9,6 +9,7 @@ import {
   seatOf,
   serverOf,
   sideName,
+  teamName,
   takerOf,
   coverSpot,
 } from './doubles'
@@ -118,5 +119,16 @@ describe('sideName', () => {
   it('joins names', () => {
     expect(sideName(['A'])).toBe('A')
     expect(sideName(['A', 'B'])).toBe('A & B')
+  })
+})
+
+describe('teamName', () => {
+  const H = { kind: 'human' as const, name: 'Ann' }
+  const C = { kind: 'ai' as const, name: 'Computer' }
+  const n = (p: { name: string }) => p.name
+  it('one name for an all-computer team, both when a human is on it', () => {
+    expect(teamName([C, C], n)).toBe('Computer')
+    expect(teamName([H, C], n)).toBe('Ann & Computer')
+    expect(teamName([H], n)).toBe('Ann')
   })
 })

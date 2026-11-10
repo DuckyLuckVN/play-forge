@@ -86,7 +86,7 @@ describe('doubles results', () => {
     expect(outcomeOf(s, 'watcher')).toEqual({ headline: 'Ann & Cid win!', result: 'done' })
     // Alone with computers: the computer team is named too.
     const solo = doubles(['Ann'], 1, [8, 11])
-    expect(outcomeOf(solo, 'p0')).toEqual({ headline: 'Computer & Computer win 8–11.', result: 'lose' })
+    expect(outcomeOf(solo, 'p0')).toEqual({ headline: 'Computer win 8–11.', result: 'lose' })
   })
 
   it('1v1 headlines are unchanged', () => {

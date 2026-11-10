@@ -48,7 +48,7 @@ describe('boardView', () => {
     s.score = [4, 6]
     const v = boardView(s, 0)
     expect(v.left.name).toBe('Ann & Computer')
-    expect(v.right.name).toBe('Computer & Computer')
+    expect(v.right.name).toBe('Computer')
     expect(v.left.score).toBe(4)
     expect(v.right.score).toBe(6)
     // The team's colour is its first player's.

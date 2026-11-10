@@ -266,18 +266,26 @@ function balloons(out: Prop[]) {
   })
 }
 
+const CHAIR_X = COURT.halfWidth + 0.95
+/**
+ * The flip scoreboard: centre (x, y), size, card offset from the middle, and the z of the cards' front
+ * (camera side). boardprop.ts writes the live score over the cards.
+ */
+export const BOARD = { x: -CHAIR_X, y: 0.95, w: 0.9, h: 0.5, card: 0.2, face: -0.06 } as const
+
 /** Umpire chair by the right net post; a little flip scoreboard by the left one. */
 function netSide(out: Prop[]) {
-  const cx = COURT.halfWidth + 0.95
+  const cx = CHAIR_X
   for (const dx of [-0.2, 0.2])
     for (const dz of [-0.2, 0.2]) out.push(prop('post', COLORS.wood, cx + dx, 0.6, dz, 0.06, 1.2, 0.06))
   out.push(prop('box', COLORS.wood, cx, 1.24, 0, 0.55, 0.08, 0.55))
   out.push(prop('box', COLORS.wood, cx + 0.25, 1.5, 0, 0.06, 0.45, 0.55))
   for (const y of [0.35, 0.75]) out.push(prop('box', COLORS.wood, cx - 0.2, y, 0, 0.05, 0.05, 0.46))
-  const sx = -cx
+  const sx = BOARD.x
   for (const dx of [-0.32, 0.32]) out.push(prop('post', COLORS.wood, sx + dx, 0.4, 0, 0.05, 0.8, 0.05))
-  out.push(prop('box', COLORS.board, sx, 0.95, 0, 0.9, 0.5, 0.08))
-  for (const dx of [-0.2, 0.2]) out.push(prop('box', COLORS.card, sx + dx, 0.95, -0.05, 0.3, 0.36, 0.02))
+  out.push(prop('box', COLORS.board, sx, BOARD.y, 0, BOARD.w, BOARD.h, 0.08))
+  for (const dx of [-BOARD.card, BOARD.card])
+    out.push(prop('box', COLORS.card, sx + dx, BOARD.y, BOARD.face + 0.01, 0.3, 0.36, 0.02))
 }
 
 /** Grass tufts (three blades each) scattered on the lawn, clear of the surround, blankets and beds. */

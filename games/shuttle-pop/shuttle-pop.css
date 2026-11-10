@@ -140,25 +140,6 @@
 .sp-badge.in {
   animation: sp-badge-in 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
-/* Match point: hot pill that breathes; yellow when it's ours, pink when it's theirs. */
-.sp-match {
-  font-size: 17px;
-  text-transform: uppercase;
-  background: linear-gradient(180deg, var(--sp-pink), var(--sp-pink-deep));
-}
-.sp-match[data-who='mine'] {
-  background: linear-gradient(180deg, var(--sp-gold), var(--sp-amber));
-  color: var(--sp-cocoa);
-}
-.sp-match[data-who='both'] {
-  background: linear-gradient(90deg, var(--sp-gold), var(--sp-pink));
-  color: var(--sp-cocoa);
-}
-.sp-match:not([hidden]) {
-  animation:
-    sp-badge-in 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both,
-    sp-breathe 1.4s ease-in-out 420ms infinite;
-}
 @keyframes sp-badge-in {
   from {
     opacity: 0;
@@ -172,6 +153,203 @@
 @keyframes sp-breathe {
   50% {
     transform: scale(1.06);
+  }
+}
+
+/* ---------- Scoreboard (scoreboard.ts): top centre, you on the left ---------- */
+.sp-board {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+/* Hidden while not playing (countdown, pause, results): main.ts sets sp-playing on the stage. */
+.pf-stage:not(.sp-playing) .sp-board {
+  visibility: hidden;
+}
+.sp-board-row {
+  display: flex;
+  align-items: stretch;
+  padding: 3px;
+  border-radius: 16px;
+  background: rgb(36 26 48 / 0.72);
+  box-shadow:
+    0 3px 10px rgb(0 0 0 / 0.2),
+    inset 0 1px 0 rgb(255 255 255 / 0.12);
+  color: var(--sp-white);
+}
+.sp-board-dash {
+  width: 2px;
+  margin: 6px 3px;
+  border-radius: 1px;
+  background: rgb(255 255 255 / 0.25);
+}
+.sp-team {
+  --sp-team: var(--sp-berry);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 6px 2px 10px;
+  border-radius: 13px;
+  min-width: 0;
+  transition: background-color 0.3s ease;
+}
+.sp-team.right {
+  flex-direction: row-reverse;
+  padding: 2px 10px 2px 6px;
+}
+.sp-team-dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--sp-team);
+  box-shadow:
+    0 0 0 2px rgb(255 255 255 / 0.85),
+    inset 0 -2px 0 rgb(0 0 0 / 0.18);
+}
+.sp-team-name {
+  max-width: 11ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 700;
+  opacity: 0.92;
+}
+.sp-team-serve {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--sp-white);
+  visibility: hidden;
+}
+.sp-team.serving .sp-team-serve {
+  visibility: visible;
+  animation: sp-serve-bob 1.6s ease-in-out infinite;
+}
+.sp-team-score {
+  min-width: 1.6ch;
+  padding: 0 6px;
+  border-radius: 10px;
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--sp-team) 30%, transparent);
+  display: inline-block;
+}
+/* Match point: that side's number glows gold. */
+.sp-team.hot .sp-team-score {
+  background: linear-gradient(180deg, var(--sp-gold), var(--sp-amber));
+  color: var(--sp-cocoa);
+}
+/* A point won: the number flips up and flashes gold, the side lights up briefly. */
+.sp-team.scored {
+  background-color: color-mix(in srgb, var(--sp-gold) 28%, transparent);
+}
+.sp-team.scored .sp-team-score {
+  animation: sp-score-pop 560ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes sp-score-pop {
+  0% {
+    transform: perspective(120px) rotateX(-90deg) scale(0.8);
+    color: var(--sp-gold);
+  }
+  45% {
+    transform: perspective(120px) rotateX(10deg) scale(1.35);
+    color: var(--sp-gold);
+  }
+  100% {
+    transform: none;
+  }
+}
+@keyframes sp-serve-bob {
+  50% {
+    transform: translateY(-2px) rotate(-8deg);
+  }
+}
+/* Match point tag (under the board): yellow when it's ours, pink theirs, both at 14-all. */
+.sp-board-tag {
+  padding: 2px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sp-white);
+  background: linear-gradient(180deg, var(--sp-pink), var(--sp-pink-deep));
+  box-shadow: 0 3px 10px rgb(0 0 0 / 0.18);
+}
+.sp-board-tag[data-who='mine'] {
+  background: linear-gradient(180deg, var(--sp-gold), var(--sp-amber));
+  color: var(--sp-cocoa);
+}
+.sp-board-tag[data-who='both'] {
+  background: linear-gradient(90deg, var(--sp-gold), var(--sp-pink));
+  color: var(--sp-cocoa);
+}
+.sp-board-tag:not([hidden]) {
+  animation:
+    sp-badge-in 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both,
+    sp-breathe 1.4s ease-in-out 420ms infinite;
+}
+.sp-board-note {
+  padding: 1px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sp-white);
+  background: rgb(36 26 48 / 0.6);
+}
+.sp-board-tag[hidden],
+.sp-board-note[hidden] {
+  display: none;
+}
+/* Phone landscape / small stages: compact, clear of the stick and the swing button. */
+@media (max-height: 500px), (max-width: 600px) {
+  .sp-badges {
+    top: 6px;
+    gap: 4px;
+  }
+  .sp-board-row {
+    padding: 2px;
+    border-radius: 12px;
+  }
+  .sp-team {
+    gap: 5px;
+    padding: 1px 4px 1px 7px;
+  }
+  .sp-team.right {
+    padding: 1px 7px 1px 4px;
+  }
+  .sp-team-dot {
+    width: 9px;
+    height: 9px;
+  }
+  .sp-team-name {
+    max-width: 8ch;
+    font-size: 12px;
+  }
+  .sp-team-serve {
+    width: 13px;
+    height: 13px;
+  }
+  .sp-team-score {
+    font-size: 19px;
+    padding: 0 4px;
+    border-radius: 8px;
+  }
+  .sp-board-tag {
+    font-size: 11px;
+    padding: 1px 9px;
+  }
+  .sp-board-note {
+    font-size: 10.5px;
+  }
+  .sp-badge {
+    font-size: 13px;
+    padding: 3px 11px;
   }
 }
 
@@ -293,8 +471,10 @@
   .sp-pop.show {
     animation-name: sp-pop-calm;
   }
-  .sp-match:not([hidden]),
-  .sp-badge.in {
+  .sp-board-tag:not([hidden]),
+  .sp-badge.in,
+  .sp-team.serving .sp-team-serve,
+  .sp-team.scored .sp-team-score {
     animation: none;
   }
 }

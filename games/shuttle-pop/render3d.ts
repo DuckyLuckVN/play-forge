@@ -5,6 +5,8 @@
 // stage and gets a cleanup that parks it offscreen again. The render loop allocates nothing.
 // The park around the court (sky, lights, crowd) is scenery.ts. Real shadows come from the players
 // only and stop (between rallies) once the quality governor sees slow frames.
+// Net: net.ts (mesh, tapes, posts; a ripple when the shuttle hits it). Scoreboard: scoreboard.ts (DOM, top
+// centre) + the live score on the flip board by the net (boardprop.ts).
 // Juice: timing pops + badges (hud.ts), Perfect sparkles, a shuttle trail (hot after a smash), a sprung
 // camera punch on smashes and the sounds (sounds.ts), all driven by new sim events. Hold-to-charge: a
 // charge ring at the feet (chargering.ts) with rising sounds, the racket held loaded until the release,
@@ -18,17 +20,13 @@ import {
   BackSide,
   CircleGeometry,
   Color,
-  CylinderGeometry,
-  DoubleSide,
   Mesh,
   PMREMGenerator,
   MeshBasicMaterial,
-  MeshStandardMaterial,
   PlaneGeometry,
   ShadowMaterial,
   SphereGeometry,
   TorusGeometry,
-  BoxGeometry,
   Vector3,
   type BufferGeometry,
 } from 'three'
@@ -53,7 +51,10 @@ import { ChargeRing } from './chargering'
 import { TICK_RATE } from './court'
 import { DustPuffs } from './dust'
 import { canSplit, Footwork, lungeWanted, splitHop, splitsOn } from './footwork'
-import { Hud, matchPoint, newEvents, newestShotId, trackerAction, type PopKind } from './hud'
+import { Hud, newEvents, newestShotId, trackerAction, type PopKind } from './hud'
+import { ScoreCards } from './boardprop'
+import { Net } from './net'
+import { boardView, Scoreboard } from './scoreboard'
 import { t } from './i18n'
 import { damp, Gait, GaitEvent } from './locomotion'
 import {
@@ -71,7 +72,7 @@ import type { GuestPredictor } from './predict'
 import { SpringPunch } from './punch'
 import { SURROUND } from './props'
 import { Park } from './scenery'
-import { shownName, TAPPED, type SpEvent, type SpState } from './sim'
+import { TAPPED, type SpEvent, type SpState } from './sim'
 import { chargeSound, eventSound, SHUTTLE_SOUNDS, swingSound } from './sounds'
 import { ShuttleTrail, type TrailLook } from './trail'
 import {
@@ -94,8 +95,6 @@ const PALETTE = {
   surround: '#c9a487',
   court: '#3f9a86',
   line: '#ffffff',
-  net: '#ffffff',
-  post: '#6b5b73',
   shuttle: '#ffffff',
   /** Dark rim so the white shuttle reads against the pale sky (same idea as the twin outline). */
   shuttleRim: '#3b2f4a',
@@ -105,7 +104,6 @@ const PALETTE = {
 
 const LINE_W = 0.05
 const POST_OUT = 0.25
-const NET_DEPTH = 0.76
 const SHUTTLE_R = 0.08
 /** Rim shell radius over the shuttle's. */
 const SHUTTLE_RIM = 1.35
@@ -338,12 +336,18 @@ export class Court3D {
   private predictor: GuestPredictor | null = null
   /** Whether our inputs reach the sim now (no prediction while they'd be dropped). */
   private live: () => boolean = () => false
-  private hud = new Hud()
-  /** What the serve / match-point badges were last drawn for (phase '' = redraw). */
+  private board = new Scoreboard()
+  private hud = new Hud(this.board.root)
+  private cards = new ScoreCards()
+  private net!: Net
+  /** What the serve badge and the scoreboard were last drawn for (phase '' = redraw). */
   private hudPhase = ''
   private hudServer = -1
   private hudS0 = -1
   private hudS1 = -1
+  private hudSide = -1
+  /** Both seats' looks (preset0 * 64 + preset1): the board's colour dots. */
+  private hudLooks = -1
   private fx = new Particles3D(160)
   private trail = new ShuttleTrail(TRAIL_DOTS, TRAIL_SAMPLES, TRAIL_STEP, TRAIL.plain)
   private proj = new Vector3()
@@ -454,31 +458,10 @@ export class Court3D {
     }
     scene.add(new Mesh(mergeGeometries(lines), new MeshBasicMaterial({ color: PALETTE.line })))
 
-    // Net: two posts, a see-through mesh and a white tape at net height.
-    const span = COURT.halfWidth + POST_OUT
-    const postMat = new MeshStandardMaterial({ color: PALETTE.post, roughness: 0.6 })
-    for (const s of [-1, 1]) {
-      const post = new Mesh(new CylinderGeometry(0.04, 0.04, COURT.netH, 10), postMat)
-      post.position.set(s * span, COURT.netH / 2, 0)
-      scene.add(post)
-    }
-    const net = new Mesh(
-      new PlaneGeometry(span * 2, NET_DEPTH),
-      new MeshBasicMaterial({
-        color: PALETTE.net,
-        transparent: true,
-        opacity: 0.35,
-        side: DoubleSide,
-        depthWrite: false,
-      }),
-    )
-    net.position.y = COURT.netH - NET_DEPTH / 2
-    const tape = new Mesh(
-      new BoxGeometry(span * 2, 0.05, 0.02),
-      new MeshBasicMaterial({ color: PALETTE.net }),
-    )
-    tape.position.y = COURT.netH
-    scene.add(net, tape)
+    // Net: posts, the see-through mesh and the tapes (net.ts).
+    const aniso = this.view.renderer.capabilities.getMaxAnisotropy()
+    this.net = new Net(COURT.halfWidth + POST_OUT, COURT.netH, aniso)
+    scene.add(this.net.group, this.cards.mesh)
   }
 
   /** Compile every shader up front, so the first match starts without a hitch. */
@@ -559,6 +542,8 @@ export class Court3D {
     this.pointAt = -Infinity
     this.ring.visible = false
     this.hud.reset()
+    this.board.reset()
+    this.net.reset()
     this.hudPhase = ''
     this.trail.reset()
     this.trail.setLook(TRAIL.plain)
@@ -789,6 +774,7 @@ export class Court3D {
     const sp = this.shuttle.position
     this.trail.update(flying, sp.x, sp.y, sp.z, dt)
     this.fx.update(dt)
+    this.net.update(dt)
     this.updateHud(curr)
 
     this.updateRing(curr, flip)
@@ -935,6 +921,8 @@ export class Court3D {
         }
       const sound = eventSound(e, this.side)
       if (sound) playSound(sound.sound, sound.vol)
+      // Into the net: it ripples out from the shuttle, pushed away from whoever hit it (near = +z).
+      if (e.k === 'net') this.net.hit(this.shuttle.position.x, s.shuttle.lastHitter === this.side ? 1 : -1)
       if (e.k === 'point') {
         this.pointSide = e.side
         if (this.pointHits >= CHEER.rally) playSound(SHUTTLE_SOUNDS.cheer)
@@ -1004,29 +992,32 @@ export class Court3D {
     this.hud.pop(kind, ((this.proj.x + 1) / 2) * w, y, w, h, mine, smash)
   }
 
-  /** Serve badge + match-point badge, touched only when phase / server / score change. */
+  /**
+   * Scoreboard (+ the flip board by the net) and the "Your serve" badge, touched only when the phase,
+   * server, score, our side or the looks change. The opponent's serve shows as the board's shuttle icon.
+   */
   private updateHud(s: SpState) {
+    const looks = s.players[0].preset * 64 + s.players[1].preset
     if (
       s.phase === this.hudPhase &&
       s.server === this.hudServer &&
       s.score[0] === this.hudS0 &&
-      s.score[1] === this.hudS1
+      s.score[1] === this.hudS1 &&
+      this.side === this.hudSide &&
+      looks === this.hudLooks
     )
       return
     this.hudPhase = s.phase
     this.hudServer = s.server
     this.hudS0 = s.score[0]
     this.hudS1 = s.score[1]
-    const live = s.phase === 'serve' || s.phase === 'rally'
-    if (s.phase !== 'serve') this.hud.setServe(null)
-    else if (!this.spectating && s.server === this.side) this.hud.setServe(t('Your serve'))
-    else {
-      const server = s.players[0].side === s.server ? s.players[0] : s.players[1]
-      this.hud.setServe(t('{name} serves', { name: shownName(server) }))
-    }
-    const mine = live && matchPoint(s.score, this.side)
-    const theirs = live && matchPoint(s.score, this.side === 0 ? 1 : 0)
-    this.hud.setMatchPoint(mine && theirs ? 'both' : mine ? 'mine' : theirs ? 'theirs' : null)
+    this.hudSide = this.side
+    this.hudLooks = looks
+    const mine = s.phase === 'serve' && !this.spectating && s.server === this.side
+    this.hud.setServe(mine ? t('Your serve') : null)
+    const view = boardView(s, this.side)
+    this.board.update(view)
+    this.cards.set(view.left.score, view.right.score)
   }
 
   /** Landing ring: predicted once per new shot (a new hit/serve event or a new hitter), not per frame. */

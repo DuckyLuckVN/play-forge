@@ -1,5 +1,6 @@
-// In-match overlay over the 3D court: timing pops ("Perfect!" near the hitter), the serve badge and the
-// match-point badge. The score itself is the shell's top-bar chips. Pure helpers first (tested).
+// In-match overlay over the 3D court: timing pops ("Perfect!" near the hitter) and the "Your serve"
+// badge; the scoreboard (scoreboard.ts, with the match-point tag) sits on top of it. Pure helpers first
+// (tested).
 // DOM nodes are made once and reused; animations are CSS (time-based, so frame-rate independent).
 import { h } from '@forge'
 import { t } from './i18n'
@@ -79,14 +80,12 @@ export class Hud {
   private pops: HTMLElement[] = []
   private next = 0
   private serveEl: HTMLElement
-  private matchEl: HTMLElement
 
-  constructor() {
+  /** `top` = what sits at the top centre above the badges (the scoreboard). */
+  constructor(top: HTMLElement) {
     this.serveEl = h('div', { class: 'sp-badge sp-serve' })
-    this.matchEl = h('div', { class: 'sp-badge sp-match' })
     this.serveEl.hidden = true
-    this.matchEl.hidden = true
-    this.root = h('div', { class: 'sp-hud' }, h('div', { class: 'sp-badges' }, this.matchEl, this.serveEl))
+    this.root = h('div', { class: 'sp-hud' }, h('div', { class: 'sp-badges' }, top, this.serveEl))
     for (let i = 0; i < POPS; i++) {
       const el = h('div', { class: 'sp-pop' })
       el.setAttribute('aria-hidden', 'true')
@@ -119,17 +118,10 @@ export class Hud {
     showBadge(this.serveEl, text)
   }
 
-  /** Match-point badge: whose (null hides it). Call on change only. */
-  setMatchPoint(who: 'mine' | 'theirs' | 'both' | null) {
-    this.matchEl.dataset.who = who ?? ''
-    showBadge(this.matchEl, who && t('Match point'))
-  }
-
   /** Clear every pop and badge (new match). */
   reset() {
     for (const el of this.pops) el.classList.remove('show')
     this.setServe(null)
-    this.setMatchPoint(null)
   }
 }
 

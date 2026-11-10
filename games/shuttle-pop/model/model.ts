@@ -49,9 +49,7 @@ export interface ModelSource {
 }
 
 const cache = new Map<number, ModelGeos>()
-/** Baked creases (ao.ts) on every bone but the racket. */
-const AO: MergeOpts = { ao: {} }
-/** Limbs and extras: skin unless a part says otherwise (sleeves, shorts, socks, shoes). */
+/** Limbs and extras: baked creases (ao.ts), skin unless a part says otherwise (sleeves, shorts, socks, shoes). */
 const SKIN: MergeOpts = { ao: {}, surf: 'skin' }
 /** The head at rest over the torso (torso space), shading the neck. */
 const neckShade = (l: Look): Part[] => {
@@ -83,7 +81,8 @@ export function modelOf(src: ModelSource): ModelGeos {
   let m = cache.get(src.id)
   if (!m) {
     const l = src.look
-    const head = mergeParts(headParts(l), { ...AO, surf: 'skin' })
+    // Softer creases on the head: the face stays clean and bright.
+    const head = mergeParts(headParts(l), { ao: { strength: 0.3 }, surf: 'skin' })
     const rk = `${l.accent}:${l.grip}`
     let racket = rackets.get(rk)
     if (!racket) rackets.set(rk, (racket = mergeParts(racketParts(l), { surf: 'plastic' })))

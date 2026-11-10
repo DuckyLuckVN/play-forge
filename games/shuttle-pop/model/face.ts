@@ -49,6 +49,9 @@ export interface FaceStyle {
    * brows, a small open smile, soft (alpha-faded) blush.
    */
   toy: boolean
+  /** Toy faces: brow slope (+ = inner ends lower: determined), mouth size share. */
+  browTilt: number
+  mouthK: number
 }
 const HUMAN_FACE: FaceStyle = {
   brows: true,
@@ -62,6 +65,8 @@ const HUMAN_FACE: FaceStyle = {
   glow: false,
   lashes: false,
   toy: false,
+  browTilt: 0,
+  mouthK: 1,
 }
 const CHIBI_FACE: FaceStyle = { ...HUMAN_FACE, toy: true }
 const ANIMAL_FACE: FaceStyle = {
@@ -75,6 +80,8 @@ const ANIMAL_FACE: FaceStyle = {
 export const FACE_STYLES: Record<FaceKind, FaceStyle> = {
   chibi: CHIBI_FACE,
   chibiLash: { ...CHIBI_FACE, lashes: true },
+  chibiBold: { ...CHIBI_FACE, browTilt: 0.012 },
+  chibiCalm: { ...CHIBI_FACE, mouthK: 0.8 },
   animal: ANIMAL_FACE,
   kitty: { ...ANIMAL_FACE, whiskers: true },
   panda: { ...ANIMAL_FACE, patch: true, blush: false },
@@ -109,15 +116,29 @@ const MOUTH_Y = -0.125
  * brows (gap over the eye top); mouth height; soft blush; tongue colour.
  */
 const TOY = {
-  eye: { a: 0.075, b: 0.09, x: 0.142, y: -0.1 } as EyeDims,
-  iris: { a: 0.93, b: 0.93, dy: -0.003 },
-  pupil: { a: 0.5, b: 0.54, dy: 0.008 },
-  lid: { mid: 0.09, end: 0.035, from: 0.08 },
-  brow: { gap: 0.034, w: 0.046, th: 0.011 },
-  mouthY: -0.196,
-  blush: { a: 0.064, b: 0.036, x: 0.238, y: -0.175 },
-  tongue: 0xf07a8a,
+  // Taller than wide, like the reference's soft oval eyes.
+  eye: { a: 0.079, b: 0.099, x: 0.15, y: -0.08 } as EyeDims,
+  iris: { a: 0.9, b: 0.93, dy: -0.004 },
+  pupil: { a: 0.56, b: 0.58, dy: 0.01 },
+  lid: { mid: 0.05, end: 0.02, from: 0.1 },
+  brow: { gap: 0.018, w: 0.044, th: 0.028 },
+  mouthY: -0.19,
+  blush: { a: 0.07, b: 0.04, x: 0.235, y: -0.178 },
+  tongue: 0xd4566a,
+  /** Open-mouth dark (the toy smile's inside). */
+  mouth: 0x6e1e2c,
+  /** Thin dark-brown eye ring and lash line (softer than the eye-dark used elsewhere). */
+  rim: 0x4a2a22,
+  lash: 0x2a1612,
+  brows: 0x4a2e22,
 }
+/** Toy lash flicks: one small flick for every toy face; lashed faces (Berry) get three. */
+const TOY_FLICK: readonly (readonly [number, number, number])[] = [[0.92, 0.5, 0.35]]
+const TOY_LASHES: readonly (readonly [number, number, number])[] = [
+  [0.9, 0.55, 0.45],
+  [0.98, 0.25, 0.15],
+  [0.7, 0.82, 0.75],
+]
 /** Mouth size share (shapes below are drawn at 1). */
 const MOUTH_K = 1.3
 const BLUSH = { a: 0.046, b: 0.024, x: 0.215, y: -0.085 }
@@ -208,8 +229,8 @@ function toyMouth(e: Expr): { w: number; top: (t: number) => number; bot: (t: nu
       return { w: 0.042, top, bot: (t) => top(t) - 0.04 * (1 - t * t) }
     }
     case 'neutral': {
-      const top = (t: number) => 0.003 + 0.007 * t * t
-      return { w: 0.04, top, bot: (t) => top(t) - 0.034 * (1 - t * t) - 0.002 }
+      const top = (t: number) => 0.003 + 0.008 * t * t
+      return { w: 0.048, top, bot: (t) => top(t) - 0.044 * (1 - t * t) - 0.002 }
     }
     default:
       return mouth(e)
@@ -351,13 +372,13 @@ export function faceLayout(look: Look, e: Expr): FaceLayout {
       const [dx, dy] = f(u - ex, v - eyeY)
       return [ex + dx, eyeY + dy]
     }
-    disc(ex, eyeY, E.a, E.b, L, eyeCol, at)
+    disc(ex, eyeY, E.a, E.b, L, st.toy ? TOY.rim : eyeCol, at)
     if (st.toy) {
       // Iris: dark at the top, glowing toward the bottom; pupil; then the lid line over the top arc.
-      const top = shade(look.iris, 0.6)
-      const bottom = tint(look.iris, 0.15)
+      const top = shade(look.iris, 0.65)
+      const bottom = tint(look.iris, 0.05)
       const I = TOY.iris
-      disc(ex, eyeY + I.dy, E.a * I.a, E.b * I.b, L + 1, look.iris, at, (ang) =>
+      disc(ex, eyeY + I.dy, E.a * I.a, E.b * I.b, L + 1, shade(look.iris, 0.15), at, (ang) =>
         mixHex(top, bottom, (1 - Math.sin(ang)) / 2),
       )
       const Pu = TOY.pupil
@@ -372,13 +393,13 @@ export function faceLayout(look: Look, e: Expr): FaceLayout {
         const i = at(ex + Math.cos(th) * E.a * 0.97, eyeY + sn * E.b * 0.97)
         pairs.push([o[0], o[1], i[0], i[1]])
       }
-      band(pairs, L + 3, COL.eye)
+      band(pairs, L + 3, TOY.lash)
     } else disc(ex, eyeY - 0.034, 0.048, 0.039, L + 1, irisCol, at)
     const hiL = st.toy ? L + 4 : L + 2
     for (const [hx, hy, hr] of st.toy
       ? [
-          [0.022, 0.03, 0.026],
-          [-0.026, -0.04, 0.012],
+          [0.018, 0.036, 0.024],
+          [-0.02, -0.04, 0.011],
         ]
       : [
           [0.019, 0.032, 0.024],
@@ -387,19 +408,21 @@ export function faceLayout(look: Look, e: Expr): FaceLayout {
       const [cx, cy] = at(ex + hx, eyeY + hy)
       disc(cx, cy, hr * shine, hr * shine, hiL, COL.shine, (u, v) => [u, v])
     }
-    if (st.lashes)
-      for (const [ox, oy, tilt] of LASHES) {
-        // Anchored on the eye's (morphed) outline, so a happy squint carries them down.
-        const [cx, cy] = at(ex + s * ox * E.a, eyeY + oy * E.b)
-        const ca = Math.cos(tilt * s)
-        const sa = Math.sin(tilt * s)
-        const lx = cx + s * LASH.a * 0.8
-        disc(lx, cy, LASH.a, LASH.b, st.toy ? L + 3 : L, eyeCol, (u, v) => {
-          const du = u - lx
-          const dv = v - cy
-          return [lx + du * ca - dv * sa, cy + du * sa + dv * ca]
-        })
-      }
+    const lashes = st.toy ? (st.lashes ? TOY_LASHES : TOY_FLICK) : st.lashes ? LASHES : []
+    for (const [ox, oy, tilt] of lashes) {
+      // Anchored on the eye's (morphed) outline, so a happy squint carries them down.
+      const [cx, cy] = at(ex + s * ox * E.a, eyeY + oy * E.b)
+      const ca = Math.cos(tilt * s)
+      const sa = Math.sin(tilt * s)
+      // A boy's single flick is shorter than a lash.
+      const la = st.toy && !st.lashes ? LASH.a * 0.6 : LASH.a
+      const lx = cx + s * la * 0.8
+      disc(lx, cy, la, LASH.b, st.toy ? L + 3 : L, st.toy ? TOY.lash : eyeCol, (u, v) => {
+        const du = u - lx
+        const dv = v - cy
+        return [lx + du * ca - dv * sa, cy + du * sa + dv * ca]
+      })
+    }
     if (st.brows) {
       // Brow: thicker at the inner end.
       const xs: number[] = []
@@ -412,12 +435,12 @@ export function faceLayout(look: Look, e: Expr): FaceLayout {
         const u = -1 + (2 * j) / 5
         const t = u * s
         const th = bth * (1 - 0.3 * ((t + 1) / 2))
-        const y = by + st.eyeUp + browY(e, t)
+        const y = by + st.eyeUp + browY(e, t) + st.browTilt * t + (st.toy ? 0.006 * (1 - t * t) : 0)
         xs.push(s * E.x + u * bw)
         tops.push(y + th / 2)
         bots.push(y - th / 2)
       }
-      strip(xs, tops, bots, 0, shade(look.hair, st.toy ? 0.15 : 0.25))
+      strip(xs, tops, bots, 0, st.toy ? TOY.brows : shade(look.hair, 0.25))
     }
     if (st.blush) {
       const bs = e === 'happy' ? 1.2 : e === 'sad' ? 0.85 : 1
@@ -458,12 +481,13 @@ export function faceLayout(look: Look, e: Expr): FaceLayout {
   const my = st.toy ? TOY.mouthY : MOUTH_Y
   for (let j = 0; j < COLS; j++) {
     const t = -1 + (2 * j) / (COLS - 1)
-    xs.push(t * m.w * MOUTH_K)
-    tops.push(my + m.top(t) * MOUTH_K)
-    bots.push(my + m.bot(t) * MOUTH_K)
+    const mk = MOUTH_K * st.mouthK
+    xs.push(t * m.w * mk)
+    tops.push(my + m.top(t) * mk)
+    bots.push(my + m.bot(t) * mk)
   }
   const mc = st.glow ? look.iris : COL.mouth
-  strip(xs, tops, bots, L, mc, st.toy ? TOY.tongue : mc)
+  strip(xs, tops, bots, L, st.toy ? TOY.mouth : mc, st.toy ? TOY.tongue : mc)
   return out
 }
 

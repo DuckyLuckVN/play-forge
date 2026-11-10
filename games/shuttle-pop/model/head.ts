@@ -6,11 +6,13 @@ import {
   BoxGeometry,
   CapsuleGeometry,
   ConeGeometry,
+  CatmullRomCurve3,
   CylinderGeometry,
   LatheGeometry,
   Quaternion,
   SphereGeometry,
   TorusGeometry,
+  TubeGeometry,
   Vector2,
   Vector3,
   type BufferGeometry,
@@ -41,7 +43,7 @@ const B = BOX_HEAD
  * full cheeks and jaw (x / z bump low on the face). Applied to every head part of a 'chibi' look (so hair
  * and hats follow) and to its face decal surface (face.ts), as a function of the undeformed height y.
  */
-export const CHEEK = { wide: 1.05, sy: 0.97, x: 0.08, z: 0.05, y: -0.17, w: 0.15 }
+export const CHEEK = { wide: 1.05, sy: 0.97, x: 0.1, z: 0.07, y: -0.17, w: 0.15 }
 const cheekBump = (y: number) => Math.exp(-(((y - CHEEK.y) / CHEEK.w) ** 2))
 /** x scale at (undeformed) height y. */
 export const cheekX = (y: number): number => CHEEK.wide + CHEEK.x * cheekBump(y)
@@ -291,6 +293,46 @@ function clump(
   return pt
 }
 
+/**
+ * A blunt fringe: a sheet of hair over the forehead from the crown down to polar `bottom` (rad), across
+ * ±`half` rad of azimuth, `rs` out, its cut softly scalloped into `locks` and finished with a rounded lip.
+ */
+function fringeSheet(color: number, bottom: number, half: number, rs: number, locks: number): Part[] {
+  const W = 30
+  const H = 8
+  const top = 0.08 * Math.PI
+  const edge = (az: number) =>
+    bottom - 0.035 * Math.abs(Math.sin((az / half) * locks * HALF_PI)) - 0.08 * (az / half) ** 2
+  // Theta short of π: three.js drops half the last row's triangles on a closed sphere.
+  const g = new SphereGeometry(1, W, H, 0, Math.PI * 2, 0, Math.PI * 0.999)
+  const P = g.getAttribute('position')
+  const N = g.getAttribute('normal')
+  for (let i = 0; i < P.count; i++) {
+    const az = -half + ((i % (W + 1)) / W) * 2 * half
+    const iy = Math.floor(i / (W + 1))
+    const d = dir(top + (iy / H) * (edge(az) - top), az)
+    P.setXYZ(i, d.x * R * rs, d.y * R * rs, d.z * R * rs)
+    N.setXYZ(i, d.x, d.y, d.z)
+  }
+  // Azimuth grows with the column like SphereGeometry's own: the winding stays outward.
+  const pts: Vector3[] = []
+  for (let j = 0; j <= 40; j++) {
+    const az = -half + (j / 40) * 2 * half
+    pts.push(dir(edge(az), az).multiplyScalar(R * (rs - 0.025)))
+  }
+  const lip = new TubeGeometry(new CatmullRomCurve3(pts), 36, 0.012, 5, false)
+  return made('hair', [part(g, hairPaint(color, locks * 2, 0.18)), part(lip, shade(color, 0.05))])
+}
+
+/** A cap bill: the front half-disc (radius `r`, thickness `h`), its sides curved down. */
+function bill(r: number, h: number): BufferGeometry {
+  const g = new CylinderGeometry(r, r, h, 40, 1, false, -HALF_PI, Math.PI)
+  const P = g.getAttribute('position')
+  for (let i = 0; i < P.count; i++) P.setY(i, P.getY(i) - 1.3 * P.getX(i) ** 2)
+  g.computeVertexNormals()
+  return g
+}
+
 /** A rounded lock (both ends round, unit size): fat bangs and lock ends with no points. */
 const BLOB = new SphereGeometry(1, 10, 7)
 
@@ -376,10 +418,10 @@ function fluffy(r: number): BufferGeometry {
 }
 
 /** A band hugging the head between polar angles a..b (open sphere zone), radius share `rs`, tipped `tilt`. */
-function zone(paint: Paint, a: number, b: number, rs: number, tilt: number, seg = 40): Part[] {
+function zone(paint: Paint, a: number, b: number, rs: number, tilt: number, seg = 40, tube = 0.012): Part[] {
   const r = R * rs
   const rim = (polar: number) =>
-    part(new TorusGeometry(r * Math.sin(polar), 0.012, 6, seg), paint, {
+    part(new TorusGeometry(r * Math.sin(polar), tube, 8, seg), paint, {
       p: [0, r * Math.cos(polar), 0],
       r: [HALF_PI, 0, 0],
     })
@@ -430,11 +472,8 @@ export const STYLES: Record<StyleKind, (l: Look) => Part[]> = {
     const acc = l.accent
     const hair = l.hair
     const out = [hairShell(shade(hair, 0.12), 56, 104, 160, 1.03, 0)]
-    // Fringe: five fat rounded bangs covering the forehead down to the brows.
-    for (let i = 0; i < 5; i++) {
-      const t = i / 4 - 0.5
-      out.push(clump(hair, 0.36 * Math.PI + Math.abs(t) * 0.1, t * 1.8, 0.15, 0.09, -t * 0.2, 1.04, BLOB))
-    }
+    // Fringe: one thick blunt-cut sheet over the forehead, soft lock grooves, a rounded lip at the cut.
+    out.push(...fringeSheet(hair, 0.43 * Math.PI, 1.3, 1.06, 6))
     for (const s of [-1, 1]) out.push(clump(hair, 0.47 * Math.PI, s * 1.22, 0.14, 0.055, s * 0.1, 1.02, BLOB))
     // Back: long locks radiating from the crown down to the nape (grooves between them).
     out.push(...lockFan(hair, 0.05 * Math.PI, 0.86 * Math.PI, 13, 1.35, 2 * Math.PI - 1.35, 1.045))
@@ -457,7 +496,7 @@ export const STYLES: Record<StyleKind, (l: Look) => Part[]> = {
     ]) {
       const { p, r } = onHead(polar * Math.PI, az, 1.08, 1.2)
       out.push(
-        ...made('plastic', [part(new CapsuleGeometry(0.012, 0.055, 3, 8), acc, { p: [p.x, p.y, p.z], r })]),
+        ...made('plastic', [part(new CapsuleGeometry(0.016, 0.065, 3, 8), acc, { p: [p.x, p.y, p.z], r })]),
       )
     }
     const bow: Part[] = [part(new SphereGeometry(0.048, 12, 10), shade(acc, 0.08))]
@@ -474,7 +513,7 @@ export const STYLES: Record<StyleKind, (l: Look) => Part[]> = {
           s: [0.7, 1.4, 0.35],
         }),
       )
-    out.push(...made('plastic', place(bow, { p: [0.1, 0.34, 0.03], r: [0.2, 0.15, -0.25] })))
+    out.push(...made('plastic', place(bow, { p: [0.1, 0.35, 0.03], r: [0.2, 0.15, -0.25], s: 1.3 })))
     return out
   },
   /** Cloud: a high six-panel cap (button, seams, long brim with a dark underside, logo, back strap + adjuster) over short clumped hair. */
@@ -482,47 +521,40 @@ export const STYLES: Record<StyleKind, (l: Look) => Part[]> = {
     const acc = l.accent
     const hair = l.hair
     const navy = shade(acc, 0.6)
-    const out = [hairShell(shade(hair, 0.1), 66, 88, 142, 1.025, 0)]
-    // Fringe tufts under the brim, sideburns, and short locks round the back and sides below the cap.
+    // Smooth short hair under the cap (glossy, a few soft grooves), a fringe under the bill, sideburns.
+    const out = [hairShell(hair, 66, 88, 150, 1.03, 6)]
     for (let i = 0; i < 3; i++) {
       const t = i / 2 - 0.5
       out.push(clump(hair, 0.41 * Math.PI, t * 1.2, 0.11, 0.1, -t * 0.5, 1.03, CLUMP, 0.22))
     }
     for (const s of [-1, 1]) out.push(clump(hair, 0.45 * Math.PI, s * 1.2, 0.06, 0.035, 0, 1.015, BLOB))
-    out.push(...lockFan(hair, 0.38 * Math.PI, 0.72 * Math.PI, 11, 1.5, 2 * Math.PI - 1.5, 1.035))
-    // Crown: a dome sitting high (its rim on the head's widest band), panels + seams, dark band at the back.
-    const CY = 0.085
-    const CR = 0.366
+    // Crown: a low, slightly domed six-panel cap; seams from the button, the strap opening dark at the back.
+    const CY = 0.13
+    const CR = 0.37
+    const SY = 0.62
     const crown = (x: number, y: number, z: number) => {
       const az = Math.atan2(x, z)
-      const up = (y - CY) / CR
-      if (up < 0.28 && Math.abs(az) > 2.25) return navy
-      return Math.abs(Math.sin(az * 3)) < 0.045 && up < 0.97 ? shade(acc, 0.22) : acc
+      const up = (y - CY) / (CR * SY)
+      if (up < 0.3 && Math.abs(az) > 2.3) return navy
+      return Math.abs(Math.sin(az * 3)) < 0.06 && up < 0.97 ? shade(acc, 0.25) : acc
     }
     const cap: Part[] = [
-      part(new SphereGeometry(CR, 42, 16, 0, Math.PI * 2, 0, HALF_PI), crown, {
+      part(new SphereGeometry(CR, 48, 16, 0, Math.PI * 2, 0, HALF_PI), crown, {
         p: [0, CY, 0],
-        s: [1.0, 0.9, 1.02],
+        s: [1.0, SY, 1.04],
       }),
-      part(new SphereGeometry(0.03, 10, 6), acc, { p: [0, CY + CR * 0.9, 0], s: [1, 0.55, 1] }),
-      // Brim: a long rounded bill off the front of the crown, cap colour on top, dark underneath.
-      part(new CylinderGeometry(0.21, 0.21, 0.018, 36, 1, false, -HALF_PI, Math.PI), acc, {
-        p: [0, CY + 0.012, 0.27],
-        r: [0.26, 0, 0],
-        s: [1, 1, 1.4],
-      }),
-      part(new CylinderGeometry(0.206, 0.206, 0.006, 36, 1, false, -HALF_PI, Math.PI), navy, {
-        p: [0, CY, 0.27],
-        r: [0.26, 0, 0],
-        s: [1, 1, 1.39],
-      }),
-      // Back strap with an adjuster.
-      part(new BoxGeometry(0.14, 0.03, 0.026), navy, { p: [0, CY + 0.035, -0.375], r: [-0.1, 0, 0] }),
-      part(roundBox(0.03, 0.022, 0.012, 4, 12, 8), tint(acc, 0.6), { p: [0, CY + 0.036, -0.39] }),
+      part(new SphereGeometry(0.032, 10, 6), acc, { p: [0, CY + CR * SY, 0], s: [1, 0.55, 1] }),
+      // Bill: long, curved down at its sides, cap colour on top, dark underneath.
+      part(bill(0.24, 0.02), acc, { p: [0, CY + 0.012, 0.26], r: [0.36, 0, 0], s: [1, 1, 1.75] }),
+      part(bill(0.235, 0.006), navy, { p: [0, CY - 0.003, 0.26], r: [0.36, 0, 0], s: [1, 1, 1.74] }),
+      // Back: strap with a rectangular adjuster buckle.
+      part(new BoxGeometry(0.17, 0.034, 0.024), navy, { p: [0, CY + 0.03, -0.38], r: [-0.08, 0, 0] }),
+      part(roundBox(0.045, 0.03, 0.012, 4, 12, 8), tint(acc, 0.65), { p: [0, CY + 0.032, -0.395] }),
+      part(new BoxGeometry(0.05, 0.022, 0.01), navy, { p: [0, CY + 0.032, -0.405] }),
     ]
     made('cloth', cap)
-    cap.push(...made('plastic', emblem(PALETTE.emblem, [0, CY + 0.18, CR * 0.92], [-0.55, 0, 0], 2.6)))
-    out.push(...place(cap, { r: [-0.08, 0, 0] }))
+    cap.push(...made('plastic', emblem(PALETTE.emblem, [0, CY + 0.17, CR * 0.95], [-0.5, 0, 0], 2.7)))
+    out.push(...place(cap, { r: [-0.06, 0, 0] }))
     return out
   },
   /** Sunny: a crown of big chunky spikes, a wide headband with a logo, clumped hair below it. */
@@ -542,7 +574,7 @@ export const STYLES: Record<StyleKind, (l: Look) => Part[]> = {
         const az = off + (i / n) * Math.PI * 2
         // The lowest ring only behind the band's front (the fringe shows there).
         if (p > 0.3 && Math.cos(az) > 0.3) continue
-        out.push(spike(hair, p * Math.PI, az, len, 0.35, r0))
+        out.push(spike(hair, p * Math.PI, az, len, 0.35, r0 * 1.35))
       }
 
     out.push(...lockFan(hair, 0.4 * Math.PI, 0.72 * Math.PI, 11, 1.5, 2 * Math.PI - 1.5, 1.035))
@@ -551,9 +583,17 @@ export const STYLES: Record<StyleKind, (l: Look) => Part[]> = {
     out.push(
       ...made(
         'cloth',
-        zone((_x, y) => (y > 0 ? band : shade(band, 0.06)), 0.26 * Math.PI, 0.41 * Math.PI, 1.075, 0.12),
+        zone(
+          (_x, y) => (y > 0.12 ? band : shade(band, 0.07)),
+          0.24 * Math.PI,
+          0.43 * Math.PI,
+          1.09,
+          0.12,
+          48,
+          0.022,
+        ),
       ),
-      ...headLogo(0.33 * Math.PI, 0, 1.09, 2.3, -0.12),
+      ...headLogo(0.335 * Math.PI, 0, 1.11, 2.9, -0.12),
     )
     return out
   },
@@ -564,7 +604,7 @@ export const STYLES: Record<StyleKind, (l: Look) => Part[]> = {
     const tilt = 0.15
     const RIBS = 26
     const rib = (k: number) => (x: number, _y: number, z: number) =>
-      Math.cos(Math.atan2(x, z) * RIBS) > 0 ? shade(acc, k) : shade(acc, k + 0.12)
+      Math.cos(Math.atan2(x, z) * RIBS) > 0 ? shade(acc, k) : shade(acc, k + 0.17)
     const out = [hairShell(shade(hair, 0.1), 66, 86, 142, 1.025, 0)]
     for (let i = 0; i < 5; i++) {
       const t = i / 4 - 0.5
@@ -589,16 +629,16 @@ export const STYLES: Record<StyleKind, (l: Look) => Part[]> = {
         RIBS * 3,
       ),
       RIBS,
-      0.006,
+      0.011,
     )
-    const dome = ribbed(new SphereGeometry(0.382, RIBS * 3, 12, 0, Math.PI * 2, 0, HALF_PI), RIBS, 0.005)
+    const dome = ribbed(new SphereGeometry(0.382, RIBS * 3, 12, 0, Math.PI * 2, 0, HALF_PI), RIBS, 0.009)
     const hat: Part[] = [
       ...made('knit', [
         part(fold, rib(0.04)),
         part(dome, rib(0), { p: [0, 0.07, 0], s: [1, 0.98, 1] }),
         part(fluffy(0.088), 0xffffff, { p: [0, 0.07 + 0.374 + 0.058, 0] }),
       ]),
-      ...made('plastic', emblem(PALETTE.emblem, [0, 0.11, 0.412], [0, 0, 0], 2.3)),
+      ...made('plastic', emblem(PALETTE.emblem, [0, 0.112, 0.418], [0, 0, 0], 3.8)),
     ]
     out.push(...place(hat, { r: [-tilt, 0, 0] }))
     return out

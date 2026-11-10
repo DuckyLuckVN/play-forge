@@ -2,7 +2,7 @@
 // part rigidly attached to one bone into a single vertex-coloured geometry (one draw call per bone).
 // Runs once per look at load time (allocation is fine here; nothing in this file runs per frame).
 
-import { bakeAO, type Occluder } from './ao'
+import { AO_DEFAULTS, bakeAO, type Occluder } from './ao'
 import {
   BufferAttribute,
   BufferGeometry,
@@ -27,7 +27,7 @@ export const SURFS: Record<Surf, Triple> = {
   skin: [0.5, 0.05, 0.35],
   cloth: [0.72, 0, 0.9],
   knit: [0.95, 0, 0.55],
-  hair: [0.48, 0.25, 0],
+  hair: [0.55, 0.15, 0],
   plastic: [0.32, 0.5, 0],
   rubber: [0.55, 0.15, 0],
   metal: [0.32, 0.5, 0],
@@ -115,7 +115,8 @@ const col = new Color()
 
 /** Merge options: bake ambient occlusion into the colours (with other bones' rest geometry as occluders). */
 export interface MergeOpts {
-  ao?: { extra?: readonly Part[] }
+  /** Extra occluders (other bones at rest) and the darkening of a fully enclosed vertex (ao.ts default). */
+  ao?: { extra?: readonly Part[]; strength?: number }
   /** Surface of parts that don't name one (default cloth). */
   surf?: Surf
 }
@@ -177,7 +178,10 @@ export function mergeParts(parts: readonly Part[], opts: MergeOpts = {}): Buffer
     t += I.count
   }
   if (opts.ao) {
-    const f = bakeAO({ pos, nor, index }, (opts.ao.extra ?? []).map(occluderOf))
+    const f = bakeAO({ pos, nor, index }, (opts.ao.extra ?? []).map(occluderOf), {
+      ...AO_DEFAULTS,
+      strength: opts.ao.strength ?? AO_DEFAULTS.strength,
+    })
     for (let i = 0; i < verts; i++) {
       rgb[i * 3] *= f[i]
       rgb[i * 3 + 1] *= f[i]

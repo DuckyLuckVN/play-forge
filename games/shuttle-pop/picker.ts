@@ -269,6 +269,8 @@ const FACE_SVG: Svg<FaceKind> = {
     ),
   }),
   chibiLash: (l) => ({ face: toyFace(l, true) }),
+  chibiBold: (l) => ({ face: toyFace(l, false) }),
+  chibiCalm: (l) => ({ face: toyFace(l, false) }),
   chibi: (l) => ({ face: toyFace(l, false) }),
 }
 

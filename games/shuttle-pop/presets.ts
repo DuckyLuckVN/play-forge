@@ -13,7 +13,7 @@ export interface Preset {
   look: Look
 }
 
-const SKIN = 0xffbb94
+const SKIN = 0xffb48c
 const HUMAN = {
   skin: SKIN,
   body: 'human',
@@ -94,6 +94,7 @@ export const PRESETS: readonly Preset[] = [
       hair: 0x8a4422,
       iris: 0xd88a22,
       style: 'bandSpiky',
+      face: 'chibiBold',
       kit: {
         shirt: 0xffb21f,
         trim: 0xff7a1f,
@@ -115,6 +116,7 @@ export const PRESETS: readonly Preset[] = [
       hair: 0x5a3626,
       iris: 0x1ea860,
       style: 'beanie',
+      face: 'chibiCalm',
       kit: {
         shirt: 0x14a05e,
         trim: 0xffffff,

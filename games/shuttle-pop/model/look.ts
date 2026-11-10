@@ -26,10 +26,20 @@ export type StyleKind =
   | 'visor'
   | 'wisp'
 /**
- * Human chibi (toy eyes; + lashes); animal (nose + cat mouth), + whiskers (kitty), + eye patches (panda); glowing eyes on a
+ * Human chibi (toy eyes; + lashes, determined brows, a calmer smile); animal (nose + cat mouth), + whiskers (kitty), + eye patches (panda); glowing eyes on a
  * dark visor (robot); browless jelly / ghost faces.
  */
-export type FaceKind = 'chibi' | 'chibiLash' | 'animal' | 'kitty' | 'panda' | 'visor' | 'jelly' | 'ghost'
+export type FaceKind =
+  | 'chibi'
+  | 'chibiLash'
+  | 'chibiBold'
+  | 'chibiCalm'
+  | 'animal'
+  | 'kitty'
+  | 'panda'
+  | 'visor'
+  | 'jelly'
+  | 'ghost'
 export type HandKind = 'mitten' | 'paw' | 'claw' | 'metal' | 'nub'
 export type FootKind = 'sneaker' | 'paw' | 'claw' | 'boot'
 /** Torso + hips shape. */

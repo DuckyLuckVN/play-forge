@@ -54,4 +54,21 @@ describe('shuttle-pop prefs', () => {
     expect(stepLabel(3)).toBe('+3')
     expect(stepLabel(-3)).toBe('−3')
   })
+
+  it('ring: default always, old saves without it, garbage → always; camera kept', () => {
+    expect(createPrefs(mem()).get().ring).toBe('always')
+    const s = mem()
+    s.setItem(PREFS_KEY, JSON.stringify({ camera: { height: 0.3, tilt: 0 } })) // slice-3 save
+    expect(createPrefs(s).get()).toEqual({ camera: { height: 0.3, tilt: 0 }, ring: 'always' })
+    for (const ring of ['x', 3, null, 'Near']) expect(parsePrefs({ ring }).ring).toBe('always')
+    expect(parsePrefs({ ring: 'near' }).ring).toBe('near')
+  })
+
+  it('setting the ring keeps the camera and persists', () => {
+    const s = mem()
+    const a = createPrefs(s)
+    a.set({ camera: { height: -0.2, tilt: 0.1 } })
+    a.set({ ring: 'hidden' })
+    expect(createPrefs(s).get()).toEqual({ camera: { height: -0.2, tilt: 0.1 }, ring: 'hidden' })
+  })
 })

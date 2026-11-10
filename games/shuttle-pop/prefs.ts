@@ -1,13 +1,16 @@
 // Personal Shuttle Pop prefs, kept in this browser only (never sent to the room).
 // Storage can be missing, blocked or corrupt: then defaults apply and the
 // setting simply lasts for the page.
+// Schema grows by optional fields only; a missing / invalid field falls back to its default.
 import { t } from './i18n'
+import { DEFAULT_RING, RING_MODES, type RingMode } from './landing'
 import type { CameraTweak } from './world'
 
 export const PREFS_KEY = 'play-forge:shuttle-pop:prefs'
 
 export interface SpPrefs {
   camera: CameraTweak
+  ring: RingMode
 }
 
 export interface Prefs {
@@ -34,9 +37,11 @@ const unit = (v: unknown): number =>
 
 /** Turns anything read from storage into valid prefs; unknown fields are dropped. */
 export function parsePrefs(raw: unknown): SpPrefs {
-  const cam = raw && typeof raw === 'object' ? (raw as { camera?: unknown }).camera : undefined
+  const r = raw && typeof raw === 'object' ? (raw as { camera?: unknown; ring?: unknown }) : {}
+  const cam = r.camera
   const c = cam && typeof cam === 'object' ? (cam as Record<string, unknown>) : {}
-  return { camera: { height: unit(c.height), tilt: unit(c.tilt) } }
+  const ring = RING_MODES.find((m) => m === r.ring) ?? DEFAULT_RING
+  return { camera: { height: unit(c.height), tilt: unit(c.tilt) }, ring }
 }
 
 export function createPrefs(store: Store = local()): Prefs {

@@ -115,10 +115,10 @@ export const READY = key(upper(), {
   rElbow: 0.7,
   rWrist: 0.23,
   rTurn: -0.41,
-  lAcross: -0.2,
-  lPitch: -1.25,
-  lOut: 0.22,
-  lElbow: 1.1,
+  lAcross: -1.07,
+  lPitch: -2.03,
+  lOut: 0.2,
+  lElbow: 0.45,
 })
 /** Point won: both arms up, elbows soft (the rig adds a wave). */
 export const CHEER = key(upper(), {

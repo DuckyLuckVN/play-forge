@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { Footwork, LUNGE, lateralShare, lungeWanted, SPLIT, splitHop, splitsOn } from './footwork'
+import { canSplit, Footwork, LUNGE, lateralShare, lungeWanted, SPLIT, splitHop, splitsOn } from './footwork'
 import { courtTurn, GAIT } from './locomotion'
 
 describe('lateralShare (gait selection relative to the facing)', () => {
@@ -32,7 +32,7 @@ describe('courtTurn (facing while moving)', () => {
     expect(courtTurn(-Math.PI / 2)).toBeCloseTo(0, 9)
   })
 
-  it('retreating turns the racket shoulder (right, −x) back: negative yaw; advancing a little forward', () => {
+  it('retreat turns the racket shoulder (right, −x) back: negative yaw; advance a little forward', () => {
     expect(courtTurn(Math.PI)).toBeCloseTo(-GAIT.turnBack, 9)
     expect(courtTurn(0)).toBeCloseTo(GAIT.turnFwd, 9)
     expect(courtTurn((3 * Math.PI) / 4)).toBeLessThan(0)
@@ -60,6 +60,8 @@ describe('lungeWanted', () => {
     expect(lungeWanted(LUNGE.reach + 0.1, 0.8, LUNGE.lead + 0.05)).toBe(false)
     expect(lungeWanted(LUNGE.reach + 0.1, 0.8, undefined)).toBe(false)
     expect(lungeWanted(LUNGE.reach + 0.1, 0.8, 0)).toBe(true)
+    // Mid-height far reach (chest / shoulder high) still lunges.
+    expect(lungeWanted(LUNGE.reach + 0.1, 1.7, 0.1)).toBe(true)
   })
 })
 
@@ -71,6 +73,16 @@ describe('splitsOn', () => {
     expect(splitsOn('serve', 0, 0)).toBe(false)
     expect(splitsOn('whiff', 1, 0)).toBe(false)
     expect(splitsOn('point', 1, 0)).toBe(false)
+  })
+})
+
+describe('canSplit', () => {
+  it('only when planted: not sprinting, not lunging, not airborne', () => {
+    expect(canSplit(0, 0, false)).toBe(true)
+    expect(canSplit(SPLIT.maxSpeed - 0.01, 0, false)).toBe(true)
+    expect(canSplit(SPLIT.maxSpeed + 0.01, 0, false)).toBe(false)
+    expect(canSplit(0, SPLIT.maxLunge + 0.01, false)).toBe(false)
+    expect(canSplit(0, 0, true)).toBe(false)
   })
 })
 
@@ -132,6 +144,15 @@ describe('Footwork', () => {
     expect(f.turn()).toBeGreaterThanOrEqual(-LUNGE.yawMax - 1e-9)
     for (let i = 0; i < 120; i++) f.update(1 / 60, false, 0, 1)
     expect(Math.abs(f.turn())).toBeLessThan(0.02)
+  })
+
+  it('a same-tick trigger (dt = 0) still lunges and turns on the following frames', () => {
+    const f = new Footwork()
+    f.update(0, true, -1, 0.3)
+    expect(f.lunge).toBe(0)
+    for (let i = 0; i < 9; i++) f.update(1 / 60, false, 0, 1)
+    expect(f.lunge).toBeGreaterThan(0.9)
+    expect(f.turn()).toBeLessThan(-0.6)
   })
 
   it('is dt-independent (30 / 60 / 144 fps give the same lunge + split)', () => {

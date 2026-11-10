@@ -1,6 +1,7 @@
 // Locomotion for the chibis (pure, no three.js): stride from ground speed, damped facing (badminton:
-// mostly toward the net, courtTurn), lean shares, foot plants and start / stop / sharp-turn signals. Everything is exponential damping or phase
-// accumulation over `dt`, so it looks the same at any frame rate, and nothing allocates per frame.
+// mostly toward the net, courtTurn), lean shares, foot plants and start / stop / sharp-turn signals.
+// Everything is exponential damping or phase accumulation over `dt`, so it looks the same at any frame
+// rate, and nothing allocates per frame.
 //
 // Angles are render yaw (rotation.y): 0 faces +z, π/2 faces +x. The renderer drives one Gait per
 // player from the interpolated sim velocity, so the remote / bot player animates like the local one.

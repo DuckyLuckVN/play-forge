@@ -41,7 +41,7 @@ import { chargeOf, chargeStage, CHARGE, isFull } from './charge'
 import { ChargeRing } from './chargering'
 import { TICK_RATE } from './court'
 import { DustPuffs } from './dust'
-import { Footwork, lungeWanted, splitHop, splitsOn } from './footwork'
+import { canSplit, Footwork, lungeWanted, splitHop, splitsOn } from './footwork'
 import { Hud, matchPoint, newEvents, newestShotId, trackerAction, type PopKind } from './hud'
 import { t } from './i18n'
 import { damp, Gait, GaitEvent } from './locomotion'
@@ -901,8 +901,12 @@ export class Court3D {
       this.rally = rallyHits(this.rally, e.k)
       // The opponent hits / serves: split step, landing ready.
       if (e.k === 'hit' || e.k === 'serve')
-        for (let i = 0; i < 2; i++)
-          if (splitsOn(e.k, e.side, s.players[i].side)) this.players[i].foot.splitStep()
+        for (let n = 0; n < 2; n++) {
+          const v = this.players[n]
+          const airborne = v.jumpAge >= 0 && v.jumpAge < SMASH.end
+          if (splitsOn(e.k, e.side, s.players[n].side) && canSplit(v.gait.speed, v.foot.lunge, airborne))
+            v.foot.splitStep()
+        }
       const sound = eventSound(e, this.side)
       if (sound) playSound(sound.sound, sound.vol)
       if (e.k === 'point') {

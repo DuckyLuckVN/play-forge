@@ -121,6 +121,17 @@ describe('Gait', () => {
     expect(wrapAngle(h.yaw - Math.PI)).toBeCloseTo(-GAIT.turnBack, 3)
   })
 
+  it('diagonal retreat (back + sideways, either side): racket shoulder back, less than straight back', () => {
+    for (const sx of [1, -1]) {
+      const g = new Gait()
+      const v = MOVE_SPEED * Math.SQRT1_2
+      for (let i = 0; i < 90; i++) g.update(sx * v, -v, 0, false, 1 / 60)
+      expect(g.yaw).toBeCloseTo(-GAIT.turnBack * Math.SQRT1_2, 3)
+      expect(g.fwd).toBeLessThan(-0.2)
+      expect(Math.abs(g.side)).toBeGreaterThan(0.2)
+    }
+  })
+
   it('faces the net while swinging even when moving', () => {
     const g = new Gait()
     for (let i = 0; i < 60; i++) g.update(MOVE_SPEED, 0, 0, i >= 30, 1 / 60)

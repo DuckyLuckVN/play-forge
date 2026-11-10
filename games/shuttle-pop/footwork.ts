@@ -1,6 +1,7 @@
 // Badminton footwork (pure, no three.js): which gait a move reads as (side shuffle vs short forward /
-// back steps; the body's turn while moving is locomotion.ts courtTurn), the lunge at a far low reach, and the split-step hop when the opponent hits. Everything is dt-based damping or plain
-// curves, so it looks the same at any frame rate; nothing allocates per frame.
+// back steps; the body's turn while moving is locomotion.ts courtTurn), the lunge at a far low reach,
+// and the split-step hop when the opponent hits. Everything is dt-based damping or plain curves, so it
+// looks the same at any frame rate; nothing allocates per frame.
 //
 // The renderer keeps one Footwork per player (local, guest-predicted, remote and bot alike). The leg
 // joints for each gait are legs.ts; the raised-racket stance arms are arm.ts and do not depend on legs.
@@ -26,7 +27,7 @@ export const FOOTWORK = {
  */
 export const LUNGE = {
   reach: 0.7,
-  maxY: 1.5,
+  maxY: 1.8,
   lead: 0.22,
   hold: 0.32,
   rateIn: 22,
@@ -34,8 +35,11 @@ export const LUNGE = {
   yawMax: 0.9,
 } as const
 
-/** Split step: time in the air and on the landing squash (s), landing squash size. */
-export const SPLIT = { air: 0.17, land: 0.12, squash: 0.14 } as const
+/**
+ * Split step: time in the air and on the landing squash (s), landing squash size; only when planted:
+ * below this speed share and lunge weight, and not in the air (a smash leap).
+ */
+export const SPLIT = { air: 0.17, land: 0.12, squash: 0.14, maxSpeed: 0.5, maxLunge: 0.1 } as const
 
 /**
  * Shuffle (1) vs forward / back steps (0) for a body-frame velocity share (+fwd forward, +side toward
@@ -56,6 +60,11 @@ export function lungeWanted(reach: number, y: number, due: number | undefined): 
 /** Event `kind` by `side` makes the player on `mySide` split-step (the opponent hits or serves). */
 export function splitsOn(kind: string, side: number, mySide: number): boolean {
   return (kind === 'hit' || kind === 'serve') && side !== mySide
+}
+
+/** Planted enough to split-step: not sprinting (speed share), not lunging, not airborne. */
+export function canSplit(speed: number, lunge: number, airborne: boolean): boolean {
+  return speed < SPLIT.maxSpeed && lunge < SPLIT.maxLunge && !airborne
 }
 
 /** Split-step hop `age` s after the trigger: height share 0..1, then a landing squash. */
@@ -80,10 +89,12 @@ export class Footwork {
   /** Seconds since the split step started (Infinity = none). */
   splitAge = Infinity
   private yaw = 0
+  /** Turn the lunge aims for (set while wanted, so a dt = 0 trigger still turns on later frames). */
+  private target = 0
   private hold = 0
 
   reset() {
-    this.lunge = this.yaw = this.hold = 0
+    this.lunge = this.yaw = this.target = this.hold = 0
     this.splitAge = Infinity
   }
 
@@ -100,20 +111,20 @@ export class Footwork {
 
   /**
    * Advance `dt` s. `want` = lungeWanted this frame; (lx, lz) = the shuttle's direction in the body
-   * frame (+x local, +z forward), used while wanted.
+   * frame (+x local, +z forward), used while wanted. `dt` may be 0 (a same-tick hit): the lunge and its
+   * turn then build on the following frames.
    */
   update(dt: number, want: boolean, lx: number, lz: number) {
     this.splitAge += dt
     if (want) {
       this.hold = LUNGE.hold
-      const a = Math.atan2(lx, lz)
-      const target = Math.max(-LUNGE.yawMax, Math.min(LUNGE.yawMax, a))
-      this.yaw = damp(this.yaw, target, LUNGE.rateIn, dt)
+      this.target = Math.max(-LUNGE.yawMax, Math.min(LUNGE.yawMax, Math.atan2(lx, lz)))
     }
+    this.yaw = damp(this.yaw, this.target, LUNGE.rateIn, dt)
     // Rise while wanted / holding, ease out after; a hold running out mid-frame splits the frame.
     const up = want ? dt : Math.min(dt, this.hold)
     if (!want) this.hold = Math.max(0, this.hold - dt)
     this.lunge = damp(damp(this.lunge, 1, LUNGE.rateIn, up), 0, LUNGE.rateOut, dt - up)
-    if (this.hold === 0 && this.lunge < 1e-4) this.lunge = this.yaw = 0
+    if (this.hold === 0 && this.lunge < 1e-4) this.lunge = this.yaw = this.target = 0
   }
 }

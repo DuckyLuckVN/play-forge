@@ -77,7 +77,7 @@ export const VI: Dictionary = {
   'Your Perfect hits': 'Cú Hoàn hảo của bạn',
   'Perfect hits': 'Cú Hoàn hảo',
 
-  // Camera menu (camera-menu.ts, prefs.ts)
+  // Camera button and panel (camera-menu.ts, prefs.ts)
   Default: 'Mặc định',
   'Camera view': 'Góc nhìn',
   Height: 'Độ cao',

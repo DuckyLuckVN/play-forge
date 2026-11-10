@@ -6,7 +6,6 @@ import { chargeOf } from './charge'
 import { t } from './i18n'
 import { TouchPad } from './hud'
 import { bindInput } from './input'
-import { cameraMenu } from './camera-menu'
 import { loadPreset, pickerStrip } from './picker'
 import { GuestShuttle, type GuestView } from './guestshuttle'
 import { GuestPredictor } from './predict'
@@ -277,7 +276,6 @@ createGameApp<SpState, SpInput>({
   mount,
   menuExtras: pickerStrip,
   roomExtras: pickerStrip,
-  settings: cameraMenu,
   // Both seats; `name` labels the computer's chip, translated at display time (lobby players keep their lobby name).
   // The computer's chip gets its own colour slot and the robot avatar (it isn't in the lobby).
   scores: (s) =>

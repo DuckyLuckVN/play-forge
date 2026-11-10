@@ -57,6 +57,7 @@ import { Hud, newEvents, newestShotId, trackerAction, type PopKind } from './hud
 import { ScoreCards } from './boardprop'
 import { Net } from './net'
 import { prefs } from './prefs'
+import { mountCameraButton } from './camera-menu'
 import { boardView, Scoreboard } from './scoreboard'
 import { t } from './i18n'
 import { damp, Gait, GaitEvent } from './locomotion'
@@ -427,6 +428,7 @@ export class Court3D {
     scene.add(this.trail.mesh, this.fx.points, this.dust.mesh)
     this.view.onResize((_w, h) => this.fx.setScale(h * this.view.renderer.getPixelRatio()))
     this.view.root.appendChild(this.hud.root)
+    mountCameraButton(this.view.root)
   }
 
   /** The element under the view (for pointer input). */

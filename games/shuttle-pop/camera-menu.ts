@@ -7,15 +7,11 @@ import { fromStep, prefs, stepLabel, toStep, TWEAK_STEPS } from './prefs'
 import { NO_TWEAK } from './world'
 
 /**
- * Camera button with a popover: height and tilt of the player's own view. Saved in this browser
+ * The panel body of the camera menu: height and tilt of the player's own view. Saved in this browser
  * (prefs.ts) and applied live by the renderer; sliders show the raw saved value, the court-framing
  * clamp is applied at render time.
  */
-export function cameraMenu(): HTMLElement {
-  const button = h('button', { class: 'pf-btn icon', type: 'button' })
-  setLabel(button, t('Camera view'))
-  button.append(icon(icons.camera))
-
+export function cameraPanel(): { nodes: HTMLElement[]; focus(): void } {
   const axis = (key: 'height' | 'tilt', label: string, ariaLabel: string) =>
     slider({
       label,
@@ -32,17 +28,69 @@ export function cameraMenu(): HTMLElement {
   const note = h('p', { class: 'pf-note', textContent: t('Only changes your own screen.') })
   const reset = h('button', { class: 'pf-btn wide', type: 'button', textContent: t('Reset view') })
   reset.onclick = () => prefs.set({ camera: { ...NO_TWEAK } })
-
-  const menu = popover(
-    { button, label: t('Camera view'), onOpen: () => height.input.focus() },
-    height.row,
-    tilt.row,
-    note,
-    reset,
-  )
   prefs.onChange((p) => {
     height.set(toStep(p.camera.height))
     tilt.set(toStep(p.camera.tilt))
   })
-  return menu.root
+  return { nodes: [height.row, tilt.row, note, reset], focus: () => height.input.focus() }
+}
+
+/**
+ * A small camera button over the top-right of the game view (`view`) that opens the camera panel
+ * below it. The view takes every pointer as a swing / stick, so the overlay keeps its own pointer
+ * events to itself, and while the panel is open a press outside only closes it (never swings).
+ * Keys typed in the panel are already ignored by the game (input.ts: buttons and fields are UI).
+ * Focus never stays on the button after closing, so Space keeps swinging.
+ */
+export function mountCameraButton(view: HTMLElement): { root: HTMLElement; destroy(): void } {
+  const button = h('button', { class: 'pf-btn icon', type: 'button' })
+  setLabel(button, t('Camera view'))
+  button.append(icon(icons.camera))
+  const panel = cameraPanel()
+  const root = h('div', { class: 'sp-cam' })
+
+  const blurIfHere = () => {
+    if (root.contains(document.activeElement)) (document.activeElement as HTMLElement).blur()
+  }
+  // Capture, on the document: runs before the view's own pointer handlers.
+  const swallowOutside = (e: PointerEvent) => {
+    if (root.contains(e.target as Node)) return
+    e.stopPropagation()
+    menu.close()
+  }
+  const menu = popover(
+    {
+      button,
+      label: t('Camera view'),
+      class: 'sp-cam-pop',
+      onOpen: () => panel.focus(),
+      onToggle: (open) => {
+        if (open) document.addEventListener('pointerdown', swallowOutside, true)
+        else {
+          document.removeEventListener('pointerdown', swallowOutside, true)
+          blurIfHere()
+        }
+      },
+    },
+    ...panel.nodes,
+  )
+  // After the popover's own Esc handler (which refocuses the button): let go of focus.
+  const onEsc = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && !menu.isOpen) blurIfHere()
+  }
+  document.addEventListener('keydown', onEsc)
+  for (const type of ['pointerdown', 'pointerup', 'pointercancel']) {
+    root.addEventListener(type, (e) => e.stopPropagation())
+  }
+  root.append(menu.root)
+  view.append(root)
+  return {
+    root,
+    destroy() {
+      document.removeEventListener('pointerdown', swallowOutside, true)
+      document.removeEventListener('keydown', onEsc)
+      menu.destroy()
+      root.remove()
+    },
+  }
 }

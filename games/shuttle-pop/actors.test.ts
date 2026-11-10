@@ -71,6 +71,24 @@ describe('chibi rig', () => {
     geos(a).forEach((g, i) => expect(g).toBe(geos(b)[i]))
   })
 
+  it('the far twin: an outline shell around the whole head (hair, hats) and a face dimmed like the body', () => {
+    for (let n = 0; n < PRESETS.length; n++) {
+      const { chibi } = rig(n)
+      const head = chibi.root.getObjectByName('head') as Mesh
+      const face = chibi.root.getObjectByName('face') as Mesh
+      const hull = head.parent!.children.find((c) => c.name === 'hull') as Mesh
+      expect(hull.visible).toBe(false)
+      const near = (face.material as MeshBasicMaterial).color.clone()
+      chibi.setPreset(n, true)
+      expect(hull.visible).toBe(true)
+      const hb = hull.geometry.boundingSphere!
+      const mb = head.geometry.boundingSphere!
+      expect(hb.radius).toBeGreaterThan(mb.radius)
+      const far = (face.material as MeshBasicMaterial).color
+      expect(far.r + far.g + far.b).toBeLessThan(near.r + near.g + near.b - 0.3)
+    }
+  })
+
   it('the face morphs: smash effort and a happy point move its influences', () => {
     const { chibi } = rig()
     const face = chibi.root.getObjectByName('face') as Mesh

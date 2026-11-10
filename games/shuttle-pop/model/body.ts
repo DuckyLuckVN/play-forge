@@ -1,5 +1,6 @@
 // Body builders: one Part list per bone (torso, hips, upper arm, forearm, hand, thigh, shin + foot),
-// picked by the look's keys. Each bone's parts are merged into one mesh by model.ts.
+// picked by the look's keys (BODIES by body kind, HANDS, FEET). Each bone's parts are merged into one
+// mesh by model.ts. The kit is optional: without one, the torso / limbs are bare skin (fur, scales...).
 
 import {
   CapsuleGeometry,
@@ -10,7 +11,7 @@ import {
   Vector2,
 } from 'three'
 import { ARM, HIP_Y, LEG } from './dims'
-import type { FootKind, HandKind, Look, TailKind } from './look'
+import { limbOf, type BodyKind, type FootKind, type HandKind, type Look, type Shoes } from './look'
 import { part, type Part } from './merge'
 
 const HALF_PI = Math.PI / 2
@@ -42,14 +43,15 @@ const TORSO_PROFILE: readonly (readonly [number, number])[] = [
   [0, 0.68],
 ]
 
-/** Chest + shirt + collar + neck, in the torso bone's space (origin at the hips). */
-export function torsoParts(l: Look): Part[] {
+/** Human: chest + polo shirt + collar + neck, in the torso bone's space (origin at the hips). */
+function humanTorso(l: Look): Part[] {
   const k = l.kit
   const lathe = new LatheGeometry(
     TORSO_PROFILE.map(([r, y]) => new Vector2(r, y - HIP_Y)),
     28,
   )
   const neckY = NECK_Y - HIP_Y
+  if (!k) return [part(lathe, l.skin)]
   const paint = (_x: number, y: number) =>
     y > neckY + 0.0005 ? l.skin : y > STRIPE.lo - HIP_Y && y < STRIPE.hi - HIP_Y ? k.stripe : k.shirt
   const flap = new SphereGeometry(0.04, 10, 6)
@@ -65,29 +67,42 @@ export function torsoParts(l: Look): Part[] {
   ]
 }
 
-const TAILS: Record<TailKind, (l: Look) => Part[]> = {
-  none: () => [],
-}
-
-/** Shorts or skirt (+ tail), in the hips bone's space (rig, origin at the hip joints' height). */
-export function hipsParts(l: Look): Part[] {
+/** Shorts or skirt (bare hips without a kit), in the hips bone's space (origin at the hip joints' height). */
+function humanHips(l: Look): Part[] {
   const k = l.kit
-  const out =
-    k.bottom === 'skirt'
-      ? [
-          part(new CylinderGeometry(0.15, 0.2, 0.13, 28, 1), k.bottomColor, { p: [0, -0.005, 0] }),
-          part(new TorusGeometry(0.198, 0.011, 6, 32), k.trim, { p: [0, -0.068, 0], r: [HALF_PI, 0, 0] }),
-        ]
-      : [part(new SphereGeometry(0.15, 24, 12), k.bottomColor, { p: [0, 0.03, 0], s: [1.08, 0.62, 0.92] })]
-  return out.concat(TAILS[l.tail](l))
+  if (k?.bottom === 'skirt')
+    return [
+      part(new CylinderGeometry(0.15, 0.2, 0.13, 28, 1), k.bottomColor, { p: [0, -0.005, 0] }),
+      part(new TorusGeometry(0.198, 0.011, 6, 32), k.trim, { p: [0, -0.068, 0], r: [HALF_PI, 0, 0] }),
+    ]
+  return [
+    part(new SphereGeometry(0.15, 24, 12), k ? k.bottomColor : l.skin, {
+      p: [0, 0.03, 0],
+      s: [1.08, 0.62, 0.92],
+    }),
+  ]
 }
 
-/** Upper arm hanging from the shoulder (y = 0 → −ARM.upper): puffed short sleeve with a cuff. */
+/** Torso (upper body: twists and bends) + hips (stays with the legs) per body kind. */
+export const BODIES: Record<BodyKind, { torso: (l: Look) => Part[]; hips: (l: Look) => Part[] }> = {
+  human: { torso: humanTorso, hips: humanHips },
+}
+
+export function torsoParts(l: Look): Part[] {
+  return BODIES[l.body].torso(l)
+}
+
+export function hipsParts(l: Look): Part[] {
+  return BODIES[l.body].hips(l)
+}
+
+/** Upper arm hanging from the shoulder (y = 0 → −ARM.upper): puffed short sleeve with a cuff (kit only). */
 export function upperArmParts(l: Look): Part[] {
   const k = l.kit
   const arm = new CapsuleGeometry(ARM.upperR, ARM.upper, 4, 12).translate(0, -ARM.upper / 2, 0)
+  if (!k) return [part(arm, limbOf(l))]
   return [
-    part(arm, l.skin),
+    part(arm, limbOf(l)),
     part(new SphereGeometry(0.067, 14, 8, 0, Math.PI * 2, 0, HALF_PI), k.shirt),
     part(new CylinderGeometry(0.067, 0.071, 0.065, 16), k.shirt, { p: [0, -0.0325, 0] }),
     part(new TorusGeometry(0.07, 0.009, 6, 18), k.trim, { p: [0, -0.065, 0], r: [HALF_PI, 0, 0] }),
@@ -97,19 +112,17 @@ export function upperArmParts(l: Look): Part[] {
 /** Forearm hanging from the elbow; the racket arm (`side` −1) wears the wristband. */
 export function foreArmParts(l: Look, side: number): Part[] {
   const fore = new CapsuleGeometry(ARM.foreR, ARM.fore, 4, 12).translate(0, -ARM.fore / 2, 0)
-  const out = [part(fore, l.skin)]
+  const out = [part(fore, limbOf(l))]
   if (side < 0)
-    out.push(
-      part(new CylinderGeometry(0.056, 0.056, 0.03, 16), l.kit.stripe, { p: [0, -ARM.fore + 0.02, 0] }),
-    )
+    out.push(part(new CylinderGeometry(0.056, 0.056, 0.03, 16), l.accent, { p: [0, -ARM.fore + 0.02, 0] }))
   return out
 }
 
-const HANDS: Record<HandKind, (l: Look, side: number) => Part[]> = {
+export const HANDS: Record<HandKind, (l: Look, side: number) => Part[]> = {
   /** Round mitten with a small thumb on the inner (body) side. */
   mitten: (l, side) => [
-    part(new SphereGeometry(0.062, 16, 12), l.skin, { p: [0, -ARM.hand, 0.006], s: [0.95, 1.05, 0.85] }),
-    part(new CapsuleGeometry(0.021, 0.022, 3, 8), l.skin, {
+    part(new SphereGeometry(0.062, 16, 12), limbOf(l), { p: [0, -ARM.hand, 0.006], s: [0.95, 1.05, 0.85] }),
+    part(new CapsuleGeometry(0.021, 0.022, 3, 8), limbOf(l), {
       p: [-side * 0.046, -ARM.hand + 0.006, 0.028],
       r: [0.4, 0, side * 0.7],
     }),
@@ -124,19 +137,24 @@ export function handParts(l: Look, side: number): Part[] {
 /** Thigh hanging from the hip joint (y = 0 → knee at −LEG.thigh); shorts legs over the top. */
 export function thighParts(l: Look): Part[] {
   const thigh = new CapsuleGeometry(0.058, LEG.thigh - 0.05, 4, 12).translate(0, -LEG.thigh / 2, 0)
-  const out = [part(thigh, l.skin)]
-  if (l.kit.bottom === 'shorts')
+  const out = [part(thigh, limbOf(l))]
+  if (l.kit?.bottom === 'shorts')
     out.push(part(new CylinderGeometry(0.072, 0.075, 0.075, 16), l.kit.bottomColor, { p: [0, -0.022, 0] }))
   return out
 }
 
-/** Sneaker: sole, rounded upper, toe cap, laces. Ground at y = −LEG.shin (knee space), toe on +z. */
-const FEET: Record<FootKind, (l: Look) => Part[]> = {
+const DEFAULT_SHOES: Shoes = { socks: 0xffffff, shoe: 0xffffff, sole: 0xffffff }
+
+/** Foot (+ sock) on the shin, in knee space: ground at y = −LEG.shin, toe on +z. */
+export const FEET: Record<FootKind, (l: Look) => Part[]> = {
+  /** Sock with a ring, sneaker: sole, rounded upper, toe cap, laces. */
   sneaker: (l) => {
-    const k = l.kit
+    const k = l.shoes ?? DEFAULT_SHOES
     const g = -LEG.shin
     const lace = new CylinderGeometry(0.004, 0.004, 0.05, 4)
     return [
+      part(new CylinderGeometry(0.055, 0.056, 0.05, 16), k.socks, { p: [0, -0.078, 0] }),
+      part(new TorusGeometry(0.056, 0.006, 4, 16), l.accent, { p: [0, -0.06, 0], r: [HALF_PI, 0, 0] }),
       part(new CylinderGeometry(0.058, 0.06, 0.024, 18), k.sole, {
         p: [0, g + 0.012, 0.028],
         s: [1, 1, 1.55],
@@ -149,14 +167,8 @@ const FEET: Record<FootKind, (l: Look) => Part[]> = {
   },
 }
 
-/** Shin hanging from the knee with sock and foot (rigid: no ankle joint yet). */
+/** Shin hanging from the knee with the foot (rigid: no ankle joint yet). */
 export function shinParts(l: Look): Part[] {
-  const k = l.kit
   const shin = new CapsuleGeometry(0.051, 0.035, 4, 12).translate(0, -0.045, 0)
-  return [
-    part(shin, l.skin),
-    part(new CylinderGeometry(0.055, 0.056, 0.05, 16), k.socks, { p: [0, -0.078, 0] }),
-    part(new TorusGeometry(0.056, 0.006, 4, 16), k.stripe, { p: [0, -0.06, 0], r: [HALF_PI, 0, 0] }),
-    ...FEET[l.feet](l),
-  ]
+  return [part(shin, limbOf(l)), ...FEET[l.feet](l)]
 }

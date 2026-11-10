@@ -9,6 +9,7 @@ import {
   MOVE_SPEED,
   NET_MARGIN,
   POINT_TICKS,
+  PRESETS,
   rewindTicks,
   SERVE_TIMEOUT,
   seedPreset,
@@ -145,13 +146,37 @@ describe('movement', () => {
 })
 
 describe('pick', () => {
-  it('clamps the preset to 0..3', () => {
+  const LAST = PRESETS - 1
+
+  it('clamps the preset to 0..PRESETS−1 (host validation)', () => {
     const s = duel()
-    game.tick(s, [ev('p0', { t: 'pick', preset: 9 }), ev('p1', { t: 'pick', preset: 1.7 })])
-    expect(s.players[0].preset).toBe(3)
+    game.tick(s, [ev('p0', { t: 'pick', preset: 99 }), ev('p1', { t: 'pick', preset: 1.7 })])
+    expect(s.players[0].preset).toBe(LAST)
     expect(s.players[1].preset).toBe(1)
     game.tick(s, [ev('p0', { t: 'pick', preset: -2 })])
     expect(s.players[0].preset).toBe(0)
+    game.tick(s, [ev('p0', { t: 'pick', preset: LAST + 0.9 })])
+    expect(s.players[0].preset).toBe(LAST)
+  })
+
+  it('old clients picking 0..3 keep exactly that look', () => {
+    for (let n = 0; n < 4; n++) {
+      const s = duel()
+      game.tick(s, [ev('p0', { t: 'pick', preset: n })])
+      expect(s.players[0].preset).toBe(n)
+    }
+  })
+
+  it('non-numbers, NaN and ±Infinity are ignored (the look stays)', () => {
+    const s = duel()
+    game.tick(s, [ev('p0', { t: 'pick', preset: 2 })])
+    for (const bad of [NaN, Infinity, -Infinity, '5', null, undefined])
+      game.tick(s, [ev('p0', { t: 'pick', preset: bad } as unknown as SpInput)])
+    expect(s.players[0].preset).toBe(2)
+    seedPreset(s, 'p0', NaN)
+    seedPreset(s, 'p0', Infinity)
+    seedPreset(s, 'p0', '7' as unknown as number)
+    expect(s.players[0].preset).toBe(2)
   })
 
   it('the computer moves off the preset the player picks', () => {
@@ -164,14 +189,20 @@ describe('pick', () => {
     expect(s.players[1].preset).toBe(2)
   })
 
-  it('separateAi moves a clashing computer to the next free preset', () => {
+  it('separateAi moves a clashing computer to the next free preset, wrapping past the last', () => {
     const s = game.setup(players(1), 1, {})
-    s.players[0].preset = 3
-    s.players[1].preset = 3
+    s.players[0].preset = LAST
+    s.players[1].preset = LAST
     separateAi(s)
     expect(s.players[1].preset).toBe(0)
     separateAi(s)
     expect(s.players[1].preset).toBe(0)
+    for (let n = 0; n < PRESETS; n++) {
+      s.players[0].preset = n
+      s.players[1].preset = n
+      separateAi(s)
+      expect(s.players[1].preset).toBe((n + 1) % PRESETS)
+    }
   })
 
   it('seedPreset gives a fresh match the stored look, before any input', () => {
@@ -179,9 +210,9 @@ describe('pick', () => {
     seedPreset(s, 'p0', 1)
     expect(s.players.map((p) => p.preset)).toEqual([1, 2])
     seedPreset(s, 'p0', 99)
-    expect(s.players[0].preset).toBe(3)
+    expect(s.players[0].preset).toBe(LAST)
     seedPreset(s, 'nobody', 0)
-    expect(s.players[0].preset).toBe(3)
+    expect(s.players[0].preset).toBe(LAST)
   })
 
   it('two humans may pick the same preset', () => {

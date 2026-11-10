@@ -12,11 +12,11 @@ const HALF_PI = Math.PI / 2
 const Y = new Vector3(0, 1, 0)
 const Z = new Vector3(0, 0, 1)
 
-const HEADS: Record<HeadKind, (l: Look) => Part[]> = {
+export const HEADS: Record<HeadKind, (l: Look) => Part[]> = {
   round: (l) => [part(new SphereGeometry(R, 32, 24), l.skin)],
 }
 
-const EARS: Record<EarKind, (l: Look) => Part[]> = {
+export const EARS: Record<EarKind, (l: Look) => Part[]> = {
   human: (l) =>
     [-1, 1].map((s) =>
       part(new SphereGeometry(0.055, 10, 8), l.skin, { p: [s * 0.352, -0.03, -0.01], s: [0.6, 1, 0.8] }),
@@ -24,7 +24,7 @@ const EARS: Record<EarKind, (l: Look) => Part[]> = {
   none: () => [],
 }
 
-const MUZZLES: Record<MuzzleKind, (l: Look) => Part[]> = {
+export const MUZZLES: Record<MuzzleKind, (l: Look) => Part[]> = {
   none: () => [],
 }
 
@@ -58,10 +58,10 @@ function spike(color: number, polar: number, az: number, len: number, back = 0.4
   return part(new ConeGeometry(0.058, len, 10), color, { p: [p.x, p.y, p.z], r: turn(Y, aim) })
 }
 
-const STYLES: Record<StyleKind, (l: Look) => Part[]> = {
+export const STYLES: Record<StyleKind, (l: Look) => Part[]> = {
   /** Berry: rounded bangs, two pigtails with ties, a big bow on top. */
   bowPigtails: (l) => {
-    const acc = l.kit.stripe
+    const acc = l.accent
     const out = [hairCap(l.hair, Math.PI * 0.43, 0.45)]
     for (let i = 0; i < 5; i++) out.push(lock(l.hair, 0.31 * Math.PI, -0.56 + i * 0.28, 0.085))
     for (const s of [-1, 1]) {
@@ -88,7 +88,7 @@ const STYLES: Record<StyleKind, (l: Look) => Part[]> = {
   },
   /** Cloud: sporty cap (brim, front badge, top button), fringe tufts under the brim, short back hair. */
   capFringe: (l) => {
-    const acc = l.kit.stripe
+    const acc = l.accent
     const out = [hairCap(l.hair, Math.PI * 0.5, 0.3)]
     for (const az of [-0.42, 0, 0.42]) out.push(lock(l.hair, 0.37 * Math.PI, az, 0.06))
     out.push(
@@ -131,7 +131,7 @@ const STYLES: Record<StyleKind, (l: Look) => Part[]> = {
     for (const [p, az, len] of spikes) out.push(spike(l.hair, p * Math.PI, az, len))
     const bandY = 0.14
     out.push(
-      part(new TorusGeometry(Math.sqrt(R * R - bandY * bandY) + 0.012, 0.036, 8, 32), l.kit.stripe, {
+      part(new TorusGeometry(Math.sqrt(R * R - bandY * bandY) + 0.012, 0.036, 8, 32), l.accent, {
         p: [0, bandY, 0],
         r: [HALF_PI + 0.1, 0, 0],
       }),
@@ -141,7 +141,7 @@ const STYLES: Record<StyleKind, (l: Look) => Part[]> = {
   },
   /** Mint: knit beanie (ribbed rim, pompom) over a chin-length bob. */
   beanieBob: (l) => {
-    const acc = l.kit.stripe
+    const acc = l.accent
     const BR = R * 1.09
     const theta = Math.PI * 0.42
     const tilt = 0.12

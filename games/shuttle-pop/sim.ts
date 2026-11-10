@@ -7,6 +7,7 @@ import { CHARGE, chargeOf } from './charge'
 import { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld } from './court'
 import { t } from './i18n'
 import { COURT, DT, settleOnFloor, stepShuttle, type Flight, type Vec3 } from './physics'
+import { PRESETS as PRESET_TABLE } from './presets'
 import { award, serveBox, winner } from './rules'
 import {
   chooseShot,
@@ -40,7 +41,8 @@ const EVENT_TICKS = 60
 export const MAX_REWIND = 7
 /** Covers MAX_REWIND + WINDOW.pastGrace (12) + margin. */
 const HISTORY_TICKS = 24
-export const PRESETS = 4
+/** Character looks (presets.ts rows); `pick` inputs are clamped to 0..PRESETS−1. */
+export const PRESETS = PRESET_TABLE.length
 /** chargeAt of a press that already swung as a tap (tapOnPress): its release only ends it. */
 export const TAPPED = -2
 
@@ -585,10 +587,13 @@ export function separateAi(state: SpState): void {
       for (let i = 0; i < PRESETS && taken(q.preset); i++) q.preset = (q.preset + 1) % PRESETS
 }
 
-/** Puts player `id` in look `preset` (clamped to 0..PRESETS−1), then separates the computer. */
+/**
+ * Puts player `id` in look `preset` (truncated, clamped to 0..PRESETS−1; a non-number / NaN / ±Infinity
+ * is ignored), then separates the computer.
+ */
 export function seedPreset(state: SpState, id: string, preset: number): void {
   const p = state.players.find((q) => q.id === id)
-  if (!p) return
+  if (!p || typeof preset !== 'number' || !Number.isFinite(preset)) return
   p.preset = Math.min(PRESETS - 1, Math.max(0, Math.trunc(preset)))
   separateAi(state)
 }

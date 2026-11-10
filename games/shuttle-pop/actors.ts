@@ -1,7 +1,8 @@
 // Shuttle Pop chibis: big round head (~55% of the height), small body in a badminton kit, stubby
 // jointed limbs, a racket in the right hand. What a character looks like is data (presets.ts → Look) fed
 // to builder tables (model/*); every bone's rigid parts are merged into ONE vertex-coloured mesh, shared
-// by all chibis wearing that look, so a chibi is ~16 draw calls. Poses are procedural and allocate
+// by all chibis wearing that look, so a chibi is ~16 draw calls (+ up to 3 animated extras: tail, ears,
+// wings, antenna; a legless look hides its 4 leg meshes). Poses are procedural and allocate
 // nothing: the gait / swing / leap curves and the joint angles are pure (locomotion.ts, moves.ts, arm.ts,
 // legs.ts, model/face.ts), this file only applies them to the rig.
 //
@@ -24,7 +25,6 @@ import {
   MeshBasicMaterial,
   MeshStandardMaterial,
   Object3D,
-  SphereGeometry,
   Vector3,
   type Material,
 } from 'three'
@@ -32,8 +32,11 @@ import { basePose, CH, streakGlow, swingPose, upper, type BaseIn, type SwingIn, 
 import { lateralShare } from './footwork'
 import { legAngles, legOut, type LegIn } from './legs'
 import { strideParams, type Stride } from './locomotion'
-import { ARM, HEAD_R, HEAD_Y, HIP_X, HIP_Y, LEG, RACKET, SHOULDER_X, SHOULDER_Y } from './model/dims'
+import { ARM, HEAD_Y, HIP_X, HIP_Y, LEG, RACKET, SHOULDER_X, SHOULDER_Y } from './model/dims'
+import { extraOut, extraPose, type FlairIn } from './flair'
+import type { ExtraSpec } from './model/extras'
 import { blinkAt, faceMix } from './model/face'
+import { legless } from './model/look'
 import { modelOf } from './model/model'
 import { celebrateSpin, hop, type Hop } from './moves'
 import { PRESETS } from './presets'
@@ -189,19 +192,26 @@ const base = upper()
 const ang = upper()
 const v3 = new Vector3()
 
-let shared: { shadow: BufferGeometry; hull: BufferGeometry } | null = null
-function sharedGeos() {
-  return (shared ??= {
-    shadow: new CircleGeometry(0.3, 18),
-    hull: new SphereGeometry(HEAD_R * 1.07, 24, 16),
-  })
-}
+const flairIn: FlairIn = { t: 0, seed: 0, run: 0, stride: 0, happy: 0, sad: 0, cheer: 0, jump: 0 }
+const exO = extraOut()
+/** Extra-bone pivots per chibi (3 extras, each possibly a mirrored pair). */
+const PIVOTS = 6
+
+let shadowGeo: BufferGeometry | null = null
 
 const materials = new Map<string, Material>()
 function cached<M extends Material>(key: string, make: () => M): M {
   let m = materials.get(key) as M | undefined
   if (!m) materials.set(key, (m = make()))
   return m
+}
+/** The unlit face / light material; the far twin's face dims with its body. */
+function faceMat(alt: boolean): MeshBasicMaterial {
+  return cached(alt ? 'faceAlt' : 'face', () => {
+    const color = new Color(0xffffff)
+    if (alt) color.lerp(ALT_SHADE_COLOR, ALT_SHADE)
+    return new MeshBasicMaterial({ color, vertexColors: true })
+  })
 }
 /** Smooth pastel vertex-colour material (the far twin's is shaded toward ALT_SHADE_COLOR). */
 function kitMat(alt: boolean): MeshStandardMaterial {
@@ -216,7 +226,6 @@ function kitMat(alt: boolean): MeshStandardMaterial {
 let built = 0
 
 export function createChibi(preset: number): Chibi {
-  const S = sharedGeos()
   const empty = new BufferGeometry()
   const kit = kitMat(false)
   /** Every kit-coloured bone mesh (geometry + material swap with the preset). */
@@ -232,7 +241,7 @@ export function createChibi(preset: number): Chibi {
   const root = new Group()
   // Ground shadow stays down when the rig jumps.
   const shadow = new Mesh(
-    S.shadow,
+    (shadowGeo ??= new CircleGeometry(0.3, 18)),
     cached(
       'shadow',
       () => new MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.2, depthWrite: false }),
@@ -317,19 +326,33 @@ export function createChibi(preset: number): Chibi {
   // Head: shape + hair + headwear (one mesh), the morphing face, the twin outline.
   const head = new Group()
   const headMesh = bone('head')
-  const face = new Mesh(
-    empty,
-    cached('face', () => new MeshBasicMaterial({ vertexColors: true })),
-  )
+  const face = new Mesh(empty, faceMat(false))
   face.name = 'face'
-  // Outline for the far twin: a back-faced shell around the head.
-  const hull = new Mesh(
-    S.hull,
-    cached('hull', () => new MeshBasicMaterial({ color: OUTLINE, side: BackSide })),
-  )
+  // Outline for the far twin: a back-faced shell around the head (per look: covers hair, hats, ears).
+  const hullMat = cached('hull', () => new MeshBasicMaterial({ color: OUTLINE, side: BackSide }))
+  const hull = new Mesh(empty, hullMat)
+  hull.name = 'hull'
   head.add(headMesh, face, hull)
   head.position.y = HEAD_Y - HIP_Y
   torso.add(head)
+
+  // Extra bones (tails, ears, wings, antenna): a pool of pivots, each with a kit mesh, an unlit light
+  // mesh and an outline shell, re-parented and filled per look (setPreset); unused ones stay hidden.
+  const parents = { hips, torso, head }
+  const pivots = Array.from({ length: PIVOTS }, () => {
+    const pivot = new Group()
+    const mesh = new Mesh(empty, kit)
+    mesh.name = 'extra'
+    const glow = new Mesh(empty, faceMat(false))
+    glow.name = 'glow'
+    const shell = new Mesh(empty, hullMat)
+    shell.name = 'hull'
+    pivot.add(mesh, glow, shell)
+    pivot.visible = false
+    return { pivot, mesh, glow, shell, spec: null as ExtraSpec | null, k: 0 as 0 | 1 }
+  })
+  let used = 0
+  let hasLegs = true
 
   // Real shadows (when the renderer has them on) from the three shapes that read in a long low-sun
   // shadow: body, head and racket. Everything else would only add shadow-pass draw calls.
@@ -339,7 +362,9 @@ export function createChibi(preset: number): Chibi {
 
   function setPreset(n: number, alt = false) {
     const p = PRESETS[Math.min(PRESETS.length - 1, Math.max(0, n | 0))]
-    const g = modelOf(p.look)
+    const g = modelOf(p)
+    hasLegs = !legless(p.look)
+    for (const l of legs) l.hip.visible = hasLegs
     hips.geometry = g.hips
     chest.geometry = g.torso
     headMesh.geometry = g.head
@@ -357,7 +382,51 @@ export function createChibi(preset: number): Chibi {
       face.geometry = g.face
       face.updateMorphTargets()
     }
+    face.material = faceMat(alt)
+    hull.geometry = g.hull
     hull.visible = alt
+    used = 0
+    for (const e of g.extras)
+      for (let k = 0; k < (e.spec.pair ? 2 : 1); k++) {
+        const v = pivots[used++]
+        v.spec = e.spec
+        v.k = k as 0 | 1
+        parents[e.spec.parent].add(v.pivot)
+        const [x, y, z] = e.spec.at
+        v.pivot.position.set(k ? -x : x, y, z)
+        v.pivot.scale.x = k ? -1 : 1
+        v.pivot.rotation.set(0, 0, 0)
+        v.pivot.visible = true
+        v.mesh.geometry = e.geo
+        v.mesh.material = mat
+        v.glow.geometry = e.glow ?? empty
+        v.glow.material = faceMat(alt)
+        v.glow.visible = e.glow !== null
+        v.shell.geometry = e.hull ?? empty
+        v.shell.visible = alt && e.hull !== null
+      }
+    for (let i = used; i < PIVOTS; i++) {
+      pivots[i].pivot.visible = false
+      pivots[i].spec = null
+    }
+  }
+
+  /** Extra bones from their channels (flair.ts). */
+  function applyExtras(p: ChibiPose, t: number) {
+    flairIn.t = t
+    flairIn.seed = blinkSeed
+    flairIn.run = p.run
+    flairIn.stride = p.stride
+    flairIn.happy = p.happy
+    flairIn.sad = p.sad
+    flairIn.cheer = p.cheer
+    flairIn.jump = p.jump
+    for (let i = 0; i < used; i++) {
+      const v = pivots[i]
+      extraPose(v.spec!.channel, v.k, flairIn, exO)
+      v.pivot.rotation.set(exO.rx, exO.ry, exO.rz)
+      if (v.glow.geometry !== empty) v.glow.visible = exO.glow
+    }
   }
 
   /** The point `k` m along the racket's handle axis (frame centre = RACKET.head) in rig space, into `v3`. */
@@ -429,7 +498,7 @@ export function createChibi(preset: number): Chibi {
     let y = (stride.bob * (1 - Math.cos(4 * Math.PI * p.stride))) / 2
     y += p.jump * JUMP_H + hopO.height * (HOP_H + p.cheer * HOP_H_WIN) * happy
     y += legO.lift + p.split * SPLIT_H + bounce * BOUNCE.h * bounceW
-    rig.position.y = y - legO.drop
+    rig.position.y = y - (hasLegs ? legO.drop : 0)
     rig.rotation.x =
       LEAN_FWD * p.fwd +
       p.lean +
@@ -493,6 +562,7 @@ export function createChibi(preset: number): Chibi {
     const effort = Math.max(p.smash, Math.min(1, p.coil * EFFORT_COIL) * p.load)
     if (face.morphTargetInfluences)
       faceMix(happy, sad, effort, blinkAt(t, blinkSeed), face.morphTargetInfluences)
+    if (used > 0) applyExtras(p, t)
   }
 
   setPreset(preset)

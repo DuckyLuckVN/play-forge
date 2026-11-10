@@ -1,41 +1,60 @@
 // What a character looks like, as data. Every body part is picked from a builder table by key (head.ts,
-// body.ts, face.ts, racket.ts), so a new character (a new species included: other head shape, ears,
-// muzzle, paws, feet, a tail) is a new preset row plus, if needed, a new builder under a new key. The
-// rig and the animations never change.
+// body.ts, face.ts, extras.ts, racket.ts), so a new character (a new species included: other head shape,
+// ears, muzzle, paws, feet, a tail, no legs at all) is a new preset row plus, if needed, a new builder
+// under a new key. The rig and the animations never change.
 
+/** Head shape. The face decals follow it (face.ts surfaces). */
 export type HeadKind = 'round'
+/** Static ears merged into the head mesh. Animated ears are extras (extras.ts). */
 export type EarKind = 'human' | 'none'
+/** A snout bump on the face (the mouth decal sits on it). */
 export type MuzzleKind = 'none'
-/** Hair + headwear. */
+/** Hair + headwear (+ anything else worn on the head). */
 export type StyleKind = 'bowPigtails' | 'capFringe' | 'bandSpiky' | 'beanieBob'
 export type FaceKind = 'chibi'
 export type HandKind = 'mitten'
 export type FootKind = 'sneaker'
-/** Attached to the hips bone (no extra draw call: merged into the shorts / skirt mesh). */
-export type TailKind = 'none'
+/** Torso + hips shape. */
+export type BodyKind = 'human'
+/** Two jointed legs, or none: a hopping blob or a floating sheet (hips chains hidden). */
+export type LegKind = 'pair' | 'hop' | 'float'
+/** Animated extra bones (own mesh + pose channel): tails, ears, wings, an antenna. */
+export type ExtraKind = never
 
-/** Badminton kit colours. */
+/** Badminton kit colours (optional: animals may wear one, creatures don't). */
 export interface Kit {
   shirt: number
   /** Collar, sleeve cuffs, skirt hem. */
   trim: number
-  /** Chest stripe, wristband, racket frame. */
+  /** Chest stripe. */
   stripe: number
   bottom: 'shorts' | 'skirt'
   bottomColor: number
+}
+
+/** Socks and sneakers (the 'sneaker' feet). */
+export interface Shoes {
   socks: number
   shoe: number
   sole: number
-  /** Racket grip tape. */
-  tape: number
 }
 
 export interface Look {
-  /** Skin or fur. */
+  /** Skin, fur, scales, jelly, metal or sheet. */
   skin: number
+  /** Arms + legs when they differ from `skin`. */
+  limb?: number
+  /** Light patches: belly, muzzle, inner ears, tail tip. */
+  belly?: number
   hair: number
   /** Lower iris tint. */
   iris: number
+  /** Headwear accent, wristband, sock ring, racket frame. */
+  accent: number
+  /** Racket grip tape. */
+  grip: number
+  body: BodyKind
+  legs: LegKind
   head: HeadKind
   ears: EarKind
   muzzle: MuzzleKind
@@ -43,6 +62,14 @@ export interface Look {
   face: FaceKind
   hands: HandKind
   feet: FootKind
-  tail: TailKind
-  kit: Kit
+  extras: readonly ExtraKind[]
+  kit?: Kit
+  shoes?: Shoes
 }
+
+/** The arm / leg colour. */
+export const limbOf = (l: Look): number => l.limb ?? l.skin
+/** The light patch colour. */
+export const bellyOf = (l: Look): number => l.belly ?? l.skin
+/** No legs: the hips chains are hidden and the body hops or floats. */
+export const legless = (l: Look): boolean => l.legs !== 'pair'

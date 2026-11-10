@@ -1,5 +1,5 @@
 // Chibi face: big shiny eyes (dark iris, tinted lower half, two highlights), brows, mouth and blush as
-// thin decals hugging the head sphere, all in ONE mesh. Expressions are morph targets with the same
+// thin decals hugging the head surface (a sphere, a box, a muzzle bump: `surfaceOf`), all in ONE mesh. Expressions are morph targets with the same
 // topology (only positions move), so moods blend smoothly: happy (^ ^ eyes, open smile), sad (droopy
 // eyes, raised inner brows, frown), effort (squint, angry brows, yell), blink.
 //
@@ -7,7 +7,7 @@
 
 import { BufferAttribute, BufferGeometry, Color, Float32BufferAttribute } from 'three'
 import { HEAD_R } from './dims'
-import type { FaceKind, Look } from './look'
+import type { FaceKind, HeadKind, Look } from './look'
 import { shade } from './merge'
 
 export type Expr = 'neutral' | 'happy' | 'sad' | 'effort' | 'blink'
@@ -87,12 +87,29 @@ function mouth(e: Expr): { w: number; top: (t: number) => number; bot: (t: numbe
 
 const c = new Color()
 
+/** Height (+z) of the head surface at (u, v) for a decal `lift` m outside it. */
+export type Surface = (u: number, v: number, lift: number) => number
+
+const sphere =
+  (r: number): Surface =>
+  (u, v, lift) =>
+    Math.sqrt(Math.max(0, (r + lift) ** 2 - u * u - v * v))
+
+const HEAD_SURFACES: Record<HeadKind, Surface> = {
+  round: sphere(HEAD_R),
+}
+
+/** The surface the face decals sit on for this look. */
+export function surfaceOf(look: Look): Surface {
+  return HEAD_SURFACES[look.head]
+}
+
 /** The face for one expression. Every expression yields the same vertex count, colours and triangles. */
 export function faceLayout(look: Look, e: Expr): FaceLayout {
   const out: FaceLayout = { pos: [], col: [], idx: [] }
+  const surf = surfaceOf(look)
   const vert = (u: number, v: number, layer: number, hex: number) => {
-    const r = HEAD_R + 0.004 + layer * 0.0025
-    out.pos.push(u, v, Math.sqrt(Math.max(0, r * r - u * u - v * v)))
+    out.pos.push(u, v, surf(u, v, 0.004 + layer * 0.0025))
     c.setHex(hex)
     out.col.push(c.r, c.g, c.b)
     return out.pos.length / 3 - 1

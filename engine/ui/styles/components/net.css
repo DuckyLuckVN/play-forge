@@ -214,6 +214,10 @@
   .pf-net-player.failed .pf-net-state {
     color: var(--pf-coral);
   }
+  /* Connected through the relay: still fine, just not browser to browser. */
+  .pf-net-player.connected .pf-net-state.relay {
+    color: var(--pf-sky);
+  }
   .pf-net-ping {
     grid-area: ping;
     min-width: 52px;
@@ -238,7 +242,7 @@
   .pf-net-hint:is(.no-servers, .blocked) {
     border-left-color: var(--pf-coral);
   }
-  .pf-net-hint.local {
+  .pf-net-hint:is(.local, .relayed) {
     border-left-color: var(--pf-sky);
   }
 }

@@ -137,6 +137,16 @@ export const VI: Dictionary = {
     'Vẫn đang kết nối với một người. Thường chỉ mất vài giây.',
   'High ping: moves may feel delayed. A stronger or wired connection helps.':
     'Ping cao: thao tác có thể bị trễ. Mạng mạnh hơn hoặc mạng dây sẽ đỡ hơn.',
+  "Some players can't link directly, so the game goes through our backup server. It works the same, ping may be a bit higher.":
+    'Một số người chơi không kết nối trực tiếp được, nên trò chơi đi qua máy chủ dự phòng. Vẫn chơi bình thường, ping có thể cao hơn một chút.',
+  Direct: 'Trực tiếp',
+  'Via server': 'Qua máy chủ',
+  'Connected browser to browser': 'Kết nối trực tiếp giữa hai trình duyệt',
+  'Connected through our backup server': 'Kết nối qua máy chủ dự phòng',
+  'Backup server': 'Máy chủ dự phòng',
+  'Connected · {ms} ms': 'Đã kết nối · {ms} ms',
+  'Carries the game when a direct link between players is blocked.':
+    'Chuyển dữ liệu trò chơi khi kết nối trực tiếp giữa người chơi bị chặn.',
 
   // Countdown, pause, results
   'Go!': 'Chiến!',

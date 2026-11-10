@@ -210,7 +210,8 @@ describe('network panel view', () => {
       { host: 'r1.example', ok: true },
       { host: 'r2.example', ok: false },
     ])
-    expect(v.rows).toEqual([{ name: 'Ann', state: 'connected', rttMs: 42 }])
+    expect(v.rows).toEqual([{ name: 'Ann', state: 'connected', rttMs: 42, route: null }])
+    expect(v.gameRelay).toBeNull()
   })
 
   it('is healthy for a host alone in the room', () => {
@@ -227,7 +228,7 @@ describe('network panel view', () => {
     expect(netPanelView(net(), [host])).toMatchObject({
       health: 'warn',
       hints: ['connecting'],
-      rows: [{ name: 'Ann', state: 'connecting', rttMs: null }],
+      rows: [{ name: 'Ann', state: 'connecting', rttMs: null, route: null }],
     })
   })
 
@@ -274,7 +275,7 @@ describe('network panel view', () => {
       host,
     ])
     expect(v).toMatchObject({ health: 'local', local: true, hints: ['local'], relays: [] })
-    expect(v.rows[0]).toEqual({ name: 'Ann', state: 'connected', rttMs: null })
+    expect(v.rows[0]).toEqual({ name: 'Ann', state: 'connected', rttMs: null, route: null })
   })
 
   it('shortens relay urls', () => {
@@ -324,6 +325,67 @@ describe('failure log', () => {
     expect(netPanelView(status, [{ name: 'Bao', peer: 'g1', connected: true }])).toMatchObject({
       health: 'good',
       hints: [],
+    })
+  })
+})
+
+describe('with the game relay (backup server)', () => {
+  const host = { name: 'Ann', peer: 'p1', connected: true }
+  const relayUp = { state: 'open' as const, rttMs: 30 }
+
+  it('counts the relay as a way to find the room when no matchmaking server answers', () => {
+    const noNostr = { relays: relays('closed', 'closed') }
+    expect(run([[1, net({ ...noNostr, gameRelay: relayUp })]])).toEqual(['looking'])
+    expect(run([[JOIN_TIMEOUTS.servers, net({ ...noNostr, gameRelay: { state: 'closed' } })]])).toEqual([
+      'servers-failed',
+    ])
+  })
+
+  it("isn't blocked when the host is reached through the relay after a direct failure", () => {
+    const relayed: PeerLink = { id: 'p1', state: 'connected', route: 'relay' }
+    expect(run([[1, net({ failures: 1, peers: [relayed], gameRelay: relayUp })]])).toEqual(['connecting'])
+  })
+
+  it('shows the route per player and the backup server', () => {
+    const v = netPanelView(
+      net({ peers: [{ id: 'p1', state: 'connected', rttMs: 80, route: 'relay' }], gameRelay: relayUp }),
+      [host],
+    )
+    expect(v.rows).toEqual([{ name: 'Ann', state: 'connected', rttMs: 80, route: 'relay' }])
+    expect(v.gameRelay).toEqual({ ok: true, rttMs: 30 })
+    expect(v).toMatchObject({ health: 'good', hints: ['relayed'] })
+  })
+
+  it('a slow relayed link warns without the "better connection" hint', () => {
+    const v = netPanelView(
+      net({ peers: [{ id: 'p1', state: 'connected', rttMs: 230, route: 'relay' }], gameRelay: relayUp }),
+      [host],
+    )
+    expect(v).toMatchObject({ health: 'warn', hints: ['relayed'] })
+  })
+
+  it('shows direct links without the relayed hint', () => {
+    const v = netPanelView(
+      net({ peers: [{ id: 'p1', state: 'connected', rttMs: 20, route: 'direct' }], gameRelay: relayUp }),
+      [host],
+    )
+    expect(v.rows[0].route).toBe('direct')
+    expect(v.hints).toEqual([])
+  })
+
+  it('has no route while still connecting', () => {
+    const v = netPanelView(net({ peers: [{ id: 'p1', state: 'connecting', route: 'relay' }] }), [host])
+    expect(v.rows[0].route).toBeNull()
+  })
+
+  it("isn't 'no servers' while the relay is up, and hides an unused relay", () => {
+    const v = netPanelView(net({ relays: relays('closed'), gameRelay: relayUp }), [])
+    expect(v.hints).not.toContain('no-servers')
+    expect(v.health).toBe('good')
+    expect(netPanelView(net({ gameRelay: { state: 'off' } }), []).gameRelay).toBeNull()
+    expect(netPanelView(net({ gameRelay: { state: 'closed' } }), []).gameRelay).toEqual({
+      ok: false,
+      rttMs: null,
     })
   })
 })

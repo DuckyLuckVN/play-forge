@@ -178,6 +178,34 @@
   .pf-room-sec .pf-seats {
     margin: 0;
   }
+  /* Host: a small remove button on each other player's seat, confirmed under the seats. */
+  .pf-seat {
+    position: relative;
+  }
+  .pf-seat > .pf-btn.icon {
+    position: absolute;
+    top: -6px;
+    right: calc(50% - 46px);
+    width: 26px;
+    height: 26px;
+    padding: 4px;
+    border-radius: 50%;
+  }
+  .pf-kick-ask {
+    display: grid;
+    gap: var(--pf-space-4);
+    padding: var(--pf-space-5);
+    background: var(--pf-pit);
+    border-radius: var(--pf-radius);
+    text-align: center;
+  }
+  .pf-kick-ask p {
+    margin: 0;
+  }
+  .pf-kick-ask .pf-row {
+    justify-content: center;
+  }
+
   /* Name + avatar, then the game's extras (e.g. a character strip). */
   .pf-room-self {
     display: grid;

@@ -70,6 +70,12 @@
     gap: var(--pf-space-3);
   }
   /* Danger: destructive or "armed" actions. */
+  /* Go / ready: the green "I'm in" action (rooms' I'm ready). */
+  .pf-btn.go {
+    --face: var(--pf-mint);
+    --edge: var(--pf-mint-edge);
+    --text: var(--pf-mint-ink);
+  }
   .pf-btn.danger {
     --face: var(--pf-coral);
     --edge: var(--pf-coral-edge);

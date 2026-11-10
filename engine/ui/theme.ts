@@ -20,6 +20,8 @@ export const theme = {
   coralEdge: '#c0392b', // raised edge of a coral button
   coralInk: '#2a0505', // text on coral
   mint: '#4be3a0', // good news: live, free, new, synergy
+  mintEdge: '#1f9e68', // raised edge of a mint button
+  mintInk: '#04291a', // text on mint
   sky: '#5ab8ff', // common rarity, info
   violet: '#b48cff', // rare rarity
   pink: '#ff6fb5', // bonus, celebration

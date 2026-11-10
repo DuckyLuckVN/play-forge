@@ -372,6 +372,12 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         store.save(null)
         showMessage(t('The room closed'), t('The host left the room. Create a new room to keep playing.'))
       }),
+      s.on('kicked', () => {
+        // Leave first (the host keeps broadcasting lobbies that would redraw the room).
+        const code = room
+        leave()
+        showMessage(t('You were removed'), t('The host removed you from room {room}.', { room: code }))
+      }),
     ]
     if (!extra.offline)
       netBtn.attach({
@@ -870,6 +876,40 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   const seenTokens = new Set<string>()
   const seenReady = new Set<string>()
 
+  /** Host: the player whose "remove?" confirmation is showing in the room. */
+  let kickAsk: string | null = null
+
+  /** Host: "Remove Ana from the room?" under the seats, or nothing. */
+  function kickConfirm(s: Session<S, I>) {
+    const target = s.isHost ? s.lobby.players.find((p) => p.id === kickAsk) : undefined
+    if (!target) {
+      kickAsk = null
+      return null
+    }
+    const yes = button(
+      t('Remove'),
+      () => {
+        kickAsk = null
+        s.kick(target.id)
+      },
+      'danger',
+    )
+    const no = button(
+      t('Cancel'),
+      () => {
+        kickAsk = null
+        render()
+      },
+      'quiet',
+    )
+    return h(
+      'div',
+      { class: 'pf-kick-ask', role: 'alertdialog' },
+      h('p', { textContent: t('Remove {name} from the room?', { name: target.name }) }),
+      h('div', { class: 'pf-row' }, no, yes),
+    )
+  }
+
   function seats(s: Session<S, I>) {
     const { players, hostId, phase } = s.lobby
     const scores = phase === 'finished' && s.state && opts.scores ? opts.scores(s.state) : []
@@ -921,6 +961,12 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
             title: isSelf ? t('{name} (you)', { name: p.name }) : p.name,
           },
           token,
+          s.isHost &&
+            !isSelf &&
+            iconButton(icons.cross, t('Remove {name}', { name: p.name }), () => {
+              kickAsk = p.id
+              render()
+            }),
           h('div', { class: 'pf-seat-name', textContent: p.name }),
           h('div', {
             class: `pf-seat-status${p.connected && (isHost || p.ready) ? ' ok' : ''}`,
@@ -1044,7 +1090,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
           playSound(ready ? UI_SOUNDS.unready : UI_SOUNDS.ready)
           s.setReady(!ready)
         },
-        ready ? 'wide' : 'primary wide',
+        ready ? 'wide' : 'go wide',
       )
       action.autofocus = true
     }
@@ -1071,7 +1117,11 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         finished && opts.ranking && rankList(s),
         finished && s.state && opts.summary && summaryGrid(opts.summary(s.state, s.selfId)),
         roomCodeBox(),
-        roomSection(t('Players {n}/{max}', { n: s.lobby.players.length, max: def.maxPlayers }), seats(s)),
+        roomSection(
+          t('Players {n}/{max}', { n: s.lobby.players.length, max: def.maxPlayers }),
+          seats(s),
+          kickConfirm(s),
+        ),
         self && !s.offline && roomSection(t('You'), roomSelfControls(s)),
         settings && roomSection(t('Game settings'), settings, !s.isHost && hint(t('Set by the host'))),
         h(
@@ -1168,18 +1218,28 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       begin(createTransport(appId, room), saved.host, { restore: saved.host ? saved.snapshot : undefined })
     })
   } else if (hashRoom?.length === 5 && def.maxPlayers > 1) {
-    // Opened from an invite link: straight into the room (name, avatar and extras can change there).
     store.save(null)
-    room = hashRoom
-    playerId = randomId()
-    showJoining()
-    void preload.whenReady().then(() => {
-      if (room === hashRoom && !session) begin(createTransport(appId, room), false)
-    })
+    joinFromLink(hashRoom)
   } else {
     store.save(null)
     showMenu()
   }
+
+  /** Opened from an invite link: straight into the room (name, avatar and extras can change there). */
+  function joinFromLink(code: string) {
+    room = code
+    playerId = randomId()
+    showJoining()
+    void preload.whenReady().then(() => {
+      if (room === code && !session) begin(createTransport(appId, room), false)
+    })
+  }
+  // An invite link pasted into this already-open tab only changes the hash (no reload).
+  if (def.maxPlayers > 1)
+    window.addEventListener('hashchange', () => {
+      const code = /room=([A-Z0-9]+)/i.exec(location.hash)?.[1]?.toUpperCase()
+      if (code?.length === 5 && !session && room !== code) joinFromLink(code)
+    })
 }
 
 function summaryGrid(rows: SummaryRow[]): HTMLElement | null {

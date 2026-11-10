@@ -141,10 +141,20 @@ interface SessionEvents<S> {
   hostBack: []
   /** Client: the host did not come back in time. The session is over. */
   hostGone: []
+  /** Client: the host removed us from the room. The session is over. */
+  kicked: []
 }
 
 // Channel names are kept short: they are sent with every message.
-const CH = { hello: 'hello', bye: 'bye', ready: 'ready', lobby: 'lobby', input: 'in', state: 'st' } as const
+const CH = {
+  hello: 'hello',
+  bye: 'bye',
+  ready: 'ready',
+  lobby: 'lobby',
+  input: 'in',
+  state: 'st',
+  kick: 'kick',
+} as const
 
 interface Hello {
   id: string
@@ -271,6 +281,9 @@ export class Session<S, I> {
         t.on(CH.state, (state: S, peer) => {
           if (peer === this.hostPeer) this.setState(state)
         }),
+        t.on(CH.kick, (_: unknown, peer) => {
+          if (peer === this.hostPeer && this.hostConnected) this.events.emit('kicked')
+        }),
         t.onPeerLeave((peer) => {
           if (peer !== this.hostPeer || !this.hostConnected) return
           this.hostConnected = false
@@ -378,6 +391,24 @@ export class Session<S, I> {
     }
     this.hello = { id: this.selfId, ...clean }
     if (this.hostPeer) this.transport.send(CH.hello, this.hello, this.hostPeer)
+  }
+
+  /**
+   * Host: remove a player from the room at once (no reconnect grace), also
+   * mid-match. They are told, and may join again with the code.
+   */
+  kick(playerId: string): void {
+    if (!this.isHost || playerId === this.selfId) return
+    if (!this.lobby.players.some((p) => p.id === playerId)) return
+    for (const [peer, id] of [...this.playerOfPeer]) {
+      if (id !== playerId) continue
+      this.transport.send(CH.kick, true, peer)
+      // Forget the link: their ready / inputs no longer count (a new hello seats them again).
+      this.playerOfPeer.delete(peer)
+    }
+    clearTimeout(this.dropTimers.get(playerId))
+    this.dropTimers.delete(playerId)
+    this.removePlayer(playerId)
   }
 
   /** Mark the local player ready (or not) for the next match. */

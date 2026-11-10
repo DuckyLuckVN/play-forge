@@ -157,6 +157,83 @@ describe('Session', () => {
     expect(host.lobby.players[1]?.name).toBe('Ana')
   })
 
+  it('lets the host kick a player: their seat frees at once and they are told', async () => {
+    const r = room()
+    const host = join(r, { host: true, playerId: 'host' })
+    const guest = join(r, { playerId: 'guest' })
+    const other = join(r, { playerId: 'other' })
+    await until(() => host.lobby.players.length === 3 && other.lobby.players.length === 3)
+    let kicked = 0
+    guest.on('kicked', () => kicked++)
+
+    host.kick('guest')
+    expect(host.lobby.players.map((p) => p.id)).toEqual(['host', 'other'])
+    await until(() => kicked === 1)
+    await until(() => other.lobby.players.length === 2)
+    // Their inputs and ready no longer count.
+    guest.setReady(true)
+    await new Promise((res) => setTimeout(res, 30))
+    expect(host.lobby.players.find((p) => p.id === 'guest')).toBeUndefined()
+  })
+
+  it('removes a kicked player from a running match', async () => {
+    const r = room()
+    const removed: string[] = []
+    const def = { ...counter, removePlayer: (_: Counter, id: string) => void removed.push(id) }
+    const host = join(r, { host: true, playerId: 'host' }, def)
+    const a = join(r, { playerId: 'a' }, def)
+    const b = join(r, { playerId: 'b' }, def)
+    await until(
+      () => host.lobby.players.length === 3 && a.lobby.players.length === 3 && b.lobby.players.length === 3,
+    )
+    a.setReady(true)
+    b.setReady(true)
+    await until(() => host.canStart)
+    host.start()
+    await until(() => host.phase === 'playing')
+    host.kick('b')
+    expect(removed).toEqual(['b'])
+  })
+
+  it('ignores kicks from guests, of the host, or of unknown players', async () => {
+    const r = room()
+    const host = join(r, { host: true, playerId: 'host' })
+    const guest = join(r, { playerId: 'guest' })
+    await until(() => guest.lobby.players.length === 2)
+    guest.kick('host')
+    host.kick('host')
+    host.kick('nobody')
+    await new Promise((res) => setTimeout(res, 30))
+    expect(host.lobby.players).toHaveLength(2)
+    expect(guest.lobby.players).toHaveLength(2)
+  })
+
+  it('only trusts a kick from the host', async () => {
+    const r = room()
+    const host = join(r, { host: true, playerId: 'host' })
+    const guest = join(r, { playerId: 'guest' })
+    const other = join(r, { playerId: 'other' })
+    await until(() => other.lobby.players.length === 3)
+    let kicked = 0
+    guest.on('kicked', () => kicked++)
+    // A guest forging the host's kick message.
+    ;(other as any).transport.send('kick', true)
+    await new Promise((res) => setTimeout(res, 30))
+    expect(kicked).toBe(0)
+    expect(host.lobby.players).toHaveLength(3)
+  })
+
+  it('lets a kicked player join again', async () => {
+    const r = room()
+    const host = join(r, { host: true, playerId: 'host' })
+    const guest = join(r, { playerId: 'guest' })
+    await until(() => host.lobby.players.length === 2)
+    host.kick('guest')
+    guest.dispose()
+    join(r, { playerId: 'guest' })
+    await until(() => host.lobby.players.length === 2)
+  })
+
   it('drops avatar ids that are not short slugs', async () => {
     const r = room()
     const host = join(r, { host: true, playerId: 'host' })

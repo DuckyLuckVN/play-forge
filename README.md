@@ -25,6 +25,7 @@ Fun mini-games to play with friends: solo, on one device, or online. No accounts
 
 - **Multiplayer without a server:** browsers connect directly over WebRTC ([Trystero](https://github.com/dmotz/trystero)). See [How multiplayer works](#how-multiplayer-works).
 - **In every online room:** avatars, emoji reactions, text chat (press **Enter**) and voice chat (open mic or hold **V** to talk).
+- **Host controls:** the host can remove a player with the ✕ on their seat (confirmed in the room). Their seat frees at once, also mid-match; they can join again with the code.
 - **English and Vietnamese**, generated music and sounds, and a phone-friendly layout.
 
 ## How multiplayer works

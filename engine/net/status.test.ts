@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { RELAY_URLS, roomConfig, TURN_SERVERS } from './net-config'
+import { RELAY_URLS, roomConfig } from './net-config'
 import {
   JOIN_TIMEOUTS,
   joinFailed,
@@ -52,14 +52,12 @@ describe('relay config', () => {
     for (const host of broken) expect(RELAY_URLS.map(relayHost)).not.toContain(host)
   })
 
-  it('gives every game the same relays and no TURN until one is configured', () => {
+  it('gives every game the same pinned relays', () => {
     const a = roomConfig('play-forge/caro')
     const b = roomConfig('play-forge/snake')
     expect(a.appId).toBe('play-forge/caro')
     expect(a.relayConfig?.urls).toEqual(b.relayConfig?.urls)
     expect(a.relayConfig?.urls).toEqual([...RELAY_URLS])
-    expect(TURN_SERVERS).toEqual([])
-    expect(a).not.toHaveProperty('turnConfig')
   })
 })
 
@@ -72,8 +70,8 @@ describe('statusOf', () => {
       negotiating: 0,
       failures: 0,
       peers: [
-        { id: 'a', state: 'connected', route: 'local' },
-        { id: 'b', state: 'connected', route: 'local' },
+        { id: 'a', state: 'connected' },
+        { id: 'b', state: 'connected' },
       ],
     })
   })
@@ -187,10 +185,8 @@ describe('joining state machine', () => {
 describe('network panel view', () => {
   const host = { name: 'Ann', peer: 'p1', connected: true }
 
-  it('is healthy with servers up and a direct, quick link', () => {
-    const v = netPanelView(net({ peers: [{ id: 'p1', state: 'connected', route: 'direct', rttMs: 42 }] }), [
-      host,
-    ])
+  it('is healthy with servers up and a quick link', () => {
+    const v = netPanelView(net({ peers: [{ id: 'p1', state: 'connected', rttMs: 42 }] }), [host])
     expect(v.health).toBe('good')
     expect(v.hints).toEqual([])
     expect(v.relaysOk).toBe(2)
@@ -199,7 +195,7 @@ describe('network panel view', () => {
       { host: 'r1.example', ok: true },
       { host: 'r2.example', ok: false },
     ])
-    expect(v.rows).toEqual([{ name: 'Ann', state: 'connected', route: 'direct', rttMs: 42 }])
+    expect(v.rows).toEqual([{ name: 'Ann', state: 'connected', rttMs: 42 }])
   })
 
   it('is healthy for a host alone in the room', () => {
@@ -216,7 +212,7 @@ describe('network panel view', () => {
     expect(netPanelView(net(), [host])).toMatchObject({
       health: 'warn',
       hints: ['connecting'],
-      rows: [{ name: 'Ann', state: 'connecting', route: null, rttMs: null }],
+      rows: [{ name: 'Ann', state: 'connecting', rttMs: null }],
     })
   })
 
@@ -248,12 +244,11 @@ describe('network panel view', () => {
   })
 
   it('labels the same-browser transport as local', () => {
-    const v = netPanelView(
-      net({ kind: 'local', relays: [], peers: [{ id: 'p1', state: 'connected', route: 'local' }] }),
-      [host],
-    )
+    const v = netPanelView(net({ kind: 'local', relays: [], peers: [{ id: 'p1', state: 'connected' }] }), [
+      host,
+    ])
     expect(v).toMatchObject({ health: 'local', local: true, hints: ['local'], relays: [] })
-    expect(v.rows[0].route).toBe('local')
+    expect(v.rows[0]).toEqual({ name: 'Ann', state: 'connected', rttMs: null })
   })
 
   it('shortens relay urls', () => {

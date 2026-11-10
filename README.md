@@ -35,8 +35,8 @@ Fun mini-games to play with friends: solo, on one device, or online. No accounts
         └────── public Nostr relays (only to find each other) ┘
 ```
 
-- **No server:** players find each other through public relays, then talk directly, browser to browser. The relays are pinned in `engine/net/net-config.ts` (`RELAY_URLS`, with how to re-check them); TURN servers, if ever needed, go in `TURN_SERVERS` there.
-- **Network status:** in an online room, the signal-bars button in the top bar shows connection health (green / yellow / red) and opens a live panel: room code, your role, matchmaking servers, and each player's link (connected, direct or via relay, ping). Joining shows each step (servers → room → host) and says which one failed, with **Try again**. Add `?netdebug=1` to log connection changes to the console.
+- **No server:** players find each other through public relays, then talk directly, browser to browser. The relays are pinned in `engine/net/net-config.ts` (`RELAY_URLS`, with how to re-check them).
+- **Network status:** in an online room, the signal-bars button in the top bar shows connection health (green / yellow / red) and opens a live panel: room code, your role, matchmaking servers, and each player's link (connected, ping). Joining shows each step (servers → room → host) and says which one failed, with **Try again**. Add `?netdebug=1` to log connection changes to the console.
 - **The host runs the game:** guests send their moves to the host, and the host sends the game state back to everyone.
 - **Reconnecting:**
   - A player who reloads or drops keeps their seat for 20 seconds and rejoins automatically.

@@ -1,4 +1,4 @@
-import type { JoinRoomConfig, TurnServerConfig } from 'trystero'
+import type { JoinRoomConfig } from 'trystero'
 
 /**
  * Nostr relays used for matchmaking (peers find each other here; game traffic
@@ -22,20 +22,12 @@ export const RELAY_URLS: readonly string[] = [
   'wss://nostr.stakey.net',
 ]
 
-/**
- * TURN servers for networks that block direct connections. Empty for now (no
- * server of our own). Adding one here is the only change needed: Trystero
- * appends these to its default STUN servers.
- */
-export const TURN_SERVERS: TurnServerConfig[] = []
-
-/** Trystero room config for a game: pinned relays (+ TURN when configured). */
+/** Trystero room config for a game: the pinned relays. */
 export function roomConfig(appId: string): JoinRoomConfig {
   return {
     appId,
     // With explicit urls Trystero connects to every one (redundancy only
     // applies when it picks from its defaults).
     relayConfig: { urls: [...RELAY_URLS] },
-    ...(TURN_SERVERS.length ? { turnConfig: TURN_SERVERS } : {}),
   }
 }

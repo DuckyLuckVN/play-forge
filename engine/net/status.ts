@@ -6,14 +6,10 @@ import type { Transport } from './transport'
 
 export type RelayState = 'connecting' | 'open' | 'closed'
 export type LinkState = 'connecting' | 'connected' | 'failed'
-/** How data reaches a peer: straight between browsers, through a TURN server, or a same-browser test tab. */
-export type Route = 'direct' | 'relay' | 'local'
 
 export interface PeerLink {
   id: string
   state: LinkState
-  /** Known once the connection has picked a path (see NetDiagnostics.measure). */
-  route?: Route
   /** Round trip in milliseconds, from the last measure. */
   rttMs?: number
 }
@@ -34,7 +30,7 @@ export interface NetStatus {
 export interface NetDiagnostics {
   /** Cheap, synchronous: relay sockets and peer link states. */
   snapshot(): NetStatus
-  /** Refresh route and round trip for each peer (WebRTC stats). Call only while someone looks. */
+  /** Refresh the round trip to each peer (WebRTC stats). Call only while someone looks. */
   measure(): Promise<void>
 }
 
@@ -46,7 +42,7 @@ export function statusOf(transport: Transport): NetStatus {
       relays: [],
       negotiating: 0,
       failures: 0,
-      peers: transport.peers().map((id) => ({ id, state: 'connected', route: 'local' })),
+      peers: transport.peers().map((id) => ({ id, state: 'connected' })),
     }
   )
 }
@@ -127,7 +123,6 @@ export interface LinkedPlayer {
 export interface PanelRow {
   name: string
   state: LinkState
-  route: Route | null
   rttMs: number | null
 }
 
@@ -159,7 +154,6 @@ export function netPanelView(
     return {
       name: p.name,
       state: link && p.connected ? link.state : 'connecting',
-      route: link?.route ?? null,
       rttMs: link?.rttMs ?? null,
     }
   })

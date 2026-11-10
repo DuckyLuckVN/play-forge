@@ -2,7 +2,7 @@ import { getRelaySockets, joinRoom, selfId, type DataPayload, type MessageAction
 import { Emitter } from '../core/emitter'
 import { netLog } from './debug'
 import { RELAY_URLS, roomConfig } from './net-config'
-import type { LinkState, NetDiagnostics, NetStatus, PeerLink, RelayState, Route } from './status'
+import type { LinkState, NetDiagnostics, NetStatus, PeerLink, RelayState } from './status'
 import type { Transport } from './transport'
 
 /**
@@ -26,8 +26,8 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
   const events = new Emitter<{ join: [string]; leave: [string]; stream: [MediaStream, string] }>()
   const channels = new Emitter<Record<string, [unknown, string]>>()
   const actions = new Map<string, MessageAction>()
-  // Route and round trip per peer, refreshed by diagnostics.measure().
-  const measured = new Map<string, { route?: Route; rttMs?: number }>()
+  // Round trip per peer, refreshed by diagnostics.measure().
+  const measured = new Map<string, { rttMs?: number }>()
 
   room.onPeerJoin = (id) => {
     failedPeers.delete(id)
@@ -69,10 +69,10 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
     async measure() {
       await Promise.all(
         Object.entries(room.getPeers()).map(async ([id, pc]) => {
-          const stats = await linkStats(pc).catch((): LinkStats => ({}))
-          if (stats.rttMs === undefined && pc.connectionState === 'connected')
-            stats.rttMs = await room.ping(id).catch(() => undefined)
-          measured.set(id, stats)
+          let rttMs = await roundTrip(pc).catch(() => undefined)
+          if (rttMs === undefined && pc.connectionState === 'connected')
+            rttMs = await room.ping(id).catch(() => undefined)
+          measured.set(id, rttMs === undefined ? {} : { rttMs })
         }),
       )
     },
@@ -125,13 +125,8 @@ function linkState(pc: RTCPeerConnection): LinkState {
   }
 }
 
-interface LinkStats {
-  route?: Route
-  rttMs?: number
-}
-
-/** Route (direct or through TURN) and round trip of the connection's active candidate pair. */
-async function linkStats(pc: RTCPeerConnection): Promise<LinkStats> {
+/** Round trip (ms) of the connection's active candidate pair, if the browser reports it. */
+async function roundTrip(pc: RTCPeerConnection): Promise<number | undefined> {
   const report = await pc.getStats()
   let pair: any
   report.forEach((s: any) => {
@@ -142,15 +137,8 @@ async function linkStats(pc: RTCPeerConnection): Promise<LinkStats> {
     report.forEach((s: any) => {
       if (s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded') pair ??= s
     })
-  if (!pair) return {}
-  const local = report.get(pair.localCandidateId)
-  const remote = report.get(pair.remoteCandidateId)
-  const viaTurn = local?.candidateType === 'relay' || remote?.candidateType === 'relay'
-  const rtt = pair.currentRoundTripTime
-  return {
-    route: viaTurn ? 'relay' : 'direct',
-    ...(typeof rtt === 'number' ? { rttMs: Math.round(rtt * 1000) } : {}),
-  }
+  const rtt = pair?.currentRoundTripTime
+  return typeof rtt === 'number' ? Math.round(rtt * 1000) : undefined
 }
 
 /**

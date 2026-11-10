@@ -115,9 +115,6 @@ export const VI: Dictionary = {
   'Not connected': 'Chưa kết nối',
   'Connecting…': 'Đang kết nối…',
   Failed: 'Thất bại',
-  Direct: 'Trực tiếp',
-  'Via relay server': 'Qua máy chủ trung gian',
-  'Same browser': 'Cùng trình duyệt',
   '{ms} ms': '{ms} ms',
   'Test mode: tabs in this browser talk directly, no internet used.':
     'Chế độ thử: các tab trong trình duyệt này nói chuyện trực tiếp, không dùng internet.',

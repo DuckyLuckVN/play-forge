@@ -6,7 +6,6 @@ import {
   type NetHint,
   type NetPanelView,
   type NetStatus,
-  type Route,
 } from '../net/status'
 import { h, icon, iconButton, toast } from './dom'
 import { t } from './i18n'
@@ -18,7 +17,7 @@ export interface NetPanelSource {
   room: string
   isHost: boolean
   status(): NetStatus
-  /** Refresh route and ping (WebRTC stats). Only called while the panel is open. */
+  /** Refresh ping (WebRTC stats). Only called while the panel is open. */
   measure(): Promise<void>
   /** People we have a direct link with (see LinkedPlayer). */
   linked(): LinkedPlayer[]
@@ -32,11 +31,6 @@ const STATE_TEXT: Record<LinkState, () => string> = {
   connecting: () => t('Connecting…'),
   connected: () => t('Connected'),
   failed: () => t('Failed'),
-}
-const ROUTE_TEXT: Record<Route, () => string> = {
-  direct: () => t('Direct'),
-  relay: () => t('Via relay server'),
-  local: () => t('Same browser'),
 }
 const HINT_TEXT: Record<NetHint, () => string> = {
   local: () => t('Test mode: tabs in this browser talk directly, no internet used.'),
@@ -168,7 +162,6 @@ function drawBody(body: HTMLElement, view: NetPanelView) {
               { class: `pf-net-player ${r.state}` },
               h('span', { class: 'pf-net-name', textContent: r.name }),
               h('span', { class: 'pf-net-state', textContent: STATE_TEXT[r.state]() }),
-              h('span', { class: 'pf-net-route', textContent: r.route ? ROUTE_TEXT[r.route]() : '' }),
               h('span', {
                 class: 'pf-net-ping',
                 textContent: r.rttMs !== null ? t('{ms} ms', { ms: r.rttMs }) : '–',

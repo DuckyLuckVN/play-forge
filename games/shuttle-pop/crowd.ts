@@ -13,6 +13,7 @@ import {
   SphereGeometry,
   Vector3,
 } from 'three'
+import { spreadXZ } from './courtsize'
 import { instanced, lambert, rng, yawTo } from './kit'
 
 const CROWD = {
@@ -29,8 +30,8 @@ interface Fan {
   seat: Seat
 }
 
-/** Eight fans: two on each near/far blanket, one per bench, one standing. */
-const FANS: readonly Fan[] = [
+/** Eight fans (Normal-court spots; `place` spreads them): two on each near/far blanket, one per bench, one standing. */
+export const FANS: readonly Fan[] = [
   { x: -6.0, z: 1.3, seat: 'ground' },
   { x: -6.6, z: 2.0, seat: 'ground' },
   { x: 6.0, z: 2.1, seat: 'ground' },
@@ -73,7 +74,7 @@ export class Crowd {
   private limbs: InstancedMesh
   /** Every mesh whose matrices the wave rewrites (flagged for upload once per frame). */
   private readonly meshes: readonly InstancedMesh[]
-  private base: Matrix4[]
+  private base: Matrix4[] = FANS.map(() => new Matrix4())
   private phase: number[]
   private level = 0
   /** Matrices currently show the rest pose. */
@@ -98,19 +99,12 @@ export class Crowd {
     this.meshes = [this.body, this.head, this.hair, this.eyes, this.limbs]
     const r = rng(11)
     const tint = new Color()
-    this.base = FANS.map((f, i) => {
+    FANS.forEach((_f, i) => {
       this.body.setColorAt(i, tint.set(CROWD.shirts[i % CROWD.shirts.length]))
       this.hair.setColorAt(i, tint.set(CROWD.hair[i % CROWD.hair.length]))
       const sk = CROWD.skin[i % CROWD.skin.length]
       this.head.setColorAt(i, tint.set(sk))
       for (let k = 0; k < LIMBS; k++) this.limbs.setColorAt(i * LIMBS + k, tint)
-      // Facing the court's centre line, a little toward the net.
-      this.e.set(0, yawTo(f.x, f.z, 0, f.z * 0.6), 0)
-      return new Matrix4().compose(
-        this.v.set(f.x, 0, f.z),
-        this.q.setFromEuler(this.e),
-        this.s.setScalar(FAN_SCALE),
-      )
     })
     this.phase = FANS.map(() => r() * Math.PI * 2)
     for (const m of this.meshes) {
@@ -118,7 +112,18 @@ export class Crowd {
       m.frustumCulled = false
       this.root.add(m)
     }
-    this.pose(0, 0)
+    this.place({ x: 1, z: 1 })
+  }
+
+  /** Seats the fans around a court stretched `k` (courtScale) from Normal. Rare (court change): allocates. */
+  place(k: { x: number; z: number }) {
+    FANS.forEach((fan, i) => {
+      const f = spreadXZ(fan, k)
+      // Facing the court's centre line, a little toward the net.
+      this.e.set(0, yawTo(f.x, f.z, 0, f.z * 0.6), 0)
+      this.base[i].compose(this.v.set(f.x, 0, f.z), this.q.setFromEuler(this.e), this.s.setScalar(FAN_SCALE))
+    })
+    this.pose(this.level, 0)
   }
 
   /** `target` = cheer level 0..1 (eased here), `t` = seconds. */

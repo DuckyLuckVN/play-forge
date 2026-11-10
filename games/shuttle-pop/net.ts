@@ -198,6 +198,7 @@ export class Net {
     uNetPhase: { value: 0 },
     uNetHitX: { value: 0 },
   }
+  private tex: DataTexture
 
   constructor(span: number, top: number, anisotropy: number) {
     const half = span - NET.postR
@@ -265,6 +266,16 @@ export class Net {
     )
 
     this.group.add(post, tape, meshObj)
+    this.tex = tex
+  }
+
+  /** Frees the GPU side (geometries, materials, the mesh texture). Remove `group` from the scene first. */
+  dispose() {
+    for (const o of this.group.children as Mesh[]) {
+      o.geometry.dispose()
+      ;(o.material as Material).dispose()
+    }
+    this.tex.dispose()
   }
 
   /** The shuttle hit the net at render x, travelling toward `dir` (+1 = +z). */

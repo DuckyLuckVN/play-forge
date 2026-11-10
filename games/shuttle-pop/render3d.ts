@@ -36,7 +36,7 @@ import {
   SpriteMaterial,
   TorusGeometry,
   Vector3,
-  type BufferGeometry,
+  BufferGeometry,
 } from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { startRenderLoop } from '@forge/core/loop'
@@ -58,6 +58,7 @@ import { chargeOf, chargeStage, CHARGE } from './charge'
 import { isPowerHit } from './power'
 import { ChargeRing } from './chargering'
 import { TICK_RATE } from './court'
+import { courtScale } from './courtsize'
 import { DustPuffs } from './dust'
 import { canSplit, Footwork, lungeWanted, splitHop, splitsOn } from './footwork'
 import { Hud, newEvents, newestShotId, trackerAction, type PopKind } from './hud'
@@ -96,7 +97,7 @@ import {
   turnToward,
   type ShuttleMode,
 } from './orient'
-import { SURROUND } from './props'
+import { BOARD, surroundOf } from './props'
 import { SP_QUALITY } from './quality'
 import { Park } from './scenery'
 import { TAPPED, type SpEvent, type SpState } from './sim'
@@ -383,6 +384,11 @@ export class Court3D {
   private park: Park
   /** Takes the players' real shadows (the ground is unlit, so it can't). */
   private catcher!: Mesh
+  /** The clay surround and the court surface (geometry follows the court, see shapeCourt). */
+  private surround!: Mesh
+  private floor!: Mesh
+  /** Every court line, one merged mesh. */
+  private lines!: Mesh
   private shadows = true
   private wantShadows = true
   /** Crowd: hits in the current rally, length of the last point's rally, when that point was. */
@@ -539,47 +545,72 @@ export class Court3D {
     return this.view.root
   }
 
+  /** The court's meshes (shapes from shapeCourt), the net and the score cards. Once. */
   private buildCourt() {
     const { scene } = this.view
-    const flat = (w: number, d: number, color: string, y: number) => {
-      const m = new Mesh(new PlaneGeometry(w, d), new MeshBasicMaterial({ color }))
+    const flat = (mat: MeshBasicMaterial | ShadowMaterial, y: number) => {
+      const m = new Mesh(new BufferGeometry(), mat)
       m.rotation.x = -Math.PI / 2
       m.position.y = y
       scene.add(m)
       return m
     }
-    const outerW = (COURT.halfWidth + SURROUND.x) * 2
-    const outerL = (COURT.halfLen + SURROUND.z) * 2
-    flat(outerW, outerL, PALETTE.surround, 0.002)
-    flat((COURT.halfWidth + COURT_RUNOFF.x) * 2, (COURT.halfLen + COURT_RUNOFF.z) * 2, PALETTE.court, 0.004)
-    this.catcher = new Mesh(
-      new PlaneGeometry(outerW, outerL),
-      new ShadowMaterial({ opacity: SHADOW_OPACITY, depthWrite: false }),
-    )
-    this.catcher.rotation.x = -Math.PI / 2
-    this.catcher.position.y = 0.008
+    this.surround = flat(new MeshBasicMaterial({ color: PALETTE.surround }), 0.002)
+    this.floor = flat(new MeshBasicMaterial({ color: PALETTE.court }), 0.004)
+    this.catcher = flat(new ShadowMaterial({ opacity: SHADOW_OPACITY, depthWrite: false }), 0.008)
     this.catcher.receiveShadow = true
-    scene.add(this.catcher)
+    this.lines = new Mesh(new BufferGeometry(), new MeshBasicMaterial({ color: PALETTE.line }))
+    scene.add(this.lines, this.cards.mesh)
+    this.shapeCourt(this.court)
+  }
+
+  /**
+   * (Re)shapes everything sized by the court: surround, surface + run-off, shadow catcher, lines, net (a new
+   * one, the old disposed), the scoreboard cards and the park. Rare (a court change): allocates.
+   */
+  private shapeCourt(court: CourtDims) {
+    const { scene } = this.view
+    const reshape = (m: Mesh, geo: BufferGeometry) => {
+      m.geometry.dispose()
+      m.geometry = geo
+    }
+    const sur = surroundOf(court)
+    const outerW = (court.halfWidth + sur.x) * 2
+    const outerL = (court.halfLen + sur.z) * 2
+    reshape(this.surround, new PlaneGeometry(outerW, outerL))
+    reshape(
+      this.floor,
+      new PlaneGeometry((court.halfWidth + COURT_RUNOFF.x) * 2, (court.halfLen + COURT_RUNOFF.z) * 2),
+    )
+    reshape(this.catcher, new PlaneGeometry(outerW, outerL))
 
     // Lines are centred on the boundary (a shuttle on the line is in). One merged mesh.
     const lines: BufferGeometry[] = []
     const line = (x: number, z: number, w: number, d: number) =>
       lines.push(new PlaneGeometry(w, d).rotateX(-Math.PI / 2).translate(x, 0.006, z))
-    const W = COURT.halfWidth * 2 + LINE_W
-    const L = COURT.halfLen * 2 + LINE_W
+    const W = court.halfWidth * 2 + LINE_W
+    const L = court.halfLen * 2 + LINE_W
     for (const s of [-1, 1]) {
-      line(s * COURT.halfWidth, 0, LINE_W, L) // side lines
-      line(0, s * COURT.halfLen, W, LINE_W) // base lines
-      line(0, s * COURT.shortLine, W, LINE_W) // short service lines
-      const centreLen = COURT.halfLen - COURT.shortLine
-      line(0, s * (COURT.shortLine + centreLen / 2), LINE_W, centreLen) // centre lines
+      line(s * court.halfWidth, 0, LINE_W, L) // side lines
+      line(0, s * court.halfLen, W, LINE_W) // base lines
+      line(0, s * court.shortLine, W, LINE_W) // short service lines
+      const centreLen = court.halfLen - court.shortLine
+      line(0, s * (court.shortLine + centreLen / 2), LINE_W, centreLen) // centre lines
     }
-    scene.add(new Mesh(mergeGeometries(lines), new MeshBasicMaterial({ color: PALETTE.line })))
+    reshape(this.lines, mergeGeometries(lines))
+    for (const g of lines) g.dispose()
 
     // Net: posts, the see-through mesh and the tapes (net.ts).
+    if (this.net) {
+      scene.remove(this.net.group)
+      this.net.dispose()
+    }
     const aniso = this.view.renderer.capabilities.getMaxAnisotropy()
-    this.net = new Net(COURT.halfWidth + POST_OUT, COURT.netH, aniso)
-    scene.add(this.net.group, this.cards.mesh)
+    this.net = new Net(court.halfWidth + POST_OUT, court.netH, aniso)
+    scene.add(this.net.group)
+
+    this.cards.mesh.position.x = BOARD.x * courtScale(court).x
+    this.park.setCourt(court)
   }
 
   /** Compile every shader up front, so the first match starts without a hitch. */
@@ -747,7 +778,7 @@ export class Court3D {
       this.lastShotId = newestShotId(curr.events)
     }
     this.lastTick = curr.tick
-    this.syncCourt(curr.court ?? COURT)
+    this.setCourt(curr.court ?? COURT)
     // Quality ladder dropped the players' real shadows: apply between rallies so they don't vanish
     // mid-shot. Blob shadows stay either way.
     if (this.wantShadows !== this.shadows && curr.phase !== 'rally') this.setShadows(this.wantShadows)
@@ -1350,11 +1381,17 @@ export class Court3D {
     })
   }
 
-  /** A match on a different court size: refit the tweak clamp (on change only) and tell the guest predictor. */
-  private syncCourt(court: CourtDims) {
+  /**
+   * Every frame: tells the guest predictor the match's court. On a different court size (only then) it
+   * reshapes the court, net and park and refits the camera's tweak clamp.
+   */
+  private setCourt(court: CourtDims) {
     if (this.predictor) this.predictor.court = court
-    if (court.halfLen === this.court.halfLen && court.halfWidth === this.court.halfWidth) return
+    const c = this.court
+    if (court.halfLen === c.halfLen && court.halfWidth === c.halfWidth && court.shortLine === c.shortLine)
+      return
     this.court = court
+    this.shapeCourt(court)
     this.refitCamera()
   }
 

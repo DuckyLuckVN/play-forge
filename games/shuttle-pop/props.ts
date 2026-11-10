@@ -9,11 +9,16 @@
 //
 // Render space: the local player is near (z < 0), the camera behind them looking toward +z.
 
-import { COURT } from './physics'
+import { courtScale, spreadXZ } from './courtsize'
+import { COURT, type CourtDims } from './physics'
 import { prop, rng, stick, yawTo, type Prop } from './kit'
 
-/** Court surround beyond the lines (m): the warm border around the court surface. */
+/** Court surround beyond the lines (m) on the Normal court: the warm border around the court surface. */
 export const SURROUND = { x: 1.3, z: 1.6 } as const
+/** The surround on `court`: it scales with the court (a bigger ring, a wider border). */
+export function surroundOf(court: CourtDims): { x: number; z: number } {
+  return spreadXZ(SURROUND, courtScale(court))
+}
 
 const COLORS = {
   trunk: '#8f7563',
@@ -65,9 +70,8 @@ export const LANTERN = { x: 4.6, poles: [-8, 0, 8], height: 2.6, perSpan: 7, sag
 /** Height of a lantern string at t ∈ [0, 1] along a span (a sag, lowest mid-span). */
 export const lanternHang = (t: number) => LANTERN.height - 0.05 - LANTERN.sag * 4 * t * (1 - t)
 
-/** Low picket fence along both sides of the surround; low hedge across the far end. */
+/** Low picket fence along both sides of the surround (Normal court; the real one is built per court). */
 const FENCE_X = COURT.halfWidth + SURROUND.x + 0.3
-const HEDGE_Z = COURT.halfLen + SURROUND.z + 1
 /** Stepping-stone path: up the left, behind the hedge, down the right. */
 const PATH = { x: 10.2, z0: -9, zBack: 12.8, step: 0.75 }
 
@@ -144,15 +148,19 @@ function bushesAndBeds(out: Prop[], r: () => number) {
   }
 }
 
-function hedgeAndFence(out: Prop[]) {
+/** Low hedge across the far end, picket fence along both sides: built from the real court (they hug the surround). */
+function hedgeAndFence(out: Prop[], court: CourtDims) {
+  const sur = surroundOf(court)
+  const kx = courtScale(court).x
   // Hedge: four low segments across the far end.
+  const hedgeZ = court.halfLen + sur.z + 1
   for (let k = 0; k < 4; k++)
-    out.push(prop('leaf', COLORS.hedge, -3.3 + k * 2.2, 0.3, HEDGE_Z, 2.5, 0.75, 0.85))
+    out.push(prop('leaf', COLORS.hedge, (-3.3 + k * 2.2) * kx, 0.3, hedgeZ, 2.5 * kx, 0.75, 0.85))
   // Picket fence along both sides: pickets + two rails.
-  const z0 = -(COURT.halfLen + SURROUND.z)
-  const z1 = COURT.halfLen + SURROUND.z + 0.4
+  const z0 = -(court.halfLen + sur.z)
+  const z1 = court.halfLen + sur.z + 0.4
   for (const side of [-1, 1]) {
-    const x = side * FENCE_X
+    const x = side * (court.halfWidth + sur.x + 0.3)
     for (let z = z0; z <= z1; z += 0.4) out.push(prop('box', COLORS.fence, x, 0.22, z, 0.05, 0.44, 0.08))
     for (const y of [0.14, 0.32])
       out.push(prop('box', COLORS.fence, x, y, (z0 + z1) / 2, 0.035, 0.05, z1 - z0))
@@ -187,15 +195,18 @@ function pathAndLamps(out: Prop[], r: () => number) {
   }
 }
 
-function picnicAndLanterns(out: Prop[]) {
+function picnicAndLanterns(out: Prop[], k: Spread) {
   BLANKETS.forEach((b, i) => {
+    const from = out.length
     const o = Math.sign(b.x)
     out.push(prop('box', COLORS.blankets[i], b.x, 0.015, b.z, 1.7, 0.03, 1.3, (i - 1.5) * 0.12))
     // Basket, juice box, plate.
     out.push(prop('box', COLORS.picnic[0], b.x + o * 0.5, 0.13, b.z - 0.35, 0.38, 0.22, 0.26, 0.3))
     out.push(prop('box', COLORS.picnic[1], b.x + o * 0.15, 0.08, b.z - 0.45, 0.08, 0.13, 0.06))
     out.push(prop('box', COLORS.picnic[2], b.x + o * 0.55, 0.04, b.z + 0.3, 0.26, 0.015, 0.26, 0.5))
+    moveSince(out, from, k, b)
   })
+  const from = out.length
   const { x: PX, poles, height, perSpan } = LANTERN
   let l = 0
   for (const side of [-1, 1]) {
@@ -219,12 +230,13 @@ function picnicAndLanterns(out: Prop[]) {
         )
       }
   }
+  moveSince(out, from, k)
 }
 
 /** Ice-cream cart under a coral umbrella, parked past the far right corner. */
+const CART = { x: 7.2, z: 10.6 } as const
 function iceCreamCart(out: Prop[]) {
-  const x = 7.2
-  const z = 10.6
+  const { x, z } = CART
   const yaw = yawTo(x, z, 0, 0)
   const at = (dx: number, dz: number) => ({
     x: x + dx * Math.cos(yaw) + dz * Math.sin(yaw),
@@ -274,18 +286,22 @@ const CHAIR_X = COURT.halfWidth + 0.95
 export const BOARD = { x: -CHAIR_X, y: 0.95, w: 0.9, h: 0.5, card: 0.2, face: -0.06 } as const
 
 /** Umpire chair by the right net post; a little flip scoreboard by the left one. */
-function netSide(out: Prop[]) {
+function netSide(out: Prop[], k: Spread) {
   const cx = CHAIR_X
+  let from = out.length
   for (const dx of [-0.2, 0.2])
     for (const dz of [-0.2, 0.2]) out.push(prop('post', COLORS.wood, cx + dx, 0.6, dz, 0.06, 1.2, 0.06))
   out.push(prop('box', COLORS.wood, cx, 1.24, 0, 0.55, 0.08, 0.55))
   out.push(prop('box', COLORS.wood, cx + 0.25, 1.5, 0, 0.06, 0.45, 0.55))
   for (const y of [0.35, 0.75]) out.push(prop('box', COLORS.wood, cx - 0.2, y, 0, 0.05, 0.05, 0.46))
+  moveSince(out, from, k, { x: cx, z: 0 })
+  from = out.length
   const sx = BOARD.x
   for (const dx of [-0.32, 0.32]) out.push(prop('post', COLORS.wood, sx + dx, 0.4, 0, 0.05, 0.8, 0.05))
   out.push(prop('box', COLORS.board, sx, BOARD.y, 0, BOARD.w, BOARD.h, 0.08))
   for (const dx of [-BOARD.card, BOARD.card])
     out.push(prop('box', COLORS.card, sx + dx, BOARD.y, BOARD.face + 0.01, 0.3, 0.36, 0.02))
+  moveSince(out, from, k, { x: sx, z: 0 })
 }
 
 /** Grass tufts (three blades each) scattered on the lawn, clear of the surround, blankets and beds. */
@@ -314,18 +330,49 @@ function tufts(out: Prop[], r: () => number) {
   }
 }
 
-/** Every mid-layer prop of the park. Deterministic (same park every load). */
-export function parkLayout(): Prop[] {
+type Spread = { x: number; z: number }
+
+/**
+ * Spreads the props added since `from` out with the court (`k` = courtScale; sizes unchanged). With an
+ * `anchor` they move as one rigid piece (the anchor's spread), so a cart, a blanket's picnic or the
+ * chair keeps its shape; without, each prop spreads on its own. A no-op on the Normal court.
+ */
+function moveSince(out: Prop[], from: number, k: Spread, anchor?: Spread) {
+  if (k.x === 1 && k.z === 1) return
+  for (let i = from; i < out.length; i++) {
+    const p = out[i]
+    if (anchor) {
+      p.x += anchor.x * (k.x - 1)
+      p.z += anchor.z * (k.z - 1)
+    } else {
+      p.x *= k.x
+      p.z *= k.z
+    }
+  }
+}
+
+/**
+ * Every mid-layer prop of the park around `court` (default Normal). Deterministic (same park every load).
+ * The park is laid out for the Normal court and spread out by courtScale (prop sizes unchanged); the hedge
+ * and fence are built from the real court, since they hug the surround.
+ */
+export function parkLayout(court: CourtDims = COURT): Prop[] {
+  const k = courtScale(court)
   const out: Prop[] = []
   const r = rng(7)
-  trees(out, r)
-  bushesAndBeds(out, r)
-  hedgeAndFence(out)
-  pathAndLamps(out, r)
-  picnicAndLanterns(out)
-  iceCreamCart(out)
-  balloons(out)
-  netSide(out)
-  tufts(out, r)
+  const spread = (build: () => void, anchor?: Spread) => {
+    const from = out.length
+    build()
+    moveSince(out, from, k, anchor)
+  }
+  spread(() => trees(out, r))
+  spread(() => bushesAndBeds(out, r))
+  hedgeAndFence(out, court)
+  spread(() => pathAndLamps(out, r))
+  picnicAndLanterns(out, k)
+  spread(() => iceCreamCart(out), CART)
+  spread(() => balloons(out), BENCHES[2])
+  netSide(out, k)
+  spread(() => tufts(out, r))
   return out
 }

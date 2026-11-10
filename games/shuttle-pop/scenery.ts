@@ -20,8 +20,10 @@ import {
   Fog,
   Group,
   HemisphereLight,
+  InstancedMesh,
   LineBasicMaterial,
   LineSegments,
+  type Material,
   Mesh,
   MeshBasicMaterial,
   Object3D,
@@ -33,8 +35,10 @@ import {
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { Ambient } from './ambient'
 import { Backdrop, HAZE } from './backdrop'
+import { courtScale, spreadXZ } from './courtsize'
 import { Crowd } from './crowd'
 import { buildProps, instanced, lambert, yawTo } from './kit'
+import type { CourtDims } from './physics'
 import { BENCHES, LANTERN, lanternHang, parkLayout } from './props'
 
 const SKY = {
@@ -57,6 +61,8 @@ const SUN_DIR = new Vector3(-9, 7, -10).normalize()
 const SKY_R = 100
 const FOG_NEAR = 28
 const FOG_FAR = 90
+/** Sun shadow box half-size on the Normal court (grows with the court). */
+const SHADOW_HALF = 10
 
 /** Golden-hour gradient + a soft sun glow. One draw call, no fog. */
 function makeSky(): Mesh {
@@ -97,8 +103,10 @@ function makeSky(): Mesh {
   return sky
 }
 
-/** Benches: seat, back and two legs merged into one geometry (front faces model +z), facing the court. */
-function makeBenches(): Mesh {
+type Spread = { x: number; z: number }
+
+/** Benches: seat, back and two legs merged into one geometry (front faces model +z); `placeBenches` seats them. */
+function makeBenches(): InstancedMesh {
   const part = (w: number, h: number, d: number, x: number, y: number, z: number) =>
     new BoxGeometry(w, h, d).translate(x, y, z)
   const geo = mergeGeometries([
@@ -107,27 +115,33 @@ function makeBenches(): Mesh {
     part(0.08, 0.45, 0.38, -0.6, 0.225, 0),
     part(0.08, 0.45, 0.38, 0.6, 0.225, 0),
   ])
-  const benches = instanced(geo, lambert(PARK.wood), BENCHES.length)
+  return instanced(geo, lambert(PARK.wood), BENCHES.length)
+}
+
+/** Benches spread with the court (`k` = courtScale), facing it. */
+function placeBenches(benches: InstancedMesh, k: Spread) {
   const m = new Object3D()
-  BENCHES.forEach((b, i) => {
+  BENCHES.forEach((spot, i) => {
+    const b = spreadXZ(spot, k)
     m.position.set(b.x, 0, b.z)
     m.rotation.set(0, yawTo(b.x, b.z, 0, b.z), 0)
     m.updateMatrix()
     benches.setMatrixAt(i, m.matrix)
   })
-  return benches
+  benches.instanceMatrix.needsUpdate = true
+  benches.computeBoundingSphere()
 }
 
-/** The lantern strings' wire (poles and lanterns are props). One line batch. */
-function makeWire(): LineSegments {
+/** The lantern strings' wire (poles and lanterns are props), spread with the court. One line batch. */
+function wireGeometry(k: Spread): BufferGeometry {
   const STEPS = 12
   const wire: number[] = []
   const { x: PX, poles } = LANTERN
   for (const side of [-1, 1]) {
-    const x = side * PX
+    const x = side * PX * k.x
     for (let s = 0; s + 1 < poles.length; s++) {
-      const z0 = poles[s]
-      const z1 = poles[s + 1]
+      const z0 = poles[s] * k.z
+      const z1 = poles[s + 1] * k.z
       for (let k = 0; k < STEPS; k++) {
         const a = k / STEPS
         const b = (k + 1) / STEPS
@@ -137,7 +151,7 @@ function makeWire(): LineSegments {
   }
   const geo = new BufferGeometry()
   geo.setAttribute('position', new Float32BufferAttribute(wire, 3))
-  return new LineSegments(geo, new LineBasicMaterial({ color: PARK.wire }))
+  return geo
 }
 
 /** Sky, lights, fog and park scenery. Add once; call `update` every frame for the crowd. */
@@ -148,6 +162,12 @@ export class Park {
   private crowd = new Crowd()
   private backdrop = new Backdrop()
   private ambient = new Ambient()
+  /** Current court stretch from Normal (courtScale). */
+  private k: Spread = { x: 1, z: 1 }
+  /** The park's prop InstancedMeshes (props.ts; rebuilt on a court change). */
+  private props = new Group()
+  private benches = makeBenches()
+  private wire = new LineSegments(wireGeometry(this.k), new LineBasicMaterial({ color: PARK.wire }))
 
   constructor(scene: Scene) {
     scene.background = new Color(SKY.horizon)
@@ -156,10 +176,10 @@ export class Park {
     this.sun = new DirectionalLight(PARK.sun, 2.4)
     this.sun.position.copy(SUN_DIR).multiplyScalar(20)
     const cam = this.sun.shadow.camera
-    cam.left = -10
-    cam.right = 10
-    cam.top = 10
-    cam.bottom = -10
+    cam.left = -SHADOW_HALF
+    cam.right = SHADOW_HALF
+    cam.top = SHADOW_HALF
+    cam.bottom = -SHADOW_HALF
     cam.near = 1
     cam.far = 45
     this.sun.shadow.mapSize.set(1024, 1024)
@@ -176,13 +196,41 @@ export class Park {
       this.sun,
       grass,
       this.backdrop.root,
-      ...buildProps(parkLayout()),
-      makeBenches(),
-      makeWire(),
+      this.props,
+      this.benches,
+      this.wire,
       this.crowd.root,
       this.ambient.root,
     )
+    this.props.add(...buildProps(parkLayout()))
+    placeBenches(this.benches, this.k)
     scene.add(this.root)
+  }
+
+  /**
+   * Spreads the park around `court` (props, benches, lantern wire, crowd, the sun's shadow box). Rare: on
+   * a court change only (allocates; the old prop meshes are disposed). No-op when the stretch is unchanged.
+   */
+  setCourt(court: CourtDims) {
+    const k = courtScale(court)
+    if (k.x === this.k.x && k.z === this.k.z) return
+    this.k = k
+    for (const m of this.props.children as InstancedMesh[]) {
+      m.geometry.dispose()
+      ;(m.material as Material).dispose()
+      m.dispose()
+    }
+    this.props.clear()
+    this.props.add(...buildProps(parkLayout(court)))
+    placeBenches(this.benches, k)
+    this.wire.geometry.dispose()
+    this.wire.geometry = wireGeometry(k)
+    this.crowd.place(k)
+    const cam = this.sun.shadow.camera
+    const half = SHADOW_HALF * Math.max(k.x, k.z)
+    cam.left = cam.bottom = -half
+    cam.right = cam.top = half
+    cam.updateProjectionMatrix()
   }
 
   /** `cheer` = crowd excitement 0..1 (see world.ts cheerLevel), `t` = seconds. */

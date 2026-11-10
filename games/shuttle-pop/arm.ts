@@ -205,23 +205,23 @@ export const DRIVE: SwingKeys = {
 }
 
 /**
- * Smash: overhead. Load = racket dropped behind the head (back-scratch), chest arched, off arm up at
- * the shuttle; contact high and in front; follow-through hard down across the body.
+ * Smash: overhead. Load = elbow up, racket raised behind the head (reads from the behind camera), chest
+ * arched, off arm up at the shuttle; contact high and in front; follow-through hard down across the body.
  */
 export const SMASH_KEYS: SwingKeys = {
   load: key(upper(), {
     twist: 0.55,
     bend: -0.12,
-    rAcross: 0.36,
-    rPitch: -2.34,
-    rOut: 0.45,
-    rRoll: -0.88,
-    rElbow: 1.05,
-    rWrist: 0.94,
-    rTurn: -0.26,
-    lAcross: 0.81,
-    lPitch: -2.53,
-    lOut: 0.19,
+    rAcross: 0.31,
+    rPitch: -2.3,
+    rOut: 0.66,
+    rRoll: -0.32,
+    rElbow: 0.99,
+    rWrist: -0.13,
+    rTurn: -0.02,
+    lAcross: 0.62,
+    lPitch: -2.5,
+    lOut: 0.1,
     lElbow: 0.08,
   }),
   contact: key(upper(), {
@@ -352,7 +352,12 @@ export interface SwingIn {
   strike: number
   /** A previous strike still settling under a new wind-up (s since its release, < 0 = none). */
   prev: number
+  /** Seconds spent holding the loaded pose: the coil slowly tightens (more twist, wrist cocked further). */
+  coil: number
 }
+
+/** Extra coil at a long hold (rad: shoulder twist, wrist cock) and how fast it builds (s). */
+const COIL = { twist: 0.22, wrist: 0.3, time: 0.25 }
 
 // Swing keys for the current smash weight (scratch, shared: swingPose never re-enters).
 const kLoad = upper()
@@ -371,6 +376,7 @@ export function swingPose(base: Upper, s: SwingIn, smash: number, o: Upper): Upp
     kContact[c] = A.contact[c] + (B.contact[c] - A.contact[c]) * smash
     kFollow[c] = A.follow[c] + (B.follow[c] - A.follow[c]) * smash
   }
+  const coil = s.coil > 0 ? s.load * (1 - Math.exp(-s.coil / COIL.time)) : 0
   for (let c = 0; c < N_CH; c++) {
     // A new wind-up starts from wherever the previous strike is, so a quick re-swing never pops.
     const from = s.prev >= 0 ? strikeValue(c, s.prev, kLoad[c], kContact[c], kFollow[c], base[c]) : base[c]
@@ -378,7 +384,9 @@ export function swingPose(base: Upper, s: SwingIn, smash: number, o: Upper): Upp
     // drops behind: a straight blend would sweep it through the head.
     const l = loadShare(s.load, TIER[c])
     const via = A.load[c] - (from + kLoad[c]) / 2
-    const start = from + (kLoad[c] - from) * l + via * smash * 4 * l * (1 - l)
+    let start = from + (kLoad[c] - from) * l + via * smash * 4 * l * (1 - l)
+    if (c === CH.twist) start += COIL.twist * coil
+    else if (c === CH.rWrist) start -= COIL.wrist * coil
     o[c] = s.strike >= 0 ? strikeValue(c, s.strike, start, kContact[c], kFollow[c], base[c]) : start
   }
   return o

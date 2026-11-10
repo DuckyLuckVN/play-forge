@@ -2,7 +2,7 @@
 // celebration hop / spin and the idle glance. Each maps a time or progress to pose values, continuous
 // at every phase boundary so poses never pop. actors.ts applies them to the rig; the arm / torso joint
 // curves are arm.ts.
-import { FOLLOW_T, STRIKE_END } from './arm'
+import { CONTACT_T, FOLLOW_T, STRIKE_END } from './arm'
 
 /** Smoothstep progress of `s` through [a, b]. */
 export function seg(s: number, a: number, b: number): number {
@@ -12,73 +12,141 @@ export function seg(s: number, a: number, b: number): number {
 const easeOut = (u: number) => 1 - (1 - u) * (1 - u)
 
 /**
- * Swing timeline (s). Press → wind-up into the loaded pose over `load` → hold while a known contact is
- * still ahead (at most `maxHold`, so the racket meets the shuttle on time) → release into the strike
- * (arm.ts STRIKE: contact `CONTACT_T` after release, everything settled by `STRIKE_END`). The gait
- * faces the net from the press until the follow-through ends.
+ * Swing timeline. Press → wind-up into the loaded pose over `load` s → hold while the real contact is
+ * still further off than the strike needs (at most `maxHold` s, coiling a little more meanwhile) →
+ * release into the strike (arm.ts: racket at contact `CONTACT_T` after release, settled by
+ * `STRIKE_END`). When the real contact is sooner than the animation's own schedule (a well-timed press
+ * is often hit at once), the animation runs up to `maxRate`× faster until its contact, so the whip
+ * meets the shuttle instead of trailing the hit; after contact it runs at normal speed. `coil` = how
+ * long a hold has coiled (s of anim time, for the extra twist / wrist cock).
  */
-export const SWING = { load: 0.05, maxHold: 0.3 } as const
+export const SWING = { load: 0.075, maxHold: 0.3, maxRate: 3 } as const
+
+/** A contact closer than this (s) counts as now: full catch-up speed (no dividing by ~0). */
+const DUE_FLOOR = 0.001
 
 /**
- * Drives one player's swing: `load` (0..1), `strike` (s since release, −1 = not striking) and `prev`
- * (a strike still settling under a new wind-up). Pure state over `dt`, so any frame rate gives the same
- * timeline. Task 14's charge can hold the loaded pose by passing a long `wait` (and a longer
- * `maxHold`).
+ * Drives one player's swing: `load` (0..1), `strike` (anim s since release, −1 = not striking), `prev`
+ * (a strike still settling under a new wind-up) and `coil` (anim s spent holding loaded). Pure state
+ * over `dt`: release and speed-up are scheduled against absolute times, so any frame rate gives the
+ * same timeline.
  */
 export class SwingDriver {
-  /** Seconds since the press (Infinity = idle). */
+  /** Real seconds since the press (Infinity = idle). */
   age = Infinity
   load = 0
   strike = -1
   prev = -1
-  /** Longest hold in the loaded pose (s). */
+  coil = 0
+  /** Longest automatic hold in the loaded pose (s). */
   maxHold: number = SWING.maxHold
-  /** Age at which the strike starts. */
-  private release: number = SWING.load
+  /** Animation clock since the press (runs faster than `age` while catching up a contact). */
+  private clock = 0
+  /** Anim time at which the strike starts. */
+  private releaseAt: number = SWING.load
+  /** Real age at which the shuttle is (or was) actually hit; NaN = unknown. */
+  private target = NaN
+  /** Held by hold() until release() (Task 14's charge), regardless of maxHold. */
+  private held = false
+  /** Load cap while held. */
+  private cap = 1
 
-  /** Start a swing (ignored while still winding up: the sim's cooldown makes that a duplicate). */
+  /** Start a swing. Ignored while winding up / holding or before the racket reaches contact. */
   press() {
-    if (this.age !== Infinity && this.strike < 0) return
+    if (this.age !== Infinity && this.strike < CONTACT_T) return
     if (this.strike >= 0) this.prev = this.strike
     this.age = 0
+    this.clock = 0
     this.load = 0
     this.strike = -1
-    this.release = SWING.load
+    this.coil = 0
+    this.releaseAt = SWING.load
+    this.target = NaN
+    this.held = false
+    this.cap = 1
   }
 
   /** Back to idle at once (a new match). */
   reset() {
     this.age = Infinity
-    this.load = 0
+    this.load = this.coil = 0
     this.strike = this.prev = -1
+    this.held = false
+  }
+
+  /** Press and keep the loaded pose (up to `loadTarget`) until release(). */
+  hold(loadTarget = 1) {
+    if (this.age === Infinity || this.strike >= CONTACT_T) this.press()
+    if (this.strike >= 0) return
+    this.held = true
+    this.cap = loadTarget
+  }
+
+  /** Let a hold go: the strike starts now, from the current (possibly capped) load. */
+  release() {
+    if (!this.held) return
+    this.held = false
+    this.releaseAt = Math.max(this.clock, 0)
   }
 
   /** True from the press until the follow-through ends (the body faces the net meanwhile). */
   get busy(): boolean {
-    return this.age !== Infinity && (this.strike < 0 || this.strike < FOLLOW_T)
+    return this.age !== Infinity && this.strike < FOLLOW_T
   }
 
-  /**
-   * Advance `dt` s. `wait` = seconds from now until the strike should start (a pending contact minus
-   * CONTACT_T); 0 = as soon as the wind-up is done.
-   */
-  update(dt: number, wait = 0) {
+  /** The real contact is `due` s from now (0 = it just happened). */
+  setDue(due: number) {
+    if (this.age !== Infinity && this.strike < CONTACT_T) this.target = this.age + Math.max(0, due)
+  }
+
+  /** Advance `dt` real s. `due` = seconds until the real contact when known (see setDue). */
+  update(dt: number, due?: number) {
+    if (due !== undefined) this.setDue(due)
     if (this.prev >= 0) {
       this.prev += dt
       if (this.prev >= STRIKE_END) this.prev = -1
     }
     if (this.age === Infinity) return
-    if (this.strike < 0)
-      this.release = Math.min(SWING.load + this.maxHold, Math.max(SWING.load, this.age + wait))
+    const known = this.target === this.target
+    const striking = this.clock >= this.releaseAt && !this.held
+    if (!striking && !this.held) {
+      // Hold until the strike, at normal speed, would meet the real contact.
+      const latest = SWING.load + this.maxHold
+      const want = known ? this.clock + (this.target - this.age) - CONTACT_T : SWING.load
+      this.releaseAt = Math.min(latest, Math.max(SWING.load, want))
+    }
+    let rate = 1
+    const left = this.releaseAt + CONTACT_T - this.clock
+    if (known && !this.held && left > 0) {
+      const due = this.target - this.age
+      if (due < left) rate = due <= DUE_FLOOR ? SWING.maxRate : Math.min(SWING.maxRate, left / due)
+    }
     this.age += dt
-    this.load = seg(this.age, 0, SWING.load)
-    if (this.age >= this.release) this.strike = this.age - this.release
+    this.clock += dt * rate
+    if (this.strike < 0) {
+      this.load = Math.min(this.cap, seg(this.clock, 0, SWING.load))
+      this.coil = Math.max(0, Math.min(this.clock, this.held ? Infinity : this.releaseAt) - SWING.load)
+    }
+    if (!this.held && this.clock >= this.releaseAt) this.strike = this.clock - this.releaseAt
     if (this.strike >= STRIKE_END) {
       this.age = Infinity
-      this.load = 0
+      this.load = this.coil = 0
       this.strike = -1
     }
   }
+}
+
+/**
+ * Seconds from render time `now` (fractional tick) until a pending contact of `side`, or undefined
+ * when there is none (a whiff, someone else's shot): the SwingDriver's `due`.
+ */
+export function pendingDue(
+  pending: { atTick: number; side: 0 | 1 } | null,
+  side: 0 | 1,
+  now: number,
+  tickRate: number,
+): number | undefined {
+  return pending !== null && pending.side === side ? (pending.atTick - now) / tickRate : undefined
 }
 
 /**

@@ -40,8 +40,16 @@ import { DustPuffs } from './dust'
 import { Hud, matchPoint, newEvents, newestShotId, trackerAction, type PopKind } from './hud'
 import { t } from './i18n'
 import { damp, Gait, GaitEvent } from './locomotion'
-import { CONTACT_T } from './arm'
-import { leapAtHit, leapStartAge, lookAround, SMASH, smashJump, SwingDriver, type Hop } from './moves'
+import {
+  leapAtHit,
+  leapStartAge,
+  lookAround,
+  pendingDue,
+  SMASH,
+  smashJump,
+  SwingDriver,
+  type Hop,
+} from './moves'
 import { COURT, predictLanding, type Vec3 } from './physics'
 import type { GuestPredictor } from './predict'
 import { SpringPunch } from './punch'
@@ -566,16 +574,16 @@ export class Court3D {
         view.swingAt = cp.swingAt
       }
       // A pending contact of mine (render time sits between the prev and curr ticks): the racket holds
-      // its wind-up so the strike meets the shuttle on the contact tick. A smash also schedules the leap
-      // so its rise tops out there (once per pending shot).
+      // its wind-up, or hurries, so the strike meets the shuttle on the contact tick (a hit that already
+      // happened tells the driver in onHit). A smash also schedules the leap so its rise tops out there
+      // (once per pending shot).
       const pend = curr.shuttle.pending
-      const mine = pend !== null && pend.side === cp.side
-      const lead = mine ? (pend.atTick - (prev.tick + (curr.tick - prev.tick) * a)) / TICK_RATE : 0
-      view.swing.update(dt, lead - CONTACT_T)
-      const loading = mine && pend.kind === 'smash'
-      if (loading && pend.atTick !== view.leapTick) {
-        view.leapTick = pend.atTick
-        view.jumpAge = leapStartAge(lead)
+      const due = pendingDue(pend, cp.side, prev.tick + (curr.tick - prev.tick) * a, TICK_RATE)
+      view.swing.update(dt, due)
+      const loading = due !== undefined && pend!.kind === 'smash'
+      if (loading && pend!.atTick !== view.leapTick) {
+        view.leapTick = pend!.atTick
+        view.jumpAge = leapStartAge(due)
       }
       const landed = view.jumpAge < SMASH.land && view.jumpAge + dt >= SMASH.land
       view.jumpAge += dt
@@ -607,6 +615,7 @@ export class Court3D {
       pose.load = sw.load
       pose.strike = sw.strike
       pose.prev = sw.prev
+      pose.coil = sw.coil
       const leaping = view.jumpAge >= 0 && view.jumpAge < SMASH.land
       pose.smash = damp(pose.smash, loading || leaping ? 1 : 0, MOTION.smashRate, dt)
       smashJump(view.jumpAge, this.leap)
@@ -747,6 +756,8 @@ export class Court3D {
     const mine = this.spectating || side === this.side
     this.popAt(j, grade, smash)
     this.trail.setLook(smash ? TRAIL.smash : grade === 'perfect' ? TRAIL.perfect : TRAIL.plain)
+    // The hit is happening now: a racket still on its way to contact hurries to meet it.
+    this.players[j].swing.setDue(0)
     const p = this.shuttle.position
     if (grade === 'perfect') {
       this.fx.burst(p.x, p.y, p.z, SPARKLE)

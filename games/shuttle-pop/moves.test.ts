@@ -9,10 +9,23 @@ import {
   SWING,
   smashJump,
   SwingDriver,
+  pendingDue,
 } from './moves'
 import { CONTACT_T, FOLLOW_T, STRIKE_END } from './arm'
 
 describe('SwingDriver', () => {
+  /** Real time of the first frame (stepping at `fps`) on which the racket has reached contact. */
+  const contactAfter = (fps: number, due?: (t: number) => number | undefined) => {
+    const d = new SwingDriver()
+    d.press()
+    let t = 0
+    while (d.strike < CONTACT_T && t < 2) {
+      d.update(1 / fps, due?.(t))
+      t += 1 / fps
+    }
+    return t
+  }
+
   it('winds up, strikes after the wind-up, settles and goes idle', () => {
     const d = new SwingDriver()
     expect(d.busy).toBe(false)
@@ -31,37 +44,87 @@ describe('SwingDriver', () => {
     expect([d.load, d.strike, d.age]).toEqual([0, -1, Infinity])
   })
 
-  it('holds the loaded pose so the racket meets a known contact on time, at most maxHold', () => {
-    const d = new SwingDriver()
-    d.press()
-    const lead = 0.3 // contact 0.3 s after the press
-    let t = 0
-    while (d.strike < 0) {
-      d.update(1 / 120, lead - t - CONTACT_T)
-      t += 1 / 120
+  it('hit already fired at press → the racket reaches its contact pose within 0.07 s', () => {
+    for (const fps of [30, 60, 144]) {
+      expect(contactAfter(fps, () => 0)).toBeLessThanOrEqual(0.07 + 1 / fps)
     }
-    // Released so that release + CONTACT_T = the contact.
-    expect(t - d.strike + CONTACT_T).toBeCloseTo(lead, 6)
+    // Unknown contact (a whiff): normal speed.
+    expect(contactAfter(120)).toBeGreaterThan(SWING.load + CONTACT_T - 0.01)
+  })
+
+  it('a contact due soon: the whip lands on it, at 30, 60 and 144 fps alike', () => {
+    for (const lead of [0.08, 0.12]) {
+      for (const fps of [30, 60, 144]) {
+        // Contact lands on the frame that reaches the lead (fps only rounds it to a frame).
+        const t = contactAfter(fps, (now) => lead - now)
+        expect(t).toBeGreaterThanOrEqual(lead - 1e-9)
+        expect(t).toBeLessThan(lead + 1 / fps + 1e-9)
+      }
+    }
+  })
+
+  it('holds the loaded pose so the racket meets a later contact on time, at most maxHold', () => {
+    const lead = 0.3
+    const t = contactAfter(120, (now) => lead - now)
+    expect(t).toBeGreaterThanOrEqual(lead - 1e-9)
+    expect(t).toBeLessThan(lead + 1 / 120 + 1e-9)
     const far = new SwingDriver()
     far.press()
     far.update(0.5, 5)
     expect(far.strike).toBeCloseTo(0.5 - SWING.load - SWING.maxHold, 9)
   })
 
-  it('ignores a second press mid wind-up; a press mid strike keeps the old strike as prev', () => {
+  it('coils a little more the longer it holds; the coil freezes at release', () => {
+    const d = new SwingDriver()
+    d.press()
+    d.update(SWING.load, 1)
+    expect(d.coil).toBe(0)
+    d.update(0.1, 1)
+    expect(d.coil).toBeCloseTo(0.1, 9)
+    d.update(0.3, 1)
+    const c = d.coil
+    d.update(0.1)
+    expect(d.strike).toBeGreaterThan(0)
+    expect(d.coil).toBe(c)
+  })
+
+  it('hold() keeps the (capped) loaded pose past maxHold until release()', () => {
+    const d = new SwingDriver()
+    d.hold(0.6)
+    for (let i = 0; i < 120; i++) d.update(1 / 60)
+    expect(d.strike).toBe(-1)
+    expect(d.load).toBe(0.6)
+    d.release()
+    d.update(1 / 60)
+    expect(d.strike).toBeCloseTo(1 / 60, 9)
+    expect(d.load).toBe(0.6)
+  })
+
+  it('ignores presses until the racket reaches contact; a later press keeps the old strike as prev', () => {
     const d = new SwingDriver()
     d.press()
     d.update(0.02)
     d.press()
     expect(d.age).toBeCloseTo(0.02, 9)
-    d.update(0.1)
+    d.update(SWING.load)
+    expect(d.strike).toBeGreaterThan(0)
+    d.press()
+    expect(d.strike).toBeGreaterThan(0)
+    d.update(CONTACT_T)
     const strike = d.strike
-    expect(strike).toBeGreaterThan(0)
     d.press()
     expect(d.prev).toBe(strike)
     expect(d.strike).toBe(-1)
     d.update(STRIKE_END)
     expect(d.prev).toBe(-1)
+  })
+})
+
+describe('pendingDue', () => {
+  it('seconds to my pending contact, undefined for none / the other side', () => {
+    expect(pendingDue({ atTick: 106, side: 1 }, 1, 100, 60)).toBeCloseTo(0.1, 9)
+    expect(pendingDue({ atTick: 106, side: 1 }, 0, 100, 60)).toBeUndefined()
+    expect(pendingDue(null, 0, 100, 60)).toBeUndefined()
   })
 })
 

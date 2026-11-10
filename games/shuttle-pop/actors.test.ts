@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { CapsuleGeometry, Mesh, SphereGeometry, TorusGeometry, Vector3 } from 'three'
+import {
+  BufferGeometry,
+  CapsuleGeometry,
+  Mesh,
+  MeshBasicMaterial,
+  SphereGeometry,
+  TorusGeometry,
+  Vector3,
+} from 'three'
 import { createChibi, restPose } from './actors'
 import { STRIKE_END } from './arm'
 import { SwingDriver } from './moves'
@@ -10,13 +18,15 @@ function rig() {
   let frame: Mesh | null = null
   let head: Mesh | null = null
   const capsules: Mesh[] = []
+  let streak: Mesh | null = null
   chibi.root.traverse((o) => {
     if (!(o instanceof Mesh)) return
     if (o.geometry instanceof TorusGeometry && o.geometry.parameters.radius === 0.16) frame = o
     if (o.geometry instanceof SphereGeometry && o.geometry.parameters.radius === 0.36) head = o
     if (o.geometry instanceof CapsuleGeometry) capsules.push(o)
+    if (o.material instanceof MeshBasicMaterial && o.material.vertexColors) streak = o
   })
-  return { chibi, frame: frame!, head: head!, capsules }
+  return { chibi, frame: frame!, head: head!, capsules, streak: streak! }
 }
 
 describe('chibi rig', () => {
@@ -48,11 +58,13 @@ describe('chibi rig', () => {
       p.ready = ready
       const d = new SwingDriver()
       d.press()
-      for (let t = 0; t < STRIKE_END + 0.1; t += 1 / 240) {
-        d.update(1 / 240)
+      for (let t = 0; t < STRIKE_END + 0.6; t += 1 / 240) {
+        // Held loaded (coiling) for 0.3 s, then the strike.
+        d.update(1 / 240, Math.max(0, 0.45 - t))
         p.load = d.load
         p.strike = d.strike
         p.prev = d.prev
+        p.coil = d.coil
         chibi.setPose(p, t)
         check()
       }
@@ -72,5 +84,28 @@ describe('chibi rig', () => {
     // Head radius 0.36 + frame radius 0.16: the frame's centre stays (about) outside both, so the
     // racket at most grazes the head's silhouette.
     expect(closest).toBeGreaterThan(0.36 + 0.14)
+  })
+
+  it('the swing streak is the same smooth arc at 30 and 60 fps (re-sampled, no frame history)', () => {
+    const at = (fps: number) => {
+      const { chibi, streak } = rig()
+      const p = restPose()
+      const d = new SwingDriver()
+      d.press()
+      // Run to the same swing time (0.2 s after the press) at `fps`.
+      for (let f = 0; f < fps * 0.2; f++) {
+        d.update(1 / fps)
+        p.load = d.load
+        p.strike = d.strike
+        p.prev = d.prev
+        chibi.setPose(p, f / fps)
+      }
+      expect(streak.visible).toBe(true)
+      return Array.from((streak.geometry as BufferGeometry).getAttribute('position').array)
+    }
+    const a = at(30)
+    const b = at(60)
+    expect(a.length).toBeGreaterThan(30)
+    for (let i = 0; i < a.length; i++) expect(b[i]).toBeCloseTo(a[i], 5)
   })
 })

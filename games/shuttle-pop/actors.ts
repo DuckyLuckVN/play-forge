@@ -30,7 +30,7 @@ import {
   type Material,
   type Object3D,
 } from 'three'
-import { basePose, CH, streakGlow, swingPose, upper, type BaseIn, type SwingIn } from './arm'
+import { basePose, CH, streakGlow, swingPose, upper, type BaseIn, type SwingIn, type Upper } from './arm'
 import { strideParams, type Stride } from './locomotion'
 import { celebrateSpin, hop, type Hop } from './moves'
 
@@ -67,10 +67,14 @@ export interface ChibiPose {
   /** Velocity share in the body frame: + forward / − backpedal, + toward local +x. Lean + leg direction. */
   fwd: number
   side: number
-  /** Swing: loaded share 0..1, s since release (< 0 = none), a previous strike settling (< 0 = none). */
+  /**
+   * Swing (SwingDriver): loaded share 0..1, s since release (< 0 = none), a previous strike settling
+   * (< 0 = none), s spent coiling in a hold.
+   */
   load: number
   strike: number
   prev: number
+  coil: number
   /** 0 = plain swing, 1 = overhead smash (damped by the renderer). */
   smash: number
   /** Jump height share 0..1. */
@@ -99,6 +103,7 @@ export function restPose(): ChibiPose {
     load: 0,
     strike: -1,
     prev: -1,
+    coil: 0,
     smash: 0,
     jump: 0,
     squash: 0,
@@ -162,16 +167,16 @@ const BREATHE = 0.015
 /** Head turns back against this share of the torso twist (eyes stay on the shuttle). */
 const HEAD_COUNTER = 0.6
 /**
- * Swing streak: a ribbon swept by the racket head (from `inner` along the handle axis to the far rim)
- * over the last `life` s, from up to `samples` recent frames; peak opacity.
+ * Swing streak: a ribbon swept by the racket head (from `inner` m along the handle axis to the far rim)
+ * over the last `life` s of the swing, `samples` + 1 points along it; peak opacity.
  */
-const STREAK = { samples: 14, life: 0.08, opacity: 0.75, inner: 0.5 }
+const STREAK = { samples: 10, life: 0.09, opacity: 0.75, inner: 0.5 }
 
 // Scratch for setPose (shared: setPose never re-enters).
 const stride: Stride = { freq: 0, amp: 0, bob: 0 }
 const hopO: Hop = { height: 0, squash: 0 }
 const baseIn: BaseIn = { run: 0, stride: 0, ready: 0, happy: 0, sad: 0, wave: 0 }
-const swingIn: SwingIn = { load: 0, strike: -1, prev: -1 }
+const swingIn: SwingIn = { load: 0, strike: -1, prev: -1, coil: 0 }
 const base = upper()
 const ang = upper()
 const v3 = new Vector3()
@@ -442,6 +447,24 @@ export function createChibi(preset: number): Chibi {
     return v3
   }
 
+  /** Joint channels (arm.ts) → torso and arm transforms. */
+  function applyUpper(ang: Upper) {
+    torso.rotation.y = -ang[CH.twist]
+    torso.rotation.x = ang[CH.bend]
+    for (let i = 0; i < 2; i++) {
+      const a = arms[i]
+      const o = i === 0 ? CH.rAcross : CH.lAcross
+      const right = i === 0
+      a.shoulder.rotation.y = -a.side * ang[o]
+      a.shoulder.rotation.x = ang[o + 1]
+      a.shoulder.rotation.z = a.side * ang[o + 2]
+      a.roll.rotation.y = right ? -a.side * ang[CH.rRoll] : 0
+      a.elbow.rotation.x = -ang[right ? CH.rElbow : CH.lElbow]
+      a.wrist.rotation.y = right ? ang[CH.rTurn] : 0
+      a.wrist.rotation.x = right ? -ang[CH.rWrist] : -0.2
+    }
+  }
+
   function setPose(p: ChibiPose, t: number) {
     strideParams(p.run, stride)
     const cycle = Math.sin(Math.PI * 2 * p.stride)
@@ -487,37 +510,31 @@ export function createChibi(preset: number): Chibi {
     baseIn.wave = Math.sin(t * 9) * 0.25
     basePose(baseIn, base)
     swingIn.load = p.load
-    swingIn.strike = p.strike
+    swingIn.coil = p.coil
     swingIn.prev = p.prev
-    swingPose(base, swingIn, p.smash, ang)
-    torso.rotation.y = -ang[CH.twist]
-    torso.rotation.x = ang[CH.bend]
-    for (let i = 0; i < 2; i++) {
-      const a = arms[i]
-      const o = i === 0 ? CH.rAcross : CH.lAcross
-      const right = i === 0
-      a.shoulder.rotation.y = -a.side * ang[o]
-      a.shoulder.rotation.x = ang[o + 1]
-      a.shoulder.rotation.z = a.side * ang[o + 2]
-      a.roll.rotation.y = right ? -a.side * ang[CH.rRoll] : 0
-      a.elbow.rotation.x = -ang[right ? CH.rElbow : CH.lElbow]
-      a.wrist.rotation.y = right ? ang[CH.rTurn] : 0
-      a.wrist.rotation.x = right ? -ang[CH.rWrist] : -0.2
-    }
 
-    // Streak: sample the racket head while it whips, draw the last STREAK.life s of it.
+    // Streak: the racket head's path over the last STREAK.life s, re-sampled from the (pure) swing pose
+    // at fixed sub-times every frame, so it is a smooth arc at any frame rate. The current pose goes last
+    // and stays on the rig.
     const glow = p.strike >= 0 ? streakGlow(p.strike) : 0
-    if (glow > 0.02) {
-      if (!streak.mesh.visible) streak.clear()
-      const c = racketPoint(STREAK.inner)
-      const cx = c.x
-      const cy = c.y
-      const cz = c.z
-      const r = racketPoint(RACKET_TIP)
-      streak.push(t, cx, cy, cz, r.x, r.y, r.z)
-      streak.draw(t, STREAK.opacity * glow)
+    const trail = glow > 0.02
+    const N = STREAK.samples
+    for (let k = trail ? N : 0; k >= 0; k--) {
+      const back = (k * STREAK.life) / N
+      swingIn.strike = k === 0 ? p.strike : p.strike - back
+      swingIn.prev = k === 0 || p.prev < 0 ? p.prev : Math.max(0, p.prev - back)
+      swingPose(base, swingIn, p.smash, ang)
+      applyUpper(ang)
+      if (trail) {
+        const fade = STREAK.opacity * glow * (1 - k / (N + 1))
+        const c = racketPoint(STREAK.inner)
+        streak.set(N - k, c.x, c.y, c.z, fade * 0.35)
+        const r = racketPoint(RACKET_TIP)
+        streak.set(N - k, r.x, r.y, r.z, fade, true)
+      }
     }
-    streak.mesh.visible = glow > 0.02
+    if (trail) streak.commit()
+    streak.mesh.visible = trail
 
     // Ground shadow shrinks as the rig leaves the ground.
     shadow.scale.setScalar(1 - Math.min(0.4, y * 0.6))
@@ -541,23 +558,21 @@ export function createChibi(preset: number): Chibi {
 }
 
 /**
- * Racket streak ribbon: a ring buffer of racket-head samples (time, frame centre, far rim) turned into a
- * quad strip each frame. Vertex colours fade with age (additive blending: black = invisible). Buffers
- * are allocated once per chibi.
+ * Racket streak ribbon: STREAK.samples + 1 racket-head points (inner, far rim), oldest first, as a quad
+ * strip. Vertex colours carry the fade (additive blending: black = invisible). Buffers are allocated
+ * once per chibi; a frame only writes into them.
  */
 function makeStreak() {
-  const N = STREAK.samples
-  const times = new Float64Array(N)
-  const pts = new Float64Array(N * 6)
-  const pos = new Float32Array(N * 2 * 3)
-  const col = new Float32Array(N * 2 * 3)
+  const n = STREAK.samples + 1
+  const pos = new Float32Array(n * 2 * 3)
+  const col = new Float32Array(n * 2 * 3)
   const geo = new BufferGeometry()
   const posAttr = new BufferAttribute(pos, 3)
   const colAttr = new BufferAttribute(col, 3)
   geo.setAttribute('position', posAttr)
   geo.setAttribute('color', colAttr)
   const index: number[] = []
-  for (let k = 0; k < N - 1; k++) {
+  for (let k = 0; k < n - 1; k++) {
     const a = k * 2
     index.push(a, a + 1, a + 2, a + 1, a + 3, a + 2)
   }
@@ -572,40 +587,17 @@ function makeStreak() {
   const mesh = new Mesh(geo, mat)
   mesh.visible = false
   mesh.frustumCulled = false
-  let head = 0
-  let count = 0
   return {
     mesh,
-    clear() {
-      count = 0
+    /** Point `i` (0 = oldest), its inner (`outer` false) or far-rim vertex, with brightness `f`. */
+    set(i: number, x: number, y: number, z: number, f: number, outer = false) {
+      const v = (i * 2 + (outer ? 1 : 0)) * 3
+      pos[v] = x
+      pos[v + 1] = y
+      pos[v + 2] = z
+      col[v] = col[v + 1] = col[v + 2] = f
     },
-    push(t: number, ax: number, ay: number, az: number, bx: number, by: number, bz: number) {
-      head = (head + 1) % N
-      times[head] = t
-      const o = head * 6
-      pts[o] = ax
-      pts[o + 1] = ay
-      pts[o + 2] = az
-      pts[o + 3] = bx
-      pts[o + 4] = by
-      pts[o + 5] = bz
-      count = Math.min(N, count + 1)
-    },
-    /** Rebuild the strip from the newest sample back while younger than STREAK.life. */
-    draw(t: number, opacity: number) {
-      let n = 0
-      for (; n < count; n++) {
-        const k = (head - n + N) % N
-        const age = t - times[k]
-        if (n > 0 && age > STREAK.life) break
-        const f = opacity * Math.max(0, 1 - age / STREAK.life)
-        const o = k * 6
-        const v = n * 6
-        for (let j = 0; j < 6; j++) pos[v + j] = pts[o + j]
-        col[v] = col[v + 1] = col[v + 2] = f * 0.35
-        col[v + 3] = col[v + 4] = col[v + 5] = f
-      }
-      geo.setDrawRange(0, Math.max(0, n - 1) * 6)
+    commit() {
       posAttr.needsUpdate = true
       colAttr.needsUpdate = true
     },

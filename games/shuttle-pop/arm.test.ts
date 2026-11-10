@@ -22,7 +22,7 @@ import {
 import { SWING, SwingDriver } from './moves'
 
 const still = (): BaseIn => ({ run: 0, stride: 0, ready: 0, happy: 0, sad: 0, wave: 0 })
-const swingAt = (strike: number, load = 1, prev = -1): SwingIn => ({ load, strike, prev })
+const swingAt = (strike: number, load = 1, prev = -1): SwingIn => ({ load, strike, prev, coil: 0 })
 const maxDiff = (a: Float64Array, b: Float64Array) => {
   let m = 0
   for (let c = 0; c < N_CH; c++) m = Math.max(m, Math.abs(a[c] - b[c]))
@@ -113,8 +113,8 @@ describe('strike curve', () => {
     const speed = (t: number) => sweepProgress(3, t + 1e-4) - sweepProgress(3, t)
     expect(speed(CONTACT_T)).toBeGreaterThan(speed(CONTACT_T - 0.02))
     expect(speed(CONTACT_T)).toBeGreaterThan(speed(CONTACT_T + 0.02))
-    // Press → contact stays snappy (wind-up + strike under ~0.2 s).
-    expect(SWING.load + CONTACT_T).toBeLessThan(0.2)
+    // Press → contact at normal speed (a whiff, or a contact later than this) stays snappy.
+    expect(SWING.load + CONTACT_T).toBeLessThan(0.22)
   })
 
   it('settles back onto the base pose with a small spring overshoot, exactly at the end', () => {

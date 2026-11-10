@@ -6,7 +6,16 @@ export interface Vec3 {
   z: number
 }
 
-export const COURT = { halfLen: 6.7, halfWidth: 2.59, netH: 1.55, shortLine: 1.98 } as const
+/** Court measures (metres): half length, half singles width, net height, net → short service line. */
+export interface CourtDims {
+  halfLen: number
+  halfWidth: number
+  netH: number
+  shortLine: number
+}
+
+/** The Normal singles court (courtsize.ts scales it for the Large / XL room option). */
+export const COURT: Readonly<CourtDims> = { halfLen: 6.7, halfWidth: 2.59, netH: 1.55, shortLine: 1.98 }
 /** Gravity, quadratic drag coefficient (terminal speed = sqrt(G/DRAG)), fixed tick. */
 export const G = 9.8
 export const DRAG = 0.15
@@ -125,8 +134,8 @@ export function solveLaunch(
   return velAt((lo + hi) / 2)
 }
 
-/** Inside that side's singles half-court (lines count as in). */
-export function isIn(p: { x: number; z: number }, side: 0 | 1): boolean {
-  if (Math.abs(p.x) > COURT.halfWidth) return false
-  return side === 1 ? p.z >= 0 && p.z <= COURT.halfLen : p.z <= 0 && p.z >= -COURT.halfLen
+/** Inside that side's half of `court` (default: Normal singles; lines count as in). */
+export function isIn(p: { x: number; z: number }, side: 0 | 1, court: CourtDims = COURT): boolean {
+  if (Math.abs(p.x) > court.halfWidth) return false
+  return side === 1 ? p.z >= 0 && p.z <= court.halfLen : p.z <= 0 && p.z >= -court.halfLen
 }

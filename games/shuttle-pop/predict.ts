@@ -10,7 +10,7 @@
 // than the round trip, a resync of a stop) can't fake a zero lag.
 // The error found there is closed with `correct` (keep / blend / snap) and shifts the whole prediction.
 import { CHARGE, chargeOf } from './charge'
-import { DT } from './physics'
+import { COURT, DT, type CourtDims } from './physics'
 import { POWER_SWING, recoveryAfter } from './power'
 import { stepPlayer, type SpPlayer } from './sim'
 import { correct, CORRECT } from './world'
@@ -54,6 +54,9 @@ export class GuestPredictor {
   private ackZ = 0
   private past = { x: 0, z: 0 }
   private fixed = { x: 0, z: 0 }
+
+  /** The host's court (state.court from `st`; render sets it each frame): the run-out bounds. */
+  court: CourtDims = COURT
 
   /** The local swing button is charging (as just sent to the host): run at CHARGE.moveMul, like the sim. */
   charging = false
@@ -132,7 +135,7 @@ export class GuestPredictor {
     while (this.acc >= DT - EPS && n < MAX_STEPS) {
       const mul = this.recover > 0 ? POWER_SWING.recoveryMoveMul : this.charging ? CHARGE.moveMul : 1
       if (this.recover > 0) this.recover--
-      stepPlayer(p, DT, mul)
+      stepPlayer(p, DT, mul, this.court)
       this.steps++
       this.record()
       this.acc -= DT

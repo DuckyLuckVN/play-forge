@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { courtDims } from './courtsize'
 import {
   COURT,
   DRAG,
@@ -86,5 +87,11 @@ describe('shuttle physics', () => {
     expect(isIn({ x: 0, z: -1 }, 1)).toBe(false)
     expect(isIn({ x: 0, z: -1 }, 0)).toBe(true)
     expect(isIn({ x: 0, z: 6.71 }, 1)).toBe(false)
+  })
+
+  it('judges against the given court', () => {
+    expect(isIn({ x: 0, z: 7.5 }, 1)).toBe(false)
+    expect(isIn({ x: 0, z: 7.5 }, 1, courtDims('large'))).toBe(true)
+    expect(isIn({ x: 3.2, z: 3 }, 1, courtDims('xl'))).toBe(true)
   })
 })

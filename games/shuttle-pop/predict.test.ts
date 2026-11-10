@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { DT } from './physics'
+import { COURT, DT } from './physics'
 import { GuestPredictor, type AuthPlayer } from './predict'
 import { CHARGE } from './charge'
+import { courtDims } from './courtsize'
 import { POWER_SWING } from './power'
 import { MOVE_SPEED, stepPlayer } from './sim'
 import { CORRECT } from './world'
@@ -258,5 +259,19 @@ describe('guest prediction recovery after a full-charge swing', () => {
     r.pred.update(DT, placed, 2, true)
     for (let i = 0; i < 12; i++) r.pred.update(DT, placed, 2, false)
     expect(Math.hypot(r.pred.vx, r.pred.vz)).toBeCloseTo(MOVE_SPEED, 6)
+  })
+
+  it('runs to the host court’s bounds', () => {
+    const runRight = (pred: GuestPredictor) => {
+      const a = auth(0, 3)
+      pred.update(DT, a, 1, true)
+      pred.setMove(1, 0) // side 1: view right = world +x
+      for (let i = 0; i < 180; i++) pred.update(DT, a, 1, false)
+      return pred.x
+    }
+    const big = new GuestPredictor()
+    big.court = courtDims('xl')
+    expect(runRight(big)).toBeGreaterThan(COURT.halfWidth + 0.8 + 0.1)
+    expect(runRight(new GuestPredictor())).toBeLessThanOrEqual(COURT.halfWidth + 0.8)
   })
 })

@@ -99,11 +99,7 @@ export interface CameraPose {
 const mix = (a: number, b: number, t: number) => a + (b - a) * t
 
 /** The court measures the camera needs (`COURT` satisfies it; a court-size setting can pass its own). */
-export interface CourtDims {
-  halfLen: number
-  halfWidth: number
-  netH: number
-}
+export type CourtDims = Pick<import('./physics').CourtDims, 'halfLen' | 'halfWidth' | 'netH'>
 
 /** A player's personal camera offset: each −1..1, 0 = the default framing. +height raises, +tilt looks up. */
 export interface CameraTweak {

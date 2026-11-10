@@ -8,6 +8,10 @@ export const VI: Dictionary = {
   'Easy AI': 'Máy dễ',
   'Normal AI': 'Máy vừa',
   'Hard AI': 'Máy khó',
+  'Court size': 'Cỡ sân',
+  Normal: 'Thường',
+  'Large +15%': 'Rộng +15%',
+  'XL +30%': 'Rất rộng +30%',
 
   // Players
   Computer: 'Máy',

@@ -6,7 +6,8 @@ import { botStep, newBotMemory, type BotMemory } from './ai'
 import { CHARGE, chargeOf } from './charge'
 import { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld } from './court'
 import { t } from './i18n'
-import { COURT, DT, settleOnFloor, stepShuttle, type Flight, type Vec3 } from './physics'
+import { courtDims, courtSizeOf, type CourtSize } from './courtsize'
+import { COURT, DT, settleOnFloor, stepShuttle, type CourtDims, type Flight, type Vec3 } from './physics'
 import { hitPower, perfectWindowOf, POWER_SWING, pressureOf, recoveryAfter } from './power'
 import { isAvailable, nextAvailable, PRESETS as PRESET_TABLE } from './presets'
 import { award, serveBox, winner } from './rules'
@@ -118,6 +119,8 @@ export interface SpState {
   /** Ticks spent in the current phase. */
   phaseT: number
   players: [SpPlayer, SpPlayer]
+  /** The host-chosen court (room option `court`, courtsize.ts); sent in `st` so guests predict on it. */
+  court: CourtDims
   shuttle: Flight & {
     lastHitter: -1 | 0 | 1
     /** Power 0..1 of the last hit (power.ts hitPower; 0 at serve). */
@@ -188,12 +191,13 @@ export const speedMulOf = (p: Pick<SpPlayer, 'chargeAt' | 'recoverUntil'>, tick:
 /**
  * Movement integration: velocity eases toward move × MOVE_SPEED × speedMul (full speed in ~ACCEL_TICKS
  * ticks), position stays on the player's own half (NET_MARGIN from the net, OUT_MARGIN past the lines).
- * Mutates p. Shared with guest prediction.
+ * Lines are `court`'s (the match's state.court). Mutates p. Shared with guest prediction.
  */
 export function stepPlayer(
   p: Pick<SpPlayer, 'side' | 'x' | 'z' | 'vx' | 'vz' | 'move'>,
   dt: number,
   speedMul = 1,
+  court: CourtDims = COURT,
 ): void {
   const top = MOVE_SPEED * speedMul
   const want = toWorld(p.side, p.move.x * top, p.move.z * top)
@@ -209,13 +213,13 @@ export function stepPlayer(
   p.vz += dvz
   p.x += p.vx * dt
   p.z += p.vz * dt
-  const xMax = COURT.halfWidth + OUT_MARGIN
+  const xMax = court.halfWidth + OUT_MARGIN
   if (Math.abs(p.x) > xMax) {
     p.x = Math.sign(p.x) * xMax
     p.vx = 0
   }
-  const zMin = p.side === 0 ? -COURT.halfLen - OUT_MARGIN : NET_MARGIN
-  const zMax = p.side === 0 ? -NET_MARGIN : COURT.halfLen + OUT_MARGIN
+  const zMin = p.side === 0 ? -court.halfLen - OUT_MARGIN : NET_MARGIN
+  const zMax = p.side === 0 ? -NET_MARGIN : court.halfLen + OUT_MARGIN
   if (p.z < zMin || p.z > zMax) {
     p.z = Math.min(zMax, Math.max(zMin, p.z))
     p.vz = 0
@@ -226,11 +230,12 @@ export function stepPlayer(
 function resetForServe(state: SpState) {
   const server = state.server
   const { xSign } = serveBox(server, state.score[server])
+  const { shortLine } = state.court
   for (const p of state.players) {
     const serving = p.side === server
     const pos = serving
-      ? toWorld(p.side, xSign * SERVE_X, -(COURT.shortLine + SERVE_BACK))
-      : toWorld(p.side, xSign * RECEIVE_X, -(COURT.shortLine + RECEIVE_BACK))
+      ? toWorld(p.side, xSign * SERVE_X, -(shortLine + SERVE_BACK))
+      : toWorld(p.side, xSign * RECEIVE_X, -(shortLine + RECEIVE_BACK))
     p.x = pos.x
     p.z = pos.z
     p.vx = 0
@@ -296,6 +301,7 @@ export function createState(players: PlayerInfo[], seed: number, options: GameOp
         ? makePlayer(players[1].id, players[1].name, 'human', 1)
         : makePlayer(AI_ID, t('Computer'), 'ai', 1, level),
     ],
+    court: courtDims(courtSizeOf(options.court)),
     shuttle: {
       pos: { x: 0, y: 0, z: 0 },
       vel: { x: 0, y: 0, z: 0 },
@@ -320,8 +326,8 @@ export function createState(players: PlayerInfo[], seed: number, options: GameOp
   return state
 }
 
-/** Test helper: both seats are computers (bot vs bot balance runs). */
-export function setupBots(levelA: Level, levelB: Level, seed: number): SpState {
+/** Test helper: both seats are computers (bot vs bot balance runs), on the given court. */
+export function setupBots(levelA: Level, levelB: Level, seed: number, size: CourtSize = 'normal'): SpState {
   const seat = (i: number): PlayerInfo => ({
     id: `${AI_ID}${i}`,
     name: t('Computer'),
@@ -329,7 +335,7 @@ export function setupBots(levelA: Level, levelB: Level, seed: number): SpState {
     ready: true,
     connected: true,
   })
-  const state = createState([seat(0), seat(1)], seed)
+  const state = createState([seat(0), seat(1)], seed, { court: size })
   state.players.forEach((p, i) => {
     p.kind = 'ai'
     p.level = i === 0 ? levelA : levelB
@@ -361,7 +367,7 @@ function serve(state: SpState, p: SpPlayer, held: { x: number; z: number }) {
   const { xSign } = serveBox(p.side, state.score[p.side])
   // Diagonal: the receiver's box on the same view-relative side as the server's.
   const target = shotTarget(kind, p.side, 0)
-  target.x = toWorld(receiver, xSign * (COURT.halfWidth / 2), 0).x
+  target.x = toWorld(receiver, xSign * (state.court.halfWidth / 2), 0).x
   const s = state.shuttle
   const v = launchFor(kind, 'perfect', s.pos, target, () => rand(state))
   s.vel.x = v.x
@@ -605,7 +611,8 @@ function landed(state: SpState) {
   const s = state.shuttle
   const hitter = s.lastHitter === -1 ? state.server : s.lastHitter
   const landSide: 0 | 1 = s.pos.z > 0 ? 1 : s.pos.z < 0 ? 0 : other(hitter)
-  const inCourt = Math.abs(s.pos.x) <= COURT.halfWidth && Math.abs(s.pos.z) <= COURT.halfLen
+  const { halfWidth, halfLen } = state.court
+  const inCourt = Math.abs(s.pos.x) <= halfWidth && Math.abs(s.pos.z) <= halfLen
   emit(state, { k: 'land', x: s.pos.x, z: s.pos.z, in: inCourt })
   scorePoint(state, inCourt && landSide !== hitter ? hitter : other(hitter))
 }
@@ -721,7 +728,7 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
       // The server stands still in the box until the serve.
       p.vx = 0
       p.vz = 0
-    } else stepPlayer(p, DT, speedMulOf(p, state.tick))
+    } else stepPlayer(p, DT, speedMulOf(p, state.tick), state.court)
   }
 
   const s = state.shuttle
@@ -786,6 +793,16 @@ export const shuttlePopGame: GameDefinition<SpState, SpInput> = {
         { value: 'easy', label: t('Easy AI') },
         { value: 'normal', label: t('Normal AI') },
         { value: 'hard', label: t('Hard AI') },
+      ],
+    },
+    {
+      id: 'court',
+      label: t('Court size'),
+      default: 'normal',
+      choices: [
+        { value: 'normal', label: t('Normal') },
+        { value: 'large', label: t('Large +15%') },
+        { value: 'xl', label: t('XL +30%') },
       ],
     },
   ],

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { InputEvent, PlayerInfo } from '@forge/net/session'
 import { CHARGE, chargeOf } from './charge'
-import { COURT, predictLanding } from './physics'
+import { COURT_SIZES, courtDims } from './courtsize'
+import { COURT, DT, predictLanding } from './physics'
 import { POWER_SWING } from './power'
 import { AVAILABLE_IDS, isAvailable } from './presets'
 import {
@@ -21,6 +22,7 @@ import {
   separateAi,
   shownName,
   setupBots,
+  stepPlayer,
   SWING_COOLDOWN,
   shuttlePopGame as game,
   TAPPED,
@@ -1284,5 +1286,77 @@ describe('shared lag predicates', () => {
   it('launchTick: the later of contact and screen tick', () => {
     expect(launchTick(10, 12)).toBe(12)
     expect(launchTick(14, 12)).toBe(14)
+  })
+})
+
+describe('court size', () => {
+  /** Online match on the given court, p0 on side 0 serving. */
+  function duelOn(court: string): SpState {
+    for (let seed = 1; ; seed++) {
+      const s = game.setup(players(2), seed, { court })
+      if (s.server === 0) return s
+    }
+  }
+
+  it('the court option: not aloneOnly, default normal, three sizes', () => {
+    const opt = game.options!.find((o) => o.id === 'court')!
+    expect(opt).toBeDefined()
+    expect(opt.aloneOnly).toBeFalsy()
+    expect(opt.default).toBe('normal')
+    expect(opt.choices.map((c) => c.value)).toEqual(COURT_SIZES)
+  })
+
+  it('createState builds state.court from the option; junk is normal', () => {
+    expect(game.setup(players(1), 1, { court: 'xl' }).court).toEqual(courtDims('xl'))
+    expect(game.setup(players(1), 1, { court: 'huge' }).court).toEqual(courtDims('normal'))
+    expect(game.setup(players(1), 1, {}).court).toEqual(courtDims('normal'))
+  })
+
+  it('netView sends the court', () => {
+    const s = game.setup(players(2), 1, { court: 'large' })
+    expect((game.netView!(s) as SpState).court).toEqual(courtDims('large'))
+  })
+
+  it('serve stance scales with the short line', () => {
+    const s = duelOn('xl')
+    const { shortLine } = courtDims('xl')
+    const [a, b] = s.players
+    expect(a.z).toBeLessThan(-shortLine)
+    expect(a.z).toBeGreaterThan(-shortLine - 1)
+    expect(b.z).toBeGreaterThan(shortLine)
+  })
+
+  it('players may run past the bigger lines, not past their margin', () => {
+    const xl = courtDims('xl')
+    const chase = (court?: typeof xl) => {
+      const p = { side: 0 as const, x: 0, z: -3, vx: 0, vz: 0, move: { x: -1, z: -1 } }
+      for (let i = 0; i < 600; i++) {
+        if (court) stepPlayer(p, DT, 1, court)
+        else stepPlayer(p, DT)
+      }
+      return p
+    }
+    const big = chase(xl)
+    expect(Math.abs(big.x)).toBeCloseTo(xl.halfWidth + 0.8, 9)
+    expect(Math.abs(big.z)).toBeCloseTo(xl.halfLen + 0.8, 9)
+    const normal = chase()
+    expect(Math.abs(normal.x)).toBeCloseTo(COURT.halfWidth + 0.8, 9)
+    expect(Math.abs(normal.z)).toBeCloseTo(COURT.halfLen + 0.8, 9)
+  })
+
+  it('a landing beyond the Normal back line is in on Large', () => {
+    for (const [court, inside, pointTo] of [
+      ['large', true, 0],
+      ['normal', false, 1],
+    ] as const) {
+      const s = game.setup(players(2), 1, { court })
+      rally(s, { x: 0, y: 0.05, z: 7.2 }, { x: 0, y: -3, z: 0 }, 0)
+      const seen: SpEvent[] = []
+      for (let i = 0; i < 60 && !seen.some((e) => e.k === 'land'); i++) run(s, 1, () => [], seen)
+      const land = seen.find((e) => e.k === 'land')
+      const point = seen.find((e) => e.k === 'point')
+      expect(land).toMatchObject({ in: inside })
+      expect(point).toMatchObject({ side: pointTo })
+    }
   })
 })

@@ -45,6 +45,14 @@ export function voicesAllowed(active: number, wanted: number, cap = MAX_VOICES):
   return Math.max(0, Math.min(wanted, cap - active))
 }
 
+/** Drops finished voices (end <= now, or non-finite) in place; returns how many remain. */
+export function pruneVoices(ends: number[], now: number): number {
+  let n = 0
+  for (const e of ends) if (e > now) ends[n++] = e
+  ends.length = n
+  return n
+}
+
 const SETTINGS_KEY = 'play-forge:audio'
 const DEFAULTS: AudioSettings = { music: 0.45, sfx: 0.8, muted: false }
 
@@ -54,7 +62,8 @@ let sfxBus: GainNode | null = null
 let musicBus: GainNode | null = null
 let settings = readSettings()
 let unlocked = false
-let activeVoices = 0
+/** Scheduled end times (audio clock) of tones still sounding or pending. */
+const voiceEnds: number[] = []
 const settingsListeners = new Set<(s: AudioSettings) => void>()
 const unlockListeners = new Set<() => void>()
 
@@ -174,7 +183,7 @@ export function playSound(sound: Sound, volume = 1): void {
   if (!ac || !sfxBus) return
   const now = ac.currentTime + 0.01
   const tones = Array.isArray(sound) ? sound : [sound]
-  const count = voicesAllowed(activeVoices, tones.length)
+  const count = voicesAllowed(pruneVoices(voiceEnds, ac.currentTime), tones.length)
   for (let i = 0; i < count; i++) {
     const t = tones[i]
     const start = now + (t.at ?? 0)
@@ -203,12 +212,13 @@ export function playSound(sound: Sound, volume = 1): void {
       osc.connect(gain)
       src = osc
     }
-    activeVoices++
-    src.onended = () => {
-      activeVoices--
+    try {
+      src.start(start)
+      src.stop(end + 0.02)
+      voiceEnds.push(end + 0.02)
+    } catch {
+      // bad timing (NaN / negative): skip the tone, it never counts as a voice
     }
-    src.start(start)
-    src.stop(end + 0.02)
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_VOICES, SFX_LIMITER, duckedMusicGain, voicesAllowed } from './sound'
+import { MAX_VOICES, SFX_LIMITER, duckedMusicGain, pruneVoices, voicesAllowed } from './sound'
 
 describe('duckedMusicGain', () => {
   it('scales the music level by the duck factor', () => {
@@ -21,6 +21,25 @@ describe('voicesAllowed', () => {
     expect(voicesAllowed(MAX_VOICES, 6)).toBe(0)
     expect(voicesAllowed(MAX_VOICES + 5, 6)).toBe(0)
     expect(voicesAllowed(0, 3, 2)).toBe(2)
+  })
+})
+
+describe('pruneVoices', () => {
+  it('drops finished and non-finite voices, keeps pending ones', () => {
+    const ends = [1, 2, 3, NaN, 5]
+    expect(pruneVoices(ends, 2)).toBe(2)
+    expect(ends).toEqual([3, 5])
+  })
+
+  it('a stalled clock holds voices but never blocks forever once time advances', () => {
+    const ends = Array.from({ length: MAX_VOICES }, () => 1)
+    expect(voicesAllowed(pruneVoices(ends, 0), 3)).toBe(0) // suspended context, clock at 0
+    expect(voicesAllowed(pruneVoices(ends, 1.5), 3)).toBe(3) // resumed
+  })
+
+  it('records nothing for tones that never started', () => {
+    const ends: number[] = []
+    expect(voicesAllowed(pruneVoices(ends, 0), 3)).toBe(3)
   })
 })
 

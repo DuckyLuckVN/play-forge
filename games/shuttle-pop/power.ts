@@ -1,4 +1,5 @@
 // Hit power: how much of a swing's charge actually landed (pure leaf: the sim, sounds and view share it).
+import { isFull } from './charge'
 import { WINDOW, type Grade, type ShotKind } from './shots'
 
 export const POWER_SWING = {
@@ -28,3 +29,6 @@ export const pressureOf = (kind: ShotKind, power: number): boolean => kind === '
 /** The receiver's Perfect window (ticks): pressuredPerfect after a pressuring smash, else WINDOW.perfect. */
 export const perfectWindowOf = (pressured: boolean): number =>
   pressured ? POWER_SWING.pressuredPerfect : WINDOW.perfect
+
+/** Move-slowdown ticks after a rally swing of `charge`: a full charge pays recoveryTicks, anything less none. */
+export const recoveryAfter = (charge: number): number => (isFull(charge) ? POWER_SWING.recoveryTicks : 0)

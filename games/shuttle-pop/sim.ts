@@ -7,7 +7,7 @@ import { CHARGE, chargeOf } from './charge'
 import { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld } from './court'
 import { t } from './i18n'
 import { COURT, DT, settleOnFloor, stepShuttle, type Flight, type Vec3 } from './physics'
-import { hitPower, perfectWindowOf, pressureOf } from './power'
+import { hitPower, perfectWindowOf, POWER_SWING, pressureOf, recoveryAfter } from './power'
 import { isAvailable, nextAvailable, PRESETS as PRESET_TABLE } from './presets'
 import { award, serveBox, winner } from './rules'
 import {
@@ -90,6 +90,8 @@ export interface SpPlayer {
    * swung as a tap.
    */
   chargeAt: number
+  /** Tick the post-swing recovery slowdown ends (moves at POWER_SWING.recoveryMoveMul until then); −1 = none. */
+  recoverUntil: number
   /** The press's tick on the presser's screen (rewind-clamped): where a tap is graded. −1 = none. */
   pressAt: number
   preset: number
@@ -179,8 +181,9 @@ export function clampDir(x: unknown, z: unknown): { x: number; z: number } {
   return len > 1 ? { x: fx / len, z: fz / len } : { x: fx, z: fz }
 }
 
-/** Run speed share for a player: CHARGE.moveMul while charging a swing. */
-export const speedMulOf = (p: Pick<SpPlayer, 'chargeAt'>): number => (p.chargeAt >= 0 ? CHARGE.moveMul : 1)
+/** Run speed share for a player: recoveryMoveMul after a full-charge swing, CHARGE.moveMul while charging. */
+export const speedMulOf = (p: Pick<SpPlayer, 'chargeAt' | 'recoverUntil'>, tick: number): number =>
+  tick < p.recoverUntil ? POWER_SWING.recoveryMoveMul : p.chargeAt >= 0 ? CHARGE.moveMul : 1
 
 /**
  * Movement integration: velocity eases toward move × MOVE_SPEED × speedMul (full speed in ~ACCEL_TICKS
@@ -232,6 +235,7 @@ function resetForServe(state: SpState) {
     p.z = pos.z
     p.vx = 0
     p.vz = 0
+    p.recoverUntil = -1
   }
   state.phase = 'serve'
   state.phaseT = 0
@@ -272,6 +276,7 @@ const makePlayer = (
   move: { x: 0, z: 0 },
   swingAt: -SWING_COOLDOWN,
   chargeAt: -1,
+  recoverUntil: -1,
   pressAt: -1,
   preset: side,
   ...(level ? { level } : {}),
@@ -705,6 +710,9 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
       // Only swings that resolve (any rally swing, the server's serve) start the cooldown.
       if (!canSwing(state, p) || swings.some((w) => w.p === p)) continue
       p.swingAt = state.tick
+      // A full-charge rally swing (hit or whiff) costs a move slowdown; serves don't.
+      const recovery = state.phase === 'rally' ? recoveryAfter(charge) : 0
+      if (recovery > 0) p.recoverUntil = state.tick + recovery
       swings.push({ p, held: clampDir(input.x, input.z), rewind, charge, lag: released })
     }
   }
@@ -713,7 +721,7 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
       // The server stands still in the box until the serve.
       p.vx = 0
       p.vz = 0
-    } else stepPlayer(p, DT, speedMulOf(p))
+    } else stepPlayer(p, DT, speedMulOf(p, state.tick))
   }
 
   const s = state.shuttle

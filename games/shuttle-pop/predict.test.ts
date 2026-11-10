@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { DT } from './physics'
 import { GuestPredictor, type AuthPlayer } from './predict'
 import { CHARGE } from './charge'
+import { POWER_SWING } from './power'
 import { MOVE_SPEED, stepPlayer } from './sim'
 
 const auth = (x: number, z: number, move = { x: 0, z: 0 }): AuthPlayer => ({
@@ -165,5 +166,63 @@ describe('guest prediction while charging', () => {
     expect(pred.x).toBeCloseTo(ref.x, 9)
     expect(pred.vx).toBeCloseTo(ref.vx, 9)
     expect(Math.hypot(pred.vx, pred.vz)).toBeCloseTo(MOVE_SPEED, 6)
+  })
+})
+
+describe('guest prediction recovery after a full-charge swing', () => {
+  function run(holdSteps: number, swung: boolean, tail: number) {
+    const pred = new GuestPredictor()
+    const a = auth(-2, 3)
+    pred.update(DT, a, 1, true)
+    pred.setMove(1, 0)
+    const ref = body(-2, 3)
+    ref.move = { x: 1, z: 0 }
+    pred.setCharging(true)
+    for (let i = 0; i < holdSteps; i++) {
+      pred.update(DT, a, 1, false)
+      stepPlayer(ref, DT, CHARGE.moveMul)
+    }
+    pred.release(swung)
+    return { pred, ref, a, tail }
+  }
+  const go = (r: ReturnType<typeof run>, n: number, mul: (i: number) => number) => {
+    for (let i = 0; i < n; i++) {
+      r.pred.update(DT, r.a, 1, false)
+      stepPlayer(r.ref, DT, mul(i))
+    }
+  }
+  it('release(true) after a full hold runs recoveryTicks at recoveryMoveMul, then full speed', () => {
+    const r = run(30, true, 0)
+    go(r, 25, (i) => (i < POWER_SWING.recoveryTicks ? POWER_SWING.recoveryMoveMul : 1))
+    expect(r.pred.x).toBeCloseTo(r.ref.x, 9)
+    expect(r.pred.vx).toBeCloseTo(r.ref.vx, 9)
+    expect(r.pred.vx).toBeCloseTo(MOVE_SPEED, 6)
+  })
+  it('release(false) or a short hold: no lock', () => {
+    for (const r of [run(30, false, 0), run(20, true, 0)]) {
+      go(r, 25, () => 1)
+      expect(r.pred.x).toBeCloseTo(r.ref.x, 9)
+    }
+  })
+  it('converges onto the host when the host saw a shorter hold (no lock)', () => {
+    const pred = new GuestPredictor()
+    const host = body(-2, 3)
+    pred.update(DT, auth(-2, 3), 0, true)
+    pred.setMove(1, 0)
+    host.move = { x: 1, z: 0 }
+    pred.setCharging(true)
+    for (let step = 1; step <= 120; step++) {
+      if (step === 30) pred.release(true)
+      stepPlayer(host, DT, step <= 29 ? CHARGE.moveMul : 1)
+      pred.update(DT, { ...host, move: { ...host.move } }, step, false)
+    }
+    expect(Math.hypot(pred.x - host.x, pred.z - host.z)).toBeLessThan(0.05)
+  })
+  it('a snap clears the recovery', () => {
+    const r = run(30, true, 0)
+    const placed = auth(-2, 3, { x: 1, z: 0 })
+    r.pred.update(DT, placed, 2, true)
+    for (let i = 0; i < 12; i++) r.pred.update(DT, placed, 2, false)
+    expect(Math.hypot(r.pred.vx, r.pred.vz)).toBeCloseTo(MOVE_SPEED, 6)
   })
 })

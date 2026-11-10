@@ -100,9 +100,10 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
         }
       } else return // the host would ignore it: don't send (no slow-down disagreement with the prediction)
     } else if (input.t === 'swing') {
-      predictor?.setCharging(false)
       // A press that already swung as a tap (sim tapOnPress): its button-up is no second swing.
       const counts = live() && seatCan((s, me) => canSwing(s, me) && me.chargeAt !== TAPPED)
+      // A counted rally swing after a full hold also slows the run for a moment (sim recoverUntil).
+      predictor?.release(counts && smooth.curr?.phase === 'rally')
       onSwing?.(counts ? 'swing' : 'cancel')
       if (counts) {
         // The hold is the charge (the sim counts it in arrival ticks); a short tap is graded at its press.
@@ -238,7 +239,9 @@ createGameApp<SpState, SpInput>({
     },
     {
       action: t('Power shot'),
-      note: t('Let go to hit. You move slower while charging.'),
+      note: t(
+        'Let go to hit. You move slower while charging, and stop for a moment after a full-power swing.',
+      ),
       hold: true,
       keys: [['Space'], ['J']],
       mouse: 'hold',

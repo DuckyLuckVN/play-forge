@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { InputEvent, PlayerInfo } from '@forge/net/session'
 import { CHARGE, chargeOf } from './charge'
 import { COURT, predictLanding } from './physics'
+import { POWER_SWING } from './power'
 import { AVAILABLE_IDS, isAvailable } from './presets'
 import {
   canSwing,
@@ -701,7 +702,7 @@ describe('lag-compensated hits (launch from the rewound contact)', () => {
 
   it('AI and on-time swings are unchanged', () => {
     // Recorded before hits launched from the rewound contact (AI swings have rewind 0: a no-op for them);
-    // re-recorded when the power swing changed charged launches (the bots charge).
+    // re-recorded when the power swing changed charged launches (the bots charge) and for the full-charge recovery (seed 11).
     const fingerprint: number[][] = []
     const finals: SpState[] = []
     for (let seed = 1; seed <= 20; seed++) {
@@ -722,7 +723,7 @@ describe('lag-compensated hits (launch from the rewound contact)', () => {
       [1, 1, 0, 5, 1, 2, 1703683427],
       [0, 0, 12, 0, 3, 4, -1455494922],
       [0, 0, 9, 0, 2, 3, 440012089],
-      [0, 0, 10, 0, 4, 1, -191823580],
+      [0, 0, 9, 0, 4, 1, 440012090],
       [1, 0, 1, 7, 2, 1, 1071847761],
       [1, 0, 3, 4, 2, 1, 1703683432],
       [1, 1, 3, 2, 1, 2, -1959448193],
@@ -1173,6 +1174,61 @@ describe('hold-to-charge', () => {
     game.tick(s, [charge('p1')])
     run(s, 12)
     expect(Math.hypot(s.players[1].vx, s.players[1].vz)).toBeCloseTo(MOVE_SPEED * CHARGE.moveMul, 6)
+  })
+
+  describe('recovery after a full-charge swing', () => {
+    const speed = (s: SpState) => Math.hypot(s.players[1].vx, s.players[1].vz)
+    /** Rally, p1 runs right, holds `hold` ticks, swings (whiff), then keeps running 20 ticks: speed per tick. */
+    function afterSwing(hold: number) {
+      const s = duel()
+      rally(s, { x: 0, y: 3, z: -3 }, { x: 0, y: 5, z: 0 }, 1)
+      s.players[1].z = 5
+      s.players[1].x = -2.5
+      run(s, 12, () => [ev('p1', { t: 'move', x: 1, z: 0 })])
+      game.tick(s, [charge('p1')])
+      run(s, hold - 1) // the swing tick closes the hold: `hold` ticks counted
+      game.tick(s, [swing('p1', 0, 0)])
+      const speeds: number[] = []
+      for (let i = 0; i < 20; i++) {
+        game.tick(s, [])
+        speeds.push(speed(s))
+      }
+      return { s, speeds }
+    }
+    it('a 30-tick hold slows to recoveryMoveMul for recoveryTicks, then full speed again', () => {
+      const { speeds } = afterSwing(30)
+      // speeds[i] is tick +i+1; the swing tick itself is the first slowed one (15 ticks: swing + 14).
+      for (let i = 5; i <= 13; i++) {
+        expect(speeds[i]).toBeGreaterThan(MOVE_SPEED * POWER_SWING.recoveryMoveMul * 0.95)
+        expect(speeds[i]).toBeLessThan(MOVE_SPEED * POWER_SWING.recoveryMoveMul * 1.05)
+      }
+      expect(speeds[14]).toBeGreaterThan(MOVE_SPEED * POWER_SWING.recoveryMoveMul * 1.05)
+      expect(speeds[19]).toBeCloseTo(MOVE_SPEED, 6)
+    })
+    it('a 29-tick hold or a tap does not lock', () => {
+      for (const hold of [29, 0]) {
+        const { s, speeds } = afterSwing(hold)
+        expect(speeds[10]).toBeGreaterThan(MOVE_SPEED * 0.65)
+        expect(s.players[1].recoverUntil).toBe(-1)
+      }
+    })
+    it('a full-charge serve does not lock', () => {
+      const s = duel()
+      game.tick(s, [charge('p0')])
+      run(s, 40)
+      game.tick(s, [swing('p0', 0, -1)])
+      expect(s.phase).toBe('rally')
+      expect(s.players[0].recoverUntil).toBe(-1)
+    })
+    it('the rally ending during the lock clears it', () => {
+      const { s } = afterSwing(30)
+      expect(s.players[1].recoverUntil).toBeGreaterThanOrEqual(0)
+      s.phase = 'point'
+      s.phaseT = POINT_TICKS - 1
+      game.tick(s, [])
+      expect(s.phase).toBe('serve')
+      expect(s.players[1].recoverUntil).toBe(-1)
+    })
   })
 
   it('serves ignore the charge (same serve as a tap)', () => {

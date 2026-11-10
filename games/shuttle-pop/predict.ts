@@ -9,8 +9,9 @@
 // (or, with nothing queued, the one the host has) is not queued, so value-equal echoes (a tap shorter
 // than the round trip, a resync of a stop) can't fake a zero lag.
 // The error found there is closed with `correct` (keep / blend / snap) and shifts the whole prediction.
-import { CHARGE } from './charge'
+import { CHARGE, chargeOf } from './charge'
 import { DT } from './physics'
+import { POWER_SWING, recoveryAfter } from './power'
 import { stepPlayer, type SpPlayer } from './sim'
 import { correct, CORRECT } from './world'
 
@@ -57,8 +58,23 @@ export class GuestPredictor {
   /** The local swing button is charging (as just sent to the host): run at CHARGE.moveMul, like the sim. */
   charging = false
 
+  /** Steps since the hold began (−1 = not holding), to tell a full charge at the release. */
+  private holdFrom = -1
+  /** Recovery slowdown steps still to integrate after a full-charge swing. */
+  private recover = 0
+
+  /** Press (true) or cancel (false: no recovery). A repeat press keeps the first start. */
   setCharging(on: boolean): void {
+    if (on && !this.charging) this.holdFrom = this.steps
+    if (!on) this.holdFrom = -1
     this.charging = on
+  }
+
+  /** The swing button was released: ends charging; a swing that counted after a full hold starts the recovery slowdown. */
+  release(swung: boolean): void {
+    const hold = this.holdFrom >= 0 ? this.steps - this.holdFrom : 0
+    this.recover = swung ? recoveryAfter(chargeOf(hold)) : 0
+    this.setCharging(false)
   }
 
   /** The local player's held direction as just sent to the host (view-relative, length ≤ 1). */
@@ -93,6 +109,7 @@ export class GuestPredictor {
       p.move.x = auth.move.x
       p.move.z = auth.move.z
       this.acc = 0
+      this.recover = 0
       this.sampleStep = -1
       this.pendN = 0
       this.ackX = auth.move.x
@@ -111,7 +128,9 @@ export class GuestPredictor {
     this.acc += dt
     let n = 0
     while (this.acc >= DT - EPS && n < MAX_STEPS) {
-      stepPlayer(p, DT, this.charging ? CHARGE.moveMul : 1)
+      const mul = this.recover > 0 ? POWER_SWING.recoveryMoveMul : this.charging ? CHARGE.moveMul : 1
+      if (this.recover > 0) this.recover--
+      stepPlayer(p, DT, mul)
       this.steps++
       this.record()
       this.acc -= DT

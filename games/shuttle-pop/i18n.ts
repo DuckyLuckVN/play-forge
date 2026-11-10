@@ -28,6 +28,9 @@ export const VI: Dictionary = {
   'Let go to hit. You move slower while charging, and much slower for a moment after a full-power swing.':
     'Thả ra để đánh. Khi tích lực bạn đi chậm hơn, và chậm hẳn trong giây lát sau cú đánh mạnh tối đa.',
   'Jump or dive': 'Nhảy hoặc bổ nhào',
+  'Racket bonk': 'Cốc vợt',
+  "Swing your racket into another player and they see stars for a moment. Then they can't be bonked for 2 s.":
+    'Vung vợt trúng người chơi khác là họ choáng, thấy sao một lúc. Sau đó 2 giây họ không bị cốc nữa.',
   'High shuttle: jump smash. Low and far: dive. Then a short cooldown.':
     'Cầu cao: bật nhảy đập. Cầu thấp và xa: bổ nhào cứu cầu. Sau đó chờ hồi chiêu một chút.',
   'small button': 'nút nhỏ',

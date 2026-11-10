@@ -62,6 +62,8 @@ import { ChargeRing, COOLDOWN_LOOK } from './chargering'
 import { TICK_RATE } from './court'
 import { courtScale } from './courtsize'
 import { DustPuffs } from './dust'
+import { StunStars } from './stars'
+import { stunLook } from './stun'
 import { canSplit, Footwork, lungeWanted, splitHop, splitsOn } from './footwork'
 import { Hud, newEvents, newestShotId, trackerAction, type PopKind } from './hud'
 import { ScoreCards } from './boardprop'
@@ -208,6 +210,11 @@ const JUMP_PUNCH = 1.2
 export type LocalSwing = 'charge' | 'swing' | 'cancel'
 /** Chibis are ~1.3 m in model space; drawn a bit larger so they read from the far camera. */
 const CHIBI_SCALE = 1.15
+/** Bonked look: sad mood floor, head wobble (rad amplitude), recoil lean, star gap above the head (m). */
+const STUN_SAD = 0.7
+const STUN_WOBBLE = 0.35
+const STUN_RECOIL = 0.25
+const STUN_STAR_GAP = 0.15
 /** Court surface beyond the lines (m); the warm border (SURROUND) is props.ts. */
 const COURT_RUNOFF = { x: 0.35, z: 0.45 }
 /** Environment-map strength on the chibis in the park (the studio room is brighter than golden hour). */
@@ -317,6 +324,8 @@ interface PlayerView {
   cd: ChargeRing
   /** This frame's jump / lunge body offsets (ability.ts actArcInto; reused). */
   arc: ActArc
+  /** Stun stars over the head (hidden unless stunned). */
+  stars: StunStars
 }
 
 function makePlayer(preset: number): PlayerView {
@@ -344,6 +353,7 @@ function makePlayer(preset: number): PlayerView {
     ring: new ChargeRing(),
     cd: new ChargeRing(COOLDOWN_LOOK),
     arc: { lift: 0, dive: 0 },
+    stars: new StunStars(),
   }
 }
 
@@ -535,7 +545,7 @@ export class Court3D {
         // The swing streak and blob shadow keep their own order (the streak must not draw over the shuttle).
         if (o.name !== 'streak' && o.name !== 'shadow') o.renderOrder = CHIBI_ORDER
       })
-      scene.add(p.chibi.root, p.ring.root, p.cd.root)
+      scene.add(p.chibi.root, p.ring.root, p.cd.root, p.stars.group)
     }
 
     // Shuttlecock: vertex-coloured unlit body + dark back-side outline (2 draw calls, as the old ball + rim).
@@ -788,6 +798,7 @@ export class Court3D {
       p.hitAt = -Infinity
       p.chargeAt = -1
       p.ring.update(-1, 0, 0, 0)
+      p.stars.group.visible = false
     }
   }
 
@@ -1013,7 +1024,24 @@ export class Court3D {
       pose.sad = damp(pose.sad, mood === 'sad' ? 1 : 0, MOTION.moodRate, dt)
       pose.cheer = damp(pose.cheer, mood === 'happy' && curr.phase === 'over' ? 1 : 0, MOTION.moodRate, dt)
       pose.look = lookAround(this.time, view.seed)
+      // Bonked: dizzy and still, a recoil at the hit, stars over the head. Ours is known when the host's state
+      // is (the predictor froze us then), a remote's on the render clock.
+      const stun = stunLook(cp.stunAt ?? -1, pred ? renderTick : shownTick)
+      if (stun.on) {
+        pose.stance = 0
+        pose.sad = Math.max(pose.sad, STUN_SAD)
+        pose.look = STUN_WOBBLE * Math.sin(stun.spin * 2)
+        pose.lean -= STUN_RECOIL * stun.flinch
+      }
       view.chibi.setPose(pose, this.time)
+      const ch = view.chibi
+      view.stars.update(
+        stun,
+        root.position.x,
+        root.position.y + (ch.lift + ch.top) * root.scale.y + STUN_STAR_GAP,
+        root.position.z,
+        this.fades[i],
+      )
     }
     this.dust.update(dt)
 
@@ -1235,7 +1263,7 @@ export class Court3D {
       // and our own predicted ability press (ownActPredicted).
       const heard = this.echo.heard(e)
       if (!heard && !(e.k === 'act' && this.ownActEcho(s, e))) {
-        const sound = eventSound(e, this.side, this.lastShot)
+        const sound = eventSound(e, this.side, this.lastShot, this.spectating ? undefined : this.selfId)
         if (sound) playSound(sound.sound, sound.vol)
       }
       if (e.k === 'hit') {
@@ -1255,7 +1283,16 @@ export class Court3D {
       else if (e.k === 'whiff' && !this.spectating && e.side === this.side)
         this.popAt(this.localIdx, 'miss', false)
       else if (e.k === 'actLand') this.onActLand(s, e.side, e.act, e.tick)
+      else if (e.k === 'bonk') this.onBonk(s, e.who)
     }
+  }
+
+  /** A racket bonk: the victim squashes; ours also drops the swing and charge visuals (the host did). */
+  private onBonk(s: SpState, who: string) {
+    const i = s.players.findIndex((p) => p.id === who)
+    if (i < 0 || i >= this.players.length) return
+    this.players[i].squash.kick(MOTION.kickPerfect)
+    if (i === this.localIdx && !this.spectating) this.localSwing('cancel')
   }
 
   /** True (once) when this `act` event is our own press already heard by ownActPredicted. */

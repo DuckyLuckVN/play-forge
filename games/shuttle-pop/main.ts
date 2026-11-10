@@ -299,6 +299,13 @@ createGameApp<SpState, SpInput>({
       touchLabel: t('small button'),
     },
     {
+      action: t('Racket bonk'),
+      note: t(
+        "Swing your racket into another player and they see stars for a moment. Then they can't be bonked for 2 s.",
+      ),
+      tip: true,
+    },
+    {
       action: t('Reactions'),
       note: t('Online: move toward an emoji, let go to send'),
       hold: true,

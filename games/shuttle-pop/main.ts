@@ -65,7 +65,8 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
       if (input.cancel) {
         predictor?.setCharging(false)
         onSwing?.('cancel')
-      } else if (live() && seatCan(canCharge)) {
+      } else if (live() && seatCan((s, me) => canCharge(s, me) && me.chargeAt !== TAPPED)) {
+        // (A press already swung as a tap waits for its button-up: e.g. a resync while still held.)
         predictor?.setCharging(true)
         onSwing?.('charge')
       } else return // the host would ignore it: don't send (no slow-down disagreement with the prediction)

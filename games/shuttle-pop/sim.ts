@@ -38,11 +38,8 @@ const PENDING_SLACK = 0.3
 const EVENT_TICKS = 60
 /** Lag fairness: a guest's swing is judged up to this many ticks back (~117 ms). */
 export const MAX_REWIND = 7
-/**
- * Covers the furthest a swing is judged back (a tap graded at its press: MAX_REWIND + CHARGE.start)
- * + WINDOW.pastGrace (12) + margin.
- */
-const HISTORY_TICKS = 32
+/** Covers MAX_REWIND + WINDOW.pastGrace (12) + margin. */
+const HISTORY_TICKS = 24
 export const PRESETS = 4
 /** chargeAt of a press that already swung as a tap (tapOnPress): its release only ends it. */
 export const TAPPED = -2
@@ -85,10 +82,13 @@ export interface SpPlayer {
   /** Tick of the last swing. */
   swingAt: number
   /**
-   * Tick the swing button went down (rewound to the presser's screen like a swing; charging until the
-   * release swing); −1 = not charging; TAPPED = the press already swung as a tap.
+   * Host tick the swing button press arrived (charging until the release swing; the hold is counted in
+   * arrival ticks, so a stamped tick never adds charge); −1 = not charging; TAPPED = the press already
+   * swung as a tap.
    */
   chargeAt: number
+  /** The press's tick on the presser's screen (rewind-clamped): where a tap is graded. −1 = none. */
+  pressAt: number
   preset: number
   level?: Level
   /** AI seats: the bot's cached plan (see ai.ts). */
@@ -136,8 +136,11 @@ export interface SpState {
   stats: { shots: number; longest: number; perfect: [number, number] }
   /** Seeded rng state (mulberry32 seed). Host-only. */
   rng: number
-  /** Host-only: shuttle flight as of each of the last HISTORY_TICKS ticks (for swing rewind). */
-  history: { tick: number; pos: Vec3; vel: Vec3 }[]
+  /**
+   * Host-only: shuttle flight and each side's position (by side) as of each of the last HISTORY_TICKS
+   * ticks (for swing rewind: reach is judged from where the swinger stood then).
+   */
+  history: { tick: number; pos: Vec3; vel: Vec3; who: [{ x: number; z: number }, { x: number; z: number }] }[]
 }
 
 const other = (side: 0 | 1): 0 | 1 => (side === 0 ? 1 : 0)
@@ -254,6 +257,7 @@ const makePlayer = (
   move: { x: 0, z: 0 },
   swingAt: -SWING_COOLDOWN,
   chargeAt: -1,
+  pressAt: -1,
   preset: side,
   ...(level ? { level } : {}),
 })
@@ -361,6 +365,22 @@ export function rewindTicks(hostTick: number, inputTick: number): number {
   return Math.min(MAX_REWIND, Math.max(0, Math.round(hostTick - inputTick)))
 }
 
+/**
+ * Ticks back a release is graded: a tap (charge 0) at its press, if that is within MAX_REWIND of now
+ * (else, and for a charged swing, at the release, `releaseRewind` ticks back). Never more than
+ * MAX_REWIND. `pressAt` −1 = no press.
+ */
+export function gradeRewind(
+  hostTick: number,
+  pressAt: number,
+  releaseRewind: number,
+  charge: number,
+): number {
+  const sincePress = hostTick - pressAt
+  if (pressAt >= 0 && charge === 0 && sincePress >= 0 && sincePress <= MAX_REWIND) return sincePress
+  return Math.min(MAX_REWIND, releaseRewind)
+}
+
 /** A human input's rewind (rewindTicks of its screen tick; none = 0); the computer is judged now. */
 function humanRewind(state: SpState, p: SpPlayer, tick: number | undefined): number {
   return p.kind === 'human' && tick !== undefined ? rewindTicks(state.tick, tick) : 0
@@ -416,7 +436,8 @@ function contactFor(
     // closest approach, so a swing well after it whiffs even if the shuttle still hovers in reach.
     if (h.tick >= state.tick || h.pos.y < REACH.minY || h.pos.y > REACH.maxY) continue
     if (!onHalf(h.pos.z, p.side, s.lastHitter)) continue
-    const d = Math.hypot(h.pos.x - p.x, h.pos.z - p.z)
+    const at = h.who[p.side]
+    const d = Math.hypot(h.pos.x - at.x, h.pos.z - at.z)
     if (d <= REACH.radius && d < bestD) {
       bestD = d
       bestTick = h.tick
@@ -444,9 +465,9 @@ function contactFor(
 function tapOnPress(state: SpState, p: SpPlayer): boolean {
   const s = state.shuttle
   if (p.chargeAt < 0 || !canSwing(state, p) || s.lastHitter === p.side || s.pending) return false
-  const rewind = state.tick - p.chargeAt
+  const rewind = state.tick - p.pressAt
   const c = contactFor(state, p, rewind)
-  if (!c || c.tick > p.chargeAt + CHARGE.start) return false
+  if (!c || c.tick > p.pressAt + CHARGE.start) return false
   p.swingAt = state.tick
   p.chargeAt = TAPPED
   resolveSwing(state, p, p.move, rewind, 0)
@@ -505,7 +526,16 @@ function landed(state: SpState) {
 
 function recordHistory(state: SpState) {
   const { pos, vel } = state.shuttle
-  state.history.push({ tick: state.tick, pos: { ...pos }, vel: { ...vel } })
+  const [a, b] = state.players
+  state.history.push({
+    tick: state.tick,
+    pos: { ...pos },
+    vel: { ...vel },
+    who: [
+      { x: a.x, z: a.z },
+      { x: b.x, z: b.z },
+    ],
+  })
   if (state.history.length > HISTORY_TICKS) state.history.splice(0, state.history.length - HISTORY_TICKS)
 }
 
@@ -559,26 +589,25 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
     else if (input.t === 'pick') {
       if (finite(input.preset)) seedPreset(state, p.id, input.preset)
     } else if (input.t === 'charge') {
-      if (input.cancel === true) p.chargeAt = -1
-      // A repeat press keeps the first start; between points / the receiver in the serve: ignored.
-      else if (p.chargeAt < 0 && canCharge(state, p)) {
-        p.chargeAt = state.tick - humanRewind(state, p, input.tick)
+      if (input.cancel === true) p.chargeAt = p.pressAt = -1
+      // A repeat press keeps the first start (a press already TAPPED waits for its release); between
+      // points / the receiver in the serve: ignored.
+      else if (p.chargeAt === -1 && canCharge(state, p)) {
+        p.chargeAt = state.tick
+        p.pressAt = state.tick - humanRewind(state, p, input.tick)
         presses.push(p)
       }
     } else if (input.t === 'swing') {
       if (p.chargeAt === TAPPED) {
-        p.chargeAt = -1 // the button-up of a press that already swung
+        p.chargeAt = p.pressAt = -1 // the button-up of a press that already swung
         continue
       }
-      // Humans stamp the tick on their screen (clamped rewind); the computer is judged now.
-      let rewind = humanRewind(state, p, input.tick)
-      // The release: the hold (both ends on the swinger's screen) is the charge; no press before = a
-      // tap. A hold too short to charge is a tap too, graded at its press (the swing went out only on
-      // the button-up).
-      const charge = p.chargeAt >= 0 ? chargeOf(state.tick - rewind - p.chargeAt) : 0
-      if (p.chargeAt >= 0 && charge === 0)
-        rewind = Math.min(MAX_REWIND + CHARGE.start, state.tick - p.chargeAt)
-      p.chargeAt = -1
+      // The release: the hold is the charge (no press before = a tap), counted from the press's arrival
+      // to the rewound release, so lag or a stamped tick only ever shortens it.
+      const released = humanRewind(state, p, input.tick)
+      const charge = p.chargeAt >= 0 ? chargeOf(state.tick - released - p.chargeAt) : 0
+      const rewind = gradeRewind(state.tick, p.chargeAt >= 0 ? p.pressAt : -1, released, charge)
+      p.chargeAt = p.pressAt = -1
       // Only swings that resolve (any rally swing, the server's serve) start the cooldown.
       if (!canSwing(state, p) || swings.some((w) => w.p === p)) continue
       p.swingAt = state.tick

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { InputEvent, PlayerInfo } from '@forge/net/session'
-import { CHARGE } from './charge'
+import { CHARGE, chargeOf } from './charge'
 import { COURT, predictLanding } from './physics'
 import {
   canSwing,
+  gradeRewind,
   MAX_REWIND,
   MOVE_SPEED,
   NET_MARGIN,
@@ -619,11 +620,12 @@ describe('bookkeeping', () => {
     const ids = s.events.map((e) => e.id)
     expect(new Set(ids).size).toBe(ids.length)
   })
-  it('history keeps the last 32 ticks', () => {
+  it('history keeps the last 24 ticks (with where each side stood)', () => {
     const s = duel()
     run(s, 40)
-    expect(s.history).toHaveLength(32)
-    expect(s.history[31].tick).toBe(s.tick)
+    expect(s.history).toHaveLength(24)
+    expect(s.history[23].tick).toBe(s.tick)
+    expect(s.history[23].who[1]).toEqual({ x: s.players[1].x, z: s.players[1].z })
   })
   it('netView strips history and rng', () => {
     const s = duel()
@@ -772,7 +774,9 @@ describe('hold-to-charge', () => {
     it('a short hold released before a later contact is a tap graded at the press; a longer one at the release', () => {
       // Pressed while the shuttle is still far (no contact soon), the passing shuttle placed at the release.
       expect(chargedHit(5).hit).toMatchObject({ grade: 'perfect', charge: 0 }) // dt 5 from the press
-      expect(chargedHit(8).hit).toMatchObject({ grade: 'good', charge: 0 }) // dt 8 from the press
+      expect(chargedHit(MAX_REWIND).hit).toMatchObject({ grade: 'good', charge: 0 }) // dt 7 from the press
+      // A press older than MAX_REWIND is no anchor: graded at the release.
+      expect(chargedHit(MAX_REWIND + 1).hit).toMatchObject({ grade: 'perfect', charge: 0 })
       expect(chargedHit(12).hit).toMatchObject({ grade: 'perfect' }) // charged: graded at the release
       expect((chargedHit(12).hit as { charge: number }).charge).toBeGreaterThan(0)
     })
@@ -792,7 +796,63 @@ describe('hold-to-charge', () => {
       const t = duel()
       t.phase = 'rally'
       game.tick(t, [ev('p1', { t: 'charge', tick: -500 })])
-      expect(t.players[1].chargeAt).toBe(t.tick - MAX_REWIND)
+      expect(t.players[1].pressAt).toBe(t.tick - MAX_REWIND)
+      expect(t.players[1].chargeAt).toBe(t.tick) // the hold counts from the arrival
+    })
+  })
+
+  describe('rewind limits of press-graded taps', () => {
+    it('gradeRewind: a tap anchors on its press only within MAX_REWIND of now; never more', () => {
+      expect(gradeRewind(100, 95, 0, 0)).toBe(5) // press 5 ticks ago: graded there
+      expect(gradeRewind(100, 93, 0, 0)).toBe(MAX_REWIND)
+      expect(gradeRewind(100, 92, 2, 0)).toBe(2) // too old: graded at the (stamped) release
+      expect(gradeRewind(100, 95, 3, 0.4)).toBe(3) // charged: always the release
+      expect(gradeRewind(100, -1, 4, 0)).toBe(4) // no press
+      for (let press = 60; press <= 100; press++)
+        for (const r of [0, 3, 7]) expect(gradeRewind(100, press, r, 0)).toBeLessThanOrEqual(MAX_REWIND)
+    })
+
+    it('pressed out of reach, ran in, released 9 ticks later: no Perfect from back then', () => {
+      const s = duel()
+      const p1 = s.players[1]
+      p1.x = -2.2 // far from the shuttle's path
+      p1.z = 3
+      // A fast shuttle crossing 0.6 m from (0, 3) on the next tick, out of reach of (0, 3) 9 ticks later.
+      rally(s, { x: -0.13, y: 1.5, z: 3.6 }, { x: 8, y: 1, z: 0 }, 0)
+      game.tick(s, [ev('p1', { t: 'charge' })])
+      run(s, CHARGE.start - 1)
+      p1.x = 0 // "ran" next to the old crossing point just now
+      p1.vx = 0
+      game.tick(s, [swing('p1')])
+      expect(s.events.some((e) => e.k === 'hit' && e.grade === 'perfect')).toBe(false)
+    })
+
+    it('the hold counts host arrival ticks: a stamped-early press adds no charge', () => {
+      const s = duel()
+      s.phase = 'rally'
+      s.tick = 200
+      game.tick(s, [ev('p1', { t: 'charge', tick: s.tick + 1 - MAX_REWIND })])
+      expect(s.players[1].chargeAt).toBe(s.tick)
+      const at = s.tick
+      run(s, 14)
+      rally(s, { x: 0, y: 1.5, z: 3 }, { x: 1.2, y: 1, z: 0 }, 0)
+      s.players[1].x = 0
+      s.players[1].z = 3
+      s.history.length = 0
+      game.tick(s, [swing('p1')])
+      const hit = s.events.find((e) => e.k === 'hit') as { charge: number }
+      expect(hit.charge).toBeCloseTo(chargeOf(s.tick - at), 9)
+    })
+
+    it('a press while the last one is TAPPED is ignored (a resync after a tap starts no new charge)', () => {
+      const s = duel()
+      s.phase = 'rally'
+      s.players[1].chargeAt = TAPPED
+      game.tick(s, [ev('p1', { t: 'charge' })])
+      expect(s.players[1].chargeAt).toBe(TAPPED)
+      game.tick(s, [swing('p1')])
+      expect(s.players[1].chargeAt).toBe(-1)
+      expect(s.events.some((e) => e.k === 'whiff')).toBe(false)
     })
   })
 

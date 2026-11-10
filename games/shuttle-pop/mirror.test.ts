@@ -32,6 +32,8 @@ function mirror(s: SpState): SpState {
   for (const h of m.history) {
     neg(h.pos)
     neg(h.vel)
+    h.who = [h.who[1], h.who[0]]
+    for (const w of h.who) neg(w)
   }
   for (const e of m.events) {
     if ('side' in e) e.side = flip(e.side)

@@ -155,7 +155,7 @@ function humanStep(s: SpState, side: 0 | 1, m: HumanMem, H: Profile): SpInput[] 
     if (s.server === side && s.phaseT === SERVE_AT)
       return [{ t: 'swing', x: 0, z: random(m.rng) < 0.4 ? -1 : 0, tick: s.tick }]
     // A press the rally ended on: let go (no swing).
-    if (s.players[side].chargeAt >= 0)
+    if (s.players[side].chargeAt !== -1)
       return [
         { t: 'move', x: 0, z: 0 },
         { t: 'charge', cancel: true },
@@ -298,10 +298,11 @@ function gauge(H: Profile, level: Level, n: number, speeds: Partial<Record<ShotK
  */
 const N = 80
 
-// Tuning gauges, not truths. Measured at N (task-14 fix 1, proxies charging, taps 4–7 ticks long): casual
-// wins Easy 99%, Normal 56%, Hard 6%; skilled wins Hard 65%. The two Hard targets pull apart: point
-// shares sit ~22 points apart (casual ~31–38%, skilled ~55–61%) for every Hard grade mix tried
-// (task-14 report), so the Hard bands (casual ≥ 5%, skilled ≤ 65%) can't both have margin.
+// Tuning gauges, not truths. Measured at N (task-14 fix 2: proxies charging, taps 4–7 ticks long, reach
+// judged from where each side stood): casual wins Easy 99%, Normal 54%, Hard 5%; skilled wins Hard 62.5%.
+// The two Hard targets pull apart: point shares sit ~19–22 points apart (casual ~31–35%, skilled
+// ~53–55%) for every Hard grade mix tried (task-14 report), so the Hard bands (casual ≥ 5%, skilled ≤ 65%)
+// can't both have margin.
 describe('balance vs scripted players (tuning gauges)', () => {
   it('casual: beats Easy, about even with Normal, wins vs Hard now and then; even rallies stay short', () => {
     const r = {

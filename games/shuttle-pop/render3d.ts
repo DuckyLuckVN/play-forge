@@ -59,7 +59,7 @@ import type { GuestPredictor } from './predict'
 import { SpringPunch } from './punch'
 import { SURROUND } from './props'
 import { Park } from './scenery'
-import { shownName, type SpEvent, type SpState } from './sim'
+import { shownName, TAPPED, type SpEvent, type SpState } from './sim'
 import { chargeSound, eventSound, SHUTTLE_SOUNDS, swingSound } from './sounds'
 import { ShuttleTrail, type TrailLook } from './trail'
 import {
@@ -234,6 +234,8 @@ interface PlayerView {
   stage: number
   /** When this player's latest hit event was seen (s; see HIT_GRACE). */
   hitAt: number
+  /** chargeAt in the last state seen (a change to TAPPED = the press swung as a tap). */
+  chargeAt: number
   ring: ChargeRing
 }
 
@@ -257,6 +259,7 @@ function makePlayer(preset: number): PlayerView {
     charge: -1,
     stage: 0,
     hitAt: -Infinity,
+    chargeAt: -1,
     ring: new ChargeRing(),
   }
 }
@@ -541,6 +544,7 @@ export class Court3D {
       p.charge = -1
       p.stage = 0
       p.hitAt = -Infinity
+      p.chargeAt = -1
       p.ring.update(-1, 0, 0, 0)
     }
   }
@@ -639,6 +643,12 @@ export class Court3D {
       }
       // Charging: ours from the local button (same frame), the opponent's from the state.
       const local = i === this.localIdx && !this.spectating
+      // Our press already swung as a tap on the host: no charging left (ring, slow-down) until the next press.
+      if (local && cp.chargeAt === TAPPED && view.chargeAt !== TAPPED) {
+        this.localChargeAt = -1
+        this.predictor?.setCharging(false)
+      }
+      view.chargeAt = cp.chargeAt
       const renderTick = prev.tick + (curr.tick - prev.tick) * a
       const charge = local
         ? this.localChargeAt >= 0

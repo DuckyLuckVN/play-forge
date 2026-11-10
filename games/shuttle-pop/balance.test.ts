@@ -7,6 +7,7 @@ import { random } from '@forge/core/rng'
 import type { InputEvent } from '@forge/net/session'
 import { isIn, predictLanding, stepShuttle, type Flight } from './physics'
 import { readyDepth } from './ai'
+import { ABILITY, abilityShot, actReady, leadOf, pickAbility, reachOf, type Strike } from './ability'
 import { type CourtSize } from './courtsize'
 import { findContact, launchFor, REACH, shotTarget, type ShotKind } from './shots'
 import {
@@ -36,6 +37,11 @@ interface Profile {
   /** Chance to hold-to-charge a swing at a high ball (a lob to smash / clear) and at anything else. */
   chargeHigh: number
   chargeLow: number
+  /**
+   * The jump / lunge button (default never): smart = only for a shot the plain run can't make in time
+   * (lunge) or that passes above the plain reach (jump); spam = whenever the button would jump / lunge.
+   */
+  ability?: 'never' | 'smart' | 'spam'
 }
 
 /**
@@ -67,6 +73,10 @@ const PROFILES = {
     chargeHigh: 0.75,
     chargeLow: 0.3,
   },
+  /** Casual who learned the ability: presses it only when the plain swing can't get there. */
+  casualSmart: { ...casual, ability: 'smart' },
+  /** Casual who presses the ability at every shot it would jump / lunge for, instead of swinging. */
+  casualSpam: { ...casual, ability: 'spam' },
 } satisfies Record<string, Profile>
 
 const SERVE_AT = 40
@@ -85,6 +95,10 @@ interface HumanMem {
   pressed: boolean
   /** A tap in progress: the tick its button comes up (−1 = none). */
   releaseAt: number
+  /** The ability press this shot is waiting for (smart: from the plan; spam: the first chance), or null. */
+  act: Strike | null
+  /** Tick to press it (−1 = not yet scheduled). */
+  actAt: number
   rng: { seed: number }
 }
 
@@ -98,6 +112,8 @@ const newHuman = (seed: number): HumanMem => ({
   hold: 0,
   pressed: false,
   releaseAt: -1,
+  act: null,
+  actAt: -1,
   rng: { seed: seed ^ 0x5bd1e995 },
 })
 
@@ -109,7 +125,7 @@ function gauss(m: HumanMem): number {
 const scratch: Flight = { pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 } }
 
 /** Where to stand: a spot on the flight I can reach in time, as near the comfy height as possible. */
-function meet(s: SpState, side: 0 | 1): { x: number; z: number; high: boolean } {
+function meet(s: SpState, side: 0 | 1): { x: number; z: number; high: boolean; late: boolean; apex: number } {
   const me = s.players[side]
   Object.assign(scratch.pos, s.shuttle.pos)
   Object.assign(scratch.vel, s.shuttle.vel)
@@ -117,7 +133,7 @@ function meet(s: SpState, side: 0 | 1): { x: number; z: number; high: boolean } 
   // Lobs are met high (a smash chance); everything else at chest height.
   let apex = s.shuttle.pos.y
   const speed = MOVE_SPEED / TICK_RATE
-  let best = { x: land.pos.x, z: land.pos.z, high: false }
+  let best = { x: land.pos.x, z: land.pos.z, high: false, late: true, apex: 0 }
   let bestScore = Infinity
   const pts: { x: number; y: number; z: number; t: number }[] = []
   for (let t = 0; t < 400; t++) {
@@ -134,10 +150,10 @@ function meet(s: SpState, side: 0 | 1): { x: number; z: number; high: boolean } 
     const score = late <= 0 ? Math.abs(p.y - prefY) : 100 + late
     if (score < bestScore) {
       bestScore = score
-      best = { x: p.x, z: p.z, high: prefY > 2 }
+      best = { x: p.x, z: p.z, high: prefY > 2, late: late > 0, apex }
     }
   }
-  return best
+  return { ...best, apex }
 }
 
 function moveTo(s: SpState, side: 0 | 1, to: { x: number; z: number }): SpInput {
@@ -198,6 +214,10 @@ function humanStep(s: SpState, side: 0 | 1, m: HumanMem, H: Profile): SpInput[] 
     m.swung = false
     m.pressed = false
     m.releaseAt = -1
+    m.act = null
+    m.actAt = -1
+    // Smart: a dive for what the run can't make; a jump for a shuttle passing above the plain reach.
+    if (H.ability === 'smart') m.act = spot.late ? 'lunge' : spot.apex > REACH.maxY ? 'jump' : null
     // Hold-to-charge: a held press of ~0.2–0.6 s, more often on a high ball.
     m.hold =
       random(m.rng) < (spot.high ? H.chargeHigh : H.chargeLow) ? 12 + Math.floor(random(m.rng) * 24) : 0
@@ -206,6 +226,15 @@ function humanStep(s: SpState, side: 0 | 1, m: HumanMem, H: Profile): SpInput[] 
   const out: SpInput[] = [moveTo(s, side, m.target)]
   if (m.swung) return out
   const me = s.players[side]
+  if (H.ability === 'smart' || H.ability === 'spam') {
+    const pressed = abilityStep(s, side, m, H)
+    if (pressed) {
+      out.push(pressed)
+      return out
+    }
+    // Waiting for the planned press: no plain swing meanwhile.
+    if (m.actAt >= 0) return out
+  }
   // The sim judges this tick's swing at s.tick + 1; track the contact until it passes.
   if (m.contactAt < 0 || m.contactAt > s.tick + 1) {
     const c = findContact(s.shuttle, me, 0, 120)
@@ -228,6 +257,43 @@ function humanStep(s: SpState, side: 0 | 1, m: HumanMem, H: Profile): SpInput[] 
     out.push({ t: 'swing', x: random(m.rng) * 2 - 1, z, tick: s.tick + 1 })
   }
   return out
+}
+
+/**
+ * The ability press, if due this tick, timed at the strike's contact − its lead with the profile's timing
+ * error. Scheduled when the button (ability.ts pickAbility, off cooldown) offers a jump / lunge from where
+ * I stand. Smart: only its planned move, and it looks again at the press (the button would hop now, or is
+ * cooling → plain swing). Spam: the first jump / lunge offered, pressed on schedule instead of swinging
+ * (a hop if the run got there meanwhile).
+ */
+function abilityStep(s: SpState, side: 0 | 1, m: HumanMem, H: Profile): SpInput | null {
+  const me = s.players[side]
+  if (m.actAt < 0) {
+    if (H.ability === 'smart' && !m.act) return null
+    if (me.chargeAt !== -1 || !actReady(me.act, s.tick + 1)) return null
+    const pick = pickAbility(s.shuttle, me, side, s.shuttle.lastHitter, !s.shuttle.pending).k
+    if (pick === 'hop' || (H.ability === 'smart' && pick !== m.act)) return null
+    const c = findContact(s.shuttle, me, 0, ABILITY.horizon, reachOf(pick))
+    if (!c) return null
+    m.act = pick
+    m.actAt = s.tick + 1 + c.dt - leadOf(pick) - m.err
+    m.hold = 0
+  }
+  if (s.tick + 1 < m.actAt) return null
+  // Smart looks again before pressing: already in plain reach (the button would hop) or cooling = swing.
+  if (
+    H.ability === 'smart' &&
+    (!actReady(me.act, s.tick + 1) ||
+      pickAbility(s.shuttle, me, side, s.shuttle.lastHitter, !s.shuttle.pending).k !== m.act ||
+      (m.act === 'lunge' && !meet(s, side).late))
+  ) {
+    m.act = null
+    m.actAt = -1
+    return null
+  }
+  m.swung = true
+  m.actAt = -1
+  return { t: 'ability', x: random(m.rng) * 2 - 1, z: 0, tick: s.tick + 1 }
 }
 
 interface BalanceStats {
@@ -489,4 +555,74 @@ describe('court size sanity gauges', () => {
       expect(hard.win).toBeLessThanOrEqual(0.5)
       for (const r of [easy, hard]) expect(r.minutes).toBeLessThanOrEqual(6)
     }, 60_000)
+})
+
+/** Jump-smash contacts: SMASH_GRID's spots and aims, met above the plain reach. */
+const JUMP_GRID = SMASH_GRID.filter(({ from }) => from.y === 2.2).flatMap(({ from, heldX }) =>
+  [3.0, 3.4].map((y) => ({ from: { ...from, y }, heldX })),
+)
+
+/** Lunge saves (side 0): low contacts all over the back court, every aim. */
+const LUNGE_GRID = [-1.5, 0, 1.5].flatMap((x) =>
+  [-1, -2, -3, -4, -5].flatMap((z) =>
+    [0.3, 0.55, 0.8].flatMap((y) => [-1, 0, 1].map((heldX) => ({ from: { x, y, z }, heldX }))),
+  ),
+)
+
+describe('jump / lunge balance', () => {
+  it('the ability helps when used well, and is not always-best', () => {
+    const plain = rowOf('casual', 'normal')
+    const smart = gauge(PROFILES.casualSmart, 'normal', N)
+    const spam = gauge(PROFILES.casualSpam, 'normal', N)
+    if (process.env.BALANCE_LOG) console.warn(JSON.stringify({ plain, smart, spam }))
+    expect(smart.win).toBeGreaterThanOrEqual(plain.win) // worth learning
+    expect(smart.win).toBeLessThanOrEqual(plain.win + 0.15) // not a cheat code
+    expect(spam.win).toBeLessThan(smart.win) // pressing it always is worse
+    expect(spam.share).toBeLessThanOrEqual(plain.share + 0.02) // spam ≈ no better than never
+  }, 90_000)
+
+  it('a Perfect jump-smash is returnable by a well-placed defender', () => {
+    const jump = JUMP_GRID.map(({ from, heldX }) => {
+      const shot = abilityShot('jump', { x: heldX, z: 0 }, 'perfect')
+      return {
+        heldX,
+        f: {
+          pos: { ...from },
+          vel: launchFor(shot.kind, shot.grade, from, shotTarget(shot.kind, 0, heldX), () => 0, shot.charge),
+        } as Flight,
+      }
+    })
+    const share = (fs: Flight[]) => fs.filter(reachable).length / fs.length
+    const all = jump.map((j) => j.f)
+    if (process.env.BALANCE_LOG)
+      console.warn(JSON.stringify({ jumpReturnable: share(all), tap: share(smashFlights(0)) }))
+    expect(abilityShot('jump', { x: 0, z: 0 }, 'perfect')).toEqual({
+      kind: 'smash',
+      grade: 'perfect',
+      charge: ABILITY.jump.charge,
+    })
+    expect(share(jump.filter((j) => j.heldX === 0).map((j) => j.f))).toBe(1)
+    expect(share(all)).toBeGreaterThanOrEqual(0.6 * share(smashFlights(0)))
+  })
+
+  it('a lunge lift gives the opponent a smash chance', () => {
+    let smashable = 0
+    for (const { from, heldX } of LUNGE_GRID) {
+      const shot = abilityShot('lunge', { x: heldX, z: 0 }, 'perfect')
+      const g: Flight = {
+        pos: { ...from },
+        vel: launchFor(shot.kind, shot.grade, from, shotTarget(shot.kind, 0, heldX), () => 0.5, shot.charge),
+      }
+      for (let t = 0; t < 600; t++) {
+        if (stepShuttle(g).netHit || g.pos.y <= 0) break
+        if (g.pos.z > 0 && g.pos.y >= REACH.smashY && g.pos.y <= REACH.maxY) {
+          smashable++
+          break
+        }
+      }
+    }
+    if (process.env.BALANCE_LOG)
+      console.warn(JSON.stringify({ lungeSmashable: smashable / LUNGE_GRID.length }))
+    expect(smashable / LUNGE_GRID.length).toBeGreaterThanOrEqual(0.7)
+  })
 })

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { random } from '@forge/core/rng'
 import { botStep, LEVELS, NEAR_LINE, newBotMemory, readyDepth, type BotLevel } from './ai'
 import type { InputEvent } from '@forge/net/session'
 import { COURT } from './physics'
 import { COURT_SIZES, courtDims } from './courtsize'
 import { toWorld } from './court'
 import {
+  canAct,
   setupBots,
   shuttlePopGame as game,
   TICK_RATE,
@@ -308,9 +310,16 @@ describe('bot hold-to-charge', () => {
     const inputs: SpInput[] = []
     const seen: SpEvent[] = []
     let lastId = s.nextEventId - 1
-    // rng 0.01: perfect, smash try, charge yes (shortest hold, CHARGE.full − 6 ticks)
+    // rng 0.01: perfect, smash try, charge yes (shortest hold, CHARGE.full − 6 ticks); no ability roll.
     while (s.phase === 'rally' && s.shuttle.lastHitter !== 1) {
-      const out = botStep(s, 1, 'hard', mem, () => 0.01)
+      const out = botStep(
+        s,
+        1,
+        'hard',
+        mem,
+        () => 0.01,
+        () => 0.99,
+      )
       inputs.push(...out.filter((i) => i.t !== 'move'))
       game.tick(
         s,
@@ -339,5 +348,131 @@ describe('bot hold-to-charge', () => {
       )
     }
     expect(kinds).not.toContain('charge')
+  })
+})
+
+interface AbilityStats {
+  /** Jump / lunge presses that took effect (act events other than a hop). */
+  strikes: number
+  /** Shots (serves + hits): each is an incoming shot for the other seat. */
+  shots: number
+  /** Ability inputs a bot sent while sim.ts canAct said no. */
+  blocked: number
+}
+
+/**
+ * Bot v bot at `level` to the end, with the test driving botStep for both seats (the sim's bot loop is
+ * switched off by clearing `level`; same per-seat rng streams as sim.ts botInputs).
+ */
+function playAbility(level: BotLevel, seed: number): AbilityStats {
+  const s = setupBots(level, level, seed)
+  for (const p of s.players) p.level = undefined
+  const st: AbilityStats = { strikes: 0, shots: 0, blocked: 0 }
+  let lastId = s.nextEventId - 1
+  while (s.phase !== 'over' && s.tick < MATCH_CAP) {
+    const inputs: InputEvent<SpInput>[] = []
+    for (const p of s.players) {
+      const mem = p.bot!
+      const rng = () => {
+        const r = { seed: mem.rng }
+        const v = random(r)
+        mem.rng = r.seed
+        return v
+      }
+      for (const input of botStep(s, p.side, level, mem, rng)) {
+        if (input.t === 'ability' && !canAct(s, p)) st.blocked++
+        inputs.push({ player: p.id, input })
+      }
+    }
+    game.tick(s, inputs)
+    for (const e of s.events) {
+      if (e.id <= lastId) continue
+      if (e.k === 'act' && e.act !== 'hop') st.strikes++
+      else if (e.k === 'hit' || e.k === 'serve') st.shots++
+    }
+    lastId = s.nextEventId - 1
+  }
+  return st
+}
+
+/** 40 matches per level, run once and shared by the ability tests. */
+const abilityRuns = new Map<BotLevel, AbilityStats>()
+function abilityOf(level: BotLevel): AbilityStats {
+  let r = abilityRuns.get(level)
+  if (!r) {
+    r = { strikes: 0, shots: 0, blocked: 0 }
+    for (const seed of seeds(40, 500)) {
+      const m = playAbility(level, seed)
+      r.strikes += m.strikes
+      r.shots += m.shots
+      r.blocked += m.blocked
+    }
+    abilityRuns.set(level, r)
+  }
+  return r
+}
+
+describe('bot jump / lunge', () => {
+  it('ability chance rises with the level', () => {
+    expect(LEVELS.easy.ability).toBeLessThan(LEVELS.normal.ability)
+    expect(LEVELS.normal.ability).toBeLessThan(LEVELS.hard.ability)
+  })
+
+  it('uses the ability more on harder levels', () => {
+    const rate = (l: BotLevel) => abilityOf(l).strikes / abilityOf(l).shots
+    const r = { easy: rate('easy'), normal: rate('normal'), hard: rate('hard') }
+    if (process.env.BALANCE_LOG) console.warn(JSON.stringify({ abilityPerShot: r }))
+    expect(r.easy).toBeLessThan(r.normal)
+    expect(r.normal).toBeLessThan(r.hard)
+    expect(r.easy).toBeLessThanOrEqual(0.05)
+    expect(r.hard).toBeGreaterThanOrEqual(0.08)
+    expect(r.hard).toBeLessThanOrEqual(0.35)
+  }, 180_000)
+
+  it('the computer never presses while locked or cooling', () => {
+    for (const l of ['easy', 'normal', 'hard'] as const) expect(abilityOf(l).blocked, l).toBe(0)
+  }, 180_000)
+
+  it('a planned jump presses the ability (not a swing) and strikes', () => {
+    // A high lob dropping deep on side 1: the bot (rng 0 → smash try + ability roll) jumps for it.
+    const s = incoming(0, -1, 2.5, { x: 0, y: 9, z: 5 })
+    const mem = newBotMemory(1, 1)
+    const seen: string[] = []
+    let lastId = s.nextEventId - 1
+    while (s.phase === 'rally' && s.shuttle.lastHitter !== 1 && s.tick < 2000) {
+      const out = botStep(
+        s,
+        1,
+        'hard',
+        mem,
+        () => 0,
+        () => 0,
+      )
+      for (const i of out) if (i.t !== 'move') seen.push(i.t)
+      game.tick(
+        s,
+        out.map((input) => ({ player: s.players[1].id, input })),
+      )
+      for (const e of s.events) if (e.id > lastId && e.k === 'act') seen.push(`act:${e.act}`)
+      lastId = s.nextEventId - 1
+    }
+    expect(mem.plannedAct).toBe('jump')
+    expect(seen).toContain('ability')
+    expect(seen).not.toContain('swing')
+    expect(seen).toContain('act:jump')
+  })
+
+  it('a failed ability roll plans a plain swing', () => {
+    const s = incoming(0, -1, 2.5, { x: 0, y: 9, z: 5 })
+    const mem = newBotMemory(1, 1)
+    botStep(
+      s,
+      1,
+      'hard',
+      mem,
+      () => 0,
+      () => 0.99,
+    )
+    expect(mem.plannedAct).toBeNull()
   })
 })

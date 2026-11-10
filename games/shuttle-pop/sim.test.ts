@@ -707,7 +707,8 @@ describe('lag-compensated hits (launch from the rewound contact)', () => {
 
   it('AI and on-time swings are unchanged', () => {
     // Recorded before hits launched from the rewound contact (AI swings have rewind 0: a no-op for them);
-    // re-recorded when the power swing changed charged launches (the bots charge) and for the full-charge recovery (seed 11).
+    // re-recorded when the power swing changed charged launches (the bots charge) and for the full-charge recovery (seed 11);
+    // re-recorded when the bots started to jump / lunge (ai.ts LEVELS.ability).
     const fingerprint: number[][] = []
     const finals: SpState[] = []
     for (let seed = 1; seed <= 20; seed++) {
@@ -719,22 +720,22 @@ describe('lag-compensated hits (launch from the rewound contact)', () => {
     }
     expect(fingerprint).toEqual([
       [1, 1, 1, 4, 2, 1, 1703683420],
-      [0, 1, 6, 3, 2, 2, 440012081],
+      [1, 0, 1, 8, 2, 1, 440012081],
       [1, 0, 4, 4, 0, 1, 1071847752],
       [1, 0, 6, 2, 1, 1, 1071847753],
       [0, 0, 8, 0, 3, 3, 1071847754],
-      [0, 0, 10, 0, 3, 2, -191823585],
-      [1, 0, 4, 3, 1, 1, 1703683426],
+      [0, 1, 0, 9, 3, 2, 440012085],
+      [1, 0, 5, 3, 2, 1, 1071847756],
       [1, 1, 0, 5, 1, 2, 1703683427],
       [0, 0, 12, 0, 3, 4, -1455494922],
       [0, 0, 9, 0, 2, 3, 440012089],
-      [0, 0, 9, 0, 4, 1, 440012090],
-      [1, 0, 1, 7, 2, 1, 1071847761],
-      [1, 0, 3, 4, 2, 1, 1703683432],
+      [0, 1, 5, 3, 3, 1, 1071847760],
+      [1, 1, 2, 3, 1, 1, 1703683431],
+      [1, 0, 4, 4, 2, 1, 1071847762],
       [1, 1, 3, 2, 1, 2, -1959448193],
-      [0, 0, 8, 0, 2, 2, 1071847764],
+      [0, 0, 8, 0, 2, 3, 1071847764],
       [0, 0, 8, 0, 2, 2, 1071847765],
-      [1, 1, 0, 4, 3, 2, 1703683436],
+      [0, 0, 10, 0, 3, 3, -191823574],
       [0, 0, 10, 0, 3, 4, -191823573],
       [0, 0, 7, 0, 1, 3, 1703683438],
       [0, 0, 11, 0, 3, 4, -823659241],
@@ -750,8 +751,8 @@ describe('lag-compensated hits (launch from the rewound contact)', () => {
       lastHitter: 1,
     })
     expect(shuttle(finals[1])).toEqual({
-      pos: { x: 0.1563333411183592, y: 1.564770261847787, z: -0.21171669018006292 },
-      vel: { x: -2.3021549874187275, y: 3.005311528440692, z: 11.021572563582597 },
+      pos: { x: -0.8834445067109626, y: 1.213825241338133, z: 1.2779053234318756 },
+      vel: { x: -1.8834032822313338, y: -2.4038277895700775, z: 4.3267274526608315 },
       lastHitter: 0,
     })
     expect(shuttle(finals[2])).toEqual({

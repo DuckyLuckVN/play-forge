@@ -104,11 +104,11 @@ describe('ability', () => {
   })
 
   it('shot override: jump smashes stronger, lunge only lifts', () => {
-    expect(abilityShot('jump', { x: 0, z: 0 }, 'good')).toEqual({ kind: 'smash', grade: 'good', charge: 0.6 })
+    expect(abilityShot('jump', { x: 0, z: 0 }, 'good')).toEqual({ kind: 'smash', grade: 'good', charge: 0.8 })
     expect(abilityShot('jump', { x: 1, z: 1 }, 'perfect')).toEqual({
       kind: 'smash',
       grade: 'perfect',
-      charge: 0.6,
+      charge: 0.8,
     })
     expect(abilityShot('jump', { x: 0, z: -1 }, 'perfect')).toEqual({
       kind: 'clear',

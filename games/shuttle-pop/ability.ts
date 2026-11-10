@@ -19,7 +19,8 @@ export interface Act {
  * Starting values (tune via balance tests). jump: +0.8 m reach height (floor 2.2 = "the shuttle is high"),
  * a stronger smash, half speed in the air then a 0.4 s landing lock. lunge: +1.2 m reach out, a weak
  * lift, 0.2 s dive then 0.7 s on the floor. Shared 3 s cooldown; a hop (no target) 1 s. `lead` = ticks
- * the strike may land before the press (the move's wind-up).
+ * the strike may land before the press (the move's wind-up). jump.charge 0.6 → 0.8 in the balance pass
+ * (balance.test.ts 'jump / lunge balance': a smart jumper must gain on a never-jumper).
  */
 export const ABILITY = {
   horizon: 36,
@@ -30,7 +31,7 @@ export const ABILITY = {
     cooldown: 180,
     airMul: 0.5,
     height: 0.75,
-    charge: 0.6,
+    charge: 0.8,
     reach: { radius: 1.1, minY: 2.2, maxY: 3.7 } as Readonly<Reach>,
   },
   lunge: {

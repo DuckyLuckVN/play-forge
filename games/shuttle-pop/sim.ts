@@ -161,6 +161,15 @@ export type SpEvent = { id: number; tick: number } &
     | { k: 'serve'; side: 0 | 1; shot?: ShotKind; by?: string }
   )
 // `by` on hit / whiff / serve / act / actLand: the player's id (always set by the sim; optional for old fixtures).
+
+/**
+ * Whether an event with an actor (hit / whiff / serve / act / actLand) is the local player's: by player id
+ * when both the id and the event's `by` are known (a teammate shares the side), else by side (old events,
+ * spectators).
+ */
+export function isOwnEvent(e: { side: 0 | 1; by?: string }, side: 0 | 1, id?: string): boolean {
+  return id !== undefined && e.by !== undefined ? e.by === id : e.side === side
+}
 type EventBody = SpEvent extends infer E ? (E extends SpEvent ? Omit<E, 'id' | 'tick'> : never) : never
 
 export interface SpState {

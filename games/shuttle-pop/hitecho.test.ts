@@ -64,6 +64,13 @@ describe('HitEcho (a predicted own hit is heard once)', () => {
     expect(e.heard(hit(1, 102))).toBe(true)
   })
 
+  it("a teammate's hit is not the echo of my prediction (by player id)", () => {
+    const e = new HitEcho()
+    e.note({ ...pred, id: 'me' })
+    expect(e.heard({ ...hit(1, 100), by: 'mate' } as SpEvent)).toBe(false)
+    expect(e.heard({ ...hit(1, 101), by: 'me' } as SpEvent)).toBe(true)
+  })
+
   it('reset forgets', () => {
     const e = new HitEcho()
     e.note(pred)

@@ -11,12 +11,14 @@ export class HitEcho {
   private active = false
   private side: 0 | 1 = 0
   private from = 0
+  private id: string | undefined = undefined
 
   /** A prediction whose sound just played: its host `hit` is the echo. */
   note(h: PredictedHit): void {
     this.active = true
     this.side = h.side
     this.from = h.from
+    this.id = h.id
   }
 
   /**
@@ -30,11 +32,11 @@ export class HitEcho {
       this.active = false
       return false
     }
-    if (answersPrediction(e, 'hit', this.side, this.from)) {
+    if (answersPrediction(e, 'hit', this.side, this.from, this.id)) {
       this.active = false
       return true
     }
-    if (answersPrediction(e, 'whiff', this.side, this.from)) this.active = false
+    if (answersPrediction(e, 'whiff', this.side, this.from, this.id)) this.active = false
     return false
   }
 

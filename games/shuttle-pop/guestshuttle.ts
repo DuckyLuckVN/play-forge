@@ -26,7 +26,7 @@ import {
   type Grade,
   type ShotKind,
 } from './shots'
-import { clampDir, launchTick, MAX_REWIND, tapContact, type SpEvent, type SpState } from './sim'
+import { clampDir, isOwnEvent, launchTick, MAX_REWIND, tapContact, type SpEvent, type SpState } from './sim'
 import { interpShuttle } from './world'
 
 /** One host snapshot's shuttle; `court` = the host's court (omitted = Normal). */
@@ -81,14 +81,27 @@ export type PredictedHit = {
   power: number
   /** History tick the shot launches from (the sim's fromTick). */
   from: number
+  /** The swinger's player id, as given in the OwnSwing (omitted: matched by side). */
+  id?: string
 }
+
+/** Host event tick `tick` concerns the swing launched from `from`: its rewind window on (events linger EVENT_TICKS). */
+const inSwingWindow = (tick: number, from: number) => tick >= from - MAX_REWIND
 
 /**
  * The one rule for "this host event answers the prediction launched from `from`": an own `k` event
- * from the swing's rewind window on (events linger EVENT_TICKS, so older own events do not count).
+ * (by player `id` when known: a teammate's hit is not mine, else by side) from the swing's rewind window on.
  */
-export function answersPrediction(e: SpEvent, k: 'hit' | 'whiff', side: 0 | 1, from: number): boolean {
-  return e.k === k && e.side === side && e.tick >= from - MAX_REWIND
+export function answersPrediction(
+  e: SpEvent,
+  k: 'hit' | 'whiff',
+  side: 0 | 1,
+  from: number,
+  id?: string,
+): boolean {
+  return (
+    (e.k === 'hit' || e.k === 'whiff') && e.k === k && isOwnEvent(e, side, id) && inSwingWindow(e.tick, from)
+  )
 }
 
 /** A predicted own hit: a local flight sample that wins `at(k)` for k in [from − 1, until). */
@@ -99,8 +112,6 @@ interface Prediction extends PredictedHit {
   until: number
   /** Offset making the bridge meet the host flight at `until` (0 before confirmation). */
   shift: Vec3
-  /** The swinger's player id, as given in the OwnSwing. */
-  id?: string
 }
 
 /** Below this (m) a prediction-born offset counts as gone (normal reconcile rules again). */
@@ -333,7 +344,7 @@ export class GuestShuttle {
   private resolve(s: ShuttleSample): void {
     const p = this.pred
     if (!p || p.until !== Infinity) return
-    const mine = (k: 'hit' | 'whiff') => s.events.find((e) => answersPrediction(e, k, p.side, p.from))
+    const mine = (k: 'hit' | 'whiff') => s.events.find((e) => answersPrediction(e, k, p.side, p.from, p.id))
     const hit = mine('hit')
     if (hit) {
       // The host flight is known from its hit tick on; before it, the prediction shifted to meet it there.
@@ -357,13 +368,15 @@ export class GuestShuttle {
   }
 
   /**
-   * The own swinger was bonked at / after the swing and the host has no hit pending for it: the host drops
-   * the swing, so the prediction goes too (a pending contact still resolves: the host `hit` confirms it).
+   * The own swinger was bonked within the swing's rewind window (answersPrediction's) and the host has no
+   * hit pending for it: the host drops a bonked player's swing, so the prediction goes too (its own pending
+   * contact still resolves: the host `hit` confirms it; a teammate's pending one does not count).
    */
   private bonked(s: ShuttleSample, p: Prediction): boolean {
-    if (s.shuttle.pending?.side === p.side) return false
+    const pend = s.shuttle.pending
+    if (pend && (p.id ? pend.id === p.id : pend.side === p.side)) return false
     return s.events.some(
-      (e) => e.k === 'bonk' && e.tick >= p.from && (p.id ? e.who === p.id : e.side === p.side),
+      (e) => e.k === 'bonk' && inSwingWindow(e.tick, p.from) && (p.id ? e.who === p.id : e.side === p.side),
     )
   }
 

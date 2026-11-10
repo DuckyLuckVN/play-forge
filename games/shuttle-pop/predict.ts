@@ -196,7 +196,7 @@ export class GuestPredictor {
       this.sample.x = auth.x
       this.sample.z = auth.z
       this.adoptHostAct(auth.act, tick)
-      this.adoptHostStun(auth.stunAt ?? -1, tick)
+      this.adoptHostStun(auth.stunAt, tick)
     }
 
     // 3. Correct: the past prediction toward the host's state of that moment, shifting the present.
@@ -226,9 +226,17 @@ export class GuestPredictor {
     this.localAct = { k: host.k, at: mine.at, dx: host.dx, dz: host.dz }
   }
 
-  /** A new host stun: lock the local twin from the same step and drop the charge (the host did, no recovery). */
-  private adoptHostStun(stunAt: number, tick: number): void {
-    if (stunAt < 0 || stunAt === this.seenStun) return
+  /**
+   * A new host stun: lock the local twin from the same step and drop the charge (the host did, no recovery).
+   * The host's −1 (cleared at the serve set-up) clears the local lock too; none reported keeps it.
+   */
+  private adoptHostStun(stunAt: number | undefined, tick: number): void {
+    if (stunAt === undefined) return
+    if (stunAt < 0) {
+      this.stunFrom = this.seenStun = -1
+      return
+    }
+    if (stunAt === this.seenStun) return
     this.seenStun = stunAt
     this.stunFrom = (this.lag >= 0 ? this.steps - this.lag : this.steps) + (stunAt - tick)
     this.setCharging(false)

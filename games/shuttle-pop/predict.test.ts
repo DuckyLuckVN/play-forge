@@ -472,6 +472,19 @@ describe('guest prediction of the stun lock', () => {
     expect(Math.abs(pred.vx)).toBeCloseTo(MOVE_SPEED, 3)
   })
 
+  it('a host stunAt −1 (serve reset) clears the stun; a later bonk locks again', () => {
+    const pred = new GuestPredictor()
+    pred.update(DT, auth(0, 3), 1, true)
+    pred.update(DT, { ...auth(0, 3), stunAt: 1 }, 2, false)
+    pred.update(DT, { ...auth(0, 3), stunAt: 1 }, 3, false)
+    expect(pred.stunned).toBe(true)
+    pred.update(DT, { ...auth(0, 3), stunAt: -1 }, 4, false)
+    expect(pred.stunned).toBe(false)
+    pred.update(DT, { ...auth(0, 3), stunAt: 5 }, 5, false)
+    pred.update(DT, { ...auth(0, 3), stunAt: 5 }, 6, false)
+    expect(pred.stunned).toBe(true)
+  })
+
   it('snap clears the stun', () => {
     const pred = new GuestPredictor()
     pred.update(DT, auth(0, 3), 1, true)

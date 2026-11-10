@@ -663,6 +663,27 @@ describe('GuestShuttle own-hit prediction', () => {
     expect(answersPrediction({ id: 2, tick: 100, k: 'whiff', side: 1 }, 'whiff', 1, 100)).toBe(true)
   })
 
+  it("a teammate's hit does not answer my prediction", () => {
+    const by = (who?: string): SpEvent => ({
+      id: 1,
+      tick: 100,
+      k: 'hit',
+      side: 1,
+      grade: 'good',
+      shot: 'clear',
+      by: who,
+    })
+    expect(answersPrediction(by('mate'), 'hit', 1, 100, 'me')).toBe(false)
+    expect(answersPrediction(by('me'), 'hit', 1, 100, 'me')).toBe(true)
+    // No `by` (old fixture) or no own id: today's side rule.
+    expect(answersPrediction(by(), 'hit', 1, 100, 'me')).toBe(true)
+    expect(answersPrediction(by('mate'), 'hit', 1, 100)).toBe(true)
+    expect(answersPrediction(by('me'), 'hit', 0, 100, 'me')).toBe(true)
+    const whiff: SpEvent = { id: 2, tick: 100, k: 'whiff', side: 1, by: 'mate' }
+    expect(answersPrediction(whiff, 'whiff', 1, 100, 'me')).toBe(false)
+    expect(answersPrediction({ ...whiff, by: 'me' }, 'whiff', 1, 100, 'me')).toBe(true)
+  })
+
   it('no prediction when the opponent hit last or a hit is pending', () => {
     const states = host(incoming(), 30)
     const sw: OwnSwing = { side: 1, held: { x: 0, z: 0 }, charge: 0, player: { x: 0, z: 0 }, tap: false }
@@ -737,18 +758,42 @@ describe('GuestShuttle own prediction vs a bonk', () => {
     expect(gs.predicted()).toBeNull()
   })
 
+  it('an own bonk inside the swing rewind window (from − MAX_REWIND on) drops it: the host drops the swing', () => {
+    const { gs, from, next } = predicted()
+    next((s) => s.events.push(bonk(from - MAX_REWIND, ME)))
+    expect(gs.predicted()).toBeNull()
+  })
+
+  it("a teammate's pending hit does not keep a bonked player's prediction", () => {
+    const { gs, from, next } = predicted()
+    next((s) => {
+      s.shuttle.pending = {
+        atTick: s.tick + 3,
+        id: 'mate',
+        side: 1,
+        kind: 'clear',
+        grade: 'good',
+        aimX: 0,
+        charge: 0,
+        fromTick: s.tick + 3,
+      }
+      s.events.push(bonk(from + 1, ME))
+    })
+    expect(gs.predicted()).toBeNull()
+  })
+
   it('a teammate bonk, an older bonk, or a confirmed pending keeps it', () => {
     const a = predicted()
     a.next((s) => s.events.push(bonk(a.from + 1, 'mate')))
     expect(a.gs.predicted()).not.toBeNull()
     const b = predicted()
-    b.next((s) => s.events.push(bonk(b.from - 1, ME)))
+    b.next((s) => s.events.push(bonk(b.from - MAX_REWIND - 1, ME)))
     expect(b.gs.predicted()).not.toBeNull()
     const c = predicted()
     const pending = (s: SpState) => {
       s.shuttle.pending = {
         atTick: s.tick + 3,
-        id: 'p1',
+        id: ME,
         side: 1,
         kind: 'clear',
         grade: 'good',

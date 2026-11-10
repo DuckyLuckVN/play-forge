@@ -77,6 +77,25 @@ describe('eventSound', () => {
     expect(eventSound(e, 0, null, 'c')).toEqual({ sound: SHUTTLE_SOUNDS.bonk, vol: theirs })
     expect(eventSound(e, 0)).toEqual({ sound: SHUTTLE_SOUNDS.bonk, vol: theirs })
   })
+
+  it("a teammate's hit sounds like theirs; a point for my team sounds like a win", () => {
+    const mine = (e: SpEvent) => eventSound(e, 1, null, 'me')!
+    const hit: SpEvent = { ...at, k: 'hit', side: 1, grade: 'good', shot: 'drive' }
+    // Same side, a teammate's id: quieter, like the opponent's; mine (or id-less, old events) full.
+    expect(mine({ ...hit, by: 'mate' })).toEqual(eventSound(hit, 0))
+    expect(mine({ ...hit, by: 'me' })).toEqual(eventSound(hit, 1))
+    expect(mine(hit)).toEqual(eventSound(hit, 1))
+    for (const k of ['serve', 'act', 'actLand'] as const) {
+      const e = { ...at, k, side: 1, act: 'jump' } as SpEvent
+      expect(mine({ ...e, by: 'mate' } as SpEvent), k).toEqual(eventSound(e, 0))
+      expect(mine({ ...e, by: 'me' } as SpEvent), k).toEqual(eventSound(e, 1))
+    }
+    // A point is the team's: a win for every player of that side.
+    expect(mine({ ...at, k: 'point', side: 1 })?.sound).toBe(SHUTTLE_SOUNDS.pointWin)
+    expect(mine({ ...at, k: 'point', side: 0 })?.sound).toBe(SHUTTLE_SOUNDS.pointLose)
+    // Spectator (no id): side rule, as before.
+    expect(eventSound({ ...hit, by: 'mate' }, 1)).toEqual(eventSound(hit, 1))
+  })
 })
 
 describe('power sounds (hold-to-charge)', () => {

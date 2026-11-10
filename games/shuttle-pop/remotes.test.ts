@@ -61,6 +61,17 @@ describe('RemoteTracks', () => {
     expect(tracks.sample('unknown', out)).toBe(false)
   })
 
+  it("a leaver's seat renamed mid-match (computer takes it): old id dropped, new id tracked", () => {
+    const { clock, tracks } = setup()
+    tracks.push(1, [P('a', 0), P('c', 2)])
+    tracks.push(2, [P('a', 0), P('ai1', 2.01)])
+    showAt(clock, 2, 2)
+    expect(tracks.sample('c', out)).toBe(false)
+    expect(tracks.sample('ai1', out)).toBe(true)
+    expect(out.x).toBeCloseTo(2.01)
+    expect(tracks.sample('a', out)).toBe(true)
+  })
+
   it('extrapolation capped', () => {
     const { clock, tracks } = setup()
     tracks.push(10, [P('a', 0, 0, 3)])

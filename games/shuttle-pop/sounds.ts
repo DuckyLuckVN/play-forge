@@ -4,7 +4,7 @@ import { levelStep, soundSteps, type ToneRecipe } from '@forge/audio/recipe'
 import { CHARGE } from './charge'
 import { isPowerHit } from './power'
 import type { Grade, ShotKind } from './shots'
-import type { SpEvent } from './sim'
+import { isOwnEvent, type SpEvent } from './sim'
 import type { AbilityKind } from './ability'
 
 const SMASH: Tone[] = [
@@ -251,8 +251,9 @@ export function chargeSound(stage: number): Sound | null {
 
 /**
  * The sound for one new sim event, from `localSide`'s point of view (spectators: side 0), with its
- * volume. Null = silent (a whiff: the swing already whooshed). `localId` = the local player's id (a
- * bonk is full volume when they bonked or were bonked; none = spectator, quieter).
+ * volume. Null = silent (a whiff: the swing already whooshed). `localId` = the local player's id: a
+ * hit / serve / ability is "ours" by id (a teammate's sounds like theirs; sim isOwnEvent), a point by
+ * side (the team's); a bonk is full volume when they bonked or were bonked. None = spectator: by side.
  */
 export function eventSound(
   e: SpEvent,
@@ -262,9 +263,9 @@ export function eventSound(
 ): { sound: Sound; vol: number } | null {
   switch (e.k) {
     case 'hit':
-      return hitSound(e.shot, e.grade, e.power, e.side === localSide)
+      return hitSound(e.shot, e.grade, e.power, isOwnEvent(e, localSide, localId))
     case 'serve':
-      return { sound: SHUTTLE_SOUNDS.serve, vol: e.side === localSide ? 1 : THEIRS }
+      return { sound: SHUTTLE_SOUNDS.serve, vol: isOwnEvent(e, localSide, localId) ? 1 : THEIRS }
     case 'net':
       return { sound: SHUTTLE_SOUNDS.net, vol: 1 }
     case 'land':
@@ -276,7 +277,7 @@ export function eventSound(
       return { sound: e.side === localSide ? SHUTTLE_SOUNDS.pointWin : SHUTTLE_SOUNDS.pointLose, vol: 1 }
     case 'act':
     case 'actLand':
-      return abilitySound(e.k, e.act, e.side === localSide)
+      return abilitySound(e.k, e.act, isOwnEvent(e, localSide, localId))
     case 'bonk':
       return actionSound('bonk', localId !== undefined && (e.who === localId || e.by === localId))
     case 'whiff':

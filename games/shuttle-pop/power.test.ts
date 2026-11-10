@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hitPower, isPowerHit } from './power'
+import { hitPower, isPowerHit, perfectWindowOf, pressureOf } from './power'
 
 describe('hit power', () => {
   it('is the charge effect achieved times the grade share', () => {
@@ -16,5 +16,14 @@ describe('hit power', () => {
     expect(isPowerHit(undefined)).toBe(false)
     expect(isPowerHit(0.89)).toBe(false)
     expect(isPowerHit(0.9)).toBe(true)
+  })
+  it('pressureOf: only a power smash pressures the receiver', () => {
+    expect(pressureOf('smash', 1)).toBe(true)
+    expect(pressureOf('smash', 0.7)).toBe(false)
+    expect(pressureOf('drive', 1)).toBe(false)
+  })
+  it('perfectWindowOf: 4 pressured, the normal window otherwise', () => {
+    expect(perfectWindowOf(true)).toBe(4)
+    expect(perfectWindowOf(false)).toBe(6)
   })
 })

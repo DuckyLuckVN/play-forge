@@ -471,8 +471,9 @@ describe('swing timing', () => {
     return s
   }
   /** Swing `after` ticks after the closest approach; returns the swing tick's events. */
-  function swingAfter(after: number) {
+  function swingAfter(after: number, pressured = false) {
     const s = passing()
+    s.shuttle.pressured = pressured
     run(s, after) // first tick records the closest approach
     game.tick(s, [swing('p1')])
     return s.events.filter((e) => e.tick === s.tick)
@@ -486,6 +487,23 @@ describe('swing timing', () => {
   it('a few ticks late is graded by |dt| (perfect band), hit at once', () => {
     expect(swingAfter(3).find((e) => e.k === 'hit')).toMatchObject({ side: 1, grade: 'perfect' })
     expect(swingAfter(6).find((e) => e.k === 'hit')).toMatchObject({ side: 1, grade: 'perfect' })
+  })
+  it('a pressured shuttle (power smash incoming) shrinks the Perfect window to 4', () => {
+    expect(swingAfter(4, true).find((e) => e.k === 'hit')).toMatchObject({ side: 1, grade: 'perfect' })
+    expect(swingAfter(5, true).find((e) => e.k === 'hit')).toMatchObject({ side: 1, grade: 'good' })
+    expect(swingAfter(5, false).find((e) => e.k === 'hit')).toMatchObject({ side: 1, grade: 'perfect' })
+  })
+  it('a tap return clears the pressure; so does the next serve set-up', () => {
+    const s = passing()
+    s.shuttle.pressured = true
+    run(s, 3)
+    game.tick(s, [swing('p1')])
+    expect(s.events.some((e) => e.k === 'hit' && e.tick === s.tick)).toBe(true)
+    expect(s.shuttle.pressured).toBe(false)
+    s.shuttle.pressured = true
+    run(s, 300 + POINT_TICKS)
+    expect(s.phase).toBe('serve')
+    expect(s.shuttle.pressured).toBe(false)
   })
   it('7-12 ticks late is good, not perfect', () => {
     for (const after of [7, 8, 12]) {
@@ -915,9 +933,11 @@ describe('hold-to-charge', () => {
     const power = (hit as { power: number }).power
     expect(power).toBeGreaterThan(0.9)
     expect(s.shuttle.power).toBe(power)
+    expect(s.shuttle.pressured).toBe(true)
     const tap = chargedHit(1, undefined, 1, 2.2)
     expect(tap.hit).toMatchObject({ shot: 'smash', power: 0 })
     expect(tap.s.shuttle.power).toBe(0)
+    expect(tap.s.shuttle.pressured).toBe(false)
     rally(s, { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }, 0)
     run(s, 600)
     expect(s.shuttle.power).toBe(0)

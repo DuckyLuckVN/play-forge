@@ -93,11 +93,14 @@ export function findContact(
   return bestD === Infinity ? null : { dt: bestDt, pos: { x: bx, y: by, z: bz } }
 }
 
-/** |dt| <= 6 perfect, <= 12 good, <= 18 late, else null (whiff). dt < -pastGrace (12) is a whiff. */
-export function gradeOf(dtTicks: number): Grade | null {
+/**
+ * |dt| <= perfect (6; a pressured receiver 4, power.ts) perfect, <= 12 good, <= 18 late, else null (whiff).
+ * dt < -pastGrace (12) is a whiff.
+ */
+export function gradeOf(dtTicks: number, perfect: number = WINDOW.perfect): Grade | null {
   if (dtTicks < -WINDOW.pastGrace) return null
   const a = Math.abs(dtTicks)
-  if (a <= WINDOW.perfect) return 'perfect'
+  if (a <= perfect) return 'perfect'
   if (a <= WINDOW.good) return 'good'
   if (a <= WINDOW.late) return 'late'
   return null
@@ -121,7 +124,7 @@ export interface ContactCandidate {
  * or null = a whiff. Candidates: in-reach `past` positions on the swinger's half before `nowTick`
  * (reach from `at`), and the forward scan of `future` (the flight at `futureTick`, from `player`) up to
  * WINDOW.late after the swing. The closest wins (the past only when strictly closer); graded by gradeOf
- * (contact tick − swingTick). `pos` = the shuttle at the contact.
+ * (contact tick − swingTick, `perfect` window: power.ts perfectWindowOf). `pos` = the shuttle at the contact.
  */
 export function pickContact(
   past: readonly ContactCandidate[],
@@ -132,6 +135,7 @@ export function pickContact(
   lastHitter: -1 | 0 | 1,
   swingTick: number,
   nowTick: number,
+  perfect: number = WINDOW.perfect,
 ): { tick: number; pos: Vec3; y: number; grade: Grade } | null {
   let bestD = Infinity
   let bestTick = 0
@@ -157,7 +161,7 @@ export function pickContact(
       best = c.pos
     }
   }
-  const grade = bestD === Infinity ? null : gradeOf(bestTick - swingTick)
+  const grade = bestD === Infinity ? null : gradeOf(bestTick - swingTick, perfect)
   return grade ? { tick: bestTick, pos: { ...best }, y: best.y, grade } : null
 }
 

@@ -46,6 +46,13 @@ describe('gradeOf', () => {
     expect(gradeOf(-12)).toBe('good')
     expect(gradeOf(-13)).toBeNull()
   })
+  it('a pressured Perfect window (4) shrinks only the perfect band', () => {
+    expect(gradeOf(4, 4)).toBe('perfect')
+    expect(gradeOf(5, 4)).toBe('good')
+    expect(gradeOf(-5, 4)).toBe('good')
+    expect(gradeOf(12, 4)).toBe('good')
+    expect(gradeOf(13, 4)).toBe('late')
+  })
 })
 
 describe('chooseShot', () => {

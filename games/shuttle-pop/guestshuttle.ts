@@ -6,7 +6,16 @@
 import { settleOnFloor, stepShuttle, type Flight, type Vec3 } from './physics'
 import type { RemoteTracks } from './remotes'
 import type { RenderClock } from './renderclock'
-import { chooseShot, launchFor, pickContact, shotTarget, WINDOW, type ContactCandidate } from './shots'
+import { perfectWindowOf } from './power'
+import {
+  chooseShot,
+  launchFor,
+  pickContact,
+  shotTarget,
+  WINDOW,
+  type ContactCandidate,
+  type Grade,
+} from './shots'
 import { clampDir, launchTick, MAX_REWIND, tapContact, type SpState } from './sim'
 import { interpShuttle } from './world'
 
@@ -47,6 +56,8 @@ export interface OwnSwing {
 /** A predicted own hit: a local flight sample that wins `at(k)` for k in [from − 1, until). */
 interface Prediction {
   side: 0 | 1
+  /** The predicted timing grade (the host's, graded with the same Perfect window). */
+  grade: Grade
   /** History tick the shot launches from (the sim's fromTick); the flight below is state tick from − 1. */
   from: number
   flight: Flight
@@ -68,6 +79,8 @@ interface Stored {
   pos: Vec3
   vel: Vec3
   lastHitter: -1 | 0 | 1
+  /** The incoming shot pressures the receiver (sim's shuttle.pressured): a smaller Perfect window. */
+  pressured: boolean
   pending: boolean
   /** Ticks of the events that start a new flight (a net hit is not one: stepShuttle reproduces it). */
   breaks: number[]
@@ -112,6 +125,7 @@ export class GuestShuttle {
       pos: { ...s.shuttle.pos },
       vel: { ...s.shuttle.vel },
       lastHitter: s.shuttle.lastHitter,
+      pressured: !!s.shuttle.pressured,
       pending: !!s.shuttle.pending,
       breaks: s.events.filter((e) => e.k === 'hit' || e.k === 'serve').map((e) => e.tick),
     })
@@ -195,7 +209,8 @@ export class GuestShuttle {
       past.push({ tick: h, pos: f.pos, at: sw.player })
     }
     this.at(seen - 1, this.a)
-    const c = pickContact(past, this.a, seen, sw.player, sw.side, newest.lastHitter, swingTick, seen)
+    const perfect = perfectWindowOf(newest.pressured)
+    const c = pickContact(past, this.a, seen, sw.player, sw.side, newest.lastHitter, swingTick, seen, perfect)
     if (!c || (sw.tap && !tapContact(c.tick, swingTick))) return false
     const from = launchTick(c.tick, seen)
     const flight: Flight = { pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 } }
@@ -204,7 +219,7 @@ export class GuestShuttle {
     const kind = chooseShot(held, c.y, c.grade)
     const target = shotTarget(kind, sw.side, held.x)
     flight.vel = launchFor(kind, c.grade, flight.pos, target, () => 0, sw.charge)
-    this.pred = { side: sw.side, from, flight, until: Infinity, shift: { x: 0, y: 0, z: 0 } }
+    this.pred = { side: sw.side, grade: c.grade, from, flight, until: Infinity, shift: { x: 0, y: 0, z: 0 } }
     return true
   }
 

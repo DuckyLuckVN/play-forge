@@ -1,5 +1,5 @@
 // Hit power: how much of a swing's charge actually landed (pure leaf: the sim, sounds and view share it).
-import type { Grade } from './shots'
+import { WINDOW, type Grade, type ShotKind } from './shots'
 
 export const POWER_SWING = {
   /** Share of the charge effect a hit keeps by its timing grade. */
@@ -21,3 +21,10 @@ export function hitPower(grade: Grade, gain: number): number {
 
 /** Counts as a power hit (old events without power: no). */
 export const isPowerHit = (power: number | undefined): boolean => (power ?? 0) >= POWER_SWING.popFrom
+
+/** A power smash pressures the receiver: their Perfect window shrinks (AI included). */
+export const pressureOf = (kind: ShotKind, power: number): boolean => kind === 'smash' && isPowerHit(power)
+
+/** The receiver's Perfect window (ticks): pressuredPerfect after a pressuring smash, else WINDOW.perfect. */
+export const perfectWindowOf = (pressured: boolean): number =>
+  pressured ? POWER_SWING.pressuredPerfect : WINDOW.perfect

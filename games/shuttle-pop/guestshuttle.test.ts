@@ -547,6 +547,27 @@ describe('GuestShuttle own-hit prediction', () => {
     expect(tryAt(C - 9, true)).toBe(true)
   })
 
+  it('grades like the host under pressure: a swing 5 ticks past the closest approach is Good', () => {
+    const C = closest(incoming(), ON)
+    const predictAt = (pressured: boolean) => {
+      const start = incoming()
+      start.shuttle.pressured = pressured
+      const states = host(start, C + 8)
+      const clock = new RenderClock(60)
+      const gs = new GuestShuttle(clock)
+      for (const st of states) {
+        clock.onState(st.tick)
+        gs.push(st)
+      }
+      clock.tick = C + 5 - 1 // seenTick() = round(tick) + 1
+      gs.update(DT)
+      expect(gs.predictHit({ side: 1, held: { x: 0, z: -1 }, charge: 0, player: ON, tap: false })).toBe(true)
+      return gs['pred']!.grade
+    }
+    expect(predictAt(true)).toBe('good')
+    expect(predictAt(false)).toBe('perfect')
+  })
+
   it('no prediction when the opponent hit last or a hit is pending', () => {
     const states = host(incoming(), 30)
     const sw: OwnSwing = { side: 1, held: { x: 0, z: 0 }, charge: 0, player: { x: 0, z: 0 }, tap: false }

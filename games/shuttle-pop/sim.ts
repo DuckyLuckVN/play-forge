@@ -7,7 +7,7 @@ import { CHARGE, chargeOf } from './charge'
 import { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld } from './court'
 import { t } from './i18n'
 import { COURT, DT, settleOnFloor, stepShuttle, type Flight, type Vec3 } from './physics'
-import { hitPower } from './power'
+import { hitPower, perfectWindowOf, pressureOf } from './power'
 import { isAvailable, nextAvailable, PRESETS as PRESET_TABLE } from './presets'
 import { award, serveBox, winner } from './rules'
 import {
@@ -120,6 +120,8 @@ export interface SpState {
     lastHitter: -1 | 0 | 1
     /** Power 0..1 of the last hit (power.ts hitPower; 0 at serve). */
     power: number
+    /** The last hit was a power smash: the receiver's Perfect window shrinks (power.ts perfectWindowOf). */
+    pressured: boolean
     /** A connected swing whose contact tick is still ahead. aimX = held view-relative x at the swing. */
     pending: null | {
       atTick: number
@@ -235,6 +237,7 @@ function resetForServe(state: SpState) {
   state.phaseT = 0
   state.shuttle.lastHitter = -1
   state.shuttle.power = 0
+  state.shuttle.pressured = false
   state.shuttle.pending = null
   holdShuttle(state)
 }
@@ -293,6 +296,7 @@ export function createState(players: PlayerInfo[], seed: number, options: GameOp
       vel: { x: 0, y: 0, z: 0 },
       lastHitter: -1,
       power: 0,
+      pressured: false,
       pending: null,
     },
     score: [0, 0],
@@ -360,6 +364,7 @@ function serve(state: SpState, p: SpPlayer, held: { x: number; z: number }) {
   s.vel.z = v.z
   s.lastHitter = p.side
   s.power = 0
+  s.pressured = false
   s.pending = null
   state.phase = 'rally'
   state.phaseT = 0
@@ -470,6 +475,7 @@ function contactFor(
     s.lastHitter,
     swingTick,
     state.tick,
+    perfectWindowOf(s.pressured),
   )
 }
 
@@ -548,6 +554,7 @@ function hit(state: SpState) {
   const { vel: v, gain } = launchShot(pend.kind, pend.grade, s.pos, target, () => rand(state), pend.charge)
   const power = hitPower(pend.grade, gain)
   s.power = power
+  s.pressured = pressureOf(pend.kind, power)
   s.vel.x = v.x
   s.vel.y = v.y
   s.vel.z = v.z

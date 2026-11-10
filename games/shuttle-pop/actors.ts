@@ -37,7 +37,7 @@ import { extraOut, extraPose, type FlairIn } from './flair'
 import type { ExtraSpec } from './model/extras'
 import { blinkAt, faceMix } from './model/face'
 import { legless, rigOf } from './model/look'
-import { HEAD_SCALE } from './model/head'
+import { headRest } from './model/head'
 import { modelOf } from './model/model'
 import { celebrateSpin, hop, type Hop } from './moves'
 import { PRESETS } from './presets'
@@ -533,7 +533,8 @@ export function createChibi(preset: number): Chibi {
     const r = rigOf(p.look)
     hips.position.y = r.hipY
     torso.position.y = r.hipY
-    head.position.y = r.headY - r.hipY
+    const rest = headRest(r, p.look.head)
+    head.position.y = rest.y - r.hipY
     for (let i = 0; i < 2; i++) {
       const s = i === 0 ? -1 : 1
       legs[i].hip.position.set(s * r.hipX, r.hipY, 0)
@@ -545,7 +546,7 @@ export function createChibi(preset: number): Chibi {
     hips.geometry = g.hips
     chest.geometry = g.torso
     headMesh.geometry = g.head
-    head.scale.setScalar(HEAD_SCALE[p.look.head])
+    head.scale.setScalar(rest.scale)
     racketMesh.geometry = g.racket
     for (let i = 0; i < 2; i++) {
       legs[i].thigh.geometry = g.thigh

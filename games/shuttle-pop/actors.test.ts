@@ -11,8 +11,10 @@ import {
 import { createChibi, PRESETS, restPose, setToyShading } from './actors'
 import { STRIKE_END } from './arm'
 import { SwingDriver } from './moves'
-import { extraMeshes } from './model/extras'
-import { legless } from './model/look'
+import { BOX_HEAD, HEAD_R } from './model/dims'
+import { EXTRAS, extraMeshes } from './model/extras'
+import { HEAD_SCALE, HEAD_SIZE } from './model/head'
+import { legless, rigOf } from './model/look'
 import { modelOf } from './model/model'
 
 // Rig checks with real three.js transforms (no WebGL needed).
@@ -332,5 +334,32 @@ describe('fade (local player covering the shuttle)', () => {
     expect(m.customProgramCacheKey()).toBe('toy')
     expect(drawn(chibi.root).length).toBe(calls)
     chibi.setOpacity(1)
+  })
+})
+
+describe('head size', () => {
+  it('every look: head group scaled by HEAD_SIZE, bottom stays where it was, racket/hands unscaled', () => {
+    for (const p of PRESETS) {
+      const { chibi } = rig(p.id)
+      const head = chibi.root.getObjectByName('head')!.parent!
+      const r = rigOf(p.look)
+      const k = HEAD_SCALE[p.look.head]
+      expect(head.scale.x).toBeCloseTo(k * HEAD_SIZE, 9)
+      const half = p.look.head === 'box' ? BOX_HEAD.b : HEAD_R
+      expect(head.position.y + r.hipY - half * head.scale.x).toBeCloseTo(r.headY - half * k, 9)
+      const ws = new Vector3()
+      chibi.root.updateMatrixWorld(true)
+      chibi.root.getObjectByName('racket')!.getWorldScale(ws)
+      expect(ws.x).toBeCloseTo(1, 9)
+    }
+  })
+  it('head extras (ears, antenna: ExtraSpec parent "head") ride in the scaled head group', () => {
+    for (const p of PRESETS) {
+      const { chibi } = rig(p.id)
+      const head = chibi.root.getObjectByName('head')!.parent!
+      const extras = head.children.filter((c) => c.visible && c.children.some((m) => m.name === 'extra'))
+      const want = p.look.extras.filter((e) => EXTRAS[e].parent === 'head').length
+      expect(extras.length >= want, p.name).toBe(true)
+    }
   })
 })

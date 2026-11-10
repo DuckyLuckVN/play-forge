@@ -5,7 +5,7 @@ import { BufferAttribute, BufferGeometry, SphereGeometry } from 'three'
 import { foreArmParts, handParts, hipsParts, shinParts, thighParts, torsoParts, upperArmParts } from './body'
 import { EXTRAS, type ExtraSpec } from './extras'
 import { faceGeometry } from './face'
-import { headParts } from './head'
+import { headParts, headRest } from './head'
 import { radialHull } from './hull'
 import { legless, rigOf, type Look } from './look'
 import { mergeParts, part, type MergeOpts, type Part } from './merge'
@@ -57,7 +57,8 @@ const SKIN: MergeOpts = { ao: {}, surf: 'skin' }
 /** The head at rest over the torso (torso space), shading the neck. */
 const neckShade = (l: Look): Part[] => {
   const r = rigOf(l)
-  return [part(new SphereGeometry(HEAD_R, 24, 16), 0, { p: [0, r.headY - r.hipY, 0] })]
+  const rest = headRest(r, l.head)
+  return [part(new SphereGeometry(HEAD_R * rest.scale, 24, 16), 0, { p: [0, rest.y - r.hipY, 0] })]
 }
 const rackets = new Map<string, BufferGeometry>()
 const EMPTY = new BufferGeometry()

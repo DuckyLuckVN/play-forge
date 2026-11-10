@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import type { Sound, Tone } from '@forge/audio/sound'
-import { chargeSound, eventSound, hitSound, SHUTTLE_SOUNDS, SMASH_LAND, SWING, swingSound } from './sounds'
+import {
+  actionSound,
+  type ActionSoundKind,
+  chargeSound,
+  eventSound,
+  hitSound,
+  SHUTTLE_SOUNDS,
+  SMASH_LAND,
+  SWING,
+  swingSound,
+} from './sounds'
 import type { SpEvent } from './sim'
 
 const at = { id: 1, tick: 1 }
@@ -108,7 +118,9 @@ describe('power sounds (hold-to-charge)', () => {
     expect(eventSound(hit('perfect', 'smash', 1), 0)?.sound).toEqual(
       expect.arrayContaining(SHUTTLE_SOUNDS.powerSmash),
     )
-    expect(eventSound(hit('perfect', 'smash', 0.5), 0)?.sound).not.toBe(SHUTTLE_SOUNDS.powerSmash)
+    expect(eventSound(hit('perfect', 'smash', 0.5), 0)?.sound).not.toEqual(
+      expect.arrayContaining(SHUTTLE_SOUNDS.powerSmash),
+    )
     expect(eventSound(hit('perfect', 'smash'), 0)?.sound).toBe(SHUTTLE_SOUNDS.smash)
   })
 
@@ -138,6 +150,19 @@ describe('power sounds (hold-to-charge)', () => {
   })
 })
 
+describe('actionSound', () => {
+  const KINDS: ActionSoundKind[] = ['jump', 'jumpLand', 'dive', 'diveLand', 'bonk']
+  it('every action has its own sound; theirs is quieter', () => {
+    const sounds = KINDS.map((k) => actionSound(k, true).sound)
+    expect(new Set(sounds).size).toBe(KINDS.length)
+    for (const k of KINDS) expect(actionSound(k, false).vol).toBeLessThan(actionSound(k, true).vol)
+  })
+  it('landings are heavy (a low body under 130 Hz)', () => {
+    for (const k of ['jumpLand', 'diveLand'] as const)
+      expect((actionSound(k, true).sound as Tone[]).some((t) => t.wave === 'sine' && t.freq < 130)).toBe(true)
+  })
+})
+
 describe('sound headroom', () => {
   /** engine/audio/sound.ts applyLevels: the sfx bus gain at sfx 1.0 is curve(1) × 0.5. */
   const SFX_BUS = 0.5
@@ -156,6 +181,13 @@ describe('sound headroom', () => {
               `${grade} ${shot} ${power} ${mine}`,
             ).toBeLessThanOrEqual(1)
           }
+  })
+
+  it('every action sound peaks at most 1.0 at full effects volume', () => {
+    for (const k of ['jump', 'jumpLand', 'dive', 'diveLand', 'bonk'] as const) {
+      const r = actionSound(k, true)
+      expect(onsetPeak(r.sound) * r.vol * SFX_BUS, k).toBeLessThanOrEqual(1)
+    }
   })
 
   it('every smash landing step peaks at most 1.0 at full effects volume', () => {

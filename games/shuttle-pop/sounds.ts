@@ -56,6 +56,32 @@ export const SHUTTLE_SOUNDS = {
     { freq: 1976, dur: 0.25, wave: 'triangle', vol: 0.12, at: 0.09 },
     { freq: 6000, to: 9000, dur: 0.2, wave: 'noise', filter: 'highpass', vol: 0.1, at: 0.06 },
   ],
+  /** Hop: a rising air puff + a small lift. */
+  jump: [
+    { freq: 600, to: 1800, dur: 0.14, wave: 'noise', filter: 'bandpass', q: 1.2, vol: 0.25 },
+    { freq: 200, to: 420, dur: 0.1, wave: 'sine', vol: 0.18 },
+  ],
+  jumpLand: [
+    { freq: 110, to: 45, dur: 0.16, wave: 'sine', vol: 0.42 },
+    { freq: 500, to: 120, dur: 0.1, wave: 'noise', filter: 'lowpass', vol: 0.3 },
+  ],
+  /** Lunge: a falling whoosh. */
+  dive: [
+    { freq: 1400, to: 400, dur: 0.22, wave: 'noise', filter: 'bandpass', q: 0.8, vol: 0.32 },
+    { freq: 300, to: 150, dur: 0.12, wave: 'triangle', vol: 0.12 },
+  ],
+  /** Belly-flop thud + a skid. */
+  diveLand: [
+    { freq: 120, to: 50, dur: 0.18, wave: 'sine', vol: 0.38 },
+    { freq: 700, to: 150, dur: 0.26, wave: 'noise', filter: 'lowpass', vol: 0.36 },
+  ],
+  /** Stun: a dull knock, then two stars twinkling. */
+  bonk: [
+    { freq: 480, to: 240, dur: 0.08, wave: 'square', vol: 0.28 },
+    { freq: 900, to: 300, dur: 0.1, wave: 'triangle', vol: 0.3 },
+    { freq: 2349, dur: 0.08, wave: 'sine', vol: 0.14, at: 0.1 },
+    { freq: 2793, dur: 0.1, wave: 'sine', vol: 0.14, at: 0.17 },
+  ],
   serve: { freq: 700, to: 480, dur: 0.06, wave: 'triangle', vol: 0.3 },
   net: [
     { freq: 300, to: 90, dur: 0.16, wave: 'noise', vol: 0.45 },
@@ -183,6 +209,16 @@ export const SWING: readonly Tone[][] = soundSteps(SWING_RECIPE, SWING_STEPS)
 /** The release whoosh for a swing charged `charge` (0 = a tap). */
 export function swingSound(charge: number): Sound {
   return SWING[levelStep(charge, SWING_STEPS)]
+}
+
+export type ActionSoundKind = 'jump' | 'jumpLand' | 'dive' | 'diveLand' | 'bonk'
+
+/**
+ * A movement-ability sound + volume (slices 7-8 trigger these). `mine` = it's the local player's own
+ * action; for a bonk, the local player is the one bonked or bonking. Others' are a little quieter.
+ */
+export function actionSound(kind: ActionSoundKind, mine: boolean): { sound: Sound; vol: number } {
+  return { sound: SHUTTLE_SOUNDS[kind], vol: mine ? 1 : THEIRS }
 }
 
 const CHARGE_STAGES: readonly Sound[] = [

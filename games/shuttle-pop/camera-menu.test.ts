@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mountCameraButton } from './camera-menu'
+import { prefs } from './prefs'
 import { bindInput } from './input'
 import { VI } from './i18n'
 
@@ -32,7 +33,7 @@ describe('camera button', () => {
   it('sits inside the game view, not in the top bar', () => {
     expect(view.contains(cam.root)).toBe(true)
     expect(bar.querySelector('.sp-cam')).toBeNull()
-    expect(button().getAttribute('aria-label')).toBe('Camera view')
+    expect(button().getAttribute('aria-label')).toBe('View settings')
   })
 
   it('click toggles the panel (Height, Tilt, Reset)', () => {
@@ -78,7 +79,13 @@ describe('camera button', () => {
     const sent = vi.fn()
     const input = bindInput(view, sent, () => 0)
     button().click()
-    const targets = [panel().querySelector('input')!, panel(), button(), document.body]
+    const targets = [
+      panel().querySelector('input')!,
+      panel().querySelector('[role=radio]')!,
+      panel(),
+      button(),
+      document.body,
+    ]
     for (const code of ['Space', 'KeyJ', 'ArrowLeft', 'KeyA', 'KeyW']) {
       for (const t of targets) key('keydown', { code, key: code }, t)
     }
@@ -133,9 +140,58 @@ describe('camera button', () => {
   })
 })
 
+describe('ring picker', () => {
+  it('three choices, current one checked, click saves and re-checks', () => {
+    prefs.set({ ring: 'always' })
+    button().click()
+    const segs = [...panel().querySelectorAll<HTMLButtonElement>('[role=radio]')]
+    expect(segs.map((b) => b.textContent)).toEqual(['Hidden', 'Near drop', 'Always'])
+    expect(segs.map((b) => b.getAttribute('aria-checked'))).toEqual(['false', 'false', 'true'])
+    segs[1].click()
+    expect(prefs.get().ring).toBe('near')
+    expect(segs[1].getAttribute('aria-checked')).toBe('true')
+    expect(segs[1].classList.contains('on')).toBe(true)
+    expect(segs[2].classList.contains('on')).toBe(false)
+    expect(panel().hidden).toBe(false)
+  })
+
+  it('Reset camera leaves the ring alone', () => {
+    prefs.set({ ring: 'hidden', camera: { height: 0.5, tilt: 0 } })
+    button().click()
+    panel().querySelector<HTMLButtonElement>('.wide')!.click()
+    expect(prefs.get()).toEqual({ camera: { height: 0, tilt: 0 }, ring: 'hidden' })
+  })
+
+  it('the ring group is labelled', () => {
+    expect(panel().querySelector('[role=radiogroup]')!.getAttribute('aria-label')).toBe('Landing ring')
+  })
+
+  it('Space / arrows on a segment do not reach the game', () => {
+    const sent = vi.fn()
+    const input = bindInput(view, sent, () => 0)
+    button().click()
+    const seg = panel().querySelector<HTMLElement>('[role=radio]')!
+    seg.focus()
+    for (const code of ['Space', 'KeyJ', 'ArrowLeft', 'ArrowRight']) key('keydown', { code, key: code }, seg)
+    expect(sent).not.toHaveBeenCalled()
+    input.stop()
+  })
+})
+
 describe('camera strings', () => {
   it('have Vietnamese', () => {
-    for (const k of ['Camera view', 'Height', 'Tilt', 'Camera height', 'Camera tilt', 'Reset view'])
+    for (const k of [
+      'View settings',
+      'Height',
+      'Tilt',
+      'Camera height',
+      'Camera tilt',
+      'Reset camera',
+      'Landing ring',
+      'Hidden',
+      'Near drop',
+      'Always',
+    ])
       expect(VI[k]).toBeTruthy()
     expect(VI['Only changes your own screen.']).toBeTruthy()
   })

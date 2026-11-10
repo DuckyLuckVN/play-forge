@@ -3,15 +3,48 @@ import { icons } from '@forge/ui/icons'
 import { popover } from '@forge/ui/popover'
 import { slider } from '@forge/ui/slider'
 import { t } from './i18n'
+import { RING_MODES, type RingMode } from './landing'
 import { fromStep, prefs, stepLabel, toStep, TWEAK_STEPS } from './prefs'
 import { NO_TWEAK } from './world'
 
+const RING_LABELS: Record<RingMode, string> = { hidden: 'Hidden', near: 'Near drop', always: 'Always' }
+
 /**
- * The panel body of the camera menu: height and tilt of the player's own view. Saved in this browser
- * (prefs.ts) and applied live by the renderer; sliders show the raw saved value, the court-framing
- * clamp is applied at render time.
+ * The "when does the landing ring show" row: the engine's segmented radiogroup markup
+ * (engine/ui/options.ts). Updates in place on pref changes, so focus stays on the pressed segment.
  */
-export function cameraPanel(): { nodes: HTMLElement[] } {
+function ringPicker(): HTMLElement {
+  const group = h('div', { class: 'pf-segmented', role: 'radiogroup' } as never)
+  group.setAttribute('aria-label', t('Landing ring'))
+  const segs = RING_MODES.map((mode) => {
+    const b = h('button', { type: 'button', class: 'pf-segment', textContent: t(RING_LABELS[mode]) })
+    b.setAttribute('role', 'radio')
+    b.onclick = () => prefs.set({ ring: mode })
+    group.append(b)
+    return { mode, b }
+  })
+  const sync = (ring: RingMode) => {
+    for (const { mode, b } of segs) {
+      b.classList.toggle('on', mode === ring)
+      b.setAttribute('aria-checked', String(mode === ring))
+    }
+  }
+  sync(prefs.get().ring)
+  prefs.onChange((p) => sync(p.ring))
+  return h(
+    'div',
+    { class: 'pf-option sp-ring-row' },
+    h('span', { class: 'pf-option-label', textContent: t('Landing ring') }),
+    group,
+  )
+}
+
+/**
+ * The panel body of the view-settings menu: height and tilt of the player's own camera and when the
+ * landing ring shows. Saved in this browser (prefs.ts) and applied live by the renderer; sliders show
+ * the raw saved value, the court-framing clamp is applied at render time.
+ */
+export function viewPanel(): { nodes: HTMLElement[] } {
   const axis = (key: 'height' | 'tilt', label: string, ariaLabel: string) =>
     slider({
       label,
@@ -26,17 +59,17 @@ export function cameraPanel(): { nodes: HTMLElement[] } {
   const height = axis('height', t('Height'), t('Camera height'))
   const tilt = axis('tilt', t('Tilt'), t('Camera tilt'))
   const note = h('p', { class: 'pf-note', textContent: t('Only changes your own screen.') })
-  const reset = h('button', { class: 'pf-btn wide', type: 'button', textContent: t('Reset view') })
+  const reset = h('button', { class: 'pf-btn wide', type: 'button', textContent: t('Reset camera') })
   reset.onclick = () => prefs.set({ camera: { ...NO_TWEAK } })
   prefs.onChange((p) => {
     height.set(toStep(p.camera.height))
     tilt.set(toStep(p.camera.tilt))
   })
-  return { nodes: [height.row, tilt.row, note, reset] }
+  return { nodes: [height.row, tilt.row, reset, ringPicker(), note] }
 }
 
 /**
- * A small camera button over the top-right of the game view (`view`) that opens the camera panel
+ * A small camera button over the top-right of the game view (`view`) that opens the view-settings panel
  * below it. The view takes every pointer as a swing / stick, so the overlay keeps its own pointer
  * events to itself, and while the panel is open a press outside only closes it (never swings).
  * While open, a capture guard keeps key press (except Esc/Tab, never a release) away from the game's window listeners.
@@ -44,9 +77,9 @@ export function cameraPanel(): { nodes: HTMLElement[] } {
  */
 export function mountCameraButton(view: HTMLElement): { root: HTMLElement; destroy(): void } {
   const button = h('button', { class: 'pf-btn icon', type: 'button' })
-  setLabel(button, t('Camera view'))
+  setLabel(button, t('View settings'))
   button.append(icon(icons.camera))
-  const panel = cameraPanel()
+  const panel = viewPanel()
   const root = h('div', { class: 'sp-cam' })
 
   const blurIfHere = () => {
@@ -74,7 +107,7 @@ export function mountCameraButton(view: HTMLElement): { root: HTMLElement; destr
   const menu = popover(
     {
       button,
-      label: t('Camera view'),
+      label: t('View settings'),
       class: 'sp-cam-pop',
       // The panel itself, not a control: Space must not press Reset.
       onOpen: () => menu.panel.focus({ preventScroll: true }),

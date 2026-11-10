@@ -77,15 +77,19 @@ export const VI: Dictionary = {
   'Your Perfect hits': 'Cú Hoàn hảo của bạn',
   'Perfect hits': 'Cú Hoàn hảo',
 
-  // Camera button and panel (camera-menu.ts, prefs.ts)
+  // View settings button and panel (camera-menu.ts, prefs.ts)
   Default: 'Mặc định',
-  'Camera view': 'Góc nhìn',
+  'View settings': 'Cài đặt hiển thị',
   Height: 'Độ cao',
   'Camera height': 'Độ cao camera',
   Tilt: 'Độ nghiêng',
   'Camera tilt': 'Độ nghiêng camera',
   'Only changes your own screen.': 'Chỉ thay đổi trên màn hình của bạn.',
-  'Reset view': 'Đặt lại góc nhìn',
+  'Reset camera': 'Đặt lại camera',
+  'Landing ring': 'Vòng điểm rơi',
+  Hidden: 'Ẩn',
+  'Near drop': 'Sắp rơi',
+  Always: 'Luôn hiện',
 }
 
 export const t = translator(VI)

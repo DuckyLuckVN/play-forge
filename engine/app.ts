@@ -14,7 +14,18 @@ import {
   type PlayerInfo,
   type RoomSnapshot,
 } from './net/session'
+import {
+  joinFailed,
+  joinStep,
+  startJoin,
+  statusOf,
+  stepJoin,
+  type JoinPhase,
+  type JoinTrack,
+  type LinkedPlayer,
+} from './net/status'
 import { createOfflineTransport, randomId, type Transport } from './net/transport'
+import { netLog } from './net/debug'
 import { createTrysteroTransport } from './net/trystero'
 import { avatarEl, avatarPicker } from './social/avatar-ui'
 import { avatarFor, storedAvatar } from './social/avatars'
@@ -24,6 +35,7 @@ import { RoomSocial } from './social/room-social'
 import { audioMenu } from './ui/audio-menu'
 import { button } from './ui/components'
 import { langMenu } from './ui/lang-menu'
+import { netStatusButton } from './ui/net-panel'
 import { h, icon, iconButton, toast } from './ui/dom'
 import { fullscreenButton } from './ui/fullscreen'
 import {
@@ -124,7 +136,8 @@ export interface GameAppOptions<S, I> {
 
 const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 const NAME_KEY = 'play-forge:name'
-const JOIN_HINT_AFTER_MS = 12000
+/** How often the joining screen re-checks the connection. */
+const JOIN_POLL_MS = 500
 /** Relative link from games/<id>/index.html back to the launcher. */
 const LAUNCHER_URL = '../../index.html'
 
@@ -237,6 +250,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   )
   more.root.classList.add('pf-more-anchor')
   more.root.querySelector('button')!.classList.add('pf-more-btn')
+  // Network status: online rooms only (lobby and in a match), host and guests.
+  const netBtn = netStatusButton()
   const home = h('a', { class: 'pf-btn icon', href: LAUNCHER_URL, title: t('All games') })
   home.setAttribute('aria-label', t('All games'))
   home.append(icon(icons.home))
@@ -246,7 +261,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     home,
     h('h1', { class: 'pf-bar-title', textContent: opts.title }),
     scoresEl,
-    h('div', { class: 'pf-bar-actions' }, fan.root, pauseBtn, fullscreenButton(), more.root),
+    h('div', { class: 'pf-bar-actions' }, fan.root, pauseBtn, netBtn.root, fullscreenButton(), more.root),
   )
   const stage = h('main', { class: 'pf-stage' })
   const overlay = h('div', { class: 'pf-overlay' })
@@ -274,7 +289,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   let session: Session<S, I> | null = null
   let cleanup: (() => void) | null = null
   let room = ''
-  let joinedAt = 0
+  /** Guest: progress of joining the room, until the host's lobby arrives. */
+  let joinTrack: JoinTrack | null = null
   let playerId = (isReload && store.load()?.playerId) || randomId()
   let lastLobby: LobbyState | null = null
   const snapshot = (l: LobbyState): LobbyState => ({
@@ -314,7 +330,6 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       options: chosenOptions(),
       ...extra,
     }))
-    joinedAt = performance.now()
     lastLobby = snapshot(s.lobby)
     seenTokens.clear()
     seenReady.clear()
@@ -350,10 +365,26 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         showMessage(t('The room closed'), t('The host left the room. Create a new room to keep playing.'))
       }),
     ]
-    // Re-render to show the "still looking" hint if the host never answers.
-    const hintTimer = setTimeout(render, JOIN_HINT_AFTER_MS)
+    if (!extra.offline)
+      netBtn.attach({
+        room,
+        isHost: host,
+        status: () => statusOf(transport),
+        measure: () => transport.diagnostics?.measure() ?? Promise.resolve(),
+        linked: () => linkedPlayers(s),
+      })
+    // Guest: follow the connection until the host answers, so the joining
+    // screen can say which step is slow or failed.
+    joinTrack = host || extra.offline ? null : startJoin(performance.now())
+    const joinTimer: ReturnType<typeof setInterval> | null =
+      joinTrack &&
+      setInterval(() => {
+        if (!followJoin(s)) clearInterval(joinTimer!)
+      }, JOIN_POLL_MS)
     cleanup = () => {
-      clearTimeout(hintTimer)
+      if (joinTimer) clearInterval(joinTimer)
+      joinTrack = null
+      netBtn.attach(null)
       offs.forEach((off) => off())
       roomSocial?.dispose()
       social = null
@@ -374,6 +405,28 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       else s.start()
     }
     render()
+  }
+
+  /** One joining-screen update; false once the host's room has arrived (stop polling). */
+  function followJoin(s: Session<S, I>): boolean {
+    if (!joinTrack || session !== s || s.lobby.hostId) return false
+    const before = joinTrack.phase
+    joinTrack = stepJoin(joinTrack, statusOf(s.transport), performance.now())
+    if (joinTrack.phase !== before) {
+      netLog('joining:', before, '→', joinTrack.phase, statusOf(s.transport))
+      render()
+    }
+    return true
+  }
+
+  /** Same room, fresh connection (after a join failed). */
+  function retryJoin() {
+    const s = session
+    if (!s) return
+    cleanup?.()
+    s.dispose()
+    session = cleanup = null
+    begin(createTransport(appId, room), false)
   }
 
   function leave() {
@@ -715,21 +768,49 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     return dots
   }
 
+  const JOIN_TEXT: Record<JoinPhase, () => string> = {
+    servers: () => t('Connecting to the matchmaking servers…'),
+    'servers-failed': () =>
+      t("Can't reach the matchmaking servers. Check your internet or try another network."),
+    looking: () => t('Looking for room {room}…', { room }),
+    'not-found': () => t("Couldn't find this room. Check the code, and make sure the host's game is open."),
+    connecting: () => t('Found the host, connecting…'),
+    blocked: () =>
+      t(
+        'Found the host, but your networks block a direct connection. Try the same Wi-Fi, or turn off VPN / switch from mobile data.',
+      ),
+  }
+
+  /** Joining a room: three steps (servers, room, host), each saying when it's slow or failed. */
   function showJoining() {
-    const slow = performance.now() - joinedAt >= JOIN_HINT_AFTER_MS - 50
+    const phase = joinTrack?.phase ?? 'servers'
+    const failed = joinFailed(phase)
+    const at = joinStep(phase)
+    const steps = [t('Matchmaking servers'), t('Find the room'), t('Connect to the host')]
+    const retry = failed && button(t('Try again'), retryJoin, 'primary wide')
+    if (retry) retry.autofocus = true
     show(
       h(
         'div',
         { class: 'pf-panel' },
-        h('h2', { class: 'pf-heading', textContent: t('Joining {room}…', { room }) }),
-        h('p', {
-          class: 'pf-lede',
-          textContent: slow
-            ? t("Still looking for this room. Check the code, and make sure the host's game is open.")
-            : t('Finding the host. This usually takes a few seconds.'),
+        h('h2', {
+          class: 'pf-heading',
+          textContent: failed ? t("Couldn't join {room}", { room }) : t('Joining {room}…', { room }),
         }),
-        waitingDots(),
+        h(
+          'ol',
+          { class: 'pf-join-steps' },
+          ...steps.map((label, i) => {
+            const state = i < at ? 'done' : i > at ? 'todo' : failed ? 'failed' : 'active'
+            const mark =
+              state === 'done' ? icon(icons.check) : state === 'failed' ? icon(icons.cross) : h('i')
+            return h('li', { class: state }, mark, label)
+          }),
+        ),
+        h('p', { class: `pf-lede${failed ? ' error' : ''}`, textContent: JOIN_TEXT[phase]() }),
+        !failed && waitingDots(),
         offlineNote(),
+        retry,
         button(t('Cancel'), leave, 'quiet'),
       ),
       'joining',
@@ -1012,6 +1093,13 @@ function summaryGrid(rows: SummaryRow[]): HTMLElement | null {
       ),
     ),
   )
+}
+
+/** Who the Network panel lists: the host sees every guest, a guest sees the host. */
+function linkedPlayers(s: Session<any, any>): LinkedPlayer[] {
+  return s.lobby.players
+    .filter((p) => p.id !== s.selfId && (s.isHost || p.id === s.lobby.hostId))
+    .map((p) => ({ name: p.name, peer: s.peerOf(p.id), connected: p.connected }))
 }
 
 function listNames(players: PlayerInfo[]): string {

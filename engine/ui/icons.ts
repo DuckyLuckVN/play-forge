@@ -38,6 +38,9 @@ export const icons = {
   ),
   fullscreen: svg('<path d="M4.5 9V4.5H9M15 4.5h4.5V9M19.5 15v4.5H15M9 19.5H4.5V15"/>'),
   fullscreenExit: svg('<path d="M9 4.5V9H4.5M19.5 9H15V4.5M15 19.5V15h4.5M4.5 15H9v4.5"/>'),
+  /** Signal bars: the Network status button. */
+  network: svg('<path d="M5 19.5V16M10 19.5v-7M15 19.5v-10M20 19.5v-14"/>'),
+  cross: svg('<path d="m6.5 6.5 11 11m0-11-11 11"/>'),
   crown: svg('<path d="M4 17.5h16M5 15 4 7.5l4.5 3.5L12 5.5l3.5 5.5L20 7.5 19 15z"/>'),
 }
 

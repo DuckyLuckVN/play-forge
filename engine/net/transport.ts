@@ -1,3 +1,5 @@
+import type { NetDiagnostics } from './status'
+
 /**
  * A transport connects this browser to the other peers in one room.
  * Implementations: Trystero/WebRTC (internet), BroadcastChannel (same-browser
@@ -17,6 +19,8 @@ export interface Transport {
   leave(): void
   /** Audio/video streams. Optional: only real network transports have it. */
   readonly media?: MediaChannel
+  /** Live connection details for the Network panel. Optional: only the internet transport has it. */
+  readonly diagnostics?: NetDiagnostics
 }
 
 /** Sends live media (e.g. voice) to peers. Used by voice chat. */

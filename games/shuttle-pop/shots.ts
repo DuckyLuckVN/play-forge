@@ -13,6 +13,13 @@ import {
 export type Grade = 'perfect' | 'good' | 'late'
 export type ShotKind = 'smash' | 'drive' | 'clear' | 'drop' | 'serveShort' | 'serveLong'
 
+/** A reach box: horizontal radius around the player and the height band (m). */
+export interface Reach {
+  radius: number
+  minY: number
+  maxY: number
+}
+
 export const REACH = { radius: 1.1, minY: 0.2, maxY: 2.9, smashY: 2.0 }
 /** Ticks. dt is contact tick minus swing tick (negative = swung after the ideal moment). */
 export const WINDOW = { perfect: 6, good: 12, late: 18, pastGrace: 12 }
@@ -87,12 +94,14 @@ const scratch: Flight = { pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 } }
  * Scans ticks [from..to] of the flight snapshot `f` (not mutated) and returns the in-reach tick
  * closest to the player (earliest on ties), or null. dt is relative to `f`. Ticks < 0 are not
  * scanned: for the past, the caller passes an older snapshot. Stops at a net hit or landing.
+ * `reach` = the reach box (default REACH; a jump / lunge passes its own, ability.ts).
  */
 export function findContact(
   f: Flight,
   player: { x: number; z: number },
   from: number,
   to: number,
+  reach: Reach = REACH,
 ): { dt: number; pos: Vec3 } | null {
   const s = scratch
   s.pos.x = f.pos.x
@@ -108,9 +117,9 @@ export function findContact(
   let by = 0
   let bz = 0
   for (let t = 0; t <= to; t++) {
-    if (t >= start && s.pos.y >= REACH.minY && s.pos.y <= REACH.maxY) {
+    if (t >= start && s.pos.y >= reach.minY && s.pos.y <= reach.maxY) {
       const d = Math.hypot(s.pos.x - player.x, s.pos.z - player.z)
-      if (d <= REACH.radius && d < bestD) {
+      if (d <= reach.radius && d < bestD) {
         bestD = d
         bestDt = t
         bx = s.pos.x
@@ -155,6 +164,7 @@ export interface ContactCandidate {
  * (reach from `at`), and the forward scan of `future` (the flight at `futureTick`, from `player`) up to
  * WINDOW.late after the swing. The closest wins (the past only when strictly closer); graded by gradeOf
  * (contact tick − swingTick, `perfect` window: power.ts perfectWindowOf). `pos` = the shuttle at the contact.
+ * `reach` = the reach box for both the past and the future scan (default REACH; ability.ts reachOf).
  */
 export function pickContact(
   past: readonly ContactCandidate[],
@@ -166,6 +176,7 @@ export function pickContact(
   swingTick: number,
   nowTick: number,
   perfect: number = WINDOW.perfect,
+  reach: Reach = REACH,
 ): { tick: number; pos: Vec3; y: number; grade: Grade } | null {
   let bestD = Infinity
   let bestTick = 0
@@ -173,16 +184,16 @@ export function pickContact(
   for (const h of past) {
     // Every in-reach past position competes (no pastGrace pre-filter): the grade is anchored on the
     // closest approach, so a swing well after it whiffs even if the shuttle still hovers in reach.
-    if (h.tick >= nowTick || h.pos.y < REACH.minY || h.pos.y > REACH.maxY) continue
+    if (h.tick >= nowTick || h.pos.y < reach.minY || h.pos.y > reach.maxY) continue
     if (!onHalf(h.pos.z, side, lastHitter)) continue
     const d = Math.hypot(h.pos.x - h.at.x, h.pos.z - h.at.z)
-    if (d <= REACH.radius && d < bestD) {
+    if (d <= reach.radius && d < bestD) {
       bestD = d
       bestTick = h.tick
       best = h.pos
     }
   }
-  const c = findContact(future, player, 0, Math.max(0, swingTick + WINDOW.late - futureTick))
+  const c = findContact(future, player, 0, Math.max(0, swingTick + WINDOW.late - futureTick), reach)
   if (c && onHalf(c.pos.z, side, lastHitter)) {
     const d = Math.hypot(c.pos.x - player.x, c.pos.z - player.z)
     if (d <= bestD) {

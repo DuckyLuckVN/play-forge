@@ -162,6 +162,29 @@ describe('findContact', () => {
     expect(findContact(high, { x: 0, z: -3 }, 0, 0)).toBeNull()
   })
 
+  it('findContact / pickContact use the given reach box', () => {
+    const jump = { radius: 1.1, minY: 2.2, maxY: 3.7 }
+    const lunge = { radius: 2.3, minY: 0.05, maxY: 1.6 }
+    // passes over the player at (0, -2) around y 3.3: above REACH.maxY all the way through
+    const high: Flight = { pos: { x: -3, y: 3.2, z: -2 }, vel: { x: 12, y: 2.6, z: 0 } }
+    const p = { x: 0, z: -2 }
+    expect(findContact(high, p, 0, 60)).toBeNull()
+    const c = findContact(high, p, 0, 60, jump)
+    expect(c).not.toBeNull()
+    expect(c!.pos.y).toBeGreaterThan(REACH.maxY)
+    expect(pickContact([], high, 0, p, 0, 1, 0, 0)).toBeNull()
+    expect(pickContact([], high, 0, p, 0, 1, c!.dt, 0, undefined, jump)?.grade).toBe('perfect')
+    // a low drive 1.8 m beside the player at y ~0.6
+    const wide: Flight = { pos: { x: 1.8, y: 0.6, z: -6 }, vel: { x: 0, y: 1.2, z: 9 } }
+    const q = { x: 0, z: -4.4 }
+    expect(findContact(wide, q, 0, 60)).toBeNull()
+    expect(findContact(wide, q, 0, 60, lunge)).not.toBeNull()
+    // the past candidates use the box too
+    const past = [{ tick: 5, pos: { x: 1.8, y: 0.6, z: -4.4 }, at: q }]
+    expect(pickContact(past, wide, 10, q, 0, 1, 5, 10)).toBeNull()
+    expect(pickContact(past, wide, 10, q, 0, 1, 5, 10, undefined, lunge)?.tick).toBe(5)
+  })
+
   it('stops after a net hit', () => {
     // out of reach (y < minY) at tick 0; the net hit happens on the first step, then it rises into reach
     const f: Flight = { pos: { x: 0, y: 0.15, z: -0.05 }, vel: { x: 0, y: 6, z: 5 } }

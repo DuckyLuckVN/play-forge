@@ -4,7 +4,7 @@
 // Built once per page: `warm()` (menu preload) compiles every shader, each match `attach`es it to the
 // stage and gets a cleanup that parks it offscreen again. The render loop allocates nothing.
 // The park around the court (sky, lights, crowd) is scenery.ts. Real shadows come from the players
-// only and stop (between rallies) once the quality governor sees slow frames.
+// only and stop (between rallies) once the engine's quality ladder (quality.ts) drops them.
 // Net: net.ts (mesh, tapes, posts; a ripple when the shuttle hits it). Scoreboard: scoreboard.ts (DOM, top
 // centre) + the live score on the flip board by the net (boardprop.ts).
 // Juice: timing pops + badges (hud.ts), Perfect sparkles, a shuttle trail (hot after a smash), a sprung
@@ -35,7 +35,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { startRenderLoop } from '@forge/core/loop'
 import type { Smoothed } from '@forge/net/smoothing'
 import { playSound } from '@forge/audio/sound'
-import { createScene3D, Particles3D, QualityGovernor, type Scene3D } from '@forge/render3d'
+import { createScene3D, Particles3D, type Scene3D } from '@forge/render3d'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import {
   createChibi,
@@ -74,6 +74,7 @@ import type { GuestView } from './guestshuttle'
 import type { GuestPredictor } from './predict'
 import { SpringPunch } from './punch'
 import { SURROUND } from './props'
+import { SP_QUALITY } from './quality'
 import { Park } from './scenery'
 import { TAPPED, type SpEvent, type SpState } from './sim'
 import { chargeSound, eventSound, SHUTTLE_SOUNDS, swingSound } from './sounds'
@@ -157,10 +158,6 @@ const CHIBI_SCALE = 1.15
 const COURT_RUNOFF = { x: 0.35, z: 0.45 }
 /** Environment-map strength on the chibis in the park (the studio room is brighter than golden hour). */
 const TOY_ENV = 0.55
-/** Quality level (QualityGovernor) from which players stop casting real shadows. */
-const SHADOWS_OFF_LEVEL = 1
-/** Seconds after attach the shadow governor ignores (first frames hitch: buffers, textures, GC). */
-const QUALITY_SETTLE = 2
 const SHADOW_OPACITY = 0.26
 
 /** Shuttle trail: TRAIL_DOTS spheres spread along the last TRAIL_SAMPLES positions, one every TRAIL_STEP s. */
@@ -318,11 +315,8 @@ export class Court3D {
   private park: Park
   /** Takes the players' real shadows (the ground is unlit, so it can't). */
   private catcher!: Mesh
-  private quality = new QualityGovernor()
   private shadows = true
   private wantShadows = true
-  /** Seconds left before the shadow governor starts judging frames. */
-  private settle = QUALITY_SETTLE
   /** Crowd: hits in the current rally, length of the last point's rally, when that point was. */
   private rally = 0
   private pointHits = 0
@@ -370,7 +364,7 @@ export class Court3D {
     this.parking.style.cssText =
       'position:fixed;left:-10000px;top:0;width:100vw;height:85vh;pointer-events:none;opacity:0'
     document.body.appendChild(this.parking)
-    this.view = createScene3D(this.parking, { fov: CAMERA.fov, far: 120, maxDpr: 2 })
+    this.view = createScene3D(this.parking, { fov: CAMERA.fov, far: 120, maxDpr: 2, levels: SP_QUALITY })
     const { scene, renderer } = this.view
     renderer.shadowMap.enabled = true
     this.park = new Park(scene)
@@ -382,9 +376,9 @@ export class Court3D {
     pmrem.dispose()
 
     this.buildCourt()
-    // The engine's own governor restarts its window on every resize (buffers realloc); so does ours.
+    // Fires on every size or quality-level change (the engine's one governor decides both).
     this.view.onResize((w, h) => {
-      this.quality.restart()
+      this.wantShadows = this.view.quality.shadows !== false
       // Snaps on purpose: a resize/rotate already redraws everything at a new size, so easing the
       // framing would only add a second, slower jump.
       this.tight = framingTightness(w, h)
@@ -524,8 +518,6 @@ export class Court3D {
     this.reset()
     this.seeded = false
     stage.appendChild(this.view.root)
-    this.settle = QUALITY_SETTLE
-    this.quality.restart()
     onLocalSwing((what) => this.localSwing(what))
     const stop = startRenderLoop((dt) => this.frame(dt))
     return () => {
@@ -624,10 +616,8 @@ export class Court3D {
       this.lastShotId = newestShotId(curr.events)
     }
     this.lastTick = curr.tick
-    // Slow frames: drop the players' real shadows, between rallies so they don't vanish mid-shot.
-    // Blob shadows stay either way.
-    if (this.settle > 0) this.settle -= dt
-    else if (this.quality.sample(dt)) this.wantShadows = this.quality.level < SHADOWS_OFF_LEVEL
+    // Quality ladder dropped the players' real shadows: apply between rallies so they don't vanish
+    // mid-shot. Blob shadows stay either way.
     if (this.wantShadows !== this.shadows && curr.phase !== 'rally') this.setShadows(this.wantShadows)
     const prev = this.smooth!.prev ?? curr
     const a = this.smooth!.alpha()

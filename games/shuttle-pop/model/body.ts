@@ -11,8 +11,8 @@ import {
   Vector2,
 } from 'three'
 import { ARM, HIP_Y, LEG } from './dims'
-import { limbOf, type BodyKind, type FootKind, type HandKind, type Look, type Shoes } from './look'
-import { part, type Part } from './merge'
+import { bellyOf, limbOf, type BodyKind, type FootKind, type HandKind, type Look, type Shoes } from './look'
+import { part, place, type Part } from './merge'
 
 const HALF_PI = Math.PI / 2
 /** Collar line (world y): shirt below, neck above. */
@@ -83,9 +83,36 @@ function humanHips(l: Look): Part[] {
   ]
 }
 
+/** Chubby animal: a rounder chest in a tank jersey (stripe, round trim collar), or bare fur with a belly patch. */
+function chubbyTorso(l: Look): Part[] {
+  const R = 1.1
+  const lathe = new LatheGeometry(
+    TORSO_PROFILE.map(([r, y]) => new Vector2(r * (y < NECK_Y ? R : 1.15), y - HIP_Y)),
+    28,
+  )
+  const neckY = NECK_Y - HIP_Y
+  const k = l.kit
+  const belly = bellyOf(l)
+  const fur = (x: number, y: number, z: number) =>
+    z > 0.07 && Math.abs(x) < 0.11 && y < neckY - 0.05 ? belly : l.skin
+  if (!k) return [part(lathe, fur)]
+  const paint = (x: number, y: number, z: number) =>
+    y > neckY + 0.0005 ? fur(x, y, z) : y > STRIPE.lo - HIP_Y && y < STRIPE.hi - HIP_Y ? k.stripe : k.shirt
+  return [
+    part(lathe, paint),
+    part(new TorusGeometry(0.075, 0.017, 8, 24), k.trim, { p: [0, neckY - 0.004, 0], r: [HALF_PI, 0, 0] }),
+  ]
+}
+
+/** Chubby animal hips: rounder shorts (or fur). */
+function chubbyHips(l: Look): Part[] {
+  return place(humanHips(l), { s: [1.1, 1.05, 1.1] })
+}
+
 /** Torso (upper body: twists and bends) + hips (stays with the legs) per body kind. */
 export const BODIES: Record<BodyKind, { torso: (l: Look) => Part[]; hips: (l: Look) => Part[] }> = {
   human: { torso: humanTorso, hips: humanHips },
+  chubby: { torso: chubbyTorso, hips: chubbyHips },
 }
 
 export function torsoParts(l: Look): Part[] {
@@ -119,6 +146,7 @@ export function foreArmParts(l: Look, side: number): Part[] {
 }
 
 export const HANDS: Record<HandKind, (l: Look, side: number) => Part[]> = {
+  paw: (l, side) => pawHand(l, side),
   /** Round mitten with a small thumb on the inner (body) side. */
   mitten: (l, side) => [
     part(new SphereGeometry(0.062, 16, 12), limbOf(l), { p: [0, -ARM.hand, 0.006], s: [0.95, 1.05, 0.85] }),
@@ -129,6 +157,20 @@ export const HANDS: Record<HandKind, (l: Look, side: number) => Part[]> = {
   ],
 }
 
+/** Paw: a round mitten (no thumb) with a light pad on the palm and three toe bumps. */
+function pawHand(l: Look, side: number): Part[] {
+  const c = limbOf(l)
+  const out = [
+    part(new SphereGeometry(0.066, 16, 12), c, { p: [0, -ARM.hand, 0.004], s: [1, 1, 0.9] }),
+    part(new SphereGeometry(0.03, 10, 8), bellyOf(l), {
+      p: [side * 0.035, -ARM.hand - 0.01, 0.02],
+      s: [0.5, 1, 1],
+    }),
+  ]
+  for (const dz of [-0.03, 0, 0.03])
+    out.push(part(new SphereGeometry(0.022, 8, 6), c, { p: [0, -ARM.hand - 0.055, dz] }))
+  return out
+}
 /** The hand on the wrist joint. */
 export function handParts(l: Look, side: number): Part[] {
   return HANDS[l.hands](l, side)
@@ -147,6 +189,21 @@ const DEFAULT_SHOES: Shoes = { socks: 0xffffff, shoe: 0xffffff, sole: 0xffffff }
 
 /** Foot (+ sock) on the shin, in knee space: ground at y = −LEG.shin, toe on +z. */
 export const FEET: Record<FootKind, (l: Look) => Part[]> = {
+  /** Round paw: a soft pad foot with three toe bumps and a light sole. */
+  paw: (l) => {
+    const c = limbOf(l)
+    const g = -LEG.shin
+    const out = [
+      part(new SphereGeometry(0.066, 18, 10), c, { p: [0, g + 0.034, 0.03], s: [1.05, 0.6, 1.45] }),
+      part(new CylinderGeometry(0.058, 0.06, 0.012, 16), bellyOf(l), {
+        p: [0, g + 0.006, 0.03],
+        s: [1, 1, 1.4],
+      }),
+    ]
+    for (const x of [-0.035, 0, 0.035])
+      out.push(part(new SphereGeometry(0.026, 10, 8), c, { p: [x, g + 0.026, 0.105], s: [1, 0.85, 1] }))
+    return out
+  },
   /** Sock with a ring, sneaker: sole, rounded upper, toe cap, laces. */
   sneaker: (l) => {
     const k = l.shoes ?? DEFAULT_SHOES

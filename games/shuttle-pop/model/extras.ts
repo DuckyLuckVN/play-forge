@@ -4,9 +4,11 @@
 // into their bone instead (head.ts / body.ts): an extra costs a draw call, so only things that move are
 // extras. Budget: ≤ 3 extra meshes per look.
 
+import { CapsuleGeometry, ConeGeometry, SphereGeometry, Vector3 } from 'three'
 import type { Channel } from '../flair'
-import type { ExtraKind, Look } from './look'
-import type { Part, Triple } from './merge'
+import { HEAD_R } from './dims'
+import { bellyOf, type ExtraKind, type Look } from './look'
+import { dir, part, shade, turn, type Part, type Triple } from './merge'
 
 export interface ExtraSpec {
   /** The bone it hangs on. */
@@ -22,7 +24,146 @@ export interface ExtraSpec {
   glow?: (l: Look) => Part[]
 }
 
-export const EXTRAS: Record<ExtraKind, ExtraSpec> = {}
+const Y = new Vector3(0, 1, 0)
+const EAR_PINK = 0xffb3c6
+
+/** Head point at (polar, az) just inside the surface, and the ear's lean (normal tipped up by `up`). */
+function earBase(polar: number, az: number, up: number): { at: Triple; aim: Vector3 } {
+  const d = dir(polar, az)
+  const p = d.clone().multiplyScalar(HEAD_R * 0.93)
+  return {
+    at: [p.x, p.y, p.z],
+    aim: d
+      .clone()
+      .add(new Vector3(0, up, 0))
+      .normalize(),
+  }
+}
+
+/** A pointy ear (cone flattened front-back) with an inner patch, rising along `aim` from the pivot. */
+function pointyEar(
+  aim: Vector3,
+  r: number,
+  h: number,
+  outer: number | ((x: number, y: number, z: number) => number),
+  inner: number,
+): Part[] {
+  const q = turn(Y, aim)
+  const cone = new ConeGeometry(r, h, 14).translate(0, h / 2, 0)
+  const tip = aim.clone().multiplyScalar(h * 0.42)
+  // Inner patch: a smaller cone just in front (toward +z of the head).
+  const front = new Vector3(0, 0, 1).applyQuaternion(q).multiplyScalar(r * 0.32)
+  return [
+    part(cone, outer, { r: q, s: [1, 1, 0.5] }),
+    part(new ConeGeometry(r * 0.6, h * 0.72, 12), inner, {
+      p: [tip.x + front.x, tip.y + front.y, tip.z + front.z],
+      r: q,
+      s: [1, 1, 0.3],
+    }),
+  ]
+}
+
+const CAT_EAR = earBase(0.24 * Math.PI, 0.95, 0.5)
+const FOX_EAR = earBase(0.22 * Math.PI, 0.85, 0.6)
+const BUNNY_EAR = earBase(0.1 * Math.PI, 0.55, 1.8)
+
+/** Spheres along a curve (a tail): `pts` (x, y, z, r) merged, painted by index. */
+function beads(
+  pts: readonly (readonly [number, number, number, number])[],
+  paint: (i: number) => number,
+): Part[] {
+  return pts.map(([x, y, z, r], i) => part(new SphereGeometry(r, 12, 8), paint(i), { p: [x, y, z] }))
+}
+
+export const EXTRAS: Record<ExtraKind, ExtraSpec> = {
+  /** Cat: pointy ears with pink insides; they twitch. */
+  catEars: {
+    parent: 'head',
+    at: CAT_EAR.at,
+    pair: true,
+    channel: 'twitch',
+    parts: (l) => pointyEar(CAT_EAR.aim, 0.1, 0.17, l.skin, EAR_PINK),
+  },
+  /** Fox: big ears with dark tips and white insides; they twitch. */
+  foxEars: {
+    parent: 'head',
+    at: FOX_EAR.at,
+    pair: true,
+    channel: 'twitch',
+    parts: (l) => {
+      const dark = shade(l.limb ?? l.skin, 0.1)
+      const tipFrom = 0.16
+      return pointyEar(
+        FOX_EAR.aim,
+        0.12,
+        0.25,
+        (x, y, z) => (Math.hypot(x, y, z) > tipFrom ? dark : l.skin),
+        bellyOf(l),
+      )
+    },
+  },
+  /** Bunny: long ears standing up, pink inside; they flop. */
+  bunnyEars: {
+    parent: 'head',
+    at: BUNNY_EAR.at,
+    pair: true,
+    channel: 'flop',
+    parts: (l) => {
+      const q = turn(Y, BUNNY_EAR.aim)
+      const len = 0.27
+      const c = BUNNY_EAR.aim.clone().multiplyScalar(len / 2 + 0.04)
+      const f = new Vector3(0, 0, 1).applyQuaternion(q).multiplyScalar(0.022)
+      return [
+        part(new CapsuleGeometry(0.058, len, 6, 14), l.skin, { p: [c.x, c.y, c.z], r: q, s: [1, 1, 0.5] }),
+        part(new CapsuleGeometry(0.034, len * 0.85, 6, 12), EAR_PINK, {
+          p: [c.x + f.x, c.y + f.y, c.z + f.z],
+          r: q,
+          s: [1, 1, 0.35],
+        }),
+      ]
+    },
+  },
+  /** Cat: a long tail curling up behind, tabby rings; it wags. */
+  catTail: {
+    parent: 'hips',
+    at: [0, 0.02, -0.13],
+    channel: 'wag',
+    parts: (l) => {
+      const pts: [number, number, number, number][] = []
+      for (let i = 0; i < 9; i++) {
+        const u = i / 8
+        // Out the back, then up with a curl at the tip.
+        pts.push([
+          0,
+          0.02 + 0.3 * u * u + 0.04 * Math.sin(u * 5),
+          -0.04 - 0.2 * Math.sin(u * 1.9),
+          0.046 - 0.01 * u,
+        ])
+      }
+      return beads(pts, (i) => (i % 3 === 2 ? l.hair : l.skin))
+    },
+  },
+  /** Fox: a big fluffy tail with a white tip; it wags. */
+  foxTail: {
+    parent: 'hips',
+    at: [0, 0.0, -0.13],
+    channel: 'wag',
+    parts: (l) => {
+      const tail = new SphereGeometry(1, 18, 12)
+      return [
+        part(tail, l.skin, { p: [0, 0.1, -0.15], r: [-0.9, 0, 0], s: [0.085, 0.17, 0.085] }),
+        part(tail, bellyOf(l), { p: [0, 0.22, -0.24], r: [-0.9, 0, 0], s: [0.065, 0.08, 0.065] }),
+      ]
+    },
+  },
+  /** Bunny: a cotton puff; it wiggles. */
+  bunnyTail: {
+    parent: 'hips',
+    at: [0, 0.01, -0.14],
+    channel: 'wag',
+    parts: (l) => [part(new SphereGeometry(0.065, 14, 10), bellyOf(l), { p: [0, 0.01, -0.03] })],
+  },
+}
 
 /** Meshes an extra adds (a pair is two; a glow one more each). */
 export function extraMeshes(s: ExtraSpec): number {

@@ -24,6 +24,10 @@ export const VI: Dictionary = {
   Cloud: 'Mây',
   Sunny: 'Nắng',
   Mint: 'Bạc Hà',
+  Cat: 'Mèo',
+  Bunny: 'Thỏ',
+  Panda: 'Gấu Trúc',
+  Fox: 'Cáo',
 
   // Play
   'Shuttle Pop needs WebGL to run.': 'Shuttle Pop cần WebGL để chạy.',

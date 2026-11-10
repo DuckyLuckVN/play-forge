@@ -6,20 +6,22 @@
 /** Head shape. The face decals follow it (face.ts surfaces). */
 export type HeadKind = 'round'
 /** Static ears merged into the head mesh. Animated ears are extras (extras.ts). */
-export type EarKind = 'human' | 'none'
+export type EarKind = 'human' | 'none' | 'panda'
 /** A snout bump on the face (the mouth decal sits on it). */
-export type MuzzleKind = 'none'
+export type MuzzleKind = 'none' | 'cat' | 'fox' | 'panda'
 /** Hair + headwear (+ anything else worn on the head). */
-export type StyleKind = 'bowPigtails' | 'capFringe' | 'bandSpiky' | 'beanieBob'
-export type FaceKind = 'chibi'
-export type HandKind = 'mitten'
-export type FootKind = 'sneaker'
+export type StyleKind =
+  'bowPigtails' | 'capFringe' | 'bandSpiky' | 'beanieBob' | 'tabby' | 'tuft' | 'leaf' | 'foxFringe'
+/** Human chibi; animal (nose + cat mouth), + whiskers (kitty), + eye patches (panda). */
+export type FaceKind = 'chibi' | 'animal' | 'kitty' | 'panda'
+export type HandKind = 'mitten' | 'paw'
+export type FootKind = 'sneaker' | 'paw'
 /** Torso + hips shape. */
-export type BodyKind = 'human'
+export type BodyKind = 'human' | 'chubby'
 /** Two jointed legs, or none: a hopping blob or a floating sheet (hips chains hidden). */
 export type LegKind = 'pair' | 'hop' | 'float'
 /** Animated extra bones (own mesh + pose channel): tails, ears, wings, an antenna. */
-export type ExtraKind = never
+export type ExtraKind = 'catEars' | 'bunnyEars' | 'foxEars' | 'catTail' | 'bunnyTail' | 'foxTail'
 
 /** Badminton kit colours (optional: animals may wear one, creatures don't). */
 export interface Kit {
@@ -49,6 +51,8 @@ export interface Look {
   hair: number
   /** Lower iris tint. */
   iris: number
+  /** Nose decal colour (animal faces; dark when unset). */
+  nose?: number
   /** Headwear accent, wristband, sock ring, racket frame. */
   accent: number
   /** Racket grip tape. */

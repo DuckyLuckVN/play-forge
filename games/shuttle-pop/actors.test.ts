@@ -3,6 +3,9 @@ import { BufferGeometry, Mesh, MeshBasicMaterial, Object3D, Vector3 } from 'thre
 import { createChibi, PRESETS, restPose } from './actors'
 import { STRIKE_END } from './arm'
 import { SwingDriver } from './moves'
+import { extraMeshes } from './model/extras'
+import { legless } from './model/look'
+import { modelOf } from './model/model'
 
 // Rig checks with real three.js transforms (no WebGL needed).
 function rig(preset = 0) {
@@ -49,18 +52,32 @@ describe('chibi rig', () => {
     }
   })
 
-  it('every preset builds with ≤ 16 draw calls per chibi (twin outline + streak only when shown), shadow casters = torso, head, racket', () => {
+  it('every preset builds with ≤ 19 draw calls per chibi (16 + ≤ 3 extras; legless −4; twin outline + streak only when shown), shadow casters = torso, head, racket', () => {
     for (let n = 0; n < PRESETS.length; n++) {
       const { chibi } = rig(n)
-      expect(drawn(chibi.root).length).toBeLessThanOrEqual(16)
+      const look = PRESETS[n].look
+      const extras = modelOf(PRESETS[n]).extras
+      const expected = 16 - (legless(look) ? 4 : 0) + extras.reduce((a, e) => a + extraMeshes(e.spec), 0)
+      expect(drawn(chibi.root).length, PRESETS[n].name).toBe(expected)
+      expect(expected).toBeLessThanOrEqual(19)
       chibi.setPreset(n, true)
-      expect(drawn(chibi.root).length).toBeLessThanOrEqual(17)
+      const hulls = extras.reduce((a, e) => a + (e.hull ? (e.spec.pair ? 2 : 1) : 0), 0)
+      expect(drawn(chibi.root).length).toBe(expected + 1 + hulls)
       const casters: string[] = []
       chibi.root.traverse((o) => o instanceof Mesh && o.castShadow && casters.push(o.name))
       expect(casters.sort()).toEqual(['head', 'racket', 'torso'])
       for (const m of drawn(chibi.root))
         expect((m.geometry as BufferGeometry).getAttribute('position').count).toBeGreaterThan(0)
     }
+  })
+
+  it('switching looks re-uses the extra-bone pool: no leftovers from the previous look', () => {
+    const { chibi } = rig(0)
+    const count = () => drawn(chibi.root).length
+    const base = count()
+    for (let n = 0; n < PRESETS.length; n++) chibi.setPreset(n)
+    chibi.setPreset(0)
+    expect(count()).toBe(base)
   })
 
   it('both players on one preset share every geometry (built once per look)', () => {

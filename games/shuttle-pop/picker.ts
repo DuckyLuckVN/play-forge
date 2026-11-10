@@ -3,6 +3,7 @@
 import { h } from '@forge/ui/dom'
 import { PRESETS } from './actors'
 import {
+  bellyOf,
   limbOf,
   type BodyKind,
   type EarKind,
@@ -105,6 +106,25 @@ const STYLE_SVG: Svg<StyleKind> = {
         `<path d="M18 26.5q2 4 6 3l-1-3zM46 26.5q-2 4-6 3l1-3z" fill="${hair}"/><circle cx="32" cy="5" r="4" fill="#fff"/>`,
     }
   },
+  tabby: (l) => {
+    const c = hex(l.hair)
+    return {
+      front:
+        `<path d="M28 9.5l1.4 6M32 8.5v7M36 9.5l-1.4 6" stroke="${c}" stroke-width="2" stroke-linecap="round"/>` +
+        `<path d="M13.6 31h3.4M47 31h3.4" stroke="${c}" stroke-width="1.6" stroke-linecap="round"/>`,
+    }
+  },
+  tuft: (l) => ({
+    front: `<circle cx="32" cy="8.5" r="3.4" fill="${hex(l.hair)}"/><circle cx="28.8" cy="9.6" r="2.6" fill="${hex(l.hair)}"/><circle cx="35.2" cy="9.6" r="2.6" fill="${hex(l.hair)}"/>`,
+  }),
+  leaf: () => ({
+    front: `<ellipse cx="20" cy="11" rx="2" ry="5" fill="#6cc46a" transform="rotate(-35 20 11)"/><ellipse cx="16.5" cy="13" rx="1.8" ry="4.4" fill="#4fae55" transform="rotate(-75 16.5 13)"/>`,
+  }),
+  foxFringe: (l) => ({
+    front:
+      `<path d="M27 9q3 5 5 1q2 4 5-1" stroke="${hex(l.hair)}" stroke-width="3" fill="none" stroke-linecap="round"/>` +
+      `<ellipse cx="17" cy="35" rx="5.5" ry="3.6" fill="${hex(bellyOf(l))}"/><ellipse cx="47" cy="35" rx="5.5" ry="3.6" fill="${hex(bellyOf(l))}"/>`,
+  }),
 }
 
 const HEAD_SVG: Svg<HeadKind> = {
@@ -116,10 +136,24 @@ const EARS_SVG: Svg<EarKind> = {
     back: `<ellipse cx="13" cy="29" rx="2.4" ry="3.6" fill="${hex(l.skin)}"/><ellipse cx="51" cy="29" rx="2.4" ry="3.6" fill="${hex(l.skin)}"/>`,
   }),
   none: () => ({}),
+  panda: (l) => ({
+    back: `<circle cx="16" cy="12" r="6" fill="${hex(limbOf(l))}"/><circle cx="48" cy="12" r="6" fill="${hex(limbOf(l))}"/>`,
+  }),
 }
 
+const snout = (rx: number, ry: number) => (l: Look) => ({
+  head: `<ellipse cx="32" cy="${37 - ry * 0.3}" rx="${rx}" ry="${ry}" fill="${hex(bellyOf(l))}"/>`,
+})
 const MUZZLE_SVG: Svg<MuzzleKind> = {
   none: () => ({}),
+  cat: snout(6.5, 4.2),
+  fox: snout(7, 4.8),
+  panda: snout(7.5, 4.5),
+}
+
+/** Both sides of a symmetric shape: `f(x)` maps a left-side x; the right side mirrors it about 32. */
+function both(f: (x: (v: number) => number) => string): string {
+  return f((v) => v) + f((v) => 64 - v)
 }
 
 /** Shiny eyes (dark, iris tint, highlights) at x = 25 / 39, y `y`. */
@@ -136,7 +170,38 @@ function eyesSvg(l: Look, y: number, eye = EYE_DARK): string {
 const BLUSH = `<ellipse cx="19.5" cy="35" rx="3.2" ry="1.6" fill="#ff9eb5"/><ellipse cx="44.5" cy="35" rx="3.2" ry="1.6" fill="#ff9eb5"/>`
 const SMILE = `<path d="M29.5 37q2.5 2.6 5 0" stroke="#8c2f3f" stroke-width="1.5" fill="none" stroke-linecap="round"/>`
 
+const NOSE_DARK = '#2b2233'
+const CAT_MOUTH = `<path d="M29.4 36.4q1.3 1.4 2.6 0q1.3 1.4 2.6 0" stroke="#8c2f3f" stroke-width="1.2" fill="none" stroke-linecap="round"/>`
+function animalFace(l: Look, extra = ''): string {
+  const nose = l.nose === undefined ? NOSE_DARK : hex(l.nose)
+  return (
+    extra +
+    eyesSvg(l, 28.5) +
+    BLUSH +
+    `<ellipse cx="32" cy="34.2" rx="1.8" ry="1.2" fill="${nose}"/>` +
+    CAT_MOUTH
+  )
+}
+
 const FACE_SVG: Svg<FaceKind> = {
+  animal: (l) => ({ face: animalFace(l) }),
+  kitty: (l) => ({
+    face:
+      animalFace(l) +
+      both(
+        (x) =>
+          `<path d="M${x(25)} 35.5L${x(15)} 34M${x(25)} 37L${x(15)} 37.6" stroke="${hex(shade(l.skin, 0.55))}" stroke-width=".8" stroke-linecap="round"/>`,
+      ),
+  }),
+  panda: (l) => ({
+    face: animalFace(
+      l,
+      both(
+        (x) =>
+          `<ellipse cx="${x(24)}" cy="29" rx="5" ry="6.2" fill="${hex(limbOf(l))}" transform="rotate(${x(0) === 0 ? 25 : -25} ${x(24)} 29)"/>`,
+      ),
+    ),
+  }),
   chibi: (l) => {
     const brow = hex(shade(l.hair, 0.25))
     const brows = [25, 39]
@@ -151,12 +216,25 @@ const FACE_SVG: Svg<FaceKind> = {
 
 /** Mittens (hands) at the body's sides. */
 const HAND_SVG: Svg<HandKind> = {
+  paw: (l) => ({
+    body: both(
+      (x) =>
+        `<circle cx="${x(17)}" cy="53" r="3.8" fill="${hex(limbOf(l))}"/><circle cx="${x(17)}" cy="54" r="1.5" fill="${hex(bellyOf(l))}"/>`,
+    ),
+  }),
   mitten: (l) => ({
     body: `<circle cx="17.5" cy="53" r="3.4" fill="${hex(limbOf(l))}"/><circle cx="46.5" cy="53" r="3.4" fill="${hex(limbOf(l))}"/>`,
   }),
 }
 
 const FEET_SVG: Svg<FootKind> = {
+  paw: (l) => ({
+    legs: both(
+      (x) =>
+        `<ellipse cx="${x(26.8)}" cy="67" rx="4.4" ry="2.6" fill="${hex(limbOf(l))}"/>` +
+        `<path d="M${x(24.5)} 66.4v1.6M${x(26.8)} 66v2M${x(29.1)} 66.4v1.6" stroke="${hex(shade(limbOf(l), 0.3))}" stroke-width=".6" stroke-linecap="round"/>`,
+    ),
+  }),
   sneaker: (l) => {
     const s = l.shoes ?? { socks: 0xffffff, shoe: 0xffffff, sole: 0xffffff }
     return {
@@ -196,7 +274,28 @@ function kitSvg(k: Kit): string {
   )
 }
 
+/** Animal jersey: rounder shirt, round trim collar; or bare fur with a belly patch. */
+function chubbySvg(l: Look): string {
+  const skin = hex(l.skin)
+  const k = l.kit
+  if (!k)
+    return (
+      `<rect x="19.5" y="42" width="25" height="15" rx="7.5" fill="${skin}"/>` +
+      `<ellipse cx="32" cy="50" rx="7" ry="6" fill="${hex(bellyOf(l))}"/>`
+    )
+  return (
+    `<rect x="20" y="52.5" width="24" height="7.5" rx="3.5" fill="${hex(k.bottomColor)}"/>` +
+    `<rect x="19.5" y="42.5" width="25" height="13.5" rx="7" fill="${hex(k.shirt)}"/>` +
+    `<circle cx="19" cy="46.5" r="4.2" fill="${hex(k.shirt)}"/><circle cx="45" cy="46.5" r="4.2" fill="${hex(k.shirt)}"/>` +
+    `<rect x="19.5" y="49" width="25" height="2.4" fill="${hex(k.stripe)}"/>` +
+    `<path d="M27 43.2Q32 47 37 43.2" stroke="${hex(k.trim)}" stroke-width="1.8" fill="none" stroke-linecap="round"/>`
+  )
+}
+
 const BODY_SVG: Svg<BodyKind> = {
+  chubby: (l) => ({
+    body: `<rect x="28.5" y="40" width="7" height="5" fill="${hex(l.skin)}"/>` + chubbySvg(l),
+  }),
   human: (l) => {
     const skin = hex(l.skin)
     return {
@@ -207,7 +306,36 @@ const BODY_SVG: Svg<BodyKind> = {
   },
 }
 
-const EXTRA_SVG: Svg<ExtraKind> = {}
+const EXTRA_SVG: Svg<ExtraKind> = {
+  catEars: (l) => ({
+    back: both(
+      (x) =>
+        `<path d="M${x(14.5)} 19L${x(16.5)} 3.5L${x(28)} 11z" fill="${hex(l.skin)}"/><path d="M${x(17.2)} 14.5L${x(18.2)} 7.5L${x(24.5)} 11.4z" fill="#ffb3c6"/>`,
+    ),
+  }),
+  foxEars: (l) => ({
+    back: both(
+      (x) =>
+        `<path d="M${x(13)} 20L${x(13.5)} 0.5L${x(28.5)} 10z" fill="${hex(l.skin)}"/><path d="M${x(13.5)} 0.5L${x(13.3)} 7L${x(18.5)} 4z" fill="${hex(shade(limbOf(l), 0.1))}"/><path d="M${x(16)} 15L${x(16.3)} 6.5L${x(24.5)} 11z" fill="${hex(bellyOf(l))}"/>`,
+    ),
+  }),
+  bunnyEars: (l) => ({
+    back: both((x) => {
+      const r = x(0) === 0 ? -14 : 14
+      return (
+        `<ellipse cx="${x(24)}" cy="1" rx="4.6" ry="11.5" fill="${hex(l.skin)}" transform="rotate(${r} ${x(24)} 10)"/>` +
+        `<ellipse cx="${x(24)}" cy="2" rx="2.3" ry="8.5" fill="#ffb3c6" transform="rotate(${r} ${x(24)} 10)"/>`
+      )
+    }),
+  }),
+  catTail: (l) => ({
+    back: `<path d="M42 57Q54 58 53 46Q52.5 40 57 38" stroke="${hex(l.skin)}" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M55 39.2L57 38" stroke="${hex(l.hair)}" stroke-width="4" stroke-linecap="round"/>`,
+  }),
+  foxTail: (l) => ({
+    back: `<ellipse cx="50" cy="50" rx="6.5" ry="11" fill="${hex(l.skin)}" transform="rotate(35 50 50)"/><ellipse cx="54.5" cy="42.5" rx="4.2" ry="4.6" fill="${hex(bellyOf(l))}"/>`,
+  }),
+  bunnyTail: () => ({}),
+}
 
 /** Front portrait matching the 3D model, from the look's keys. */
 export function portrait(l: Look): string {

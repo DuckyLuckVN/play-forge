@@ -2,9 +2,17 @@
 // the hair + headwear style, each picked by the look's key. All merged into one mesh by model.ts; the
 // face features (eyes, brows, mouth, blush) are a separate morphing mesh (face.ts).
 
-import { ConeGeometry, CylinderGeometry, SphereGeometry, TorusGeometry, Vector3 } from 'three'
+import { ConeGeometry, CylinderGeometry, Quaternion, SphereGeometry, TorusGeometry, Vector3 } from 'three'
 import { HEAD_R } from './dims'
-import type { EarKind, HeadKind, Look, MuzzleKind, StyleKind } from './look'
+import {
+  bellyOf,
+  limbOf,
+  type EarKind,
+  type HeadKind,
+  type Look,
+  type MuzzleKind,
+  type StyleKind,
+} from './look'
 import { dir, part, place, shade, turn, type Part } from './merge'
 
 const R = HEAD_R
@@ -22,10 +30,45 @@ export const EARS: Record<EarKind, (l: Look) => Part[]> = {
       part(new SphereGeometry(0.055, 10, 8), l.skin, { p: [s * 0.352, -0.03, -0.01], s: [0.6, 1, 0.8] }),
     ),
   none: () => [],
+  /** Panda: round dark ears on top. */
+  panda: (l) =>
+    [-1, 1].map((s) => {
+      const d = dir(0.24 * Math.PI, s * 0.95)
+      const p = d.clone().multiplyScalar(R * 0.98)
+      return part(new SphereGeometry(0.1, 14, 10), limbOf(l), {
+        p: [p.x, p.y, p.z],
+        r: turn(Y, d),
+        s: [1, 0.75, 0.55],
+      })
+    }),
+}
+
+/**
+ * Snout bump: an ellipsoid on the face, centre (0, y, z), radii (a, b, c). Shared with the face decals'
+ * surface (face.ts), so the nose and mouth sit on it.
+ */
+export interface MuzzleDims {
+  y: number
+  z: number
+  a: number
+  b: number
+  c: number
+}
+export const MUZZLE_DIMS: Record<Exclude<MuzzleKind, 'none'>, MuzzleDims> = {
+  cat: { y: -0.135, z: 0.275, a: 0.12, b: 0.07, c: 0.085 },
+  fox: { y: -0.14, z: 0.26, a: 0.125, b: 0.075, c: 0.115 },
+  panda: { y: -0.135, z: 0.27, a: 0.135, b: 0.075, c: 0.085 },
+}
+
+function muzzle(d: MuzzleDims, color: number): Part[] {
+  return [part(new SphereGeometry(1, 24, 16), color, { p: [0, d.y, d.z], s: [d.a, d.b, d.c] })]
 }
 
 export const MUZZLES: Record<MuzzleKind, (l: Look) => Part[]> = {
   none: () => [],
+  cat: (l) => muzzle(MUZZLE_DIMS.cat, bellyOf(l)),
+  fox: (l) => muzzle(MUZZLE_DIMS.fox, bellyOf(l)),
+  panda: (l) => muzzle(MUZZLE_DIMS.panda, bellyOf(l)),
 }
 
 /** Hair shell: a sphere cap of `theta` rad from the crown, tipped back `tilt` rad (forehead shows). */
@@ -167,6 +210,55 @@ export const STYLES: Record<StyleKind, (l: Look) => Part[]> = {
       part(new SphereGeometry(0.08, 12, 10), 0xffffff, { p: [0, BR + 0.04, -0.04] }),
     ]
   },
+  /** Cat: three tabby stripes on the forehead, one on each cheek. */
+  tabby: (l) => [
+    stripe(l.hair, 0.2 * Math.PI, -0.22, 0.09, 0.15),
+    stripe(l.hair, 0.17 * Math.PI, 0, 0.1),
+    stripe(l.hair, 0.2 * Math.PI, 0.22, 0.09, -0.15),
+    stripe(l.hair, 0.6 * Math.PI, -1.15, 0.07, HALF_PI),
+    stripe(l.hair, 0.6 * Math.PI, 1.15, 0.07, HALF_PI),
+  ],
+  /** Bunny: a fluffy tuft on the crown. */
+  tuft: (l) =>
+    [
+      [0, 0.09, 0.055],
+      [-0.045, 0.05, 0.045],
+      [0.045, 0.05, 0.045],
+    ].map(([x, z, r]) => part(new SphereGeometry(r, 12, 8), l.hair, { p: [x, R * 0.97, z] })),
+  /** Panda: a bamboo leaf sprig clipped on the side. */
+  leaf: (l) => {
+    const leaf = new SphereGeometry(0.06, 12, 8)
+    const sprig: Part[] = [
+      part(new CylinderGeometry(0.012, 0.012, 0.09, 6), shade(l.accent, 0.1), { r: [0, 0, 0.5] }),
+      part(leaf, 0x6cc46a, { p: [0.05, 0.03, 0], r: [0, 0, -0.7], s: [0.45, 1.3, 0.2] }),
+      part(leaf, 0x4fae55, { p: [-0.02, 0.06, 0.01], r: [0, 0, 0.35], s: [0.4, 1.15, 0.2] }),
+    ]
+    return place(sprig, { p: [-0.2, 0.27, 0.08], r: [0.2, 0.3, 0.55] })
+  },
+  /** Fox: a forehead tuft and white cheek fluff. */
+  foxFringe: (l) => {
+    const out = [lock(l.hair, 0.27 * Math.PI, -0.18, 0.07), lock(l.hair, 0.25 * Math.PI, 0.16, 0.075)]
+    for (const s of [-1, 1])
+      out.push(
+        part(new SphereGeometry(0.1, 14, 10), bellyOf(l), {
+          p: [s * 0.27, -0.13, 0.15],
+          r: [0, s * 0.6, s * -0.4],
+          s: [1, 0.7, 0.55],
+        }),
+      )
+    return out
+  },
+}
+
+/** A flat stripe lying on the head at (polar, az): tabby markings. */
+function stripe(color: number, polar: number, az: number, len: number, roll = 0): Part {
+  const d = dir(polar, az)
+  const p = d.clone().multiplyScalar(R * 0.995)
+  return part(new SphereGeometry(0.03, 10, 6), color, {
+    p: [p.x, p.y, p.z],
+    r: turn(Z, d).multiply(new Quaternion().setFromAxisAngle(Z, roll)),
+    s: [0.7, len / 0.06, 0.3],
+  })
 }
 
 /** Head shape + ears + muzzle + hair/headwear, in head space. */

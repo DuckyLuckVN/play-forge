@@ -7,7 +7,8 @@
 
 import { BufferAttribute, BufferGeometry, Color, Float32BufferAttribute } from 'three'
 import { HEAD_R } from './dims'
-import type { FaceKind, HeadKind, Look } from './look'
+import { MUZZLE_DIMS } from './head'
+import { limbOf, type FaceKind, type HeadKind, type Look } from './look'
 import { shade } from './merge'
 
 export type Expr = 'neutral' | 'happy' | 'sad' | 'effort' | 'blink'
@@ -20,7 +21,42 @@ export interface FaceLayout {
   idx: number[]
 }
 
-const COL = { eye: 0x2b2233, shine: 0xffffff, mouth: 0x8c2f3f, blush: 0xff9eb5 }
+const COL = { eye: 0x2b2233, shine: 0xffffff, mouth: 0x8c2f3f, blush: 0xff9eb5, nose: 0x2b2233 }
+
+/** What a face kind draws. Every expression of one kind has the same parts (morph-safe). */
+export interface FaceStyle {
+  brows: boolean
+  blush: boolean
+  /** Eye centre raised by (m). */
+  eyeUp: number
+  /** Nose decal on the muzzle (colour: look.nose or dark). */
+  nose: boolean
+  /** Chibi smile, or the cat's ω mouth. */
+  mouth: 'chibi' | 'cat'
+  whiskers: boolean
+  /** Dark patches behind the eyes (look.limb). */
+  patch: boolean
+}
+const HUMAN_FACE: FaceStyle = {
+  brows: true,
+  blush: true,
+  eyeUp: 0,
+  nose: false,
+  mouth: 'chibi',
+  whiskers: false,
+  patch: false,
+}
+const ANIMAL_FACE: FaceStyle = { ...HUMAN_FACE, brows: false, eyeUp: 0.02, nose: true, mouth: 'cat' }
+export const FACE_STYLES: Record<FaceKind, FaceStyle> = {
+  chibi: HUMAN_FACE,
+  animal: ANIMAL_FACE,
+  kitty: { ...ANIMAL_FACE, whiskers: true },
+  panda: { ...ANIMAL_FACE, patch: true, blush: false },
+}
+/** Whiskers: 3 per side from the muzzle edge outward (x from / to, y, slope), thickness. */
+const WHISKER = { x0: 0.11, x1: 0.25, y: -0.115, gap: 0.022, tilt: 0.12, th: 0.0055 }
+/** Panda eye patch: half width / height, offset from the eye centre (outward, down), tilt (rad). */
+const PATCH = { a: 0.088, b: 0.108, dx: 0.012, dy: -0.012, tilt: 0.45 }
 /** Eye: half width / height, centre (± x, y). */
 const EYE = { a: 0.066, b: 0.086, x: 0.138, y: -0.012 }
 const BROW = { w: 0.05, x: 0.138, y: 0.108, th: 0.019 }
@@ -62,6 +98,24 @@ function browY(e: Expr, t: number): number {
   }
 }
 
+/** The cat's ω mouth (same conventions as `mouth`): two small arcs under the nose, open when happy. */
+function catMouth(e: Expr): { w: number; top: (t: number) => number; bot: (t: number) => number } {
+  const omega = (t: number) => 0.006 - 0.012 * (1 - (2 * Math.abs(t) - 1) ** 2)
+  const line = (top: (t: number) => number) => (t: number) => top(t) - 0.007
+  switch (e) {
+    case 'happy':
+      return { w: 0.034, top: omega, bot: (t) => omega(t) - 0.032 * (1 - t * t) - 0.004 }
+    case 'sad': {
+      const top = (t: number) => 0.004 - 0.012 * t * t
+      return { w: 0.026, top, bot: line(top) }
+    }
+    case 'effort':
+      return mouth(e)
+    default:
+      return { w: 0.03, top: omega, bot: line(omega) }
+  }
+}
+
 /** Mouth half width, top and bottom edge at t ∈ [−1, 1] (top ≥ bottom always). */
 function mouth(e: Expr): { w: number; top: (t: number) => number; bot: (t: number) => number } {
   const line = (top: (t: number) => number) => (t: number) => top(t) - 0.0085 * (1 - 0.55 * t * t)
@@ -99,15 +153,26 @@ const HEAD_SURFACES: Record<HeadKind, Surface> = {
   round: sphere(HEAD_R),
 }
 
-/** The surface the face decals sit on for this look. */
+/** The surface the face decals sit on for this look: the head, with the muzzle bump (if any) on top. */
 export function surfaceOf(look: Look): Surface {
-  return HEAD_SURFACES[look.head]
+  const head = HEAD_SURFACES[look.head]
+  if (look.muzzle === 'none') return head
+  const m = MUZZLE_DIMS[look.muzzle]
+  return (u, v, lift) => {
+    const q = 1 - (u / (m.a + lift)) ** 2 - ((v - m.y) / (m.b + lift)) ** 2
+    const snout = q > 0 ? m.z + (m.c + lift) * Math.sqrt(q) : 0
+    return Math.max(head(u, v, lift), snout)
+  }
 }
 
 /** The face for one expression. Every expression yields the same vertex count, colours and triangles. */
 export function faceLayout(look: Look, e: Expr): FaceLayout {
   const out: FaceLayout = { pos: [], col: [], idx: [] }
   const surf = surfaceOf(look)
+  const st = FACE_STYLES[look.face]
+  /** Eyes sit one layer up over patches. */
+  const L = st.patch ? 1 : 0
+  const eyeY = EYE.y + st.eyeUp
   const vert = (u: number, v: number, layer: number, hex: number) => {
     out.pos.push(u, v, surf(u, v, 0.004 + layer * 0.0025))
     c.setHex(hex)
@@ -146,41 +211,80 @@ export function faceLayout(look: Look, e: Expr): FaceLayout {
   }
 
   for (const s of [-1, 1]) {
-    // Eye: dark iris, lower tint, big + small highlight.
     const ex = s * EYE.x
+    if (st.patch) {
+      const px = ex + s * PATCH.dx
+      const py = eyeY + PATCH.dy
+      const ca = Math.cos(PATCH.tilt * s)
+      const sa = Math.sin(PATCH.tilt * s)
+      disc(px, py, PATCH.a, PATCH.b, 0, limbOf(look), (u, v) => {
+        const du = u - px
+        const dv = v - py
+        return [px + du * ca - dv * sa, py + du * sa + dv * ca]
+      })
+    }
+    // Eye: dark iris, lower tint, big + small highlight.
     const { f, shine } = eyeShape(e, s)
     const at = (u: number, v: number): [number, number] => {
-      const [dx, dy] = f(u - ex, v - EYE.y)
-      return [ex + dx, EYE.y + dy]
+      const [dx, dy] = f(u - ex, v - eyeY)
+      return [ex + dx, eyeY + dy]
     }
-    disc(ex, EYE.y, EYE.a, EYE.b, 0, COL.eye, at)
-    disc(ex, EYE.y - 0.034, 0.048, 0.039, 1, look.iris, at)
+    disc(ex, eyeY, EYE.a, EYE.b, L, COL.eye, at)
+    disc(ex, eyeY - 0.034, 0.048, 0.039, L + 1, look.iris, at)
     for (const [hx, hy, hr] of [
       [0.019, 0.032, 0.024],
       [-0.023, -0.041, 0.011],
     ]) {
-      const [cx, cy] = at(ex + hx, EYE.y + hy)
-      disc(cx, cy, hr * shine, hr * shine, 2, COL.shine, (u, v) => [u, v])
+      const [cx, cy] = at(ex + hx, eyeY + hy)
+      disc(cx, cy, hr * shine, hr * shine, L + 2, COL.shine, (u, v) => [u, v])
     }
-    // Brow: thicker at the inner end.
-    const xs: number[] = []
-    const tops: number[] = []
-    const bots: number[] = []
-    for (let j = 0; j < 6; j++) {
-      const u = -1 + (2 * j) / 5
-      const t = u * s
-      const th = BROW.th * (1 - 0.3 * ((t + 1) / 2))
-      const y = BROW.y + browY(e, t)
-      xs.push(s * BROW.x + u * BROW.w)
-      tops.push(y + th / 2)
-      bots.push(y - th / 2)
+    if (st.brows) {
+      // Brow: thicker at the inner end.
+      const xs: number[] = []
+      const tops: number[] = []
+      const bots: number[] = []
+      for (let j = 0; j < 6; j++) {
+        const u = -1 + (2 * j) / 5
+        const t = u * s
+        const th = BROW.th * (1 - 0.3 * ((t + 1) / 2))
+        const y = BROW.y + st.eyeUp + browY(e, t)
+        xs.push(s * BROW.x + u * BROW.w)
+        tops.push(y + th / 2)
+        bots.push(y - th / 2)
+      }
+      strip(xs, tops, bots, 0, shade(look.hair, 0.25))
     }
-    strip(xs, tops, bots, 0, shade(look.hair, 0.25))
-    // Blush.
-    const bs = e === 'happy' ? 1.2 : e === 'sad' ? 0.85 : 1
-    disc(s * BLUSH.x, BLUSH.y, BLUSH.a * bs, BLUSH.b * bs, 0, COL.blush, (u, v) => [u, v])
+    if (st.blush) {
+      const bs = e === 'happy' ? 1.2 : e === 'sad' ? 0.85 : 1
+      disc(s * BLUSH.x, BLUSH.y, BLUSH.a * bs, BLUSH.b * bs, 0, COL.blush, (u, v) => [u, v])
+    }
+    if (st.whiskers)
+      for (let w = -1; w <= 1; w++) {
+        const y0 = WHISKER.y + w * WHISKER.gap
+        const slope = w * WHISKER.tilt
+        const xs: number[] = []
+        const tops: number[] = []
+        const bots: number[] = []
+        for (let j = 0; j < 4; j++) {
+          const k = j / 3
+          // Left side runs outer → inner so x increases.
+          const kk = s < 0 ? 1 - k : k
+          const x = s * (WHISKER.x0 + (WHISKER.x1 - WHISKER.x0) * kk)
+          const y = y0 + slope * (WHISKER.x1 - WHISKER.x0) * kk
+          const th = WHISKER.th * (1 - 0.5 * kk)
+          xs.push(x)
+          tops.push(y + th / 2)
+          bots.push(y - th / 2)
+        }
+        strip(xs, tops, bots, 0, shade(look.skin, 0.55))
+      }
   }
-  const m = mouth(e)
+  if (st.nose && look.muzzle !== 'none') {
+    const m = MUZZLE_DIMS[look.muzzle]
+    const ny = m.y + m.b * 0.5
+    disc(0, ny, 0.024, 0.015, 1, look.nose ?? COL.nose, (u, v) => [u, v + (v < ny ? (v - ny) * 0.5 : 0)])
+  }
+  const m = st.mouth === 'cat' ? catMouth(e) : mouth(e)
   const xs: number[] = []
   const tops: number[] = []
   const bots: number[] = []
@@ -194,22 +298,16 @@ export function faceLayout(look: Look, e: Expr): FaceLayout {
   return out
 }
 
-const FACES: Record<FaceKind, (l: Look) => BufferGeometry> = {
-  chibi: (l) => {
-    const base = faceLayout(l, 'neutral')
-    const g = new BufferGeometry()
-    g.setAttribute('position', new Float32BufferAttribute(base.pos, 3))
-    g.setAttribute('color', new Float32BufferAttribute(base.col, 3))
-    g.setIndex(new BufferAttribute(new Uint16Array(base.idx), 1))
-    g.morphAttributes.position = MORPHS.map((e) => new Float32BufferAttribute(faceLayout(l, e).pos, 3))
-    g.computeBoundingSphere()
-    return g
-  },
-}
-
-/** Face mesh geometry (head space) with one morph target per MORPHS entry. */
+/** Face mesh geometry (head space, the look's FACE_STYLES entry) with one morph target per MORPHS entry. */
 export function faceGeometry(l: Look): BufferGeometry {
-  return FACES[l.face](l)
+  const base = faceLayout(l, 'neutral')
+  const g = new BufferGeometry()
+  g.setAttribute('position', new Float32BufferAttribute(base.pos, 3))
+  g.setAttribute('color', new Float32BufferAttribute(base.col, 3))
+  g.setIndex(new BufferAttribute(new Uint16Array(base.idx), 1))
+  g.morphAttributes.position = MORPHS.map((e) => new Float32BufferAttribute(faceLayout(l, e).pos, 3))
+  g.computeBoundingSphere()
+  return g
 }
 
 /**

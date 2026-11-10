@@ -27,6 +27,17 @@ const HUMAN = {
   extras: [],
 } as const
 
+/** Animals: chubby body in a tank jersey, paws, an animal face (nose, ω mouth). */
+const ANIMAL = {
+  body: 'chubby',
+  legs: 'pair',
+  head: 'round',
+  ears: 'none',
+  face: 'animal',
+  hands: 'paw',
+  feet: 'paw',
+} as const
+
 /** The computer starts on 1, the player on 0. */
 export const PRESETS: readonly Preset[] = [
   {
@@ -111,6 +122,85 @@ export const PRESETS: readonly Preset[] = [
         bottomColor: 0x2f9e7e,
       },
       shoes: { socks: 0xffffff, shoe: 0x2f9e7e, sole: 0xffffff },
+    },
+  },
+  {
+    id: 4,
+    name: 'Cat',
+    tint: 0x8fa8ff,
+    look: {
+      ...ANIMAL,
+      skin: 0xffc07a,
+      belly: 0xfff3e3,
+      hair: 0xe08a3c,
+      iris: 0x5fae3e,
+      nose: 0xff8fa3,
+      accent: 0x4b5fd1,
+      grip: 0x2c3470,
+      muzzle: 'cat',
+      style: 'tabby',
+      face: 'kitty',
+      extras: ['catEars', 'catTail'],
+      kit: { shirt: 0x8fa8ff, trim: 0xffffff, stripe: 0x4b5fd1, bottom: 'shorts', bottomColor: 0x2c3470 },
+    },
+  },
+  {
+    id: 5,
+    name: 'Bunny',
+    tint: 0xffb38a,
+    look: {
+      ...ANIMAL,
+      skin: 0xfdf7f2,
+      belly: 0xffffff,
+      hair: 0xfdf7f2,
+      iris: 0xd0587e,
+      nose: 0xff8fa3,
+      accent: 0xf07c4a,
+      grip: 0xffffff,
+      muzzle: 'cat',
+      style: 'tuft',
+      extras: ['bunnyEars', 'bunnyTail'],
+      kit: { shirt: 0xffb38a, trim: 0xffffff, stripe: 0xf07c4a, bottom: 'shorts', bottomColor: 0xb65a3a },
+    },
+  },
+  {
+    id: 6,
+    name: 'Panda',
+    tint: 0xe84a5f,
+    look: {
+      ...ANIMAL,
+      skin: 0xfafafa,
+      limb: 0x34343e,
+      belly: 0xffffff,
+      hair: 0x34343e,
+      iris: 0x8a6a4a,
+      accent: 0xffc145,
+      grip: 0xb8323f,
+      ears: 'panda',
+      muzzle: 'panda',
+      style: 'leaf',
+      face: 'panda',
+      extras: [],
+      kit: { shirt: 0xe84a5f, trim: 0xffc145, stripe: 0xffc145, bottom: 'shorts', bottomColor: 0xb8323f },
+    },
+  },
+  {
+    id: 7,
+    name: 'Fox',
+    tint: 0x4fc9c0,
+    look: {
+      ...ANIMAL,
+      skin: 0xff9447,
+      limb: 0x5a3a2e,
+      belly: 0xfff6ec,
+      hair: 0xf07a2c,
+      iris: 0x9a6a2b,
+      accent: 0x1f8f86,
+      grip: 0x1f5f6f,
+      muzzle: 'fox',
+      style: 'foxFringe',
+      extras: ['foxEars', 'foxTail'],
+      kit: { shirt: 0x4fc9c0, trim: 0xffffff, stripe: 0x1f8f86, bottom: 'shorts', bottomColor: 0x1f5f6f },
     },
   },
 ]

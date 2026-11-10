@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { loadPreset, savePreset } from './picker'
+import { PRESETS } from './presets'
+import { loadPreset, portrait, savePreset } from './picker'
 
 const KEY = 'play-forge:shuttle-pop:preset'
 
@@ -40,10 +41,33 @@ describe('preset storage', () => {
     expect(loadPreset()).toBe(0)
   })
 
-  it.each(['7', '-1', '1.5', 'abc', ''])('returns 0 for an invalid stored value %j', (raw) => {
+  it('keeps every valid saved choice, old 0..3 picks included', () => {
     const store = memoryStorage()
-    store.setItem(KEY, raw)
     vi.stubGlobal('localStorage', store)
-    expect(loadPreset()).toBe(0)
+    for (let n = 0; n < PRESETS.length; n++) {
+      store.setItem(KEY, String(n))
+      expect(loadPreset()).toBe(n)
+    }
+  })
+
+  it.each([String(PRESETS.length), '99', '-1', '1.5', 'abc', ''])(
+    'returns 0 for an invalid stored value %j',
+    (raw) => {
+      const store = memoryStorage()
+      store.setItem(KEY, raw)
+      vi.stubGlobal('localStorage', store)
+      expect(loadPreset()).toBe(0)
+    },
+  )
+})
+
+describe('portraits', () => {
+  it('every preset gets its own portrait SVG built from its look keys', () => {
+    const svgs = PRESETS.map((p) => portrait(p.look))
+    for (const s of svgs) {
+      expect(s.startsWith('<svg')).toBe(true)
+      expect(s).not.toMatch(/undefined|NaN/)
+    }
+    expect(new Set(svgs).size).toBe(PRESETS.length)
   })
 })

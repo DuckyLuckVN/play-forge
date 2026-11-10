@@ -1,4 +1,5 @@
 import { formatNumber } from './core/i18n'
+import { preloadGate } from './core/preload'
 import './ui/base.css'
 import { playMusic, type Track } from './audio/music'
 import { playSound, UI_SOUNDS } from './audio/sound'
@@ -40,7 +41,6 @@ import { h, icon, iconButton, toast } from './ui/dom'
 import { fullscreenButton } from './ui/fullscreen'
 import {
   guideButton,
-  guideCard,
   guideSeen,
   howToPlayMode,
   markGuideSeen,
@@ -551,8 +551,11 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     if (!s.isHost && !s.hostConnected) return showHostLost()
     switch (s.phase) {
       case 'countdown':
+        // A room's first-time guide closes when the match starts (it would swallow game keys).
+        if (!s.offline) closeFirstGuide?.()
         return show(null)
       case 'playing':
+        if (!s.offline) closeFirstGuide?.()
         return s.lobby.paused ? showPaused(s) : show(null)
       case 'finished':
         return s.offline ? showSoloResult(s) : showRoom(s)
@@ -631,10 +634,10 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   }
 
   // Start buttons wait for the game's preload (see GameAppOptions.preload).
-  let loading = !!opts.preload
+  const preload = preloadGate(opts.preload ? () => opts.preload!() : undefined)
   const gated = new Map<HTMLButtonElement, string>()
   function gate(...buttons: HTMLButtonElement[]) {
-    if (!loading) return
+    if (!preload.pending) return
     for (const b of buttons) {
       gated.set(b, b.textContent ?? '')
       b.disabled = true
@@ -642,18 +645,14 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       b.textContent = t('Loading…')
     }
   }
-  opts
-    .preload?.()
-    .catch((err) => console.warn('Preload failed; starting anyway.', err))
-    .finally(() => {
-      loading = false
-      for (const [b, label] of gated) {
-        b.disabled = false
-        b.classList.remove('loading')
-        b.textContent = label
-      }
-      gated.clear()
-    })
+  void preload.whenReady().then(() => {
+    for (const [b, label] of gated) {
+      b.disabled = false
+      b.classList.remove('loading')
+      b.textContent = label
+    }
+    gated.clear()
+  })
 
   function showMenu(error = '') {
     render()
@@ -1009,12 +1008,20 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         h('p', { class: 'pf-note', textContent: note }),
         offlineNote(),
         action,
-        // First time in this game: the controls right here while waiting (seen once a match starts).
-        guide && !finished && (guideSeen(def.id) ? howToPlay() : guideCard(guide)),
+        guide && !finished && howToPlay(),
         button(t('Leave room'), leave, 'quiet'),
       ),
       finished ? `results-${s.lobby.round}` : 'room',
     )
+    // First time in this game: the guide pops up once over the room (like solo's first play).
+    if (guide && !finished && !closeFirstGuide && !guideSeen(def.id)) {
+      closeFirstGuide = openGuide(guide, {
+        onClose() {
+          closeFirstGuide = null
+          markGuideSeen(def.id)
+        },
+      })
+    }
   }
 
   function showSoloResult(s: Session<S, I>) {
@@ -1071,8 +1078,17 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   const hashRoom = /room=([A-Z0-9]+)/i.exec(location.hash)?.[1]?.toUpperCase()
   if (isReload && saved && saved.room === hashRoom) {
     room = saved.room
-    toast(saved.host ? t('Reopening room {room}', { room }) : t('Rejoining room {room}', { room }))
-    begin(createTransport(appId, room), saved.host, { restore: saved.host ? saved.snapshot : undefined })
+    const label = saved.host ? t('Reopening room {room}', { room }) : t('Rejoining room {room}', { room })
+    // Mount only after the game's preload (e.g. Shuttle Pop's 3D court), like the start buttons do.
+    if (preload.pending) {
+      show(
+        h('div', { class: 'pf-panel' }, h('h2', { class: 'pf-heading', textContent: label }), waitingDots()),
+        'rejoining',
+      )
+    } else toast(label)
+    void preload.whenReady().then(() => {
+      begin(createTransport(appId, room), saved.host, { restore: saved.host ? saved.snapshot : undefined })
+    })
   } else {
     store.save(null)
     showMenu()

@@ -74,16 +74,13 @@ describe('camera button', () => {
     expect(seen).not.toHaveBeenCalled()
   })
 
-  it('while open no key reaches the real input (Space, J, arrows, WASD), wherever focus is', () => {
+  it('while open no key press reaches the real input (Space, J, arrows, WASD), wherever focus is', () => {
     const sent = vi.fn()
     const input = bindInput(view, sent, () => 0)
     button().click()
     const targets = [panel().querySelector('input')!, panel(), button(), document.body]
     for (const code of ['Space', 'KeyJ', 'ArrowLeft', 'KeyA', 'KeyW']) {
-      for (const t of targets) {
-        key('keydown', { code, key: code }, t)
-        key('keyup', { code, key: code }, t)
-      }
+      for (const t of targets) key('keydown', { code, key: code }, t)
     }
     expect(sent).not.toHaveBeenCalled()
     button().click() // closed: keys play again
@@ -92,12 +89,40 @@ describe('camera button', () => {
     input.stop()
   })
 
-  it('J keyup alone does not swing while open, but does once closed', () => {
+  it('a swing key held before opening is released while open (no stuck charge)', () => {
     const sent = vi.fn()
     const input = bindInput(view, sent, () => 0)
+    key('keydown', { code: 'KeyJ', key: 'j' })
+    expect(sent.mock.calls.map((c) => c[0].t)).toEqual(['charge'])
     button().click()
-    key('keyup', { code: 'KeyJ', key: 'j' }, document.body)
-    expect(sent).not.toHaveBeenCalled()
+    key('keyup', { code: 'KeyJ', key: 'j' })
+    expect(sent.mock.calls.map((c) => c[0].t)).toEqual(['charge', 'swing'])
+    input.stop()
+  })
+
+  it('keyups (incl. V push-to-talk) reach window listeners while open', () => {
+    const seen = vi.fn()
+    window.addEventListener('keyup', seen)
+    button().click()
+    key('keyup', { code: 'KeyV', key: 'v' }, panel())
+    key('keyup', { code: 'KeyV', key: 'v' }, document.body)
+    window.removeEventListener('keyup', seen)
+    expect(seen).toHaveBeenCalledTimes(2)
+  })
+
+  it('tabbing out of the panel closes it; moving focus inside keeps it open', () => {
+    const outside = document.createElement('input')
+    document.body.append(outside)
+    button().click()
+    const slider = panel().querySelector('input')!
+    slider.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: panel() }))
+    expect(panel().hidden).toBe(false)
+    slider.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: outside }))
+    expect(panel().hidden).toBe(true)
+    const sent = vi.fn()
+    const input = bindInput(view, sent, () => 0)
+    key('keydown', { code: 'ArrowLeft', key: 'ArrowLeft' })
+    expect(sent).toHaveBeenCalled()
     input.stop()
   })
 

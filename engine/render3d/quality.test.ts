@@ -195,6 +195,30 @@ describe('QualityGovernor', () => {
     expect(changes).toBeLessThanOrEqual(3) // down, probe up, down - then never again
   })
 
+  it('a probe that fails after surviving its clean windows still locks: one flip-up per page', () => {
+    const g = new QualityGovernor()
+    settled(g)
+    let ups = 0
+    let last = g.level
+    // Borderline: level 0 looks fine for ~4 windows (past PROBE_WINDOWS), then stutters.
+    let sinceUp = 0
+    for (let i = 0; i < 40000; i++) {
+      sinceUp++
+      const slow = g.level === 0 && sinceUp > 60 * 4 + 120 + 30
+      if (g.sample(slow ? 1 / 40 : 1 / 60)) {
+        g.restart()
+        sinceUp = 0
+      }
+      if (g.level < last) ups++
+      last = g.level
+    }
+    expect(ups).toBeLessThanOrEqual(1)
+  })
+
+  it('rejects an empty ladder', () => {
+    expect(() => new QualityGovernor([])).toThrow(/at least one/)
+  })
+
   it('never probes above a context-loss stepDown', () => {
     const g = new QualityGovernor()
     g.stepDown()

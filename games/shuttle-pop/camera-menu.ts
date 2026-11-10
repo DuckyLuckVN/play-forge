@@ -39,7 +39,7 @@ export function cameraPanel(): { nodes: HTMLElement[] } {
  * A small camera button over the top-right of the game view (`view`) that opens the camera panel
  * below it. The view takes every pointer as a swing / stick, so the overlay keeps its own pointer
  * events to itself, and while the panel is open a press outside only closes it (never swings).
- * While open, a capture guard keeps every key (except Esc/Tab) away from the game's window listeners.
+ * While open, a capture guard keeps key press (except Esc/Tab, never a release) away from the game's window listeners.
  * Focus never stays on the button after closing, so Space keeps swinging.
  */
 export function mountCameraButton(view: HTMLElement): { root: HTMLElement; destroy(): void } {
@@ -58,10 +58,18 @@ export function mountCameraButton(view: HTMLElement): { root: HTMLElement; destr
     e.stopPropagation()
     menu.close()
   }
-  // While open no key reaches the game (window listeners in input.ts, wherever focus is). Capture,
-  // no preventDefault: sliders and buttons keep their native keys; Esc/Tab stay for the popover.
+  // While open no key PRESS reaches the game (window listeners in input.ts), wherever
+  // focus is. Capture, no preventDefault: sliders and buttons keep their native keys; Esc/Tab stay for
+  // the popover. Never keyup: a key held before opening must still release (else stuck movement /
+  // charged swing / live push-to-talk mic).
   const guardKeys = (e: KeyboardEvent) => {
-    if (e.key !== 'Escape' && e.key !== 'Tab') e.stopPropagation()
+    if (e.key === 'Escape' || e.key === 'Tab') return
+    e.stopPropagation()
+  }
+  // Tabbing out of the panel (e.g. to chat) closes it so the guard never blocks keys elsewhere.
+  const onFocusOut = (e: FocusEvent) => {
+    const to = e.relatedTarget as Node | null
+    if (to && !root.contains(to)) menu.close()
   }
   const menu = popover(
     {
@@ -74,11 +82,11 @@ export function mountCameraButton(view: HTMLElement): { root: HTMLElement; destr
         if (open) {
           document.addEventListener('pointerdown', swallowOutside, true)
           window.addEventListener('keydown', guardKeys, true)
-          window.addEventListener('keyup', guardKeys, true)
+          menu.root.addEventListener('focusout', onFocusOut)
         } else {
           document.removeEventListener('pointerdown', swallowOutside, true)
           window.removeEventListener('keydown', guardKeys, true)
-          window.removeEventListener('keyup', guardKeys, true)
+          menu.root.removeEventListener('focusout', onFocusOut)
           blurIfHere()
         }
       },
@@ -102,7 +110,6 @@ export function mountCameraButton(view: HTMLElement): { root: HTMLElement; destr
     destroy() {
       document.removeEventListener('pointerdown', swallowOutside, true)
       window.removeEventListener('keydown', guardKeys, true)
-      window.removeEventListener('keyup', guardKeys, true)
       document.removeEventListener('keydown', onEsc)
       menu.destroy()
       root.remove()

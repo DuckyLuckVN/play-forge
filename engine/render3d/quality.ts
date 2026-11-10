@@ -76,8 +76,12 @@ export class QualityGovernor {
   private badRun = 0
   private goodRun = 0
   private probeLeft = 0
+  /** Level the last probe climbed to; falling from it later still locks the ceiling (-1: none). */
+  private probedTo = -1
 
-  constructor(private readonly levels: readonly QualityLevel[] = QUALITY_LEVELS) {}
+  constructor(private readonly levels: readonly QualityLevel[] = QUALITY_LEVELS) {
+    if (levels.length === 0) throw new Error('QualityGovernor needs at least one quality level')
+  }
 
   get current(): QualityLevel {
     return this.levels[this.level]
@@ -121,8 +125,11 @@ export class QualityGovernor {
       this.badRun++
       this.goodRun = 0
       if (this.badRun < BAD_WINDOWS || this.level >= this.levels.length - 1) return false
-      this.level++
-      if (this.probeLeft > 0) this.ceiling = this.level
+      const from = this.level++
+      if (this.probeLeft > 0 || from === this.probedTo) {
+        this.ceiling = this.level
+        this.probedTo = -1
+      }
       return true
     }
     if (lateShare < CLEAN_SHARE) {
@@ -131,6 +138,7 @@ export class QualityGovernor {
       this.probeLeft = Math.max(0, this.probeLeft - 1)
       if (this.goodRun < RECOVER_WINDOWS || this.level <= this.ceiling) return false
       this.level--
+      this.probedTo = this.level
       this.probeLeft = PROBE_WINDOWS
       return true
     }

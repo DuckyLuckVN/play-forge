@@ -240,7 +240,7 @@ createGameApp<SpState, SpInput>({
     {
       action: t('Power shot'),
       note: t(
-        'Let go to hit. You move slower while charging, and stop for a moment after a full-power swing.',
+        'Let go to hit. You move slower while charging, and much slower for a moment after a full-power swing.',
       ),
       hold: true,
       keys: [['Space'], ['J']],

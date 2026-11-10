@@ -21,8 +21,8 @@ export const VI: Dictionary = {
   Swing: 'Vung vợt',
   'Tap for a quick swing': 'Nhấn nhanh để vung nhẹ',
   'Power shot': 'Cú đánh mạnh',
-  'Let go to hit. You move slower while charging, and stop for a moment after a full-power swing.':
-    'Thả ra để đánh. Khi tích lực bạn đi chậm hơn, và khựng lại một chút sau cú đánh mạnh tối đa.',
+  'Let go to hit. You move slower while charging, and much slower for a moment after a full-power swing.':
+    'Thả ra để đánh. Khi tích lực bạn đi chậm hơn, và chậm hẳn trong giây lát sau cú đánh mạnh tối đa.',
   'Smash or drive': 'Đập cầu hoặc tạt cầu',
   'as you swing': 'khi vung vợt',
   'Clear (high and deep)': 'Đánh cầu cao sâu',

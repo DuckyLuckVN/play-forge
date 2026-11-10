@@ -4,6 +4,7 @@ import { GuestPredictor, type AuthPlayer } from './predict'
 import { CHARGE } from './charge'
 import { POWER_SWING } from './power'
 import { MOVE_SPEED, stepPlayer } from './sim'
+import { CORRECT } from './world'
 
 const auth = (x: number, z: number, move = { x: 0, z: 0 }): AuthPlayer => ({
   side: 1,
@@ -170,7 +171,7 @@ describe('guest prediction while charging', () => {
 })
 
 describe('guest prediction recovery after a full-charge swing', () => {
-  function run(holdSteps: number, swung: boolean, tail: number) {
+  function run(holdSteps: number, swung: boolean) {
     const pred = new GuestPredictor()
     const a = auth(-2, 3)
     pred.update(DT, a, 1, true)
@@ -183,7 +184,7 @@ describe('guest prediction recovery after a full-charge swing', () => {
       stepPlayer(ref, DT, CHARGE.moveMul)
     }
     pred.release(swung)
-    return { pred, ref, a, tail }
+    return { pred, ref, a }
   }
   const go = (r: ReturnType<typeof run>, n: number, mul: (i: number) => number) => {
     for (let i = 0; i < n; i++) {
@@ -192,34 +193,58 @@ describe('guest prediction recovery after a full-charge swing', () => {
     }
   }
   it('release(true) after a full hold runs recoveryTicks at recoveryMoveMul, then full speed', () => {
-    const r = run(30, true, 0)
+    const r = run(30, true)
     go(r, 25, (i) => (i < POWER_SWING.recoveryTicks ? POWER_SWING.recoveryMoveMul : 1))
     expect(r.pred.x).toBeCloseTo(r.ref.x, 9)
     expect(r.pred.vx).toBeCloseTo(r.ref.vx, 9)
     expect(r.pred.vx).toBeCloseTo(MOVE_SPEED, 6)
   })
   it('release(false) or a short hold: no lock', () => {
-    for (const r of [run(30, false, 0), run(20, true, 0)]) {
+    for (const r of [run(30, false), run(20, true)]) {
       go(r, 25, () => 1)
       expect(r.pred.x).toBeCloseTo(r.ref.x, 9)
     }
   })
-  it('converges onto the host when the host saw a shorter hold (no lock)', () => {
+  /**
+   * Host and predictor run in step, running back from the net. The host's swing lands after `hostHold` of
+   * its steps, the predictor's release after `predHold`; each locks (recoveryMoveMul for recoveryTicks)
+   * only on a full hold (>= CHARGE.full). `uncorrected` is the predictor's own integration alone.
+   */
+  function disagree(predHold: number, hostHold: number) {
     const pred = new GuestPredictor()
-    const host = body(-2, 3)
-    pred.update(DT, auth(-2, 3), 0, true)
-    pred.setMove(1, 0)
-    host.move = { x: 1, z: 0 }
+    const host = body(0, 1)
+    const uncorrected = body(0, 1)
+    pred.update(DT, auth(0, 1), 0, true)
+    pred.setMove(0, -1)
+    host.move = uncorrected.move = { x: 0, z: -1 }
     pred.setCharging(true)
-    for (let step = 1; step <= 120; step++) {
-      if (step === 30) pred.release(true)
-      stepPlayer(host, DT, step <= 29 ? CHARGE.moveMul : 1)
-      pred.update(DT, { ...host, move: { ...host.move } }, step, false)
+    const mulAt = (hold: number, step: number) => {
+      if (step <= hold) return CHARGE.moveMul
+      const locked = hold >= CHARGE.full && step <= hold + POWER_SWING.recoveryTicks
+      return locked ? POWER_SWING.recoveryMoveMul : 1
     }
-    expect(Math.hypot(pred.x - host.x, pred.z - host.z)).toBeLessThan(0.05)
+    let gap = 0
+    for (let step = 1; step <= 90; step++) {
+      stepPlayer(host, DT, mulAt(hostHold, step))
+      stepPlayer(uncorrected, DT, mulAt(predHold, step))
+      pred.update(DT, { ...host, move: { ...host.move } }, step, false)
+      if (step === predHold) pred.release(true)
+      gap = Math.max(gap, Math.hypot(pred.x - host.x, pred.z - host.z))
+    }
+    return { pred, host, uncorrected, gap }
+  }
+  it('converges onto the host when the predictor locked and the host saw a shorter hold (no lock)', () => {
+    const { pred, host, uncorrected } = disagree(30, 29)
+    expect(Math.hypot(uncorrected.x - host.x, uncorrected.z - host.z)).toBeGreaterThan(0.3) // a real mismatch
+    expect(Math.hypot(pred.x - host.x, pred.z - host.z)).toBeLessThan(CORRECT.keep)
+  })
+  it('converges onto the host when the host locked and the predictor did not', () => {
+    const { pred, host, uncorrected } = disagree(29, 30)
+    expect(Math.hypot(uncorrected.x - host.x, uncorrected.z - host.z)).toBeGreaterThan(0.3)
+    expect(Math.hypot(pred.x - host.x, pred.z - host.z)).toBeLessThan(CORRECT.keep)
   })
   it('a snap clears the recovery', () => {
-    const r = run(30, true, 0)
+    const r = run(30, true)
     const placed = auth(-2, 3, { x: 1, z: 0 })
     r.pred.update(DT, placed, 2, true)
     for (let i = 0; i < 12; i++) r.pred.update(DT, placed, 2, false)

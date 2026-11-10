@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { GuestShuttle, RECONCILE } from './guestshuttle'
+import { GuestShuttle } from './guestshuttle'
 import { solveLaunch, type Vec3 } from './physics'
 import { RenderClock } from './renderclock'
 import { createState, step, type SpState } from './sim'
@@ -166,7 +166,7 @@ describe('GuestShuttle', () => {
     let prev: Vec3 | null = null
     let worst = 0
     const recent: number[] = []
-    let settled = Infinity
+    let settled = 0
     for (let n = 0; n < states.length; n++) {
       const t = states[n].tick
       // Nothing delivered for the 4 ticks around the hit, then the burst.
@@ -191,7 +191,7 @@ describe('GuestShuttle', () => {
       }
       expect(gs.snapped).toBe(false)
       if (t >= hitTick + 3 + 18)
-        settled = Math.min(settled, Math.hypot(gs.pos.x - want.x, gs.pos.y - want.y, gs.pos.z - want.z))
+        settled = Math.max(settled, Math.hypot(gs.pos.x - want.x, gs.pos.y - want.y, gs.pos.z - want.z))
       prev = { ...gs.pos }
     }
     expect(worst).toBeLessThanOrEqual(1.6)
@@ -230,14 +230,15 @@ describe('GuestShuttle', () => {
       gs.update(DT)
     }
     const placed = structuredClone(states[10])
-    placed.shuttle.pos = { x: 1, y: 1, z: 4 }
+    // < RECONCILE.snap from the shown path so only the serve-break path can cause the snap.
+    placed.shuttle.pos = { ...states[8].shuttle.pos }
+    placed.shuttle.pos.x += 0.5
     placed.events = [{ id: 2, tick: placed.tick - 1, k: 'serve' } as never]
     clock.onState(placed.tick)
     gs.push(placed)
     clock.update(DT)
     gs.update(DT)
     expect(gs.snapped).toBe(true)
-    expect(RECONCILE.snap).toBeGreaterThan(0)
   })
 
   it('shuttle follows a clock resync', () => {

@@ -38,6 +38,7 @@ export function interpShuttle(
  * wide so a Perfect clear (apex ~8.5 m) stays on screen with the look-at rising with the shuttle,
  * while all four court corners stay in view (world.test.ts checks 16:9, 19.5:9 and a short canvas).
  * This is the roomy framing for tall-ish canvases (16:9 and narrower); see CAMERA_TIGHT.
+ * A player's own height / tilt tweak (CameraTweak) rides on top of this, clamped by clampCameraTweak.
  */
 export const CAMERA = {
   fov: 55,
@@ -97,21 +98,134 @@ export interface CameraPose {
 
 const mix = (a: number, b: number, t: number) => a + (b - a) * t
 
+/** The court measures the camera needs (`COURT` satisfies it; a court-size setting can pass its own). */
+export interface CourtDims {
+  halfLen: number
+  halfWidth: number
+  netH: number
+}
+
+/** A player's personal camera offset: each −1..1, 0 = the default framing. +height raises, +tilt looks up. */
+export interface CameraTweak {
+  height: number
+  tilt: number
+}
+
+export const NO_TWEAK: Readonly<CameraTweak> = { height: 0, tilt: 0 }
+
+export const CAMERA_TWEAK = {
+  /** Metres of camera height per tweak unit. */
+  height: 2,
+  /** Degrees of look-at pitch per tweak unit. */
+  tilt: 4,
+  /** Share of the half-frame the key court points must stay within (a margin off the very edge). */
+  edge: 0.94,
+  /** Focus height (m) of a high shot, checked on top of the resting focus. */
+  focusHigh: 7,
+} as const
+
 /**
  * Camera position + look-at + fov for a (damped) camera x and focus height, at framing tightness
- * `tight` (framingTightness; 0 = the roomy CAMERA framing). Writes into `out`.
+ * `tight` (framingTightness; 0 = the roomy CAMERA framing), with the player's `tweak` on top.
+ * Writes into `out`.
  */
-export function cameraPose(camX: number, focusY: number, out: CameraPose, tight = 0): CameraPose {
+export function cameraPose(
+  camX: number,
+  focusY: number,
+  out: CameraPose,
+  tight = 0,
+  tweak: CameraTweak = NO_TWEAK,
+  court: CourtDims = COURT,
+): CameraPose {
   const t = clamp01(tight)
   const T = CAMERA_TIGHT
   const above = Math.max(0, focusY - CAMERA.riseFrom)
   out.x = camX
-  out.y = mix(CAMERA.height, T.height, t)
-  out.z = -(COURT.halfLen + mix(CAMERA.back, T.back, t))
+  out.y = mix(CAMERA.height, T.height, t) + tweak.height * CAMERA_TWEAK.height
+  out.z = -(court.halfLen + mix(CAMERA.back, T.back, t))
   out.lookX = camX * 0.5
-  out.lookY = CAMERA.rise * above
   out.lookZ = mix(CAMERA.lookZ, T.lookZ, t)
+  out.lookY =
+    CAMERA.rise * above + Math.tan((tweak.tilt * CAMERA_TWEAK.tilt * Math.PI) / 180) * (out.lookZ - out.z)
   out.fov = Math.min(FOV_MAX, mix(CAMERA.fov, T.fov, t) + mix(CAMERA.zoom, T.zoom, t) * above)
+  return out
+}
+
+/**
+ * Is world point `p` inside the pose's view, within `edge` of the half-frame (1 = the very edge)?
+ * Pure look-at projection (world up +y), same answer as a three.js frustum's side planes.
+ */
+export function inView(pose: CameraPose, aspect: number, p: Vec3, edge = 1): boolean {
+  let fx = pose.lookX - pose.x
+  let fy = pose.lookY - pose.y
+  let fz = pose.lookZ - pose.z
+  const fl = Math.hypot(fx, fy, fz)
+  fx /= fl
+  fy /= fl
+  fz /= fl
+  // right = f × up(0,1,0) = (−fz, 0, fx); camera up = right × f
+  let rx = -fz
+  let rz = fx
+  const rl = Math.hypot(rx, rz)
+  rx /= rl
+  rz /= rl
+  const ux = -rz * fy
+  const uy = rz * fx - rx * fz
+  const uz = rx * fy
+  const dx = p.x - pose.x
+  const dy = p.y - pose.y
+  const dz = p.z - pose.z
+  const depth = dx * fx + dy * fy + dz * fz
+  if (depth <= 0) return false
+  const th = Math.tan((pose.fov * Math.PI) / 360) * edge
+  return (
+    Math.abs(dx * rx + dz * rz) <= depth * th * aspect && Math.abs(dx * ux + dy * uy + dz * uz) <= depth * th
+  )
+}
+
+const scratchPose: CameraPose = { x: 0, y: 0, z: 0, lookX: 0, lookY: 0, lookZ: 0, fov: 0 }
+const scratchPoint: Vec3 = { x: 0, y: 0, z: 0 }
+
+/** The tweak the player asked for, shrunk (toward 0) until both baselines and the net stay in view. */
+export function clampCameraTweak(
+  want: CameraTweak,
+  frame: { aspect: number; tight: number; court?: CourtDims },
+): CameraTweak {
+  const court = frame.court ?? COURT
+  const sane = (v: number) => (Number.isFinite(v) ? Math.min(1, Math.max(-1, v)) : 0)
+  const w: CameraTweak = { height: sane(want.height), tilt: sane(want.tilt) }
+  const m = court.halfWidth * CAMERA.followX
+  const fits = (tw: CameraTweak): boolean => {
+    for (const camX of [-m, 0, m])
+      for (const focus of [1, CAMERA_TWEAK.focusHigh]) {
+        cameraPose(camX, focus, scratchPose, frame.tight, tw, court)
+        for (const s of [-1, 1])
+          for (const [y, z] of [
+            [0, -court.halfLen],
+            [0, court.halfLen],
+            [court.netH, 0],
+          ]) {
+            scratchPoint.x = s * court.halfWidth
+            scratchPoint.y = y
+            scratchPoint.z = z
+            if (!inView(scratchPose, frame.aspect, scratchPoint, CAMERA_TWEAK.edge)) return false
+          }
+      }
+    return true
+  }
+  if (!fits(NO_TWEAK)) return { ...NO_TWEAK }
+  if (fits(w)) return w
+  const out: CameraTweak = { height: 0, tilt: 0 }
+  for (const k of ['height', 'tilt'] as const) {
+    let lo = 0
+    let hi = 1
+    for (let i = 0; i < 12; i++) {
+      const mid = (lo + hi) / 2
+      if (fits({ ...out, [k]: mid * w[k] })) lo = mid
+      else hi = mid
+    }
+    out[k] = lo * w[k]
+  }
   return out
 }
 

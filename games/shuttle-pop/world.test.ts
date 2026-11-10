@@ -6,8 +6,14 @@ import type { SpEvent } from './sim'
 import {
   CAMERA,
   CAMERA_TIGHT,
+  CAMERA_TWEAK,
   CHEER,
   cameraPose,
+  clampCameraTweak,
+  inView,
+  NO_TWEAK,
+  type CameraTweak,
+  type CourtDims,
   framingTightness,
   cheerLevel,
   CORRECT,
@@ -178,6 +184,122 @@ describe('camera framing', () => {
       }
     expect(cameraPose(0, 1, pose).lookY).toBe(0)
     expect(cameraPose(0, 1, pose, 1).fov).toBe(CAMERA_TIGHT.fov)
+  })
+
+  describe('camera tweak', () => {
+    const keyPoints = (c: CourtDims) =>
+      [-1, 1].flatMap((s) => [
+        new Vector3(s * c.halfWidth, 0, -c.halfLen),
+        new Vector3(s * c.halfWidth, 0, c.halfLen),
+        new Vector3(s * c.halfWidth, c.netH, 0),
+      ])
+    const tweakView = (
+      cam: PerspectiveCamera,
+      camX: number,
+      focus: number,
+      tight: number,
+      tw: CameraTweak,
+    ) => {
+      cameraPose(camX, focus, pose, tight, tw)
+      cam.fov = pose.fov
+      cam.updateProjectionMatrix()
+      cam.position.set(pose.x, pose.y, pose.z)
+      cam.lookAt(pose.lookX, pose.lookY, pose.lookZ)
+      cam.updateMatrixWorld()
+      frustum.setFromProjectionMatrix(m.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse))
+    }
+
+    it("no tweak is exactly today's pose", () => {
+      for (const tight of [0, 0.5, 1])
+        expect(cameraPose(0.3, 4, { ...pose }, tight, NO_TWEAK)).toEqual(
+          cameraPose(0.3, 4, { ...pose }, tight),
+        )
+    })
+
+    it('height raises the camera, tilt looks up', () => {
+      const a = { ...cameraPose(0, 1, { ...pose }) }
+      const b = cameraPose(0, 1, { ...pose }, 0, { height: 0.5, tilt: 0 })
+      expect(b.y - a.y).toBeCloseTo(0.5 * CAMERA_TWEAK.height)
+      expect(cameraPose(0, 1, { ...pose }, 0, { height: 0, tilt: 0.5 }).lookY).toBeGreaterThan(a.lookY)
+    })
+
+    it('court dims drive the camera distance', () => {
+      expect(cameraPose(0, 1, { ...pose }, 0, NO_TWEAK, { ...COURT, halfLen: 8 }).z).toBe(-(8 + CAMERA.back))
+    })
+
+    it('inView agrees with three.js Frustum on the key points', () => {
+      const cam = new PerspectiveCamera(CAMERA.fov, 16 / 9, 0.1, 200)
+      tweakView(cam, 0, 1, 0, NO_TWEAK)
+      const off = [
+        new Vector3(30, 0, 0),
+        new Vector3(-30, 0, 0),
+        new Vector3(0, 40, 0),
+        new Vector3(0, 0, -60),
+      ]
+      for (const q of [...keyPoints(COURT), ...off])
+        expect(inView(pose, 16 / 9, { x: q.x, y: q.y, z: q.z })).toBe(frustum.containsPoint(q))
+    })
+
+    const wants: CameraTweak[] = [
+      { height: 1, tilt: 1 },
+      { height: 1, tilt: -1 },
+      { height: -1, tilt: 1 },
+      { height: -1, tilt: -1 },
+      { height: 1, tilt: 0 },
+      { height: -1, tilt: 0 },
+      { height: 0, tilt: 1 },
+      { height: 0, tilt: -1 },
+    ]
+    for (const [label, aspect, tights] of cases)
+      for (const tight of tights)
+        for (const w of wants)
+          it(`${label} t=${tight.toFixed(2)} want ${w.height},${w.tilt}: clamped tweak keeps key points in view at rest and corners through every high shot`, () => {
+            const c = clampCameraTweak(w, { aspect, tight })
+            for (const k of ['height', 'tilt'] as const) {
+              expect(Math.sign(c[k]) * Math.sign(w[k])).not.toBe(-1)
+              expect(Math.abs(c[k])).toBeLessThanOrEqual(1)
+            }
+            const cam = new PerspectiveCamera(CAMERA.fov, aspect, 0.1, 200)
+            for (const camX of [0, -COURT.halfWidth, COURT.halfWidth].map((x) => x * CAMERA.followX)) {
+              tweakView(cam, camX, 1, tight, c)
+              for (const q of keyPoints(COURT)) expect(frustum.containsPoint(q)).toBe(true)
+              for (const [name, pts] of Object.entries(flights)) {
+                let focus = 1
+                for (const s of pts) {
+                  focus = dampFocus(focus, s.y, 1 / 60)
+                  tweakView(cam, camX, focus, tight, c)
+                  for (const q of corners)
+                    expect(frustum.containsPoint(q), `${name}: corner ${q.x},${q.z}`).toBe(true)
+                }
+              }
+            }
+          })
+
+    it('a want that already fits is returned unchanged; usable range at 16:9 roomy', () => {
+      for (const w of [
+        { height: 0.5, tilt: 0 },
+        { height: -0.5, tilt: 0 },
+        { height: 0, tilt: 0.5 },
+        { height: 0, tilt: -0.5 },
+      ])
+        expect(clampCameraTweak(w, { aspect: 16 / 9, tight: 0 })).toEqual(w)
+    })
+
+    it('bad input: NaN → 0, out of range → ±1 before clamping', () => {
+      const c = clampCameraTweak({ height: NaN, tilt: 5 }, { aspect: 16 / 9, tight: 0 })
+      expect(c.height).toBe(0)
+      expect(c.tilt).toBeGreaterThan(0)
+      expect(c.tilt).toBeLessThanOrEqual(1)
+    })
+
+    it('a court the default view cannot frame gets no tweak (court-size slice owns base framing)', () => {
+      expect(
+        clampCameraTweak(
+          { height: 1, tilt: 1 },
+          { aspect: 16 / 9, tight: 0, court: { halfLen: 40, halfWidth: 20, netH: 1.55 } },
+        ),
+      ).toEqual(NO_TWEAK)
+    })
   })
 })
 

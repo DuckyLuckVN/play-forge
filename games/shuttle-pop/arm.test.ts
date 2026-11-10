@@ -6,6 +6,7 @@ import {
   DRIVE,
   FOLLOW_T,
   N_CH,
+  READY,
   REST,
   settleCurve,
   SMASH_KEYS,
@@ -53,6 +54,27 @@ describe('basePose', () => {
     b.stride = 0.75
     basePose(b, c)
     expect(Math.sign(a[CH.rPitch] - c[CH.rPitch])).toBe(-Math.sign(a[CH.lPitch] - c[CH.lPitch]))
+  })
+})
+
+describe('ready stance (badminton)', () => {
+  it('moving in the stance keeps the racket up and the off hand raised: no jogging counter-swing', () => {
+    const b = still()
+    b.ready = 1
+    b.run = 1
+    const o = upper()
+    for (let st = 0; st < 1; st += 0.02) {
+      b.stride = st
+      basePose(b, o)
+      for (let c = 0; c < N_CH; c++) expect(Math.abs(o[c] - READY[c])).toBeLessThan(0.1)
+    }
+  })
+
+  it('racket raised in front, elbow bent; off hand raised forward', () => {
+    // pitch: 0 hanging, −π/2 forward.
+    expect(READY[CH.rPitch]).toBeLessThan(-0.9)
+    expect(READY[CH.rElbow]).toBeGreaterThan(0.6)
+    expect(READY[CH.lPitch]).toBeLessThan(-0.6)
   })
 })
 

@@ -1,5 +1,5 @@
-// Locomotion for the chibis (pure, no three.js): stride from ground speed, damped facing, lean shares,
-// foot plants and start / stop / sharp-turn signals. Everything is exponential damping or phase
+// Locomotion for the chibis (pure, no three.js): stride from ground speed, damped facing (badminton:
+// mostly toward the net, courtTurn), lean shares, foot plants and start / stop / sharp-turn signals. Everything is exponential damping or phase
 // accumulation over `dt`, so it looks the same at any frame rate, and nothing allocates per frame.
 //
 // Angles are render yaw (rotation.y): 0 faces +z, π/2 faces +x. The renderer drives one Gait per
@@ -8,7 +8,7 @@ import { MOVE_SPEED } from './court'
 
 export const GAIT = {
   /** Stride cycles per second at full run (2 foot plants per cycle). */
-  freq: 2.6,
+  freq: 3,
   /** Leg swing (rad) at full run. */
   amp: 0.85,
   /** Body bob (m) at full run; 2 bobs per cycle. */
@@ -20,10 +20,12 @@ export const GAIT = {
   /** Turn damping (1/s): moving, and back to the net (idle / swinging). */
   turnRate: 9,
   netRate: 14,
-  /** Most the body turns away from the net (rad); the rest of a sideways run shows as side lean. */
-  turnMax: 1.05,
-  /** Moving more directly away from the net than this (rad) backpedals instead of turning around. */
-  backpedal: 2.0,
+  /**
+   * Badminton facing while moving (courtTurn, rad): a side shuffle keeps facing the net, a straight
+   * retreat turns the racket shoulder back this much, an advance turns the racket side forward a little.
+   */
+  turnBack: 0.6,
+  turnFwd: 0.2,
   /** Below this speed share the body faces the net. */
   turnFrom: 0.2,
   /** Start / stop hysteresis on the raw speed share. */
@@ -66,6 +68,16 @@ export function wrapAngle(a: number): number {
   if (r < 0) r += TAU
   r -= Math.PI
   return r === -Math.PI ? Math.PI : r
+}
+
+/**
+ * Facing turn (rad, added to the net-facing yaw) for a move `rel` rad off straight-at-the-net: none on a
+ * side shuffle, the racket shoulder (right, −x) back = negative yaw on a retreat, a little forward on an
+ * advance. Continuous all the way round.
+ */
+export function courtTurn(rel: number): number {
+  const c = Math.cos(rel)
+  return c < 0 ? GAIT.turnBack * c : GAIT.turnFwd * c
 }
 
 /** Exponential approach of `cur` to `target` at `rate` (1/s) over `dt` s. */
@@ -125,13 +137,11 @@ export class Gait {
     this.speed = damp(this.speed, raw, GAIT.speedRate, dt)
     if (this.speed < 1e-4 && raw === 0) this.speed = 0
 
-    // Facing: toward the move (backpedal when running away from the net), capped; else the net.
+    // Facing: the net, with a slight badminton turn while moving (courtTurn).
     let target = netYaw
     let rate: number = GAIT.netRate
     if (!faceNet && raw > GAIT.turnFrom) {
-      let rel = wrapAngle(Math.atan2(vx, vz) - netYaw)
-      if (Math.abs(rel) > GAIT.backpedal) rel = wrapAngle(rel + Math.PI)
-      target = netYaw + Math.max(-GAIT.turnMax, Math.min(GAIT.turnMax, rel))
+      target = netYaw + courtTurn(Math.atan2(vx, vz) - netYaw)
       rate = GAIT.turnRate
     }
     this.yaw = dampAngle(this.yaw, target, rate, dt)

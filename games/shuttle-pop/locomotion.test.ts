@@ -94,26 +94,31 @@ describe('Gait', () => {
     expect(stops).toBe(1)
   })
 
-  it('turns smoothly toward a sideways run (capped), never snapping', () => {
+  it('side shuffle: keeps facing the net on a sideways move; the move shows as side velocity', () => {
+    const g = new Gait()
+    for (let i = 0; i < 60; i++) g.update(MOVE_SPEED, 0, 0, false, 1 / 60)
+    expect(Math.abs(g.yaw)).toBeLessThan(1e-6)
+    expect(g.side).toBeGreaterThan(0.9)
+    expect(Math.abs(g.fwd)).toBeLessThan(1e-6)
+  })
+
+  it('retreat: short steps back with the racket shoulder turned back (smoothly, never snapping)', () => {
     const g = new Gait()
     let last = g.yaw
     let maxStep = 0
     for (let i = 0; i < 60; i++) {
-      g.update(MOVE_SPEED, 0, 0, false, 1 / 60)
+      g.update(0, -MOVE_SPEED, 0, false, 1 / 60)
       maxStep = Math.max(maxStep, Math.abs(wrapAngle(g.yaw - last)))
       last = g.yaw
     }
-    expect(g.yaw).toBeGreaterThan(0.5)
-    expect(g.yaw).toBeLessThanOrEqual(GAIT.turnMax + 1e-9)
+    expect(g.yaw).toBeCloseTo(-GAIT.turnBack, 3)
     expect(maxStep).toBeLessThan(0.25)
-    // The rest of the sideways move shows as side lean (+x).
-    expect(g.side).toBeGreaterThan(0.3)
-  })
-
-  it('backpedals (keeps facing the net) when running away from it', () => {
-    const { g } = runFor(60, 1, 0, -MOVE_SPEED)
-    expect(Math.abs(g.yaw)).toBeLessThan(0.05)
     expect(g.fwd).toBeLessThan(-0.5)
+    // The far player (net behind +z) turns the same way in its own frame.
+    const h = new Gait()
+    h.reset(Math.PI)
+    for (let i = 0; i < 60; i++) h.update(0, MOVE_SPEED, Math.PI, false, 1 / 60)
+    expect(wrapAngle(h.yaw - Math.PI)).toBeCloseTo(-GAIT.turnBack, 3)
   })
 
   it('faces the net while swinging even when moving', () => {

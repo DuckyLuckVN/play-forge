@@ -102,19 +102,23 @@ export const RUN_KEY = key(upper(), {
   lOut: 0.3,
   lElbow: 1.3,
 })
-/** Ready stance (shuttle incoming): racket up in front, off hand out for balance. */
+/**
+ * Badminton ready stance (waiting and moving): racket held up in front at about head height, racket
+ * head up, elbow bent; off hand raised forward for balance. Swings wind up from here and settle back.
+ */
 export const READY = key(upper(), {
   bend: 0.05,
-  rPitch: -1.11,
-  rOut: 0.37,
-  rRoll: -0.16,
-  rElbow: 1.13,
-  rWrist: -0.12,
-  rTurn: -0.39,
-  lAcross: -0.42,
-  lPitch: -0.44,
-  lOut: 0.32,
-  lElbow: 1.28,
+  rAcross: -0.32,
+  rPitch: -1.52,
+  rOut: 0.5,
+  rRoll: -0.29,
+  rElbow: 0.7,
+  rWrist: 0.23,
+  rTurn: -0.41,
+  lAcross: -0.2,
+  lPitch: -1.25,
+  lOut: 0.22,
+  lElbow: 1.1,
 })
 /** Point won: both arms up, elbows soft (the rig adds a wave). */
 export const CHEER = key(upper(), {
@@ -262,6 +266,7 @@ export interface BaseIn {
   run: number
   /** Stride phase in cycles. */
   stride: number
+  /** Ready stance weight: replaces the jogging arms (racket stays up while moving). */
   ready: number
   happy: number
   sad: number
@@ -274,12 +279,18 @@ export interface BaseIn {
  * the head), elbow pump (rad) and how far (cycles) the forearm trails the upper arm.
  */
 const RUN = { swing: 0.55, swingRacket: 0.35, pump: 0.35, pumpRacket: 0.12, lag: 0.12 }
+/** Moving in the ready stance: the raised arms only bob a little with the steps (rad, 2 per stride). */
+const STANCE_BOB = 0.06
 const TAU = Math.PI * 2
 
-/** Base pose: idle → run counter-swing → ready → cheer / slump. Writes `o`. */
+/**
+ * Base pose: idle → run counter-swing → ready stance (the counter-swing fades out under it: racket up
+ * while moving, a small bob with the steps) → cheer / slump. Writes `o`.
+ */
 export function basePose(b: BaseIn, o: Upper): Upper {
-  const run = b.run
   const ready = b.ready
+  const run = b.run
+  const jog = run * (1 - ready)
   const cycle = Math.sin(TAU * b.stride)
   // The forearm trails the upper arm a little (it bends most as the arm comes forward).
   const late = Math.sin(TAU * (b.stride - RUN.lag))
@@ -287,10 +298,13 @@ export function basePose(b: BaseIn, o: Upper): Upper {
     const v = REST[c] + (RUN_KEY[c] - REST[c]) * run
     o[c] = v + (READY[c] - v) * ready
   }
-  o[CH.rPitch] -= cycle * RUN.swingRacket * run
-  o[CH.lPitch] += cycle * RUN.swing * run
-  o[CH.rElbow] += late * RUN.pumpRacket * run
-  o[CH.lElbow] -= late * RUN.pump * run
+  o[CH.rPitch] -= cycle * RUN.swingRacket * jog
+  o[CH.lPitch] += cycle * RUN.swing * jog
+  o[CH.rElbow] += late * RUN.pumpRacket * jog
+  o[CH.lElbow] -= late * RUN.pump * jog
+  const bob = Math.sin(2 * TAU * b.stride) * STANCE_BOB * run * ready
+  o[CH.rPitch] += bob
+  o[CH.lPitch] += bob
   for (let c = 0; c < N_CH; c++) {
     const happy = CHEER[c] + (c === CH.rPitch ? b.wave : c === CH.lPitch ? -b.wave : 0)
     o[c] += (happy - o[c]) * b.happy

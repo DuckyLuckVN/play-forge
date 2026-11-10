@@ -29,6 +29,7 @@ import {
   type Material,
 } from 'three'
 import { basePose, CH, streakGlow, swingPose, upper, type BaseIn, type SwingIn, type Upper } from './arm'
+import { lateralShare } from './footwork'
 import { legAngles, legOut, type LegIn } from './legs'
 import { strideParams, type Stride } from './locomotion'
 import { ARM, HEAD_R, HEAD_Y, HIP_X, HIP_Y, LEG, RACKET, SHOULDER_X, SHOULDER_Y } from './model/dims'
@@ -69,7 +70,16 @@ export interface ChibiPose {
   squash: number
   /** Extra forward lean (rad): the stop overshoot. */
   lean: number
-  /** Weights 0..1: ready stance (shuttle incoming), smash crouch, point won, point lost, match won. */
+  /**
+   * Badminton ready stance 0..1 (waiting and moving, dropped for moods): racket up, off hand up, knees
+   * bent, torso forward, a gentle bounce when still; footwork from the gait (shuffle / steps).
+   */
+  stance: number
+  /** Lunge 0..1 (footwork.ts): racket-side knee bent in front, back leg extended, low and leaning. */
+  lunge: number
+  /** Split-step hop height share 0..1 (footwork.ts splitHop; its landing squash rides on `squash`). */
+  split: number
+  /** Weights 0..1: shuttle incoming (a little lower), smash crouch, point won, point lost, match won. */
   ready: number
   crouch: number
   happy: number
@@ -95,6 +105,9 @@ export function restPose(): ChibiPose {
     jump: 0,
     squash: 0,
     lean: 0,
+    stance: 0,
+    lunge: 0,
+    split: 0,
     ready: 0,
     crouch: 0,
     happy: 0,
@@ -127,10 +140,21 @@ const LEAN_FWD = 0.3
 const LEAN_SIDE = 0.22
 /** Squash per unit of crouch / ready / sad. */
 const SQUASH_CROUCH = 0.12
-const SQUASH_READY = 0.05
-/** Knee bend (hip flex, rad) per unit of ready / crouch. */
-const BEND_READY = 0.22
+const SQUASH_READY = 0.04
+/** Knee bend (hip flex, rad) per unit of stance / incoming ready (extra, when planted) / crouch. */
+const BEND_STANCE = 0.26
+const BEND_READY = 0.08
 const BEND_CROUCH = 0.38
+/**
+ * Stance: legs apart (rad), torso forward (rad), side lean kept on a shuffle (share), steps shortened
+ * (share of the stride amplitude). Lunge lean (rad). Split step: hop height (m), legs apart in the air.
+ */
+const STANCE = { splay: 0.15, lean: 0.14, sideLean: 0.4, short: 0.4 }
+const LUNGE_LEAN = 0.18
+const SPLIT_H = 0.07
+const SPLIT_SPLAY = 0.1
+/** Waiting bounce on the balls of the feet: rad/s, lift (m), extra knee bend at the bottom (rad). */
+const BOUNCE = { w: 12.5, h: 0.012, bend: 0.07 }
 const BREATHE = 0.015
 /** Head turns back against this share of the torso twist (eyes stay on the shuttle). */
 const HEAD_COUNTER = 0.6
@@ -148,7 +172,18 @@ const stride: Stride = { freq: 0, amp: 0, bob: 0 }
 const hopO: Hop = { height: 0, squash: 0 }
 const baseIn: BaseIn = { run: 0, stride: 0, ready: 0, happy: 0, sad: 0, wave: 0 }
 const swingIn: SwingIn = { load: 0, strike: -1, prev: -1, coil: 0 }
-const legIn: LegIn = { cycle: 0, amp: 0, along: 0, across: 0, tuck: 0, splay: 0, bend: 0 }
+const legIn: LegIn = {
+  cycle: 0,
+  amp: 0,
+  along: 0,
+  across: 0,
+  tuck: 0,
+  splay: 0,
+  bend: 0,
+  phase: 0,
+  dir: 1,
+  lunge: 0,
+}
 const legO = legOut()
 const base = upper()
 const ang = upper()
@@ -360,19 +395,29 @@ export function createChibi(preset: number): Chibi {
     const happy = p.happy
     const sad = p.sad
     const calm = (1 - p.run) * (1 - happy)
-    // Ready stance only while (nearly) planted: running keeps its full stride and arm swing.
-    const ready = p.ready * (1 - Math.min(1, p.run * 2))
+    const planted = 1 - Math.min(1, p.run * 2)
+    const st = p.stance
+    // Incoming shuttle: a little lower, only while (nearly) planted.
+    const ready = p.ready * planted
+    // Waiting bounce on the balls of the feet (0 = bottom, knees most bent).
+    const bounceW = st * planted * (1 - happy) * (1 - sad) * (1 - p.lunge)
+    const bounce = (1 - Math.cos(t * BOUNCE.w)) * 0.5
 
-    // Legs (legs.ts): scissor along the move with the back-swing knee folding, open/close on a side
-    // shuffle, wide + knees bent in a ready / crouch (the rig lowers to keep the feet down), tucked mid-air.
-    const mag = Math.abs(p.fwd) + Math.abs(p.side) + 1e-6
+    // Legs (legs.ts): short scissor steps forward / back, a chassé on a side shuffle (footwork.ts picks
+    // by the body-frame move), wide + knees bent in the stance / crouch (the rig lowers to keep the feet
+    // down), the lunge, tucked mid-air.
+    const across = lateralShare(p.fwd, p.side)
     legIn.cycle = cycle
-    legIn.amp = stride.amp
-    legIn.along = Math.abs(p.fwd) / mag
-    legIn.across = Math.abs(p.side) / mag
-    legIn.tuck = p.jump * 0.7 + hopO.height * happy * 0.4
-    legIn.splay = 0.16 * ready + 0.2 * p.crouch
-    legIn.bend = BEND_READY * ready + BEND_CROUCH * p.crouch
+    legIn.amp = stride.amp * (1 - STANCE.short * st)
+    legIn.along = 1 - across
+    legIn.across = across
+    legIn.phase = p.stride
+    legIn.dir = p.side
+    legIn.lunge = p.lunge
+    legIn.tuck = p.jump * 0.7 + hopO.height * happy * 0.4 + p.split * 0.3
+    legIn.splay = STANCE.splay * st + 0.2 * p.crouch + SPLIT_SPLAY * p.split
+    legIn.bend =
+      BEND_STANCE * st + BEND_READY * ready + BEND_CROUCH * p.crouch + BOUNCE.bend * (1 - bounce) * bounceW
     legAngles(legIn, legO)
     for (let i = 0; i < 2; i++) {
       legs[i].hip.rotation.x = legO.hipX[i]
@@ -380,13 +425,20 @@ export function createChibi(preset: number): Chibi {
       legs[i].knee.rotation.x = legO.knee[i]
     }
 
-    // Whole rig: bob (2 per stride, lowest at the plants), jump, hops, a ready split-step bounce.
+    // Whole rig: bob (2 per stride, lowest at the plants), jump, hops, shuffle hop, split step, bounce.
     let y = (stride.bob * (1 - Math.cos(4 * Math.PI * p.stride))) / 2
     y += p.jump * JUMP_H + hopO.height * (HOP_H + p.cheer * HOP_H_WIN) * happy
-    y += ready * 0.025 * (1 - Math.cos(t * 9)) * 0.5
+    y += legO.lift + p.split * SPLIT_H + bounce * BOUNCE.h * bounceW
     rig.position.y = y - legO.drop
-    rig.rotation.x = LEAN_FWD * p.fwd + p.lean + 0.12 * ready + 0.1 * p.crouch + 0.08 * sad
-    rig.rotation.z = -LEAN_SIDE * p.side
+    rig.rotation.x =
+      LEAN_FWD * p.fwd +
+      p.lean +
+      STANCE.lean * st +
+      0.04 * ready +
+      0.1 * p.crouch +
+      0.08 * sad +
+      LUNGE_LEAN * p.lunge
+    rig.rotation.z = -LEAN_SIDE * p.side * (1 - STANCE.sideLean * st)
     rig.rotation.y = celebrateSpin(t) * p.cheer
 
     // Squash / stretch about the feet (rig origin): springs, crouch, landings, breathing.
@@ -394,10 +446,11 @@ export function createChibi(preset: number): Chibi {
     sq -= Math.sin(t * (sad ? 1.6 : 3)) * BREATHE * calm
     rig.scale.set(1 + sq * 0.5, 1 - sq, 1 + sq * 0.5)
 
-    // Upper body (arm.ts): base pose (idle / run counter-swing / ready / moods) with the swing on top.
+    // Upper body (arm.ts): base pose (idle / run counter-swing / ready stance / moods) with the swing on
+    // top. The stance arms don't depend on the legs (legless looks can use them as is).
     baseIn.run = Math.min(1, p.run * 1.6)
     baseIn.stride = p.stride
-    baseIn.ready = ready
+    baseIn.ready = Math.max(st, p.ready)
     baseIn.happy = happy
     baseIn.sad = sad
     baseIn.wave = Math.sin(t * 9) * 0.25
@@ -434,7 +487,7 @@ export function createChibi(preset: number): Chibi {
     shadow.scale.setScalar(1 - Math.min(0.4, y * 0.6))
 
     // Face: idle glance (against the torso twist), moods + blinks on the morphing face (face.ts).
-    head.rotation.x = 0.35 * sad - 0.06 * ready - ang[CH.bend] * 0.5
+    head.rotation.x = 0.35 * sad - 0.06 * Math.max(st, ready) - ang[CH.bend] * 0.5
     head.rotation.y = p.look * calm * (1 - p.ready) + HEAD_COUNTER * ang[CH.twist]
     head.rotation.z = happy * Math.sin(t * 9) * 0.08
     const effort = Math.max(p.smash, Math.min(1, p.coil * EFFORT_COIL) * p.load)

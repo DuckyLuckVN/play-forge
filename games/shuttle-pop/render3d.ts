@@ -41,6 +41,7 @@ import { chargeOf, chargeStage, CHARGE, isFull } from './charge'
 import { ChargeRing } from './chargering'
 import { TICK_RATE } from './court'
 import { DustPuffs } from './dust'
+import { Footwork, lungeWanted, splitHop, splitsOn } from './footwork'
 import { Hud, matchPoint, newEvents, newestShotId, trackerAction, type PopKind } from './hud'
 import { t } from './i18n'
 import { damp, Gait, GaitEvent } from './locomotion'
@@ -221,6 +222,8 @@ interface PlayerView {
   leapTick: number
   /** Run cycle, facing, lean, foot plants. */
   gait: Gait
+  /** Badminton footwork: lunge + its turn, split step. */
+  foot: Footwork
   /** True until the first frame after a reset (stand facing the net, no turn-in). */
   fresh: boolean
   squash: SpringPunch
@@ -251,6 +254,7 @@ function makePlayer(preset: number): PlayerView {
     jumpAge: Infinity,
     leapTick: NaN,
     gait: new Gait(),
+    foot: new Footwork(),
     fresh: true,
     squash: new SpringPunch(MOTION.squash.k, MOTION.squash.zeta, MOTION.step),
     lean: new SpringPunch(MOTION.lean.k, MOTION.lean.zeta, MOTION.step),
@@ -336,6 +340,8 @@ export class Court3D {
   private dust = new DustPuffs(DUST.capacity, DUST.color, DUST.opacity)
   /** Smash leap sample (reused). */
   private leap: Hop = { height: 0, squash: 0 }
+  /** Split-step sample (reused). */
+  private splitO: Hop = { height: 0, squash: 0 }
 
   constructor() {
     this.parking = document.createElement('div')
@@ -544,6 +550,7 @@ export class Court3D {
       p.swingAt = NaN
       p.jumpAge = Infinity
       p.leapTick = NaN
+      p.foot.reset()
       p.fresh = true
       p.squash.reset()
       p.lean.reset()
@@ -707,7 +714,10 @@ export class Court3D {
       const vz = (pred ? pred.vz : pp.vz + (cp.vz - pp.vz) * t) * flip
       const g = view.gait
       const flags = g.update(vx, vz, netYaw, swinging || mood !== 'idle', dt)
-      root.rotation.y = g.yaw
+      // Footwork: a far, low reach just before my contact lunges toward it (a smash leaps instead).
+      const sh = curr.shuttle.pos
+      this.footwork(view, sh.x * flip, sh.y, sh.z * flip, loading ? undefined : due, mood === 'idle', dt)
+      root.rotation.y = g.yaw + view.foot.turn()
       this.onGait(view, flags, x, z, vx, vz)
       if (landed) this.landPuff(x, z)
 
@@ -725,8 +735,13 @@ export class Court3D {
       pose.smash = damp(pose.smash, loading || leaping ? 1 : 0, MOTION.smashRate, dt)
       smashJump(view.jumpAge, this.leap)
       pose.jump = this.leap.height
-      pose.squash = view.squash.update(dt) + this.leap.squash
+      splitHop(view.foot.splitAge, this.splitO)
+      pose.split = this.splitO.height
+      pose.squash = view.squash.update(dt) + this.leap.squash + this.splitO.squash
       pose.lean = view.lean.update(dt)
+      pose.lunge = view.foot.lunge
+      // Badminton ready stance whenever not celebrating / slumping.
+      pose.stance = damp(pose.stance, mood === 'idle' ? 1 : 0, MOTION.readyRate, dt)
       // Ready stance while the shuttle comes my way; crouch while my smash is about to connect.
       const hitter = curr.shuttle.lastHitter
       const incoming = curr.phase === 'rally' && hitter !== -1 && hitter !== cp.side
@@ -849,6 +864,30 @@ export class Court3D {
     this.callsLogged = true
   }
 
+  /**
+   * Feed `view`'s footwork for this frame: lunge toward the shuttle (render-space x, y, z) when it is far
+   * and low and my contact is `due` s away (undefined = none of mine; 0 = now).
+   */
+  private footwork(
+    view: PlayerView,
+    sx: number,
+    sy: number,
+    sz: number,
+    due: number | undefined,
+    idle: boolean,
+    dt: number,
+  ) {
+    const r = view.chibi.root.position
+    const dx = sx - r.x
+    const dz = sz - r.z
+    const want = idle && lungeWanted(Math.hypot(dx, dz), sy, due)
+    // Body frame (model faces +z; local +x is (cos yaw, −sin yaw) in render space).
+    const yaw = view.gait.yaw
+    const c = Math.cos(yaw)
+    const sn = Math.sin(yaw)
+    view.foot.update(dt, want, dx * c - dz * sn, dx * sn + dz * c)
+  }
+
   /** New events → poses (a smash leaps, a point sets who celebrates), pops, sparkles, punch, sounds. */
   private scanEvents(s: SpState) {
     const fresh = newEvents(s.events, this.lastEventId, this.fresh)
@@ -860,6 +899,10 @@ export class Court3D {
         this.pointAt = this.time
       }
       this.rally = rallyHits(this.rally, e.k)
+      // The opponent hits / serves: split step, landing ready.
+      if (e.k === 'hit' || e.k === 'serve')
+        for (let i = 0; i < 2; i++)
+          if (splitsOn(e.k, e.side, s.players[i].side)) this.players[i].foot.splitStep()
       const sound = eventSound(e, this.side)
       if (sound) playSound(sound.sound, sound.vol)
       if (e.k === 'point') {
@@ -892,6 +935,8 @@ export class Court3D {
     view.hitAt = this.time
     view.swing.setDue(0)
     const p = this.shuttle.position
+    // A hit with no pending contact seen first (same-tick) can still lunge.
+    if (!smash) this.footwork(view, p.x, p.y, p.z, 0, view.pose.happy + view.pose.sad < 0.5, 0)
     if (grade === 'perfect') {
       this.fx.burst(p.x, p.y, p.z, SPARKLE)
       // A snappy stretch-then-squash on the hitter.

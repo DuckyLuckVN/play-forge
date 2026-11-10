@@ -95,16 +95,22 @@ describe('chibi rig', () => {
       head.getWorldPosition(hc)
       closest = Math.min(closest, fc.distanceTo(hc))
     }
-    for (const [smash, ready] of [
-      [0, 0],
-      [0.5, 0],
-      [1, 0],
-      [0, 1],
-      [1, 1],
+    for (const [smash, ready, stance, lunge] of [
+      [0, 0, 0, 0],
+      [0.5, 0, 0, 0],
+      [1, 0, 0, 0],
+      [0, 1, 0, 0],
+      [1, 1, 0, 0],
+      [0, 0, 1, 0],
+      [0, 1, 1, 0],
+      [1, 1, 1, 0],
+      [0, 0, 1, 1],
     ]) {
       const p = restPose()
       p.smash = smash
       p.ready = ready
+      p.stance = stance
+      p.lunge = lunge
       const d = new SwingDriver()
       d.press()
       for (let t = 0; t < STRIKE_END + 0.6; t += 1 / 240) {
@@ -123,6 +129,9 @@ describe('chibi rig', () => {
       { run: 1, ready: 0, happy: 0 },
       { run: 0, ready: 1, happy: 0 },
       { run: 0, ready: 0, happy: 1 },
+      { run: 1, stance: 1, side: 1, fwd: 0, happy: 0 },
+      { run: 1, stance: 1, side: 0, fwd: -1, happy: 0 },
+      { run: 0, stance: 1, split: 1, happy: 0 },
     ])
       for (let st = 0; st < 1; st += 0.02) {
         Object.assign(p, pose)
@@ -133,6 +142,29 @@ describe('chibi rig', () => {
     // Head radius 0.36 + frame half-width 0.13 (oval, 0.18 along the shaft): the frame's centre stays (about) outside both, so the
     // racket at most grazes the head's silhouette.
     expect(closest).toBeGreaterThan(0.36 + 0.14)
+  })
+
+  it('stance, lunge and split step blend in without pops (racket + feet move a little per step)', () => {
+    const { chibi, frame } = rig()
+    const shins: Object3D[] = []
+    chibi.root.traverse((o) => o.name === 'shin' && shins.push(o))
+    const pts = [frame, ...shins]
+    const prev = pts.map(() => new Vector3())
+    const cur = new Vector3()
+    const p = restPose()
+    for (const key of ['stance', 'lunge', 'split'] as const) {
+      Object.assign(p, restPose(), { stance: key === 'stance' ? 0 : 1 })
+      for (let w = 0; w <= 1.0001; w += 0.01) {
+        p[key] = w
+        chibi.setPose(p, 0)
+        chibi.root.updateMatrixWorld(true)
+        pts.forEach((o, i) => {
+          o.getWorldPosition(cur)
+          if (w > 0) expect(cur.distanceTo(prev[i])).toBeLessThan(0.02)
+          prev[i].copy(cur)
+        })
+      }
+    }
   })
 
   it('the swing streak is the same smooth arc at 30 and 60 fps (re-sampled, no frame history)', () => {

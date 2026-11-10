@@ -73,7 +73,9 @@ export class GuestPredictor {
   /** The swing button was released: ends charging; a swing that counted after a full hold starts the recovery slowdown. */
   release(swung: boolean): void {
     const hold = this.holdFrom >= 0 ? this.steps - this.holdFrom : 0
-    this.recover = swung ? recoveryAfter(chargeOf(hold)) : 0
+    // Only a new recovery overwrites: the host keeps an active recoverUntil on a non-counting release.
+    const r = swung ? recoveryAfter(chargeOf(hold)) : 0
+    if (r > 0) this.recover = r
     this.setCharging(false)
   }
 

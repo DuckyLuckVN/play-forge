@@ -542,10 +542,10 @@ describe('pickContact', () => {
     s.shuttle.lastHitter = lastHitter
   }
 
-  it('matches the old contactFor on recorded rallies', () => {
-    // 200 swings near the shuttle in a seeded bot rally (rewind 0 / 4 / 7), expected values recorded
-    // from the sim's contactFor before it became an adapter over pickContact (re-recorded when the
-    // power swing changed charged launches; the early-rally spot checks are unchanged).
+  it('pickContact results on recorded bot rallies match the pinned snapshot', () => {
+    // 200 swings near the shuttle in a seeded bot rally (rewind 0 / 4 / 7), expected values are a
+    // snapshot of pickContact's output (originally recorded from the old contactFor; re-recorded when
+    // the power swing changed charged launches and bot rallies, so this pins current behaviour only).
     const s = setupBots('hard', 'hard', 1)
     const got: { tick: number; side: number; rewind: number; c: ReturnType<typeof strip> }[] = []
     for (let i = 0; i < 600 && got.length < 200; i++) {

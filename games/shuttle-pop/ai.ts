@@ -122,6 +122,7 @@ function rollGrade(level: BotLevel, rng: () => number): GradeRoll {
  */
 function swingOffset(g: GradeRoll, rng: () => number): number {
   const sign = rng() < 0.5 ? -1 : 1
+  // Intended: pressure (sim grades 5-6 as Good) applies to the AI too, so a planned perfect can land Good.
   if (g === 'perfect') return randInt(rng, -WINDOW.perfect, WINDOW.perfect)
   if (g === 'good') return sign * randInt(rng, WINDOW.perfect + 1, WINDOW.good)
   if (g === 'late') return -randInt(rng, WINDOW.good + 1, WINDOW.late)

@@ -199,6 +199,15 @@ describe('guest prediction recovery after a full-charge swing', () => {
     expect(r.pred.vx).toBeCloseTo(r.ref.vx, 9)
     expect(r.pred.vx).toBeCloseTo(MOVE_SPEED, 6)
   })
+  it('a non-counting release inside the recovery keeps the slowdown (host keeps recoverUntil)', () => {
+    const r = run(30, true)
+    go(r, 3, () => POWER_SWING.recoveryMoveMul)
+    r.pred.setCharging(true)
+    r.pred.release(false)
+    go(r, 25, (i) => (i + 3 < POWER_SWING.recoveryTicks ? POWER_SWING.recoveryMoveMul : 1))
+    expect(r.pred.x).toBeCloseTo(r.ref.x, 9)
+    expect(r.pred.vx).toBeCloseTo(r.ref.vx, 9)
+  })
   it('release(false) or a short hold: no lock', () => {
     for (const r of [run(30, false), run(20, true)]) {
       go(r, 25, () => 1)

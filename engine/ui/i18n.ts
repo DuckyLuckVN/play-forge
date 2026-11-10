@@ -42,9 +42,20 @@ export const VI: Dictionary = {
 
   // Joining and connection
   'Joining {room}…': 'Đang vào phòng {room}…',
-  "Still looking for this room. Check the code, and make sure the host's game is open.":
-    'Vẫn đang tìm phòng này. Kiểm tra lại mã, và nhớ là chủ phòng đang mở game nhé.',
-  'Finding the host. This usually takes a few seconds.': 'Đang tìm chủ phòng. Thường chỉ mất vài giây.',
+  "Couldn't join {room}": 'Không vào được phòng {room}',
+  'Matchmaking servers': 'Máy chủ ghép phòng',
+  'Find the room': 'Tìm phòng',
+  'Connect to the host': 'Kết nối với chủ phòng',
+  'Connecting to the matchmaking servers…': 'Đang kết nối tới máy chủ ghép phòng…',
+  "Can't reach the matchmaking servers. Check your internet or try another network.":
+    'Không kết nối được máy chủ ghép phòng. Kiểm tra mạng, hoặc thử mạng khác nhé.',
+  'Looking for room {room}…': 'Đang tìm phòng {room}…',
+  "Couldn't find this room. Check the code, and make sure the host's game is open.":
+    'Không tìm thấy phòng này. Kiểm tra lại mã, và nhớ là chủ phòng đang mở game nhé.',
+  'Found the host, connecting…': 'Đã thấy chủ phòng, đang kết nối…',
+  'Found the host, but your networks block a direct connection. Try the same Wi-Fi, or turn off VPN / switch from mobile data.':
+    'Đã thấy chủ phòng, nhưng mạng của hai bên chặn kết nối trực tiếp. Thử dùng chung Wi-Fi, hoặc tắt VPN / đổi từ 4G sang Wi-Fi.',
+  'Try again': 'Thử lại',
   Cancel: 'Hủy',
   'Host disconnected': 'Chủ phòng mất kết nối',
   'Waiting for them to come back. If they reloaded, this takes a few seconds.':
@@ -89,6 +100,33 @@ export const VI: Dictionary = {
   "I'm ready": 'Sẵn sàng!',
   '{a} and {b}': '{a} và {b}',
   Gone: 'Đã rời',
+
+  // Network status panel (engine/ui/net-panel.ts)
+  'Network status': 'Tình trạng mạng',
+  Network: 'Mạng',
+  'Copy room code': 'Sao chép mã phòng',
+  'Room code copied': 'Đã sao chép mã phòng',
+  "Couldn't copy. The code is {room}.": 'Không sao chép được. Mã phòng là {room}.',
+  'You are': 'Bạn là',
+  Guest: 'Khách',
+  Players: 'Người chơi',
+  'No one else is here yet.': 'Chưa có ai khác trong phòng.',
+  '{ok} of {total} connected': 'Đã kết nối {ok}/{total}',
+  Connected: 'Đã kết nối',
+  'Not connected': 'Chưa kết nối',
+  'Connecting…': 'Đang kết nối…',
+  Failed: 'Thất bại',
+  '{ms} ms': '{ms} ms',
+  'Test mode: tabs in this browser talk directly, no internet used.':
+    'Chế độ thử: các tab trong trình duyệt này nói chuyện trực tiếp, không dùng internet.',
+  "Can't reach the matchmaking servers, so new players can't find this room. Check your internet.":
+    'Không kết nối được máy chủ ghép phòng, nên người mới không tìm thấy phòng này. Kiểm tra mạng nhé.',
+  'A direct connection failed: your networks block it. Try the same Wi-Fi, or turn off VPN / switch from mobile data.':
+    'Một kết nối trực tiếp bị lỗi: mạng của hai bên chặn nó. Thử dùng chung Wi-Fi, hoặc tắt VPN / đổi từ 4G sang Wi-Fi.',
+  'Still connecting to someone. This usually takes a few seconds.':
+    'Vẫn đang kết nối với một người. Thường chỉ mất vài giây.',
+  'High ping: moves may feel delayed. A stronger or wired connection helps.':
+    'Ping cao: thao tác có thể bị trễ. Mạng mạnh hơn hoặc mạng dây sẽ đỡ hơn.',
 
   // Countdown, pause, results
   'Go!': 'Chiến!',

@@ -309,6 +309,17 @@ export class Session<S, I> {
     )
   }
 
+  /**
+   * The transport peer id of a player we have a direct link with: for the host
+   * any connected guest, for a guest only the host. Used by the Network panel.
+   */
+  peerOf(playerId: string): string | undefined {
+    if (!this.isHost)
+      return playerId === this.lobby.hostId && this.hostConnected ? (this.hostPeer ?? undefined) : undefined
+    for (const [peer, id] of this.playerOfPeer) if (id === playerId) return peer
+    return undefined
+  }
+
   /** What the host should save to reopen this room after a reload. */
   snapshot(): RoomSnapshot {
     return {

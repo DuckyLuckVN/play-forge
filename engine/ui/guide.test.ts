@@ -54,7 +54,7 @@ describe('guideRows', () => {
   it('touch: only touch inputs, key-only rows hidden', () => {
     const rows = guideRows(STEPS, true)
     expect(rows.map((r) => r.action)).toEqual(['Move', 'Swing', 'Charge', 'Aim'])
-    expect(rows[0].inputs).toEqual([{ kind: 'touch', action: 'dragLeft', label: 'left' }])
+    expect(rows[0].inputs).toEqual([{ kind: 'touch', action: 'dragLeft', label: 'left', hold: false }])
     expect(rows.every((r) => r.inputs.every((i) => i.kind === 'touch'))).toBe(true)
   })
 
@@ -62,6 +62,32 @@ describe('guideRows', () => {
     const [charge] = guideRows([STEPS[2]], false)
     expect([charge.hold, charge.note]).toEqual([true, 'Let go to hit'])
     expect(guideRows([{ action: 'x', keys: [[]] }], false)).toEqual([])
+  })
+})
+
+describe('per-key hold (data)', () => {
+  it('row-level hold marks every key, mouse and touch input', () => {
+    const [row] = guideRows([STEPS[2]], false)
+    const keys = row.inputs.filter((i) => i.kind === 'keys')
+    expect(keys.every((i) => i.kind === 'keys' && i.keys.every((k) => k.hold))).toBe(true)
+    expect(row.inputs.at(-1)).toEqual({ kind: 'mouse', action: 'hold', hold: true })
+    const [touch] = guideRows([STEPS[2]], true)
+    expect(touch.inputs[0]).toMatchObject({ kind: 'touch', hold: true })
+  })
+  it('a row without hold marks nothing', () => {
+    const [row] = guideRows([STEPS[1]], false)
+    const held = row.inputs.some((i) =>
+      i.kind === 'keys' ? i.keys.some((k) => k.hold) : i.kind !== 'or' && i.hold,
+    )
+    expect(held).toBe(false)
+  })
+  it('a single key can be held beside tap keys', () => {
+    const [row] = guideRows(
+      [{ action: 'x', keys: [['W', { key: 'Space', hold: true }, { key: 'J' }]] }],
+      false,
+    )
+    const i = row.inputs[0]
+    expect(i.kind === 'keys' && i.keys.map((k) => !!k.hold)).toEqual([false, true, false])
   })
 })
 
@@ -186,5 +212,40 @@ describe('guideList rendering', () => {
       els.filter((e) => e.className === 'pf-icon').every((e) => e.innerHTML?.includes('aria-hidden')),
     ).toBe(true)
     expect(els.some((e) => e.className === 'pf-sr' && e.textContent === 'Tap the button')).toBe(true)
+  })
+
+  const chips = (list: FakeEl) => all(list).filter((e) => e.className === 'pf-held')
+  const spokenTexts = (el: FakeEl) =>
+    all(el)
+      .filter((e) => e.className === 'pf-sr')
+      .map((e) => e.textContent)
+
+  it('held row: each alternative gets its own hold chip, read out as "hold <key>"', () => {
+    const list = guideList([STEPS[2]], false) as unknown as FakeEl
+    const found = chips(list)
+    expect(found).toHaveLength(2) // Space, mouse
+    expect(found.every((c) => (c.children[0] as FakeEl).className === 'pf-guide-hold')).toBe(true)
+    expect(spokenTexts(found[0])).toEqual(['hold Space'])
+    expect(spokenTexts(found[1])).toEqual(['hold Hold the mouse button'])
+  })
+
+  it('tap row has no hold chips', () => {
+    const list = guideList([STEPS[1]], false) as unknown as FakeEl
+    expect(chips(list)).toHaveLength(0)
+  })
+
+  it('mixed combo: only the held key sits in a chip', () => {
+    const step: GuideStep = { action: 'x', keys: [['W', { key: 'Space', hold: true }]] }
+    const list = guideList([step], false) as unknown as FakeEl
+    const [chip] = chips(list)
+    expect(chips(list)).toHaveLength(1)
+    expect(all(chip).filter((e) => e.tagName === 'KBD')).toHaveLength(1)
+    expect(spokenTexts(chip)).toEqual(['hold Space'])
+  })
+
+  it('touch hold: chip around the icon with a spoken hold', () => {
+    const list = guideList([STEPS[2]], true) as unknown as FakeEl
+    expect(chips(list)).toHaveLength(1)
+    expect(spokenTexts(list)).toEqual(['hold Tap the button'])
   })
 })

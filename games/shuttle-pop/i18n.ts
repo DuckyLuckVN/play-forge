@@ -51,15 +51,17 @@ export const VI: Dictionary = {
   'Shuttle Pop needs WebGL to run.': 'Shuttle Pop cần WebGL để chạy.',
   'Badminton court': 'Sân cầu lông',
 
-  // In-match overlay (hud.ts): timing pops, badges
+  // In-match overlay (hud.ts, scoreboard.ts): timing pops, badges, the board
   'Power!': 'Siêu mạnh!',
   'Perfect!': 'Hoàn hảo!',
   Good: 'Tốt',
   Late: 'Trễ',
   Miss: 'Hụt',
   'Your serve': 'Lượt bạn giao cầu',
-  '{name} serves': '{name} giao cầu',
   'Match point': 'Điểm quyết định',
+  // Scoreboard (scoreboard.ts)
+  'Deuce: win by 2': 'Hòa: phải hơn 2 điểm',
+  'Next point wins': 'Ai ghi điểm tiếp sẽ thắng',
 
   // Results
   '{name} wins!': '{name} thắng!',

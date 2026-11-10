@@ -1,0 +1,244 @@
+@layer pf.components {
+  /* ---------- Joining a room: three steps (engine/app.ts showJoining) ---------- */
+
+  .pf-join-steps {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: var(--pf-space-4);
+  }
+  .pf-join-steps li {
+    display: flex;
+    align-items: center;
+    gap: var(--pf-space-5);
+    font-weight: var(--pf-fw-semi);
+    color: var(--pf-haze);
+  }
+  .pf-join-steps li > :first-child {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2px solid var(--pf-rim);
+    background: var(--pf-pit);
+  }
+  .pf-join-steps .pf-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+  .pf-join-steps li.done {
+    color: var(--pf-chalk);
+  }
+  .pf-join-steps li.done > :first-child {
+    border-color: var(--pf-mint);
+    color: var(--pf-mint);
+  }
+  .pf-join-steps li.active {
+    color: var(--pf-chalk);
+  }
+  .pf-join-steps li.active > :first-child {
+    border-color: var(--pf-yolk);
+    border-right-color: transparent;
+    animation: pf-spin 0.9s linear infinite;
+  }
+  .pf-join-steps li.failed {
+    color: var(--pf-coral);
+  }
+  .pf-join-steps li.failed > :first-child {
+    border-color: var(--pf-coral);
+    color: var(--pf-coral);
+  }
+  .pf-lede.error {
+    color: var(--pf-chalk);
+  }
+  @keyframes pf-spin {
+    to {
+      transform: rotate(1turn);
+    }
+  }
+
+  /* ---------- Network status button + panel (engine/ui/net-panel.ts) ---------- */
+
+  .pf-net-btn {
+    position: relative;
+  }
+  /* Health dot: green good, yellow so-so, red broken, grey same-browser test. */
+  .pf-net-btn[data-health]::after {
+    content: '';
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--pf-night);
+    background: var(--pf-haze);
+  }
+  .pf-net-btn[data-health='good']::after {
+    background: var(--pf-mint);
+  }
+  .pf-net-btn[data-health='warn']::after {
+    background: var(--pf-yolk);
+  }
+  .pf-net-btn[data-health='bad']::after {
+    background: var(--pf-coral);
+  }
+  .pf-net-btn[data-health='good'] {
+    color: var(--pf-mint);
+  }
+  .pf-net-btn[data-health='bad'] {
+    color: var(--pf-coral);
+  }
+
+  .pf-popover.pf-net-pop {
+    width: 340px;
+    gap: var(--pf-space-5);
+  }
+  .pf-net-title {
+    margin: 0;
+    font-size: var(--pf-fs-lg);
+  }
+  .pf-net-head,
+  .pf-net-body {
+    display: grid;
+    gap: var(--pf-space-5);
+  }
+  .pf-net-label {
+    color: var(--pf-haze);
+    font-size: var(--pf-fs-sm);
+    font-weight: var(--pf-fw-semi);
+  }
+  .pf-net-room,
+  .pf-net-role,
+  .pf-net-servers-head {
+    display: flex;
+    align-items: center;
+    gap: var(--pf-space-4);
+  }
+  .pf-net-room .pf-net-label,
+  .pf-net-role .pf-net-label,
+  .pf-net-servers-head .pf-net-label {
+    flex: 1;
+  }
+  .pf-net-code {
+    font-size: var(--pf-fs-lg);
+    letter-spacing: 0.18em;
+  }
+  .pf-net-room .pf-btn.icon {
+    width: 34px;
+    height: 34px;
+    padding: var(--pf-space-3);
+    margin-bottom: 3px;
+  }
+  .pf-net-servers {
+    display: grid;
+    gap: var(--pf-space-3);
+    padding: var(--pf-space-4) var(--pf-space-5);
+    background: var(--pf-pit);
+    border-radius: var(--pf-radius);
+  }
+  .pf-net-servers-head .ok {
+    color: var(--pf-mint);
+  }
+  .pf-net-servers-head .bad {
+    color: var(--pf-coral);
+  }
+  .pf-net-relays {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--pf-space-1) var(--pf-space-4);
+    font-size: var(--pf-fs-xs);
+    color: var(--pf-haze);
+  }
+  .pf-net-relays li {
+    display: flex;
+    align-items: center;
+    gap: var(--pf-space-2);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pf-net-relays .pf-icon svg {
+    flex: none;
+    width: 13px;
+    height: 13px;
+  }
+  .pf-net-relays li.ok .pf-icon {
+    color: var(--pf-mint);
+  }
+  .pf-net-relays li.bad .pf-icon {
+    color: var(--pf-coral);
+  }
+  .pf-net-players {
+    margin: calc(-1 * var(--pf-space-3)) 0 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: var(--pf-space-2);
+  }
+  .pf-net-player {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: 'name state ping';
+    align-items: center;
+    gap: 0 var(--pf-space-4);
+    padding: var(--pf-space-3) var(--pf-space-5);
+    background: var(--pf-pit);
+    border-radius: var(--pf-radius);
+  }
+  .pf-net-name {
+    grid-area: name;
+    font-weight: var(--pf-fw-semi);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pf-net-state {
+    grid-area: state;
+    font-size: var(--pf-fs-sm);
+    font-weight: var(--pf-fw-semi);
+  }
+  .pf-net-player.connected .pf-net-state {
+    color: var(--pf-mint);
+  }
+  .pf-net-player.connecting .pf-net-state {
+    color: var(--pf-yolk);
+  }
+  .pf-net-player.failed .pf-net-state {
+    color: var(--pf-coral);
+  }
+  .pf-net-ping {
+    grid-area: ping;
+    min-width: 52px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-size: var(--pf-fs-sm);
+  }
+  .pf-net-empty {
+    margin: calc(-1 * var(--pf-space-3)) 0 0;
+    color: var(--pf-haze);
+    font-size: var(--pf-fs-sm);
+  }
+  .pf-net-hint {
+    margin: 0;
+    padding: var(--pf-space-3) var(--pf-space-5);
+    border-left: 3px solid var(--pf-yolk);
+    background: var(--pf-pit);
+    border-radius: 0 var(--pf-radius-sm) var(--pf-radius-sm) 0;
+    font-size: var(--pf-fs-sm);
+    line-height: 1.35;
+  }
+  .pf-net-hint:is(.no-servers, .blocked) {
+    border-left-color: var(--pf-coral);
+  }
+  .pf-net-hint.local {
+    border-left-color: var(--pf-sky);
+  }
+}

@@ -100,6 +100,7 @@ export {
   openGuide,
   type GuideStep,
   type KeyCombo,
+  type KeySpec,
   type MouseAction,
   type TouchAction,
 } from './ui/guide'

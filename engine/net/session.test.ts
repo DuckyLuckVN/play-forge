@@ -69,6 +69,18 @@ describe('Session', () => {
     expect((guest.state as Secret).hostOnly).toBeUndefined()
   })
 
+  it('maps players to transport peers: every guest for the host, the host for a guest', async () => {
+    const r = room()
+    const host = join(r, { host: true, playerId: 'host' })
+    const guest = join(r, { playerId: 'guest' })
+    await until(() => guest.lobby.players.length === 2)
+    expect(host.peerOf('guest')).toBe(guest.transport.selfId)
+    expect(guest.peerOf('host')).toBe(host.transport.selfId)
+    expect(host.peerOf('host')).toBeUndefined()
+    expect(guest.peerOf('guest')).toBeUndefined()
+    expect(host.peerOf('nobody')).toBeUndefined()
+  })
+
   it('runs a host-authoritative match between two peers', async () => {
     const r = room()
     const host = join(r, { host: true, playerId: 'host' })

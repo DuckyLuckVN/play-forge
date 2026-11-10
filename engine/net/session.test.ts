@@ -122,6 +122,41 @@ describe('Session', () => {
     expect(byId('old')!.avatar).toBeUndefined()
   })
 
+  it('lets players change their name and avatar from the room', async () => {
+    const r = room()
+    const host = join(r, { host: true, playerId: 'host', name: 'Host' })
+    const guest = join(r, { playerId: 'guest', name: 'Player' })
+    await until(() => guest.lobby.players.length === 2)
+    const seen = (s: Session<any, any>, id: string) => s.lobby.players.find((p) => p.id === id)
+
+    guest.setProfile('  Ana  ', 'cat')
+    await until(() => seen(host, 'guest')?.name === 'Ana')
+    expect(seen(host, 'guest')?.avatar).toBe('cat')
+    await until(() => seen(guest, 'guest')?.name === 'Ana')
+
+    host.setProfile('Bo'.repeat(20), 'robot')
+    await until(() => seen(guest, 'host')?.avatar === 'robot')
+    expect(seen(guest, 'host')?.name).toHaveLength(16)
+
+    // A blank name falls back to "Player"; a bad avatar is dropped.
+    guest.setProfile('   ', '<b>')
+    await until(() => seen(host, 'guest')?.name === 'Player')
+    expect(seen(host, 'guest')?.avatar).toBeUndefined()
+  })
+
+  it('keeps the new name when a guest reconnects', async () => {
+    const r = room()
+    const host = join(r, { host: true, playerId: 'host' })
+    const guest = join(r, { playerId: 'guest', name: 'Player' })
+    await until(() => host.lobby.players.length === 2)
+    guest.setProfile('Ana', undefined)
+    await until(() => host.lobby.players[1]?.name === 'Ana')
+    // A fresh hello (as on reconnect) must carry the new profile, not the one from construction.
+    ;(guest as any).transport.send('hello', (guest as any).hello)
+    await new Promise((r) => setTimeout(r, 30))
+    expect(host.lobby.players[1]?.name).toBe('Ana')
+  })
+
   it('drops avatar ids that are not short slugs', async () => {
     const r = room()
     const host = join(r, { host: true, playerId: 'host' })

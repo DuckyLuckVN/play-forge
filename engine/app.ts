@@ -132,6 +132,12 @@ export interface GameAppOptions<S, I> {
    * timing calibration button). Called each time the menu is drawn.
    */
   menuExtras?(): HTMLElement | null
+  /**
+   * Extra controls in an online room, under the player's name and avatar
+   * (e.g. a character picker). Built once per room and kept across redraws,
+   * so it may hold its own state; save choices where `mount` can read them.
+   */
+  roomExtras?(): HTMLElement | null
 }
 
 const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -288,6 +294,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   // ---------- Session lifecycle ----------
   let session: Session<S, I> | null = null
   let cleanup: (() => void) | null = null
+  /** The room's "you" controls (name, avatar, game extras): built once per session, kept across redraws. */
+  let roomSelf: { session: Session<S, I>; el: HTMLElement } | null = null
   let room = ''
   /** Guest: progress of joining the room, until the host's lobby arrives. */
   let joinTrack: JoinTrack | null = null
@@ -945,7 +953,64 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     )
   }
 
+  /** A titled block of the room panel (players / you / game settings). */
+  function roomSection(title: string, ...body: (HTMLElement | false | null)[]) {
+    return h(
+      'section',
+      { class: 'pf-room-sec' },
+      h('h3', { class: 'pf-room-sec-title', textContent: title }),
+      ...body,
+    )
+  }
+  const hint = (text: string) => h('p', { class: 'pf-room-sec-hint', textContent: text })
+
+  /** Name, avatar and the game's room extras for the local player; the same nodes every redraw. */
+  function roomSelfControls(s: Session<S, I>): HTMLElement {
+    if (roomSelf?.session === s) return roomSelf.el
+    const name = h('input', {
+      class: 'pf-input',
+      value: storedName() || t('Player'),
+      maxLength: 16,
+      id: 'pf-room-name',
+    })
+    // Sent on commit (Enter / leaving the field), not per key: each change redraws the room.
+    const commit = () => {
+      const value = name.value.trim() || t('Player')
+      name.value = value
+      storedName(value)
+      if (value !== s.self?.name) s.setProfile(value, storedAvatar())
+    }
+    name.onchange = commit
+    name.onkeydown = (e) => {
+      if (e.key === 'Enter') name.blur()
+    }
+    const el = h(
+      'div',
+      { class: 'pf-room-self' },
+      h(
+        'div',
+        { class: 'pf-identity' },
+        avatarPicker(
+          storedAvatar(),
+          (id) => {
+            storedAvatar(id)
+            s.setProfile(storedName() || t('Player'), id)
+          },
+          { closeOnPick: true },
+        ),
+        h('label', { class: 'pf-field', htmlFor: 'pf-room-name' }, t('Your name'), name),
+      ),
+      opts.roomExtras?.() ?? null,
+    )
+    roomSelf = { session: s, el }
+    return el
+  }
+
   function showRoom(s: Session<S, I>) {
+    // Our own controls survive the redraw; keep the field or card the player was using focused.
+    const focused = roomSelf?.el.contains(document.activeElement)
+      ? (document.activeElement as HTMLElement)
+      : null
     const finished = s.phase === 'finished'
     const outcome = finished && s.state && opts.outcome?.(s.state, s.selfId)
     const self = s.self
@@ -984,6 +1049,18 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       action.autofocus = true
     }
 
+    // A lone host's options only (e.g. the computer's level) hide once a second player sits down.
+    const shownOptions = (def.options ?? []).filter((o) => !o.aloneOnly || s.lobby.players.length <= 1)
+    const settings = optionPickers(
+      shownOptions,
+      s.lobby.options,
+      s.isHost
+        ? (id, value) => {
+            s.setOption(id, value)
+            saveOptions(s.lobby.options)
+          }
+        : null,
+    )
     show(
       h(
         'div',
@@ -994,25 +1071,26 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         finished && opts.ranking && rankList(s),
         finished && s.state && opts.summary && summaryGrid(opts.summary(s.state, s.selfId)),
         roomCodeBox(),
-        seats(s),
-        optionPickers(
-          def.options ?? [],
-          s.lobby.options,
-          s.isHost
-            ? (id, value) => {
-                s.setOption(id, value)
-                saveOptions(s.lobby.options)
-              }
-            : null,
+        roomSection(t('Players {n}/{max}', { n: s.lobby.players.length, max: def.maxPlayers }), seats(s)),
+        self && !s.offline && roomSection(t('You'), roomSelfControls(s)),
+        settings && roomSection(t('Game settings'), settings, !s.isHost && hint(t('Set by the host'))),
+        h(
+          'div',
+          { class: 'pf-room-actions' },
+          h('p', { class: 'pf-note', textContent: note }),
+          offlineNote(),
+          action,
+          h(
+            'div',
+            { class: 'pf-row' },
+            guide && !finished && howToPlay(),
+            button(t('Leave room'), leave, 'quiet'),
+          ),
         ),
-        h('p', { class: 'pf-note', textContent: note }),
-        offlineNote(),
-        action,
-        guide && !finished && howToPlay(),
-        button(t('Leave room'), leave, 'quiet'),
       ),
       finished ? `results-${s.lobby.round}` : 'room',
     )
+    if (focused?.isConnected) focused.focus({ preventScroll: true })
     // First time in this game: the guide pops up once over the room (like solo's first play).
     if (guide && !finished && !closeFirstGuide && !guideSeen(def.id)) {
       closeFirstGuide = openGuide(guide, {
@@ -1088,6 +1166,15 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     } else toast(label)
     void preload.whenReady().then(() => {
       begin(createTransport(appId, room), saved.host, { restore: saved.host ? saved.snapshot : undefined })
+    })
+  } else if (hashRoom?.length === 5 && def.maxPlayers > 1) {
+    // Opened from an invite link: straight into the room (name, avatar and extras can change there).
+    store.save(null)
+    room = hashRoom
+    playerId = randomId()
+    showJoining()
+    void preload.whenReady().then(() => {
+      if (room === hashRoom && !session) begin(createTransport(appId, room), false)
     })
   } else {
     store.save(null)

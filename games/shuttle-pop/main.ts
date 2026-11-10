@@ -229,6 +229,7 @@ createGameApp<SpState, SpInput>({
   preload,
   mount,
   menuExtras: pickerStrip,
+  roomExtras: pickerStrip,
   // Both seats; `name` labels the computer's chip, translated at display time (lobby players keep their lobby name).
   // The computer's chip gets its own colour slot and the robot avatar (it isn't in the lobby).
   scores: (s) =>

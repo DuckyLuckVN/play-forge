@@ -64,6 +64,11 @@ export interface OptionDef {
   label: string
   choices: { value: string; label: string }[]
   default: string
+  /**
+   * Only matters while one player is seated (e.g. the computer's level):
+   * rooms hide it once a second player sits down. The value is kept.
+   */
+  aloneOnly?: boolean
 }
 
 /** Fill in defaults and drop unknown or invalid values. */
@@ -152,6 +157,15 @@ export function cleanAvatar(raw: unknown): string | undefined {
   return typeof raw === 'string' && /^[a-z0-9-]{1,24}$/.test(raw) ? raw : undefined
 }
 
+/** Names are trimmed and capped at 16 characters; a blank one becomes "Player". */
+export function cleanName(raw: unknown): string {
+  return (
+    String(raw ?? '')
+      .trim()
+      .slice(0, 16) || 'Player'
+  )
+}
+
 const DEFAULT_COUNTDOWN = 3
 
 /**
@@ -181,6 +195,8 @@ export class Session<S, I> {
   private countdownTimer: ReturnType<typeof setTimeout> | null = null
   private unsubs: (() => void)[] = []
   private graceMs: number
+  /** A guest's greeting: sent to every peer that joins, and again on profile changes. */
+  private hello: Hello | null = null
   // Host: peer id → player id, and seat-expiry timers for dropped players.
   private playerOfPeer = new Map<string, string>()
   private dropTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -234,11 +250,11 @@ export class Session<S, I> {
       )
     } else {
       const hostWaitMs = opts.hostWaitMs ?? 30000
-      const hello: Hello = { id: this.selfId, name: opts.name, avatar: cleanAvatar(opts.avatar) }
+      this.hello = { id: this.selfId, name: opts.name, avatar: cleanAvatar(opts.avatar) }
       this.unsubs.push(
         // We don't know which peer is the host, so greet everyone; only the
         // host answers. Re-greeting on reconnect reclaims our seat.
-        t.onPeerJoin((peer) => t.send(CH.hello, hello, peer)),
+        t.onPeerJoin((peer) => t.send(CH.hello, this.hello, peer)),
         t.on(CH.lobby, (lobby: LobbyState, peer) => {
           // One host at a time, but accept a new one while ours is gone
           // (the host reloaded and came back with a new peer id).
@@ -344,6 +360,26 @@ export class Session<S, I> {
     this.broadcastLobby()
   }
 
+  /**
+   * Change the local player's name and avatar (e.g. from the room). A guest
+   * re-sends its hello, which the host already treats as a profile update, so
+   * older hosts understand it too.
+   */
+  setProfile(name: string, avatar: string | undefined): void {
+    const clean = { name: cleanName(name), avatar: cleanAvatar(avatar) }
+    if (this.isHost) {
+      const self = this.self
+      if (!self) return
+      self.name = clean.name
+      if (clean.avatar) self.avatar = clean.avatar
+      else delete self.avatar
+      this.broadcastLobby()
+      return
+    }
+    this.hello = { id: this.selfId, ...clean }
+    if (this.hostPeer) this.transport.send(CH.hello, this.hello, this.hostPeer)
+  }
+
   /** Mark the local player ready (or not) for the next match. */
   setReady(ready: boolean): void {
     const self = this.self
@@ -427,10 +463,7 @@ export class Session<S, I> {
 
   private onHello(peer: string, msg: Hello) {
     const id = String(msg?.id ?? '').slice(0, 40)
-    const name =
-      String(msg?.name ?? '')
-        .trim()
-        .slice(0, 16) || 'Player'
+    const name = cleanName(msg?.name)
     if (!id || id === this.selfId) return
     const avatar = cleanAvatar(msg?.avatar)
     const { players } = this.lobby

@@ -26,7 +26,7 @@ export type Surf = 'skin' | 'cloth' | 'knit' | 'hair' | 'plastic' | 'rubber' | '
 export const SURFS: Record<Surf, Triple> = {
   skin: [0.5, 0.05, 0.35],
   cloth: [0.72, 0, 0.9],
-  knit: [0.95, 0, 0.55],
+  knit: [0.97, 0, 0.4],
   hair: [0.55, 0.15, 0],
   plastic: [0.32, 0.5, 0],
   rubber: [0.55, 0.15, 0],

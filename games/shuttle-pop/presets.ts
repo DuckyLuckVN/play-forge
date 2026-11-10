@@ -91,7 +91,7 @@ export const PRESETS: readonly Preset[] = [
       ...HUMAN,
       accent: 0xff7a1f,
       grip: 0xffffff,
-      hair: 0x8a4422,
+      hair: 0x6a3218,
       iris: 0xd88a22,
       style: 'bandSpiky',
       face: 'chibiBold',

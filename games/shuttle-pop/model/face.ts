@@ -117,7 +117,7 @@ const MOUTH_Y = -0.125
  */
 const TOY = {
   // Taller than wide, like the reference's soft oval eyes.
-  eye: { a: 0.079, b: 0.099, x: 0.15, y: -0.08 } as EyeDims,
+  eye: { a: 0.064, b: 0.08, x: 0.128, y: -0.092 } as EyeDims,
   iris: { a: 0.9, b: 0.93, dy: -0.004 },
   pupil: { a: 0.56, b: 0.58, dy: 0.01 },
   lid: { mid: 0.05, end: 0.02, from: 0.1 },
@@ -142,7 +142,8 @@ const TOY_LASHES: readonly (readonly [number, number, number])[] = [
 /** Mouth size share (shapes below are drawn at 1). */
 const MOUTH_K = 1.3
 const BLUSH = { a: 0.046, b: 0.024, x: 0.215, y: -0.085 }
-const RING = 20
+/** Points per ellipse ring: smooth outlines in close-ups (portraits, the turntable). */
+const RING = 40
 const COLS = 11
 
 /** Eye shape per expression: (dx, dy) from the eye centre → new offset; highlight size share. */
@@ -398,8 +399,8 @@ export function faceLayout(look: Look, e: Expr): FaceLayout {
     const hiL = st.toy ? L + 4 : L + 2
     for (const [hx, hy, hr] of st.toy
       ? [
-          [0.018, 0.036, 0.024],
-          [-0.02, -0.04, 0.011],
+          [0.015, 0.029, 0.02],
+          [-0.016, -0.032, 0.009],
         ]
       : [
           [0.019, 0.032, 0.024],

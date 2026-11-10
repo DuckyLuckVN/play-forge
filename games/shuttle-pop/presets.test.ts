@@ -83,5 +83,9 @@ describe('preset table', () => {
   })
 })
 
-/** Per look: triangles over every drawn bone, head mesh alone, extra meshes. */
-const BUDGET = { tris: 16000, head: 7000, extraMeshes: 4 }
+/**
+ * Per look: triangles over every drawn bone, head mesh alone, extra meshes. The toy-style humans (Task 18:
+ * sculpted hair, kit stripes, chunky sneakers) need ~17k; draw calls, not triangles, are the budget that
+ * matters on phones (two chibis ≈ 35k triangles).
+ */
+const BUDGET = { tris: 18500, head: 7000, extraMeshes: 4 }

@@ -2,6 +2,7 @@
 // part rigidly attached to one bone into a single vertex-coloured geometry (one draw call per bone).
 // Runs once per look at load time (allocation is fine here; nothing in this file runs per frame).
 
+import { bakeAO, type Occluder } from './ao'
 import {
   BufferAttribute,
   BufferGeometry,
@@ -89,11 +90,23 @@ function indexed(geo: BufferGeometry): BufferGeometry {
 
 const col = new Color()
 
+/** Merge options: bake ambient occlusion into the colours (with other bones' rest geometry as occluders). */
+export interface MergeOpts {
+  ao?: { extra?: readonly Part[] }
+}
+
+/** A placed part as an AO occluder. */
+const occluderOf = (pt: Part): Occluder => ({
+  pos: pt.geo.getAttribute('position').array,
+  index: pt.geo.getIndex()!.array,
+})
+
 /**
  * One geometry from `parts`: position + normal + vertex `color`, the parts' vertices in order (so part
- * k owns a contiguous vertex range). UVs and other attributes are dropped.
+ * k owns a contiguous vertex range). UVs and other attributes are dropped. `opts.ao` darkens the colours
+ * in creases (ao.ts).
  */
-export function mergeParts(parts: readonly Part[]): BufferGeometry {
+export function mergeParts(parts: readonly Part[], opts: MergeOpts = {}): BufferGeometry {
   let verts = 0
   let tris = 0
   for (const pt of parts) {
@@ -130,6 +143,14 @@ export function mergeParts(parts: readonly Part[]): BufferGeometry {
     for (let i = 0; i < I.count; i++) index[t + i] = I.getX(i) + v
     v += P.count
     t += I.count
+  }
+  if (opts.ao) {
+    const f = bakeAO({ pos, nor, index }, (opts.ao.extra ?? []).map(occluderOf))
+    for (let i = 0; i < verts; i++) {
+      rgb[i * 3] *= f[i]
+      rgb[i * 3 + 1] *= f[i]
+      rgb[i * 3 + 2] *= f[i]
+    }
   }
   const out = new BufferGeometry()
   out.setAttribute('position', new BufferAttribute(pos, 3))

@@ -1,13 +1,14 @@
 // One merged geometry per bone for a look, built once (cached by preset id) and shared by every chibi
 // wearing it. Racket geometry is shared by every look with the same frame / grip colours.
 
-import { BufferAttribute, BufferGeometry } from 'three'
+import { BufferAttribute, BufferGeometry, SphereGeometry } from 'three'
 import { foreArmParts, handParts, hipsParts, shinParts, thighParts, torsoParts, upperArmParts } from './body'
 import { EXTRAS, type ExtraSpec } from './extras'
 import { faceGeometry } from './face'
 import { headParts } from './head'
 import { legless, type Look } from './look'
-import { mergeParts } from './merge'
+import { mergeParts, part, type MergeOpts, type Part } from './merge'
+import { HEAD_R, HEAD_Y, HIP_Y } from './dims'
 import { racketParts } from './racket'
 
 /** Twin outline width (m): the far twin's back-faced shell is the head pushed out this much. */
@@ -48,6 +49,10 @@ export interface ModelSource {
 }
 
 const cache = new Map<number, ModelGeos>()
+/** Baked creases (ao.ts) on every bone but the racket. */
+const AO: MergeOpts = { ao: {} }
+/** The head at rest over the torso (torso space), shading the neck. */
+const neckShade = (): Part[] => [part(new SphereGeometry(HEAD_R, 24, 16), 0, { p: [0, HEAD_Y - HIP_Y, 0] })]
 const rackets = new Map<string, BufferGeometry>()
 const EMPTY = new BufferGeometry()
 EMPTY.setAttribute('position', new BufferAttribute(new Float32Array(0), 3))
@@ -73,26 +78,27 @@ export function modelOf(src: ModelSource): ModelGeos {
   let m = cache.get(src.id)
   if (!m) {
     const l = src.look
-    const head = mergeParts(headParts(l))
+    const head = mergeParts(headParts(l), AO)
     const rk = `${l.accent}:${l.grip}`
     let racket = rackets.get(rk)
     if (!racket) rackets.set(rk, (racket = mergeParts(racketParts(l))))
     const legs = !legless(l)
     m = {
-      torso: mergeParts(torsoParts(l)),
-      hips: mergeParts(hipsParts(l)),
+      // The neck sits in the head's shadow, the shorts' top under the shirt hem.
+      torso: mergeParts(torsoParts(l), { ao: { extra: neckShade() } }),
+      hips: mergeParts(hipsParts(l), { ao: { extra: torsoParts(l) } }),
       head,
       face: faceGeometry(l),
       hull: inflate(head, OUTLINE_W),
-      upperArm: mergeParts(upperArmParts(l)),
-      foreArm: [mergeParts(foreArmParts(l, -1)), mergeParts(foreArmParts(l, 1))],
-      hand: [mergeParts(handParts(l, -1)), mergeParts(handParts(l, 1))],
-      thigh: legs ? mergeParts(thighParts(l)) : EMPTY,
-      shin: legs ? mergeParts(shinParts(l)) : EMPTY,
+      upperArm: mergeParts(upperArmParts(l), AO),
+      foreArm: [mergeParts(foreArmParts(l, -1), AO), mergeParts(foreArmParts(l, 1), AO)],
+      hand: [mergeParts(handParts(l, -1), AO), mergeParts(handParts(l, 1), AO)],
+      thigh: legs ? mergeParts(thighParts(l), AO) : EMPTY,
+      shin: legs ? mergeParts(shinParts(l), AO) : EMPTY,
       racket,
       extras: l.extras.map((k) => {
         const spec: ExtraSpec = EXTRAS[k]
-        const geo = mergeParts(spec.parts(l))
+        const geo = mergeParts(spec.parts(l), AO)
         return {
           spec,
           geo,

@@ -37,6 +37,7 @@ import { extraOut, extraPose, type FlairIn } from './flair'
 import type { ExtraSpec } from './model/extras'
 import { blinkAt, faceMix } from './model/face'
 import { legless } from './model/look'
+import { HEAD_SCALE } from './model/head'
 import { modelOf } from './model/model'
 import { celebrateSpin, hop, type Hop } from './moves'
 import { PRESETS } from './presets'
@@ -211,15 +212,55 @@ function faceMat(alt: boolean): MeshBasicMaterial {
   return cached(alt ? 'faceAlt' : 'face', () => {
     const color = new Color(0xffffff)
     if (alt) color.lerp(ALT_SHADE_COLOR, ALT_SHADE)
-    return new MeshBasicMaterial({ color, vertexColors: true })
+    // Blended: the toy faces' blush fades out at its edge (vertex alpha); everything else is opaque.
+    return new MeshBasicMaterial({ color, vertexColors: true, transparent: true })
   })
 }
-/** Smooth pastel vertex-colour material (the far twin's is shaded toward ALT_SHADE_COLOR). */
+/**
+ * Toy shading on top of the standard lighting (shared by every kit material): a fresnel rim that lifts
+ * silhouettes off the court, and a soft studio gloss (a broad highlight where the surface mirrors the sky).
+ * Plain uniforms, so the quality governor can turn them off (setToyShading) without a recompile.
+ */
+const TOY = { rim: 0.32, gloss: 0.2, fill: 0.14 }
+const toyUniforms = {
+  toyRim: { value: TOY.rim },
+  toyGloss: { value: TOY.gloss },
+  toyFill: { value: TOY.fill },
+}
+const TOY_FRAGMENT = /* glsl */ `
+  {
+    vec3 toyN = normalize(normal);
+    vec3 toyV = normalize(vViewPosition);
+    float toyF = pow(1.0 - clamp(dot(toyN, toyV), 0.0, 1.0), 3.0);
+    vec3 toyUp = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+    float toyG = pow(max(dot(reflect(-toyV, toyN), toyUp), 0.0), 12.0);
+    outgoingLight += toyRim * toyF * (0.35 + 0.65 * diffuseColor.rgb);
+    outgoingLight += toyGloss * toyG * (0.6 + 0.4 * diffuseColor.rgb);
+    // Soft studio fill: keeps the shadow side bright and toy-like.
+    outgoingLight += toyFill * diffuseColor.rgb;
+  }
+  #include <opaque_fragment>`
+
+/** Toy rim + gloss on (full quality) or off (slow devices). */
+export function setToyShading(on: boolean): void {
+  toyUniforms.toyRim.value = on ? TOY.rim : 0
+  toyUniforms.toyGloss.value = on ? TOY.gloss : 0
+}
+
+/** Glossy vinyl-toy vertex-colour material (the far twin's is shaded toward ALT_SHADE_COLOR). */
 function kitMat(alt: boolean): MeshStandardMaterial {
   return cached(alt ? 'kitAlt' : 'kit', () => {
     const color = new Color(0xffffff)
     if (alt) color.lerp(ALT_SHADE_COLOR, ALT_SHADE)
-    return new MeshStandardMaterial({ color, vertexColors: true, roughness: 0.78 })
+    const m = new MeshStandardMaterial({ color, vertexColors: true, roughness: 0.42 })
+    m.onBeforeCompile = (sh) => {
+      Object.assign(sh.uniforms, toyUniforms)
+      sh.fragmentShader =
+        'uniform float toyRim;\nuniform float toyGloss;\nuniform float toyFill;\n' +
+        sh.fragmentShader.replace('#include <opaque_fragment>', TOY_FRAGMENT)
+    }
+    m.customProgramCacheKey = () => 'toy'
+    return m
   })
 }
 
@@ -372,6 +413,7 @@ export function createChibi(preset: number): Chibi {
     hips.geometry = g.hips
     chest.geometry = g.torso
     headMesh.geometry = g.head
+    head.scale.setScalar(HEAD_SCALE[p.look.head])
     racketMesh.geometry = g.racket
     for (let i = 0; i < 2; i++) {
       legs[i].thigh.geometry = g.thigh

@@ -47,42 +47,123 @@ const TORSO_PROFILE: readonly (readonly [number, number])[] = [
   [0, 0.68],
 ]
 
-/** Human: chest + polo shirt + collar + neck, in the torso bone's space (origin at the hips). */
+/** Human shirt outline (radius, world y), bottom to top: a short boxy tee whose hem flares over the shorts. */
+const HUMAN_PROFILE: readonly (readonly [number, number])[] = [
+  [0, 0.236],
+  [0.16, 0.238],
+  [0.19, 0.244],
+  [0.198, 0.256],
+  [0.198, 0.29],
+  [0.193, 0.34],
+  [0.185, 0.39],
+  [0.172, 0.44],
+  [0.155, 0.482],
+  [0.134, 0.512],
+  [0.11, 0.535],
+  [0.085, 0.55],
+  [0.07, NECK_Y],
+  [0.062, NECK_Y + 0.001],
+  [0.06, 0.62],
+  [0.058, 0.66],
+  [0, 0.68],
+]
+/** Two contrast stripes round the hem (world y bands). */
+const HEM_BANDS: readonly (readonly [number, number])[] = [
+  [0.26, 0.272],
+  [0.283, 0.295],
+]
+/** Shirt depth / width share (a tee is wider than deep). */
+const TEE = { sx: 1.1, sz: 0.94 }
+
+/** Radius of a (radius, y) outline at height y (linear between points). */
+function radiusAt(prof: readonly (readonly [number, number])[], y: number): number {
+  for (let i = 1; i < prof.length; i++) {
+    const [r0, y0] = prof[i - 1]
+    const [r1, y1] = prof[i]
+    if (y >= y0 && y <= y1) return y1 === y0 ? r1 : r0 + ((r1 - r0) * (y - y0)) / (y1 - y0)
+  }
+  return 0
+}
+
+/** The outline with a 1 mm vertex pair at each band edge, so colour bands get hard edges. */
+function withBands(
+  prof: readonly (readonly [number, number])[],
+  bands: readonly (readonly [number, number])[],
+): [number, number][] {
+  const cuts = bands.flatMap(([lo, hi]) => [lo - 0.0005, lo + 0.0005, hi - 0.0005, hi + 0.0005])
+  const ys = [...new Set([...prof.map(([, y]) => y), ...cuts])].sort((a, b) => a - b)
+  return ys.map((y) => {
+    const exact = prof.find(([, py]) => py === y)
+    return [exact ? exact[0] : radiusAt(prof, y), y]
+  })
+}
+
+/** Human: a boxy tee (hem stripes, V collar, chest emblem) + neck, in the torso bone's space (origin at the hips). */
 function humanTorso(l: Look): Part[] {
   const k = l.kit
+  const neckY = NECK_Y - HIP_Y
   const lathe = new LatheGeometry(
-    TORSO_PROFILE.map(([r, y]) => new Vector2(r, y - HIP_Y)),
+    withBands(HUMAN_PROFILE, HEM_BANDS).map(([r, y]) => new Vector2(r, y - HIP_Y)),
     28,
   )
-  const neckY = NECK_Y - HIP_Y
   if (!k) return [part(lathe, l.skin)]
+  const inBand = (wy: number) => HEM_BANDS.some(([lo, hi]) => wy > lo && wy < hi)
   const paint = (_x: number, y: number) =>
-    y > neckY + 0.0005 ? l.skin : y > STRIPE.lo - HIP_Y && y < STRIPE.hi - HIP_Y ? k.stripe : k.shirt
-  const flap = new SphereGeometry(0.04, 10, 6)
-  const button = new SphereGeometry(0.009, 6, 4)
-  return [
+    y > neckY + 0.0005 ? l.skin : inBand(y + HIP_Y) ? k.stripe : k.shirt
+  // Front surface depth at a world height (for the decal-like collar + emblem).
+  const front = (wy: number) => radiusAt(HUMAN_PROFILE, wy)
+  const v = new CapsuleGeometry(0.009, 0.075, 3, 8)
+  const vy = 0.515
+  const out: Part[] = [
     part(lathe, paint),
-    // Polo collar: a rolled ring plus two flaps meeting at the front.
-    part(new TorusGeometry(0.074, 0.016, 8, 24), k.trim, { p: [0, neckY - 0.002, 0], r: [HALF_PI, 0, 0] }),
-    part(flap, k.trim, { p: [-0.036, neckY - 0.012, 0.066], r: [0.5, 0, 0.5], s: [1, 0.55, 0.3] }),
-    part(flap, k.trim, { p: [0.036, neckY - 0.012, 0.066], r: [0.5, 0, -0.5], s: [1, 0.55, 0.3] }),
-    part(button, k.trim, { p: [0, 0.52 - HIP_Y, 0.133] }),
-    part(button, k.trim, { p: [0, 0.495 - HIP_Y, 0.145] }),
+    // V collar: two strips meeting on the chest, a band round the back of the neck.
+    part(v, k.trim, { p: [-0.033, vy - HIP_Y, front(vy) - 0.004], r: [-0.55, 0, 0.6] }),
+    part(v, k.trim, { p: [0.033, vy - HIP_Y, front(vy) - 0.004], r: [-0.55, 0, -0.6] }),
+    part(new TorusGeometry(0.073, 0.014, 6, 24), k.trim, {
+      p: [0, neckY - 0.008, -0.008],
+      r: [HALF_PI + 0.3, 0, 0],
+    }),
+    ...emblem(PALETTE.emblem, [0, 0.43 - HIP_Y, front(0.43) + 0.001], [-0.3, 0, 0], 1.15),
+  ]
+  return place(out, { s: [TEE.sx, 1, TEE.sz] })
+}
+
+/** Pleated skirt: a flared tube whose rim zigzags (pleats), shaded in the folds. */
+function pleatedSkirt(color: number, trim: number): Part[] {
+  const PLEATS = 14
+  const H = 0.17
+  const g = new CylinderGeometry(0.16, 0.232, H, PLEATS * 4, 2, true)
+  const P = g.getAttribute('position')
+  const fold = (x: number, z: number) => {
+    const a = (Math.atan2(x, z) / (Math.PI * 2)) * PLEATS
+    return Math.abs((((a % 1) + 1) % 1) - 0.5) * 2 // 0 in a fold, 1 on a crest
+  }
+  for (let i = 0; i < P.count; i++) {
+    const x = P.getX(i)
+    const z = P.getZ(i)
+    const down = 0.5 - P.getY(i) / H // 0 at the waist, 1 at the hem
+    const k = 1 + 0.07 * down * (fold(x, z) - 0.5)
+    P.setXYZ(i, x * k, P.getY(i), z * k)
+  }
+  g.computeVertexNormals()
+  const valley = shade(color, 0.16)
+  return [
+    part(g, (x, y, z) => (y < -H / 2 + 0.014 ? trim : fold(x, z) < 0.3 ? valley : color), {
+      p: [0, -0.03, 0],
+    }),
+    // Waistband closes the top.
+    part(new CylinderGeometry(0.161, 0.161, 0.02, 32), color, { p: [0, H / 2 - 0.037, 0] }),
   ]
 }
 
 /** Shorts or skirt (bare hips without a kit), in the hips bone's space (origin at the hip joints' height). */
 function humanHips(l: Look): Part[] {
   const k = l.kit
-  if (k?.bottom === 'skirt')
-    return [
-      part(new CylinderGeometry(0.15, 0.2, 0.13, 28, 1), k.bottomColor, { p: [0, -0.005, 0] }),
-      part(new TorusGeometry(0.198, 0.011, 6, 32), k.trim, { p: [0, -0.068, 0], r: [HALF_PI, 0, 0] }),
-    ]
+  if (k?.bottom === 'skirt') return pleatedSkirt(k.bottomColor, k.stripe)
   return [
-    part(new SphereGeometry(0.15, 24, 12), k ? k.bottomColor : l.skin, {
+    part(new SphereGeometry(0.155, 28, 14), k ? k.bottomColor : l.skin, {
       p: [0, 0.03, 0],
-      s: [1.08, 0.62, 0.92],
+      s: [1.2, 0.66, 0.98],
     }),
   ]
 }
@@ -116,15 +197,29 @@ function chubbyTorso(l: Look): Part[] {
   ]
 }
 
-/** Shuttlecock emblem (feather skirt + cork), ~4 cm, lying on a surface at `p` turned by `r`. */
-export function emblem(color: number, p: Triple, r: Triple): Part[] {
-  return place(
-    [
-      part(new CylinderGeometry(0.02, 0.008, 0.026, 10), color, { p: [0, 0.008, 0], s: [1, 1, 0.3] }),
-      part(new SphereGeometry(0.009, 8, 6), color, { p: [0, -0.009, 0], s: [1, 1, 0.5] }),
-    ],
-    { p, r },
-  )
+/** Shuttlecock emblem (five feathers fanning up from a round cork), ~4 cm, lying on a surface at `p` turned by `r`. */
+export function emblem(color: number, p: Triple, r: Triple, s = 1): Part[] {
+  const feather = new CapsuleGeometry(0.0042, 0.024, 1, 4)
+  const out: Part[] = [
+    part(new SphereGeometry(0.0085, 8, 5), color, { p: [0, -0.012, 0], s: [1, 0.85, 0.5] }),
+    // Rim band across the feather tops.
+    part(new CapsuleGeometry(0.003, 0.03, 1, 4), color, {
+      p: [0, 0.014, 0],
+      r: [0, 0, HALF_PI],
+      s: [1, 1, 0.5],
+    }),
+  ]
+  for (let i = -2; i <= 2; i++) {
+    const a = i * 0.3
+    out.push(
+      part(feather, color, {
+        p: [Math.sin(a) * 0.014, -0.002 + Math.cos(a) * 0.006, 0],
+        r: [0, 0, -a],
+        s: [1, 1, 0.5],
+      }),
+    )
+  }
+  return place(out, { p, r, s })
 }
 
 /** Chubby animal hips: rounder shorts (or fur). */
@@ -270,25 +365,43 @@ export function hipsParts(l: Look): Part[] {
   return BODIES[l.body].hips(l)
 }
 
-/** Upper arm hanging from the shoulder (y = 0 → −ARM.upper): puffed short sleeve with a cuff (kit only). */
+/** Upper arm hanging from the shoulder (y = 0 → −ARM.upper): puffed short sleeve, stripe + cuff (kit only). */
 export function upperArmParts(l: Look): Part[] {
   const k = l.kit
   const arm = new CapsuleGeometry(ARM.upperR, ARM.upper, 4, 12).translate(0, -ARM.upper / 2, 0)
   if (!k) return [part(arm, limbOf(l))]
+  const SLEEVE = 0.077
   return [
     part(arm, limbOf(l)),
-    part(new SphereGeometry(0.067, 14, 8, 0, Math.PI * 2, 0, HALF_PI), k.shirt),
-    part(new CylinderGeometry(0.067, 0.071, 0.065, 16), k.shirt, { p: [0, -0.0325, 0] }),
-    part(new TorusGeometry(0.07, 0.009, 6, 18), k.trim, { p: [0, -0.065, 0], r: [HALF_PI, 0, 0] }),
+    part(new SphereGeometry(SLEEVE, 16, 8, 0, Math.PI * 2, 0, HALF_PI), k.shirt),
+    part(
+      new CylinderGeometry(SLEEVE, SLEEVE + 0.004, 0.07, 18),
+      (_x, y) => (y < -0.046 && y > -0.058 ? k.stripe : k.shirt),
+      {
+        p: [0, -0.035, 0],
+      },
+    ),
+    part(new TorusGeometry(SLEEVE + 0.003, 0.008, 6, 20), k.trim, { p: [0, -0.07, 0], r: [HALF_PI, 0, 0] }),
   ]
 }
 
-/** Forearm hanging from the elbow; the racket arm (`side` −1) wears the wristband. */
+/** Forearm hanging from the elbow, with a wristband (kit or racket arm). */
 export function foreArmParts(l: Look, side: number): Part[] {
-  const fore = new CapsuleGeometry(ARM.foreR, ARM.fore, 4, 12).translate(0, -ARM.fore / 2, 0)
+  const fore = new CapsuleGeometry(ARM.foreR + 0.004, ARM.fore, 4, 12).translate(0, -ARM.fore / 2, 0)
   const out = [part(fore, limbOf(l))]
-  if (side < 0)
-    out.push(part(new CylinderGeometry(0.056, 0.056, 0.03, 16), l.accent, { p: [0, -ARM.fore + 0.02, 0] }))
+  if (side < 0 || l.kit) {
+    // Terry wristband: light ribbed edges painted on (no extra rings).
+    const edge = tint(l.accent, 0.3)
+    out.push(
+      part(
+        new CylinderGeometry(0.061, 0.061, 0.036, 18, 4),
+        (_x, y) => (Math.abs(y - 0.022 + ARM.fore) > 0.012 ? edge : l.accent),
+        {
+          p: [0, -ARM.fore + 0.022, 0],
+        },
+      ),
+    )
+  }
   return out
 }
 
@@ -315,11 +428,19 @@ export const HANDS: Record<HandKind, (l: Look, side: number) => Part[]> = {
   ],
   /** Slime / ghost: a soft round nub. */
   nub: (l) => [part(new SphereGeometry(0.058, 14, 10), limbOf(l), { p: [0, -ARM.hand, 0.004] })],
-  /** Round mitten with a small thumb on the inner (body) side. */
+  /** Soft round fist with a thumb on the inner (body) side and a knuckle ridge. */
   mitten: (l, side) => [
-    part(new SphereGeometry(0.062, 16, 12), limbOf(l), { p: [0, -ARM.hand, 0.006], s: [0.95, 1.05, 0.85] }),
-    part(new CapsuleGeometry(0.021, 0.022, 3, 8), limbOf(l), {
-      p: [-side * 0.046, -ARM.hand + 0.006, 0.028],
+    part(new SphereGeometry(0.07, 16, 11), limbOf(l), {
+      p: [0, -ARM.hand - 0.004, 0.006],
+      s: [0.95, 1.02, 0.88],
+    }),
+    part(new CapsuleGeometry(0.03, 0.06, 4, 10), limbOf(l), {
+      p: [0, -ARM.hand - 0.04, 0.012],
+      r: [HALF_PI, 0, 0],
+      s: [1, 1, 0.9],
+    }),
+    part(new CapsuleGeometry(0.024, 0.022, 3, 10), limbOf(l), {
+      p: [-side * 0.052, -ARM.hand + 0.004, 0.03],
       r: [0.4, 0, side * 0.7],
     }),
   ],
@@ -344,12 +465,22 @@ export function handParts(l: Look, side: number): Part[] {
   return HANDS[l.hands](l, side)
 }
 
-/** Thigh hanging from the hip joint (y = 0 → knee at −LEG.thigh); shorts legs over the top. */
+/** Thigh hanging from the hip joint (y = 0 → knee at −LEG.thigh); shorts legs (hem + side stripes) over the top. */
 export function thighParts(l: Look): Part[] {
-  const thigh = new CapsuleGeometry(0.058, LEG.thigh - 0.05, 4, 12).translate(0, -LEG.thigh / 2, 0)
+  const thigh = new CapsuleGeometry(0.062, LEG.thigh - 0.05, 4, 12).translate(0, -LEG.thigh / 2, 0)
   const out = [part(thigh, limbOf(l))]
-  if (l.kit?.bottom === 'shorts')
-    out.push(part(new CylinderGeometry(0.072, 0.075, 0.075, 16), l.kit.bottomColor, { p: [0, -0.022, 0] }))
+  const k = l.kit
+  if (k?.bottom === 'shorts') {
+    const R = 0.084
+    out.push(
+      part(new CylinderGeometry(R, R + 0.005, 0.08, 20), k.bottomColor, { p: [0, -0.022, 0] }),
+      part(new TorusGeometry(R + 0.004, 0.007, 5, 20), k.stripe, { p: [0, -0.058, 0], r: [HALF_PI, 0, 0] }),
+      // Side stripes (both sides: the geometry is shared by the two legs).
+      ...[-1, 1].map((s) =>
+        part(new BoxGeometry(0.008, 0.074, 0.018), k.stripe, { p: [s * (R + 0.002), -0.02, 0] }),
+      ),
+    )
+  }
   return out
 }
 
@@ -389,28 +520,35 @@ export const FEET: Record<FootKind, (l: Look) => Part[]> = {
       out.push(part(new SphereGeometry(0.026, 10, 8), c, { p: [x, g + 0.026, 0.105], s: [1, 0.85, 1] }))
     return out
   },
-  /** Sock with a ring, sneaker: sole, rounded upper, toe cap, laces. */
+  /** Striped sock, chunky sneaker: white sole, rounded upper, toe cap, side stripe, laces, heel tab. */
   sneaker: (l) => {
     const k = l.shoes ?? DEFAULT_SHOES
     const g = -LEG.shin
-    const lace = new CylinderGeometry(0.004, 0.004, 0.05, 4)
+    const lace = new CylinderGeometry(0.005, 0.005, 0.056, 5)
+    const sock = (_x: number, y: number) =>
+      (y > -0.07 && y < -0.062) || (y > -0.056 && y < -0.048) ? l.accent : k.socks
     return [
-      part(new CylinderGeometry(0.055, 0.056, 0.05, 16), k.socks, { p: [0, -0.078, 0] }),
-      part(new TorusGeometry(0.056, 0.006, 4, 16), l.accent, { p: [0, -0.06, 0], r: [HALF_PI, 0, 0] }),
-      part(new CylinderGeometry(0.058, 0.06, 0.024, 18), k.sole, {
-        p: [0, g + 0.012, 0.028],
-        s: [1, 1, 1.55],
-      }),
-      part(new SphereGeometry(0.062, 18, 10), k.shoe, { p: [0, g + 0.036, 0.024], s: [0.95, 0.66, 1.45] }),
-      part(new SphereGeometry(0.04, 12, 8), k.sole, { p: [0, g + 0.03, 0.095], s: [1.15, 0.6, 0.8] }),
-      part(lace, k.sole, { p: [0, g + 0.073, 0.035], r: [0.25, 0, HALF_PI] }),
-      part(lace, k.sole, { p: [0, g + 0.068, 0.058], r: [0.45, 0, HALF_PI] }),
+      part(new CylinderGeometry(0.058, 0.059, 0.06, 18), sock, { p: [0, -0.07, 0] }),
+      part(new CylinderGeometry(0.068, 0.07, 0.03, 20), k.sole, { p: [0, g + 0.015, 0.03], s: [1, 1, 1.62] }),
+      part(new SphereGeometry(0.068, 18, 10), k.shoe, { p: [0, g + 0.04, 0.026], s: [0.98, 0.74, 1.52] }),
+      part(new SphereGeometry(0.046, 12, 6), k.sole, { p: [0, g + 0.034, 0.104], s: [1.18, 0.62, 0.8] }),
+      // Side stripe (both sides).
+      ...[-1, 1].map((s) =>
+        part(new SphereGeometry(0.04, 8, 6), k.sole, {
+          p: [s * 0.061, g + 0.042, 0.02],
+          r: [0, 0, 0],
+          s: [0.18, 0.32, 1.15],
+        }),
+      ),
+      part(new SphereGeometry(0.03, 8, 6), k.shoe, { p: [0, g + 0.068, -0.05], s: [1, 1, 0.5] }),
+      part(lace, k.sole, { p: [0, g + 0.08, 0.03], r: [0.25, 0, HALF_PI] }),
+      part(lace, k.sole, { p: [0, g + 0.074, 0.056], r: [0.45, 0, HALF_PI] }),
     ]
   },
 }
 
 /** Shin hanging from the knee with the foot (rigid: no ankle joint yet). */
 export function shinParts(l: Look): Part[] {
-  const shin = new CapsuleGeometry(0.051, 0.035, 4, 12).translate(0, -0.045, 0)
+  const shin = new CapsuleGeometry(0.054, 0.035, 4, 12).translate(0, -0.045, 0)
   return [part(shin, limbOf(l)), ...FEET[l.feet](l)]
 }

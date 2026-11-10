@@ -3,8 +3,8 @@
 // ears, muzzle, paws, feet, a tail, no legs at all) is a new preset row plus, if needed, a new builder
 // under a new key. The rig and the animations never change.
 
-/** Head shape. The face decals follow it (face.ts surfaces). */
-export type HeadKind = 'round' | 'box'
+/** Head shape (chibi: the round head with fuller cheeks + a tiny nose). The face decals follow it (face.ts surfaces). */
+export type HeadKind = 'round' | 'chibi' | 'box'
 /** Static ears merged into the head mesh. Animated ears are extras (extras.ts). */
 export type EarKind = 'human' | 'none' | 'panda' | 'bolt'
 /** A snout bump on the face (the mouth decal sits on it). */
@@ -14,7 +14,7 @@ export type StyleKind =
   | 'bowPigtails'
   | 'capFringe'
   | 'bandSpiky'
-  | 'beanieBob'
+  | 'beanie'
   | 'tabby'
   | 'tuft'
   | 'leaf'
@@ -24,10 +24,10 @@ export type StyleKind =
   | 'visor'
   | 'wisp'
 /**
- * Human chibi; animal (nose + cat mouth), + whiskers (kitty), + eye patches (panda); glowing eyes on a
+ * Human chibi (toy eyes; + lashes); animal (nose + cat mouth), + whiskers (kitty), + eye patches (panda); glowing eyes on a
  * dark visor (robot); browless jelly / ghost faces.
  */
-export type FaceKind = 'chibi' | 'animal' | 'kitty' | 'panda' | 'visor' | 'jelly' | 'ghost'
+export type FaceKind = 'chibi' | 'chibiLash' | 'animal' | 'kitty' | 'panda' | 'visor' | 'jelly' | 'ghost'
 export type HandKind = 'mitten' | 'paw' | 'claw' | 'metal' | 'nub'
 export type FootKind = 'sneaker' | 'paw' | 'claw' | 'boot'
 /** Torso + hips shape. */
@@ -49,9 +49,9 @@ export type ExtraKind =
 /** Badminton kit colours (optional: animals may wear one, creatures don't). */
 export interface Kit {
   shirt: number
-  /** Collar, sleeve cuffs, skirt hem. */
+  /** Collar and sleeve cuffs. */
   trim: number
-  /** Chest stripe. */
+  /** Contrast stripes: shirt hem + sleeves (human), chest band (animal), shorts hem + sides, skirt hem. */
   stripe: number
   bottom: 'shorts' | 'skirt'
   bottomColor: number

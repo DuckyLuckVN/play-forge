@@ -36,7 +36,7 @@ import { startRenderLoop } from '@forge/core/loop'
 import type { Smoothed } from '@forge/net/smoothing'
 import { playSound } from '@forge/audio/sound'
 import { createScene3D, Particles3D, QualityGovernor, type Scene3D } from '@forge/render3d'
-import { createChibi, PRESETS, restPose, type Chibi, type ChibiPose } from './actors'
+import { createChibi, PRESETS, restPose, setToyShading, type Chibi, type ChibiPose } from './actors'
 import { chargeOf, chargeStage, CHARGE, isFull } from './charge'
 import { ChargeRing } from './chargering'
 import { TICK_RATE } from './court'
@@ -784,10 +784,12 @@ export class Court3D {
   /**
    * Shadows off = the shadow pass stops rendering (no draw calls, no depth fill) and the catcher, its
    * only receiver, hides. The shadow map and light stay configured, so no material's program changes:
-   * nothing recompiles, and warm() already compiled the only variant ever used.
+   * nothing recompiles, and warm() already compiled the only variant ever used. The chibis' toy rim +
+   * gloss go with them (uniforms only: no recompile either).
    */
   private setShadows(on: boolean) {
     this.shadows = on
+    setToyShading(on)
     this.view.renderer.shadowMap.autoUpdate = on
     this.catcher.visible = on
   }

@@ -71,40 +71,60 @@ const STYLE_SVG: Svg<StyleKind> = {
   bowPigtails: (l) => {
     const hair = hex(l.hair)
     const acc = hex(l.accent)
+    const tie = hex(tint(l.accent, 0.35))
     return {
-      back: `<ellipse cx="12" cy="37" rx="5" ry="8.5" fill="${hair}"/><ellipse cx="52" cy="37" rx="5" ry="8.5" fill="${hair}"/>`,
+      back:
+        `<path d="M12.5 28Q11 42 18 44H46Q53 42 51.5 28z" fill="${hair}"/>` +
+        `<circle cx="11.5" cy="35" r="5.4" fill="${hair}"/><circle cx="52.5" cy="35" r="5.4" fill="${hair}"/>` +
+        `<circle cx="15" cy="33.5" r="1.8" fill="${tie}"/><circle cx="49" cy="33.5" r="1.8" fill="${tie}"/>`,
       front:
-        `<path d="M13 27A19 19 0 0 1 51 27Q47 20 43.4 24Q40 19 36 23Q32 18 28 23Q24 19 20.6 24Q17 20 13 27z" fill="${hair}"/>` +
-        `<circle cx="13.5" cy="30" r="2.2" fill="${acc}"/><circle cx="50.5" cy="30" r="2.2" fill="${acc}"/>` +
-        `<path d="M41 10l-8-5v10zM41 10l8-5v10z" fill="${acc}"/><circle cx="41" cy="10" r="2.6" fill="${hex(shade(l.accent, 0.15))}"/>`,
+        // Crown + a blunt scalloped fringe, side locks framing the face.
+        `<path d="M12.5 28A19.5 19.5 0 0 1 51.5 28L50 24Q47.5 22 45 24.5Q42.5 21.5 39.5 24Q36.5 21.5 33.5 24Q30.5 21.5 27.5 24Q24.5 21.5 22 24.5Q19 22 16.5 24.5L14 24z" fill="${hair}"/>` +
+        `<path d="M13 26Q12.5 34 15.5 38Q16.5 31 17 26zM51 26Q51.5 34 48.5 38Q47.5 31 47 26z" fill="${hair}"/>` +
+        `<path d="M19 17.5l3.6-1.6M19.6 20.4l3.6-1.6" stroke="${acc}" stroke-width="1.3" stroke-linecap="round"/>` +
+        `<path d="M40 9.5l-8.5-5.2q-1.8 5.2 0 10.4zM40 9.5l8.5-5.2q1.8 5.2 0 10.4z" fill="${acc}"/><circle cx="40" cy="9.5" r="2.6" fill="${hex(shade(l.accent, 0.12))}"/>`,
     }
   },
   capFringe: (l) => {
     const hair = hex(l.hair)
+    const acc = hex(l.accent)
+    const navy = hex(shade(l.accent, 0.55))
     return {
       front:
-        `<path d="M13 30A19 19 0 0 1 51 30z" fill="${hair}"/>` +
-        `<path d="M21 22q1 7 5 4q2 4 6 0q3 4 6-1q3 3 5-3z" fill="${hair}"/>` +
-        `<path d="M13 24A19 17 0 0 1 51 24z" fill="${hex(l.accent)}"/><circle cx="32" cy="15" r="3" fill="#fff"/>` +
-        `<path d="M27 22h25a3 3 0 0 1 0 5.5H27z" fill="${hex(shade(l.accent, 0.15))}"/>`,
+        `<path d="M12.6 31A19.4 19.4 0 0 1 51.4 31L49.5 26H14.5z" fill="${hair}"/>` +
+        `<path d="M20 22l1.6 6l2.4-4l2.2 4.6l2.4-4.4l2.6 4.6l2.4-4.6l2.4 4.4l2.2-4.6l2.4 4l1.4-6z" fill="${hair}"/>` +
+        `<path d="M12.6 24A19.6 18.8 0 0 1 51.4 24z" fill="${acc}"/>` +
+        `<path d="M32 6.8v16.4M23 9.6q-2.6 6.6-1.6 13.9M41 9.6q2.6 6.6 1.6 13.9" stroke="${hex(shade(l.accent, 0.18))}" stroke-width=".5" fill="none"/>` +
+        `<circle cx="32" cy="6.6" r="1.4" fill="${acc}"/>` +
+        `<path d="M15 23.5Q32 20 49 23.5Q49.5 27.5 47 27.8Q32 25 17 27.8Q14.5 27.5 15 23.5z" fill="${acc}"/>` +
+        `<path d="M17 27.8Q32 25 47 27.8Q32 26.8 17 27.8z" fill="${navy}"/>` +
+        `<g transform="translate(32 15.2) scale(1.6) translate(-32 -15.2)">${EMBLEM(32, 15.2)}</g>`,
     }
   },
   bandSpiky: (l) => {
     const hair = hex(l.hair)
+    const tip = hex(tint(l.hair, 0.25))
     return {
       front:
-        `<path d="M13 25L15 9L21 16L25 4L32 13L39 4L43 16L49 9L51 25z" fill="${hair}"/>` +
-        `<path d="M13 27A19 19 0 0 1 51 27z" fill="${hair}"/>` +
-        `<rect x="12.5" y="19" width="39" height="5.5" rx="2.7" fill="${hex(l.accent)}"/><ellipse cx="32" cy="21.7" rx="2.2" ry="1.6" fill="#fff"/>`,
+        `<path d="M13.5 24L10 13L17.5 15.5L17 4.5L24.5 11L29 0.5L33.5 10L40 1.5L41.5 11.5L48.5 5L47.5 15L54.5 13L50.5 24z" fill="${hair}"/>` +
+        `<path d="M29 0.5L30.6 6.5L28 7zM40 1.5L39.9 7.5L37.6 7zM17 4.5L20.4 9L18 10zM48.5 5L46.4 10.5L44.6 9.5z" fill="${tip}"/>` +
+        `<path d="M12.6 28A19.4 19.4 0 0 1 51.4 28L50 23H14z" fill="${hair}"/>` +
+        `<path d="M13.2 20.5Q32 15.5 50.8 20.5L51.2 27Q32 22.5 12.8 27z" fill="${hex(l.accent)}"/>` +
+        `<g transform="translate(32 21.6) scale(1.5) translate(-32 -21.6)">${EMBLEM(32, 21.6)}</g>`,
     }
   },
-  beanieBob: (l) => {
+  beanie: (l) => {
     const hair = hex(l.hair)
+    const acc = hex(l.accent)
     return {
-      back: `<path d="M12 26Q11 43 18 43H46Q53 43 52 26z" fill="${hair}"/>`,
       front:
-        `<path d="M12 25A20 19 0 0 1 52 25z" fill="${hex(l.accent)}"/><rect x="11.5" y="20.5" width="41" height="6" rx="3" fill="${hex(shade(l.accent, 0.15))}"/>` +
-        `<path d="M18 26.5q2 4 6 3l-1-3zM46 26.5q-2 4-6 3l1-3z" fill="${hair}"/><circle cx="32" cy="5" r="4" fill="#fff"/>`,
+        `<path d="M12.6 30A19.4 19.4 0 0 1 51.4 30L50 26H14z" fill="${hair}"/>` +
+        `<path d="M19 25.5Q24 31 31 28.5Q37 31 44 27.5L45 25.5z" fill="${hair}"/>` +
+        `<path d="M12.5 22A19.5 18 0 0 1 51.5 22z" fill="${acc}"/>` +
+        `<rect x="11" y="18.5" width="42" height="8.5" rx="4" fill="${hex(shade(l.accent, 0.06))}"/>` +
+        `<path d="M15 19v7.5M19 19v7.5M23 19v7.5M27 19v7.5M37 19v7.5M41 19v7.5M45 19v7.5M49 19v7.5" stroke="${hex(shade(l.accent, 0.16))}" stroke-width=".6"/>` +
+        `<circle cx="32" cy="2.8" r="3.8" fill="#fff"/>` +
+        `<g transform="translate(32 22.6) scale(1.55) translate(-32 -22.6)">${EMBLEM(32, 22.6)}</g>`,
     }
   },
   tabby: (l) => {
@@ -144,6 +164,7 @@ const STYLE_SVG: Svg<StyleKind> = {
 
 const HEAD_SVG: Svg<HeadKind> = {
   round: (l) => ({ head: `<circle cx="32" cy="27" r="19" fill="${hex(l.skin)}"/>` }),
+  chibi: (l) => ({ head: `<circle cx="32" cy="27" r="19" fill="${hex(l.skin)}"/>` }),
   box: (l) => ({ head: `<rect x="12.5" y="9" width="39" height="36" rx="11" fill="${hex(l.skin)}"/>` }),
 }
 
@@ -247,16 +268,39 @@ const FACE_SVG: Svg<FaceKind> = {
       ),
     ),
   }),
-  chibi: (l) => {
-    const brow = hex(shade(l.hair, 0.25))
-    const brows = [25, 39]
-      .map(
-        (x) =>
-          `<path d="M${x - 3} 24.6q3-1.4 6 0" stroke="${brow}" stroke-width="1.3" fill="none" stroke-linecap="round"/>`,
+  chibiLash: (l) => ({ face: toyFace(l, true) }),
+  chibi: (l) => ({ face: toyFace(l, false) }),
+}
+
+/** Toy eyes (humans): dark rim, iris darker on top, big pupil, two highlights, a thick upper lid (+ lashes). */
+function toyFace(l: Look, lashes: boolean): string {
+  const brow = hex(shade(l.hair, 0.15))
+  const top = hex(shade(l.iris, 0.5))
+  const iris = hex(l.iris)
+  const low = hex(tint(l.iris, 0.25))
+  const eyes = [24.5, 39.5]
+    .map((x) => {
+      const o = x < 32 ? -1 : 1
+      return (
+        `<ellipse cx="${x}" cy="31" rx="3.9" ry="4.7" fill="${EYE_DARK}"/>` +
+        `<ellipse cx="${x}" cy="31.2" rx="3.4" ry="4.1" fill="${iris}"/>` +
+        `<path d="M${x - 3.4} 30.6A3.4 4.1 0 0 1 ${x + 3.4} 30.6Q${x} 29 ${x - 3.4} 30.6z" fill="${top}"/>` +
+        `<ellipse cx="${x}" cy="33.6" rx="2.4" ry="1.3" fill="${low}"/>` +
+        `<ellipse cx="${x}" cy="31.4" rx="1.8" ry="2.2" fill="${EYE_DARK}"/>` +
+        `<circle cx="${x + 1.1}" cy="29.6" r="1.25" fill="#fff"/><circle cx="${x - 1.2}" cy="33.2" r=".6" fill="#fff"/>` +
+        `<path d="M${x - 4.2} 30Q${x} 25 ${x + 4.2} 30" stroke="${EYE_DARK}" stroke-width="1.1" fill="none" stroke-linecap="round"/>` +
+        (lashes
+          ? `<path d="M${x + o * 3.8} 28.2l${o * 1.8} -1.4M${x + o * 4.2} 29.8l${o * 1.9} -0.5" stroke="${EYE_DARK}" stroke-width=".8" stroke-linecap="round"/>`
+          : '') +
+        `<path d="M${x - 2.6} 24.2q2.6-1.2 5.2 0" stroke="${brow}" stroke-width=".8" fill="none" stroke-linecap="round"/>`
       )
-      .join('')
-    return { face: eyesSvg(l, 30) + brows + BLUSH + SMILE }
-  },
+    })
+    .join('')
+  const blush = `<ellipse cx="18.5" cy="37" rx="3.4" ry="1.8" fill="${css(PALETTE.blush)}" opacity=".7"/><ellipse cx="45.5" cy="37" rx="3.4" ry="1.8" fill="${css(PALETTE.blush)}" opacity=".7"/>`
+  const smile = `<path d="M29.8 38.2h4.4q-.4 2.6-2.2 2.6t-2.2-2.6z" fill="${css(PALETTE.mouth)}"/><path d="M30.7 39.9q1.3-.8 2.6 0q-.4.9-1.3.9t-1.3-.9z" fill="#f07a8a"/>`
+  return (
+    eyes + blush + `<ellipse cx="32" cy="35.6" rx=".9" ry=".6" fill="${hex(shade(l.skin, 0.12))}"/>` + smile
+  )
 }
 
 /** Mittens (hands) at the body's sides. */
@@ -281,7 +325,10 @@ const HAND_SVG: Svg<HandKind> = {
     ),
   }),
   mitten: (l) => ({
-    body: `<circle cx="17.5" cy="53" r="3.4" fill="${hex(limbOf(l))}"/><circle cx="46.5" cy="53" r="3.4" fill="${hex(limbOf(l))}"/>`,
+    body: both(
+      (x) =>
+        `<rect x="${x(17.5) - 2.9}" y="48.6" width="5.8" height="2.2" rx="1" fill="${hex(l.accent)}"/><circle cx="${x(17.5)}" cy="53" r="3.6" fill="${hex(limbOf(l))}"/>`,
+    ),
   }),
 }
 
@@ -310,6 +357,7 @@ const FEET_SVG: Svg<FootKind> = {
     return {
       legs:
         `<rect x="24.3" y="62.5" width="5.9" height="3.5" fill="${hex(s.socks)}"/><rect x="33.8" y="62.5" width="5.9" height="3.5" fill="${hex(s.socks)}"/>` +
+        `<path d="M24.3 63.4h5.9M33.8 63.4h5.9" stroke="${hex(l.accent)}" stroke-width=".7"/>` +
         `<ellipse cx="26.6" cy="67" rx="4.6" ry="2.4" fill="${hex(s.shoe)}"/><ellipse cx="37.4" cy="67" rx="4.6" ry="2.4" fill="${hex(s.shoe)}"/>` +
         `<rect x="21.8" y="68.2" width="9.6" height="1.4" rx=".7" fill="${hex(s.sole)}"/><rect x="32.6" y="68.2" width="9.6" height="1.4" rx=".7" fill="${hex(s.sole)}"/>`,
     }
@@ -329,18 +377,23 @@ const LEGS_SVG: Svg<LegKind> = {
   float: () => ({}),
 }
 
-/** Kit: collar shirt + stripe, shorts / skirt. */
+/** Kit: boxy tee (V collar, hem + sleeve stripes, emblem), striped shorts or a pleated skirt. */
 function kitSvg(k: Kit): string {
+  const stripe = hex(k.stripe)
   const bottom =
     k.bottom === 'skirt'
-      ? `<path d="M22 53H42L45.5 61H18.5z" fill="${hex(k.bottomColor)}"/><rect x="18.5" y="59.6" width="27" height="1.6" fill="${hex(k.stripe)}"/>`
-      : `<rect x="21" y="53" width="22" height="7.5" rx="3" fill="${hex(k.bottomColor)}"/>`
+      ? `<path d="M21.5 52H42.5L46.5 61.5H17.5z" fill="${hex(k.bottomColor)}"/>` +
+        `<path d="M23.5 54l-2 7.5M28 54l-1 7.5M32 54v7.5M36 54l1 7.5M40.5 54l2 7.5" stroke="${hex(shade(k.bottomColor, 0.16))}" stroke-width=".7"/>`
+      : `<rect x="21" y="52" width="22" height="8.5" rx="3" fill="${hex(k.bottomColor)}"/>` +
+        `<path d="M21.6 53v6.6M42.4 53v6.6" stroke="${stripe}" stroke-width="1.1"/>`
   return (
     bottom +
-    `<rect x="21" y="43" width="22" height="13" rx="6" fill="${hex(k.shirt)}"/>` +
-    `<circle cx="20" cy="46.5" r="4" fill="${hex(k.shirt)}"/><circle cx="44" cy="46.5" r="4" fill="${hex(k.shirt)}"/>` +
-    `<rect x="21" y="49" width="22" height="2.4" fill="${hex(k.stripe)}"/>` +
-    `<path d="M27 43.2L32 46.6L37 43.2" stroke="${hex(k.trim)}" stroke-width="1.8" fill="none" stroke-linejoin="round"/>`
+    `<rect x="20" y="42.5" width="24" height="13" rx="5.5" fill="${hex(k.shirt)}"/>` +
+    `<circle cx="19" cy="46.5" r="4.4" fill="${hex(k.shirt)}"/><circle cx="45" cy="46.5" r="4.4" fill="${hex(k.shirt)}"/>` +
+    `<path d="M15.6 48.6l4.6 1.8M48.4 48.6l-4.6 1.8" stroke="${stripe}" stroke-width="1"/>` +
+    `<rect x="20" y="51.6" width="24" height="1" fill="${stripe}"/><rect x="20" y="53.4" width="24" height="1" fill="${stripe}"/>` +
+    `<path d="M28 42.8L32 46.8L36 42.8" stroke="${hex(k.trim)}" stroke-width="1.3" fill="none" stroke-linejoin="round"/>` +
+    EMBLEM(32, 49)
   )
 }
 

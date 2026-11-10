@@ -7,7 +7,7 @@
 
 import { BufferAttribute, BufferGeometry, Color, Float32BufferAttribute } from 'three'
 import { BOX_HEAD, HEAD_R } from './dims'
-import { MUZZLE_DIMS } from './head'
+import { cheekX, cheekZ, MUZZLE_DIMS } from './head'
 import { limbOf, type FaceKind, type HeadKind, type Look } from './look'
 import { shade, tint } from './merge'
 import { PALETTE } from './palette'
@@ -44,6 +44,11 @@ export interface FaceStyle {
   glow: boolean
   /** Two lash flicks at each eye's outer top corner (follow the eye's expression shape). */
   lashes: boolean
+  /**
+   * Toy eyes (humans): bigger and lower, an iris gradient with a dark pupil, a thick upper lid line; thin
+   * brows, a small open smile, soft (alpha-faded) blush.
+   */
+  toy: boolean
 }
 const HUMAN_FACE: FaceStyle = {
   brows: true,
@@ -56,7 +61,9 @@ const HUMAN_FACE: FaceStyle = {
   visor: false,
   glow: false,
   lashes: false,
+  toy: false,
 }
+const CHIBI_FACE: FaceStyle = { ...HUMAN_FACE, toy: true }
 const ANIMAL_FACE: FaceStyle = {
   ...HUMAN_FACE,
   brows: false,
@@ -66,7 +73,8 @@ const ANIMAL_FACE: FaceStyle = {
   lashes: true,
 }
 export const FACE_STYLES: Record<FaceKind, FaceStyle> = {
-  chibi: HUMAN_FACE,
+  chibi: CHIBI_FACE,
+  chibiLash: { ...CHIBI_FACE, lashes: true },
   animal: ANIMAL_FACE,
   kitty: { ...ANIMAL_FACE, whiskers: true },
   panda: { ...ANIMAL_FACE, patch: true, blush: false },
@@ -87,9 +95,29 @@ const LASHES: readonly (readonly [number, number, number])[] = [
 ]
 const LASH = { a: 0.024, b: 0.0065 }
 /** Eye: half width / height, centre (± x, y). */
-const EYE = { a: 0.066, b: 0.086, x: 0.138, y: -0.012 }
+interface EyeDims {
+  a: number
+  b: number
+  x: number
+  y: number
+}
+const EYE: EyeDims = { a: 0.066, b: 0.086, x: 0.138, y: -0.012 }
 const BROW = { w: 0.05, x: 0.138, y: 0.108, th: 0.019 }
 const MOUTH_Y = -0.125
+/**
+ * Toy eyes: dims; iris + pupil size shares; lid line thickness (middle, ends) as shares of the radius;
+ * brows (gap over the eye top); mouth height; soft blush; tongue colour.
+ */
+const TOY = {
+  eye: { a: 0.08, b: 0.097, x: 0.152, y: -0.034 } as EyeDims,
+  iris: { a: 0.9, b: 0.9, dy: -0.004 },
+  pupil: { a: 0.5, b: 0.54, dy: 0.008 },
+  lid: { mid: 0.13, end: 0.05, from: 0.06 },
+  brow: { gap: 0.034, w: 0.046, th: 0.011 },
+  mouthY: -0.158,
+  blush: { a: 0.064, b: 0.036, x: 0.236, y: -0.135 },
+  tongue: 0xf07a8a,
+}
 /** Mouth size share (shapes below are drawn at 1). */
 const MOUTH_K = 1.3
 const BLUSH = { a: 0.046, b: 0.024, x: 0.215, y: -0.085 }
@@ -97,8 +125,12 @@ const RING = 20
 const COLS = 11
 
 /** Eye shape per expression: (dx, dy) from the eye centre → new offset; highlight size share. */
-function eyeShape(e: Expr, side: number): { f: (dx: number, dy: number) => [number, number]; shine: number } {
-  const arch = (dx: number) => 1 - Math.min(1, (dx / EYE.a) ** 2)
+function eyeShape(
+  e: Expr,
+  side: number,
+  E: EyeDims = EYE,
+): { f: (dx: number, dy: number) => [number, number]; shine: number } {
+  const arch = (dx: number) => 1 - Math.min(1, (dx / E.a) ** 2)
   switch (e) {
     case 'happy':
       return { f: (dx, dy) => [dx * 1.05, dy * 0.18 + 0.03 * arch(dx) - 0.012], shine: 0 }
@@ -168,7 +200,29 @@ function mouth(e: Expr): { w: number; top: (t: number) => number; bot: (t: numbe
   }
 }
 
+/** Small open smile (toy faces): a soft D at rest, wide open when happy. */
+function toyMouth(e: Expr): { w: number; top: (t: number) => number; bot: (t: number) => number } {
+  switch (e) {
+    case 'happy': {
+      const top = (t: number) => 0.006 + 0.006 * t * t
+      return { w: 0.042, top, bot: (t) => top(t) - 0.04 * (1 - t * t) }
+    }
+    case 'neutral': {
+      const top = (t: number) => 0.003 + 0.006 * t * t
+      return { w: 0.032, top, bot: (t) => top(t) - 0.026 * (1 - t * t) - 0.002 }
+    }
+    default:
+      return mouth(e)
+  }
+}
+
+/** `a` → `b` by k (0..1). */
+function mixHex(a: number, b: number, k: number): number {
+  return c.setHex(a).lerp(c2.setHex(b), k).getHex()
+}
+
 const c = new Color()
+const c2 = new Color()
 
 /** Height (+z) of the head surface at (u, v) for a decal `lift` m outside it. */
 export type Surface = (u: number, v: number, lift: number) => number
@@ -180,6 +234,9 @@ const sphere =
 
 const HEAD_SURFACES: Record<HeadKind, Surface> = {
   round: sphere(HEAD_R),
+  // The round head with the cheek puff (head.ts puffCheeks): x widened, z fuller, by height.
+  chibi: (u, v, lift) =>
+    cheekZ(v) * Math.sqrt(Math.max(0, (HEAD_R + lift) ** 2 - (u / cheekX(v)) ** 2 - v * v)),
   box: (u, v, lift) => roundBoxZ(BOX_HEAD.a, BOX_HEAD.b, BOX_HEAD.c, BOX_HEAD.n, u, v, lift),
 }
 
@@ -204,14 +261,31 @@ export function faceLayout(look: Look, e: Expr): FaceLayout {
   const L = st.patch || st.visor ? 1 : 0
   const eyeCol = st.glow ? look.iris : COL.eye
   const irisCol = st.glow ? tint(look.iris, 0.6) : look.iris
-  const eyeY = EYE.y + st.eyeUp
-  const vert = (u: number, v: number, layer: number, hex: number) => {
+  const E = st.toy ? TOY.eye : EYE
+  const eyeY = E.y + st.eyeUp
+  /** Quad strip through point pairs (outer, inner) running left → right, CCW seen from +z. */
+  const band = (pairs: [number, number, number, number][], layer: number, hex: number) => {
+    const first = out.pos.length / 3
+    for (const [ox, oy, ix, iy] of pairs) {
+      vert(ox, oy, layer, hex)
+      vert(ix, iy, layer, hex)
+    }
+    for (let j = 0; j < pairs.length - 1; j++) {
+      const a = first + j * 2
+      out.idx.push(a, a + 1, a + 2, a + 2, a + 1, a + 3)
+    }
+  }
+  const vert = (u: number, v: number, layer: number, hex: number, alpha = 1) => {
     out.pos.push(u, v, surf(u, v, 0.004 + layer * 0.0025))
     c.setHex(hex)
-    out.col.push(c.r, c.g, c.b)
+    out.col.push(c.r, c.g, c.b, alpha)
     return out.pos.length / 3 - 1
   }
-  /** Filled ellipse (fan), CCW seen from +z; each point mapped through `f`. */
+  /**
+   * Filled ellipse (fan), CCW seen from +z; each point mapped through `f`. `rim` colours the ring by its
+   * angle (a gradient; colours depend only on the angle, so every expression keeps them), `rimAlpha` fades
+   * the edge.
+   */
   const disc = (
     cx: number,
     cy: number,
@@ -220,21 +294,23 @@ export function faceLayout(look: Look, e: Expr): FaceLayout {
     layer: number,
     hex: number,
     f: (u: number, v: number) => [number, number],
+    rim: (ang: number) => number = () => hex,
+    rimAlpha = 1,
   ) => {
     const centre = vert(...f(cx, cy), layer, hex)
     const first = out.pos.length / 3
     for (let i = 0; i < RING; i++) {
       const ang = (i / RING) * Math.PI * 2
-      vert(...f(cx + Math.cos(ang) * a, cy + Math.sin(ang) * b), layer, hex)
+      vert(...f(cx + Math.cos(ang) * a, cy + Math.sin(ang) * b), layer, rim(ang), rimAlpha)
     }
     for (let i = 0; i < RING; i++) out.idx.push(centre, first + i, first + ((i + 1) % RING))
   }
-  /** Strip between two edges sampled left → right (x increasing), CCW seen from +z. */
-  const strip = (xs: number[], tops: number[], bots: number[], layer: number, hex: number) => {
+  /** Strip between two edges sampled left → right (x increasing), CCW seen from +z (`botHex`: a gradient down). */
+  const strip = (xs: number[], tops: number[], bots: number[], layer: number, hex: number, botHex = hex) => {
     const first = out.pos.length / 3
     for (let j = 0; j < xs.length; j++) {
       vert(xs[j], tops[j], layer, hex)
-      vert(xs[j], bots[j], layer, hex)
+      vert(xs[j], bots[j], layer, botHex)
     }
     for (let j = 0; j < xs.length - 1; j++) {
       const a = first + j * 2
@@ -255,7 +331,7 @@ export function faceLayout(look: Look, e: Expr): FaceLayout {
     })
   }
   for (const s of [-1, 1]) {
-    const ex = s * EYE.x
+    const ex = s * E.x
     if (st.patch) {
       const px = ex + s * PATCH.dx
       const py = eyeY + PATCH.dy
@@ -268,28 +344,55 @@ export function faceLayout(look: Look, e: Expr): FaceLayout {
       })
     }
     // Eye: dark iris, lower tint, big + small highlight.
-    const { f, shine } = eyeShape(e, s)
+    const { f, shine } = eyeShape(e, s, E)
     const at = (u: number, v: number): [number, number] => {
       const [dx, dy] = f(u - ex, v - eyeY)
       return [ex + dx, eyeY + dy]
     }
-    disc(ex, eyeY, EYE.a, EYE.b, L, eyeCol, at)
-    disc(ex, eyeY - 0.034, 0.048, 0.039, L + 1, irisCol, at)
-    for (const [hx, hy, hr] of [
-      [0.019, 0.032, 0.024],
-      [-0.023, -0.041, 0.011],
-    ]) {
+    disc(ex, eyeY, E.a, E.b, L, eyeCol, at)
+    if (st.toy) {
+      // Iris: dark at the top, glowing toward the bottom; pupil; then the lid line over the top arc.
+      const top = shade(look.iris, 0.55)
+      const bottom = tint(look.iris, 0.22)
+      const I = TOY.iris
+      disc(ex, eyeY + I.dy, E.a * I.a, E.b * I.b, L + 1, shade(look.iris, 0.1), at, (ang) =>
+        mixHex(top, bottom, (1 - Math.sin(ang)) / 2),
+      )
+      const Pu = TOY.pupil
+      disc(ex, eyeY + Pu.dy, E.a * Pu.a, E.b * Pu.b, L + 2, COL.eye, at)
+      const pairs: [number, number, number, number][] = []
+      const N = 12
+      for (let j = 0; j <= N; j++) {
+        const th = Math.PI * (1 - TOY.lid.from) - (j / N) * Math.PI * (1 - 2 * TOY.lid.from)
+        const sn = Math.sin(th)
+        const w = TOY.lid.end + (TOY.lid.mid - TOY.lid.end) * sn
+        const o = at(ex + Math.cos(th) * E.a * (1 + w * 0.6), eyeY + sn * E.b * (1 + w))
+        const i = at(ex + Math.cos(th) * E.a * 0.97, eyeY + sn * E.b * 0.97)
+        pairs.push([o[0], o[1], i[0], i[1]])
+      }
+      band(pairs, L + 3, COL.eye)
+    } else disc(ex, eyeY - 0.034, 0.048, 0.039, L + 1, irisCol, at)
+    const hiL = st.toy ? L + 4 : L + 2
+    for (const [hx, hy, hr] of st.toy
+      ? [
+          [0.022, 0.03, 0.026],
+          [-0.026, -0.04, 0.012],
+        ]
+      : [
+          [0.019, 0.032, 0.024],
+          [-0.023, -0.041, 0.011],
+        ]) {
       const [cx, cy] = at(ex + hx, eyeY + hy)
-      disc(cx, cy, hr * shine, hr * shine, L + 2, COL.shine, (u, v) => [u, v])
+      disc(cx, cy, hr * shine, hr * shine, hiL, COL.shine, (u, v) => [u, v])
     }
     if (st.lashes)
       for (const [ox, oy, tilt] of LASHES) {
         // Anchored on the eye's (morphed) outline, so a happy squint carries them down.
-        const [cx, cy] = at(ex + s * ox * EYE.a, eyeY + oy * EYE.b)
+        const [cx, cy] = at(ex + s * ox * E.a, eyeY + oy * E.b)
         const ca = Math.cos(tilt * s)
         const sa = Math.sin(tilt * s)
         const lx = cx + s * LASH.a * 0.8
-        disc(lx, cy, LASH.a, LASH.b, L, eyeCol, (u, v) => {
+        disc(lx, cy, LASH.a, LASH.b, st.toy ? L + 3 : L, eyeCol, (u, v) => {
           const du = u - lx
           const dv = v - cy
           return [lx + du * ca - dv * sa, cy + du * sa + dv * ca]
@@ -300,20 +403,25 @@ export function faceLayout(look: Look, e: Expr): FaceLayout {
       const xs: number[] = []
       const tops: number[] = []
       const bots: number[] = []
+      const bw = st.toy ? TOY.brow.w : BROW.w
+      const bth = st.toy ? TOY.brow.th : BROW.th
+      const by = st.toy ? E.y + E.b + TOY.brow.gap : BROW.y
       for (let j = 0; j < 6; j++) {
         const u = -1 + (2 * j) / 5
         const t = u * s
-        const th = BROW.th * (1 - 0.3 * ((t + 1) / 2))
-        const y = BROW.y + st.eyeUp + browY(e, t)
-        xs.push(s * BROW.x + u * BROW.w)
+        const th = bth * (1 - 0.3 * ((t + 1) / 2))
+        const y = by + st.eyeUp + browY(e, t)
+        xs.push(s * E.x + u * bw)
         tops.push(y + th / 2)
         bots.push(y - th / 2)
       }
-      strip(xs, tops, bots, 0, shade(look.hair, 0.25))
+      strip(xs, tops, bots, 0, shade(look.hair, st.toy ? 0.15 : 0.25))
     }
     if (st.blush) {
       const bs = e === 'happy' ? 1.2 : e === 'sad' ? 0.85 : 1
-      disc(s * BLUSH.x, BLUSH.y, BLUSH.a * bs, BLUSH.b * bs, 0, COL.blush, (u, v) => [u, v])
+      const B = st.toy ? TOY.blush : BLUSH
+      // Toy blush fades out to its edge (the face mesh blends).
+      disc(s * B.x, B.y, B.a * bs, B.b * bs, 0, COL.blush, (u, v) => [u, v], undefined, st.toy ? 0 : 1)
     }
     if (st.whiskers)
       for (let w = -1; w <= 1; w++) {
@@ -341,17 +449,19 @@ export function faceLayout(look: Look, e: Expr): FaceLayout {
     const ny = m.y + m.b * 0.5
     disc(0, ny, 0.024, 0.015, 1, look.nose ?? COL.nose, (u, v) => [u, v + (v < ny ? (v - ny) * 0.5 : 0)])
   }
-  const m = st.mouth === 'cat' ? catMouth(e) : mouth(e)
+  const m = st.mouth === 'cat' ? catMouth(e) : st.toy ? toyMouth(e) : mouth(e)
   const xs: number[] = []
   const tops: number[] = []
   const bots: number[] = []
+  const my = st.toy ? TOY.mouthY : MOUTH_Y
   for (let j = 0; j < COLS; j++) {
     const t = -1 + (2 * j) / (COLS - 1)
     xs.push(t * m.w * MOUTH_K)
-    tops.push(MOUTH_Y + m.top(t) * MOUTH_K)
-    bots.push(MOUTH_Y + m.bot(t) * MOUTH_K)
+    tops.push(my + m.top(t) * MOUTH_K)
+    bots.push(my + m.bot(t) * MOUTH_K)
   }
-  strip(xs, tops, bots, L, st.glow ? look.iris : COL.mouth)
+  const mc = st.glow ? look.iris : COL.mouth
+  strip(xs, tops, bots, L, mc, st.toy ? TOY.tongue : mc)
   return out
 }
 
@@ -360,7 +470,7 @@ export function faceGeometry(l: Look): BufferGeometry {
   const base = faceLayout(l, 'neutral')
   const g = new BufferGeometry()
   g.setAttribute('position', new Float32BufferAttribute(base.pos, 3))
-  g.setAttribute('color', new Float32BufferAttribute(base.col, 3))
+  g.setAttribute('color', new Float32BufferAttribute(base.col, 4))
   g.setIndex(new BufferAttribute(new Uint16Array(base.idx), 1))
   g.morphAttributes.position = MORPHS.map((e) => new Float32BufferAttribute(faceLayout(l, e).pos, 3))
   g.computeBoundingSphere()

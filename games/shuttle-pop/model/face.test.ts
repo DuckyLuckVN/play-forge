@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { PRESETS } from '../presets'
-import { blinkAt, faceGeometry, faceLayout, faceMix, MORPHS, type Expr } from './face'
+import { blinkAt, faceGeometry, faceLayout, faceMix, MORPHS, surfaceOf, type Expr } from './face'
 
 const look = PRESETS[0].look
 const EXPRS: Expr[] = ['neutral', ...MORPHS]
@@ -24,14 +24,27 @@ describe('chibi face', () => {
     for (const m of g.morphAttributes.position!) expect(m.count).toBe(g.getAttribute('position').count)
   })
 
-  it('decals sit on the head sphere just outside the skin, facing the camera side (+z)', () => {
-    const { pos } = faceLayout(look, 'effort')
-    for (let i = 0; i < pos.length; i += 3) {
-      const r = Math.hypot(pos[i], pos[i + 1], pos[i + 2])
-      expect(r).toBeGreaterThan(0.36)
-      expect(r).toBeLessThan(0.375)
-      expect(pos[i + 2]).toBeGreaterThan(0.2)
+  it('decals sit just outside the head surface (every face kind), facing the camera side (+z)', () => {
+    for (const p of PRESETS) {
+      const surf = surfaceOf(p.look)
+      const { pos } = faceLayout(p.look, 'effort')
+      for (let i = 0; i < pos.length; i += 3) {
+        const lift = pos[i + 2] - surf(pos[i], pos[i + 1], 0)
+        expect(lift, p.name).toBeGreaterThan(0.002)
+        expect(lift, p.name).toBeLessThan(0.025)
+        expect(pos[i + 2], p.name).toBeGreaterThan(0.15)
+      }
     }
+  })
+
+  it('toy faces (humans) blend: the blush fades to alpha 0 at its rim, the rest is opaque', () => {
+    const { col } = faceLayout(look, 'neutral')
+    const alphas = col.filter((_, i) => i % 4 === 3)
+    expect(alphas.some((a) => a === 0)).toBe(true)
+    expect(alphas.filter((a) => a === 1).length).toBeGreaterThan(alphas.length * 0.7)
+    // Non-toy faces stay fully opaque.
+    const cat = faceLayout(PRESETS[4].look, 'neutral').col.filter((_, i) => i % 4 === 3)
+    expect(cat.every((a) => a === 1)).toBe(true)
   })
 
   it('faceMix: influences in 0..1, mood weights never sum past 1, continuous as moods blend', () => {

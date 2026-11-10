@@ -9,7 +9,7 @@ import { part, shade, type Part } from './merge'
 import { PALETTE } from './palette'
 
 /** Frame: ring radius, tube, oval scale (x across, y along the shaft); string spacing. */
-const FRAME = { r: 0.16, tube: 0.013, sx: 0.82, sy: 1.1, step: 0.03 }
+const FRAME = { r: 0.16, tube: 0.0095, sx: 0.82, sy: 1.1, step: 0.03 }
 const GRIP = { r: 0.021, len: 0.12 }
 const SHAFT = { r: 0.0065 }
 /** String colour and thickness (across the bed, through it). */

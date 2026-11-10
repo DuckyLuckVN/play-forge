@@ -8,6 +8,7 @@ import { ABILITY, actReady, leadOf, pickAbility, reachOf, type Strike } from './
 import { CHARGE } from './charge'
 import { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld } from './court'
 import { canAct, canStrike, type SpInput, type SpState } from './sim'
+import { stunned } from './stun'
 
 type GradeRoll = Grade | 'whiff'
 
@@ -379,6 +380,14 @@ export function botStep(
     return charging ? [STILL, UNCHARGE] : [STILL]
   }
   if (s.phase !== 'rally') return charging ? [STILL, UNCHARGE] : [STILL]
+  const me = s.players[side]
+  if (stunned(me.stunAt, s.tick)) {
+    // Bonked (stun.ts): no move, swing, charge or ability. The plan is dropped and re-made from the
+    // state on the first free tick. A charge the bonk dropped (TAPPED) is let go so its button-up
+    // doesn't eat the next planned swing.
+    mem.targetAt = -1
+    return me.chargeAt === -1 ? [STILL] : [STILL, UNCHARGE]
+  }
   const opp: 0 | 1 = side === 0 ? 1 : 0
   const back = side === 0 ? -1 : 1
   const home = { x: 0, z: back * readyDepth(s.court) }
@@ -390,15 +399,16 @@ export function botStep(
   // The shot's event outlives reactTicks; once it scrolls out of the log the cached plan still holds.
   const shot = lastShotTick(s, opp)
   const planAt = shot + LEVELS[level].reactTicks
-  if (shot >= 0 && s.tick >= planAt && mem.targetAt !== planAt) {
-    mem.targetAt = planAt
+  // A stun cleared the plan after the shot's event scrolled out: plan now from where things stand.
+  const replan = shot < 0 && mem.targetAt < 0
+  if (replan || (shot >= 0 && s.tick >= planAt && mem.targetAt !== planAt)) {
+    mem.targetAt = replan ? s.tick : planAt
     plan(s, side, level, mem, rng, actRng)
   }
   const planned = mem.targetAt >= 0 && (shot < 0 || mem.targetAt === planAt)
   // Still reacting: drift back toward base until the plan is made.
   const to = planned ? mem.target : home
   const out: SpInput[] = [moveToward(s, side, level, to)]
-  const me = s.players[side]
   if (
     planned &&
     mem.plannedChargeTick >= 0 &&

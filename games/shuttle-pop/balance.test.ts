@@ -20,15 +20,20 @@ import {
 import { type CourtSize } from './courtsize'
 import { findContact, launchFor, REACH, shotTarget, type ShotKind } from './shots'
 import {
+  canSwing,
   createState,
   shuttlePopGame as game,
   MOVE_SPEED,
+  NET_MARGIN,
+  setupBots,
+  SWING_COOLDOWN,
   TICK_RATE,
   toWorld,
   type Level,
   type SpInput,
   type SpState,
 } from './sim'
+import { racketHits, STUN, stunImmune, stunned } from './stun'
 
 /** A scripted player's limits. */
 interface Profile {
@@ -51,6 +56,11 @@ interface Profile {
    * (lunge) or that passes above the plain reach (jump); spam = whenever the button would jump / lunge.
    */
   ability?: 'never' | 'smart' | 'spam'
+  /**
+   * A net bonker (default off): after its own shot it rushes the net opposite the opponent, and swings
+   * at them whenever they're in racket reach and not immune (stun.ts); otherwise plays as the profile.
+   */
+  bonk?: boolean
 }
 
 /**
@@ -86,6 +96,8 @@ const PROFILES = {
   casualSmart: { ...casual, ability: 'smart' },
   /** Casual who presses the ability at every shot it would jump / lunge for, instead of swinging. */
   casualSpam: { ...casual, ability: 'spam' },
+  /** Casual who tries to bonk the computer: rushes the net after each shot and swings at its body. */
+  casualBonker: { ...casual, bonk: true },
 } satisfies Record<string, Profile>
 
 const SERVE_AT = 40
@@ -194,6 +206,23 @@ function humanStep(s: SpState, side: 0 | 1, m: HumanMem, H: Profile): SpInput[] 
     return [{ t: 'move', x: 0, z: 0 }]
   }
   if (s.phase !== 'rally') return [{ t: 'move', x: 0, z: 0 }]
+  const opp = side === 0 ? 1 : 0
+  if (H.bonk) {
+    const me = s.players[side]
+    const them = s.players[opp]
+    // Swing at the body (no button held, no tap in progress): the sim judges it at s.tick + 1.
+    if (
+      me.chargeAt === -1 &&
+      m.releaseAt < 0 &&
+      racketHits(me, them) &&
+      !stunImmune(them.stunAt, s.tick + 1) &&
+      canSwing({ ...s, tick: s.tick + 1 }, me)
+    )
+      return [
+        { t: 'move', x: 0, z: 0 },
+        { t: 'swing', x: 0, z: 0, tick: s.tick + 1 },
+      ]
+  }
   // A tap's button-up (graded at its press).
   if (m.releaseAt >= 0 && s.tick >= m.releaseAt) {
     m.releaseAt = -1
@@ -201,7 +230,12 @@ function humanStep(s: SpState, side: 0 | 1, m: HumanMem, H: Profile): SpInput[] 
     const z = kinds[Math.floor(random(m.rng) * 3)]
     return [moveTo(s, side, m.target), { t: 'swing', x: random(m.rng) * 2 - 1, z, tick: s.tick + 1 }]
   }
-  const opp = side === 0 ? 1 : 0
+  if (H.bonk && s.shuttle.lastHitter === side) {
+    // After my own shot: to the net, opposite the opponent.
+    const lim = s.court.halfWidth
+    const x = Math.max(-lim, Math.min(lim, s.players[opp].x))
+    return [moveTo(s, side, { x, z: back * (NET_MARGIN + 0.05) })]
+  }
   if (s.shuttle.lastHitter !== opp) return [moveTo(s, side, base)]
   let shot = -1
   for (const e of s.events)
@@ -331,6 +365,8 @@ interface BalanceStats {
   shots: number[]
   seconds: number
   speeds: Partial<Record<ShotKind, number[]>>
+  /** Racket bonks (either way). */
+  bonks: number
 }
 
 /** One match: scripted human (side 0) vs the computer at `level`, on the `size` court. */
@@ -340,7 +376,7 @@ function humanVsBot(H: Profile, level: Level, seed: number, size: CourtSize = 'n
     court: size,
   })
   const m = newHuman(seed)
-  const st: BalanceStats = { humanWon: false, points: [0, 0], shots: [], seconds: 0, speeds: {} }
+  const st: BalanceStats = { humanWon: false, points: [0, 0], shots: [], seconds: 0, speeds: {}, bonks: 0 }
   let lastId = s.nextEventId - 1
   let shots = 0
   while (s.phase !== 'over' && s.tick < 20 * 60 * TICK_RATE) {
@@ -356,7 +392,7 @@ function humanVsBot(H: Profile, level: Level, seed: number, size: CourtSize = 'n
       } else if (e.k === 'point') {
         st.points[e.side]++
         st.shots.push(shots)
-      }
+      } else if (e.k === 'bonk') st.bonks++
     }
     lastId = s.nextEventId - 1
   }
@@ -372,6 +408,9 @@ interface Row {
   share: number
   shots: number
   minutes: number
+  /** Points played and racket bonks (either way) over the gauge. */
+  points: number
+  bonks: number
 }
 
 /** `n` deterministic matches of profile `H` vs `level` on `size`; launch speeds are pooled into `speeds`. */
@@ -387,6 +426,7 @@ function gauge(
   let all = 0
   const shots: number[] = []
   const secs: number[] = []
+  let bonks = 0
   for (let i = 1; i <= n; i++) {
     const r = humanVsBot(H, level, 1000 * i + 7, size)
     if (r.humanWon) win++
@@ -394,9 +434,10 @@ function gauge(
     all += r.points[0] + r.points[1]
     shots.push(...r.shots)
     secs.push(r.seconds)
+    bonks += r.bonks
     for (const [k, v] of Object.entries(r.speeds)) (speeds[k as ShotKind] ??= []).push(...v)
   }
-  return { win: win / n, share: mine / all, shots: mean(shots), minutes: mean(secs) / 60 }
+  return { win: win / n, share: mine / all, shots: mean(shots), minutes: mean(secs) / 60, points: all, bonks }
 }
 
 /**
@@ -652,5 +693,92 @@ describe('jump / lunge balance', () => {
     if (process.env.BALANCE_LOG)
       console.warn(JSON.stringify({ lungeSmashable: smashable / LUNGE_GRID.length }))
     expect(smashable / LUNGE_GRID.length).toBeGreaterThanOrEqual(0.7)
+  })
+})
+
+/** Bot v bot matches for the bonk-rarity gauge. */
+const N_BOTS = 20
+
+/** `n` bot v bot matches at `level`: points played and racket bonks (either way). */
+function botBonks(level: Level, n: number): { points: number; bonks: number } {
+  const r = { points: 0, bonks: 0 }
+  for (let i = 1; i <= n; i++) {
+    const s = setupBots(level, level, 1000 * i + 7)
+    let lastId = s.nextEventId - 1
+    while (s.phase !== 'over' && s.tick < 20 * 60 * TICK_RATE) {
+      game.tick(s, [])
+      for (const e of s.events) {
+        if (e.id <= lastId) continue
+        if (e.k === 'point') r.points++
+        else if (e.k === 'bonk') r.bonks++
+      }
+      lastId = s.nextEventId - 1
+    }
+  }
+  return r
+}
+
+// Rulings: the computer never aims bonks but can bonk by accident; a bonk is 0.8 s of no move / swing
+// and then 2 s of immunity (stun.ts), so at most ~29% of the time stunned in theory.
+describe('racket stun balance', () => {
+  it('accidental bonks are rare in 1v1', () => {
+    const rows: Record<string, { points: number; bonks: number }> = {}
+    for (const l of LEVELS) {
+      const r = rowOf('casual', l)
+      rows[`casual v ${l}`] = { points: r.points, bonks: r.bonks }
+      expect(r.bonks / r.points, `casual v ${l}`).toBeLessThanOrEqual(0.03)
+    }
+    const bots = botBonks('hard', N_BOTS)
+    rows['hard v hard'] = bots
+    if (process.env.BALANCE_LOG) console.warn(JSON.stringify({ accidentalBonks: rows }))
+    expect(bots.bonks / bots.points, 'hard v hard').toBeLessThanOrEqual(0.03)
+  }, 180_000)
+
+  it('bonking is not a cheat code: a net bonker wins no more than plain play', () => {
+    const plain = rowOf('casual', 'normal')
+    const bonker = gauge(PROFILES.casualBonker, 'normal', N)
+    if (process.env.BALANCE_LOG) console.warn(JSON.stringify({ plain, bonker }))
+    expect(bonker.win).toBeLessThanOrEqual(plain.win + 0.1)
+  }, 90_000)
+
+  it('no stun-lock in the sim: a griefer at the net stuns at most once per 168 ticks', () => {
+    const GAP = STUN.ticks + STUN.immune
+    const s = createState(
+      [
+        { id: 'a', name: 'A', slot: 0, ready: true, connected: true },
+        { id: 'b', name: 'B', slot: 1, ready: true, connected: true },
+      ],
+      1,
+    )
+    const [a, b] = s.players
+    s.phase = 'rally'
+    s.phaseT = 0
+    a.x = b.x = 0
+    a.z = -0.35
+    b.z = 0.35
+    const bonks: number[] = []
+    let stunnedTicks = 0
+    let lastId = s.nextEventId - 1
+    for (let i = 0; i < 900; i++) {
+      // Aloft over side 0's back court, last hit by side 1: out of everyone's reach, the rally never ends.
+      s.shuttle.pos = { x: 0, y: 4, z: -5.5 }
+      s.shuttle.vel = { x: 0, y: 0, z: 0 }
+      s.shuttle.lastHitter = 1
+      s.shuttle.pending = null
+      const inputs: InputEvent<SpInput>[] =
+        i % SWING_COOLDOWN === 0 ? [{ player: 'b', input: { t: 'swing', x: 0, z: 0 } }] : []
+      game.tick(s, inputs)
+      expect(s.phase).toBe('rally')
+      for (const e of s.events) if (e.id > lastId && e.k === 'bonk' && e.who === 'a') bonks.push(e.tick)
+      lastId = s.nextEventId - 1
+      if (stunned(a.stunAt, s.tick)) stunnedTicks++
+    }
+    const gaps = bonks.slice(1).map((t, i) => t - bonks[i])
+    const stunnedShare = stunnedTicks / 900
+    if (process.env.BALANCE_LOG) console.warn(JSON.stringify({ griefer: { bonks, gaps, stunnedShare } }))
+    expect(bonks.length).toBeGreaterThan(1)
+    expect(bonks.length).toBeLessThanOrEqual(Math.ceil(900 / GAP))
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(GAP)
+    expect(stunnedShare).toBeLessThanOrEqual(STUN.ticks / GAP + 0.01)
   })
 })

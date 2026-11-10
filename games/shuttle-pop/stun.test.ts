@@ -4,13 +4,15 @@ import { bonkVictims, racketHits, STUN, stunImmune, stunLook, stunned, type Body
 const body = (id: string, side: 0 | 1, x: number, z: number): Body => ({ id, side, x, z })
 
 describe('stun rules', () => {
-  it('racket reach: 1.2 m beside a teammate, 1.0 m across the net, never yourself', () => {
+  it('racket reach: 1.2 m beside a teammate, 0.85 m across the net, never yourself', () => {
     const a = body('a', 0, 0, -2)
     expect(racketHits(a, body('b', 0, 1.19, -2))).toBe(true)
     expect(racketHits(a, body('b', 0, 1.21, -2))).toBe(false)
     const n = body('n', 0, 0, -0.3)
     expect(racketHits(n, body('m', 1, 0, 0.3))).toBe(true)
     expect(racketHits(n, body('m', 1, 0.9, 0.3))).toBe(false)
+    expect(racketHits(n, body('m', 1, 0.6, 0.3))).toBe(true) // 0.849 m
+    expect(racketHits(n, body('m', 1, 0.62, 0.3))).toBe(false) // 0.862 m
     expect(racketHits(a, { ...a })).toBe(false)
   })
 

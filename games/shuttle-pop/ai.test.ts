@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { random } from '@forge/core/rng'
-import { botStep, LEVELS, NEAR_LINE, newBotMemory, readyDepth, type BotLevel } from './ai'
+import { botStep, LEVELS, NEAR_LINE, newBotMemory, readyDepth, type BotLevel, type BotMemory } from './ai'
 import type { InputEvent } from '@forge/net/session'
 import { COURT } from './physics'
 import { COURT_SIZES, courtDims } from './courtsize'
 import { toWorld } from './court'
+import { STUN } from './stun'
 import {
   canAct,
   setupBots,
@@ -474,5 +475,75 @@ describe('bot jump / lunge', () => {
       () => 0.99,
     )
     expect(mem.plannedAct).toBeNull()
+  })
+})
+
+describe('bot under a racket stun', () => {
+  const STILL = { t: 'move', x: 0, z: 0 }
+  /** One tick: side 1's botStep (constant rngs, no ability) fed to the sim; returns its inputs. */
+  function stepBot(s: SpState, mem: BotMemory, seen: SpEvent[] = []): SpInput[] {
+    const lastId = s.nextEventId - 1
+    const out = botStep(
+      s,
+      1,
+      'normal',
+      mem,
+      () => 0.5,
+      () => 0.99,
+    )
+    game.tick(
+      s,
+      out.map((input) => ({ player: s.players[1].id, input })),
+    )
+    for (const e of s.events) if (e.id > lastId) seen.push(e)
+    return out
+  }
+
+  it('a stunned computer stands still and swings nothing, then replans', () => {
+    // A high lob dropping deep on side 1: plenty of flight left after the stun.
+    const s = incoming(0, -1, 2.5, { x: 0, y: 9, z: 5 })
+    const mem = newBotMemory(1, 1)
+    for (let i = 0; i < 3; i++) stepBot(s, mem)
+    expect(mem.targetAt).toBeGreaterThanOrEqual(0) // a plan was made before the bonk
+    const stunAt = s.tick
+    s.players[1].stunAt = stunAt
+    for (let i = 0; i < STUN.ticks; i++) {
+      expect(stepBot(s, mem), `tick +${i}`).toEqual([STILL])
+      expect(mem.targetAt).toBe(-1)
+    }
+    // Free again (the shot's event has scrolled out of the log by now): a fresh plan from here.
+    expect(s.tick).toBe(stunAt + STUN.ticks)
+    const seen: SpEvent[] = []
+    const [move] = stepBot(s, mem, seen)
+    expect(mem.targetAt).toBe(stunAt + STUN.ticks)
+    expect(mem.plannedSwingTick).toBeGreaterThan(s.tick - 1)
+    const me = s.players[1]
+    const v = move.t === 'move' ? toWorld(1, move.x, move.z) : { x: 0, z: 0 }
+    expect(Math.hypot(v.x, v.z)).toBeGreaterThan(0)
+    expect(v.x * (mem.target.x - me.x) + v.z * (mem.target.z - me.z)).toBeGreaterThan(0)
+    while (s.phase === 'rally' && s.shuttle.lastHitter !== 1 && s.tick < stunAt + 600) stepBot(s, mem, seen)
+    expect(seen.some((e) => (e.k === 'hit' || e.k === 'whiff') && e.side === 1)).toBe(true)
+  })
+
+  it('never aims at players: the plan ignores where the opponent stands', () => {
+    /** Side 1's inputs for 120 ticks of the same flight, the opponent standing at (x, z). */
+    const run = (x: number, z: number) => {
+      const s = incoming(0.5, 1.5, 4, { x: 0, y: 3, z: 3 })
+      s.players[0].x = x
+      s.players[0].z = z
+      const mem = newBotMemory(1, 1)
+      const outs: SpInput[][] = []
+      for (let i = 0; i < 120 && s.phase === 'rally'; i++) outs.push(stepBot(s, mem))
+      return outs
+    }
+    const atNet = run(0, -0.4)
+    expect(atNet.length).toBe(120)
+    // Where the computer stands and when it swings: the same wherever the opponent is.
+    expect(run(0.2, -5)).toEqual(atNet)
+    // Far to one side, only the shot's aim changes (it plays away from the opponent: shot placement,
+    // not the body): moves and swing ticks stay the same.
+    const noAim = (outs: SpInput[][]) =>
+      outs.map((o) => o.map((i) => (i.t === 'swing' || i.t === 'ability' ? i.t : i)))
+    expect(noAim(run(2, -5))).toEqual(noAim(atNet))
   })
 })

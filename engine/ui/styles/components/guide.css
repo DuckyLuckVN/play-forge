@@ -68,16 +68,34 @@
     flex-shrink: 0;
     max-width: 62%;
   }
-  .pf-guide-or,
-  .pf-guide-hold {
+  .pf-guide-or {
     color: var(--pf-haze);
     font-size: var(--pf-fs-xs);
   }
+  /* A held input: one chip, a yolk "HOLD" tag fused to the left of the keycaps / icon. */
+  .pf-held {
+    display: inline-flex;
+    align-items: stretch;
+    gap: var(--pf-space-2);
+    padding-right: var(--pf-space-2);
+    border: 2px solid var(--pf-yolk);
+    border-radius: var(--pf-radius-sm);
+    background: color-mix(in srgb, var(--pf-yolk) 12%, transparent);
+    overflow: hidden;
+  }
+  .pf-held > :not(.pf-guide-hold) {
+    align-self: center;
+  }
   .pf-guide-hold {
-    text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 var(--pf-space-2);
+    background: var(--pf-yolk);
+    color: var(--pf-pit);
+    font-size: var(--pf-fs-xs);
+    font-weight: var(--pf-fw-bold);
     letter-spacing: 0.06em;
-    font-weight: var(--pf-fw-semi);
-    color: var(--pf-yolk);
+    text-transform: uppercase;
   }
   .pf-guide-icon {
     display: inline-flex;

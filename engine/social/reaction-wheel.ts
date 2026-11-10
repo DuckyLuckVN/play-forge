@@ -20,6 +20,16 @@ export interface ReactionWheel {
   destroy(): void
 }
 
+/** Another in-game panel (native popover or `.pf-popover`) is showing: T must not stack the wheel on it. */
+function panelOpen(): boolean {
+  try {
+    return !!document.querySelector('[popover]:popover-open, .pf-popover:not([hidden])')
+  } catch {
+    // Engines without :popover-open throw on the selector; fall back to the class only.
+    return !!document.querySelector('.pf-popover:not([hidden])')
+  }
+}
+
 const DEAD_ZONE = 28
 const MARGIN = 8
 
@@ -36,10 +46,12 @@ export function reactionWheel(opts: ReactionWheelOptions): ReactionWheel {
   const slots = ids.map((id) => {
     const b = h('button', { class: 'pf-rxw-slot', type: 'button' }, reactionEl(id))
     b.dataset.rx = id
+    b.tabIndex = -1
     b.setAttribute('aria-label', t(reactionDef(id)?.name ?? id))
     return b
   })
   const center = h('button', { class: 'pf-rxw-center', type: 'button' })
+  center.tabIndex = -1
   center.setAttribute('aria-label', t('Close reactions'))
   const ring = h('div', { class: 'pf-rxw-ring' }, ...slots, center)
   slots.forEach((b, i) => {
@@ -112,8 +124,13 @@ export function reactionWheel(opts: ReactionWheelOptions): ReactionWheel {
   }
 
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') return close()
+    if (e.key === 'Escape') {
+      if (!open) return
+      e.stopPropagation()
+      return close()
+    }
     if (e.code !== holdKey || e.repeat || !enabled || open || isTyping(e.target)) return
+    if (panelOpen()) return
     e.preventDefault()
     openAt(lastPointer)
   }

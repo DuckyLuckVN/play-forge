@@ -146,6 +146,33 @@ describe('reactionWheel', () => {
     expect(downs).toEqual(['KeyW'])
     expect(send).not.toHaveBeenCalled()
   })
+  it('T does not open over another open panel', () => {
+    w.setEnabled(true)
+    const pop = document.body.appendChild(document.createElement('div'))
+    pop.className = 'pf-popover'
+    key('keydown', 'KeyT')
+    expect(w.isOpen).toBe(false)
+    pop.hidden = true
+    key('keydown', 'KeyT')
+    expect(w.isOpen).toBe(true)
+  })
+  it('slots and centre are not tab stops', () => {
+    for (const b of document.querySelectorAll<HTMLElement>('.pf-rxw-slot, .pf-rxw-center'))
+      expect(b.tabIndex).toBe(-1)
+  })
+  it('Esc stops propagation only while open', () => {
+    const seen: string[] = []
+    const spy = (e: KeyboardEvent) => seen.push(e.key)
+    document.addEventListener('keydown', spy)
+    w.setEnabled(true)
+    key('keydown', 'Escape', document.body)
+    expect(seen).toEqual(['Escape'])
+    key('keydown', 'KeyT')
+    key('keydown', 'Escape', document.body)
+    expect(w.isOpen).toBe(false)
+    expect(seen).toEqual(['Escape'])
+    document.removeEventListener('keydown', spy)
+  })
   it('only wheel ids are rendered, with translated labels', () => {
     const slots = [...document.querySelectorAll('.pf-rxw-slot')] as HTMLElement[]
     expect(slots.map((b) => b.dataset.rx)).toEqual([...WHEEL_REACTIONS])

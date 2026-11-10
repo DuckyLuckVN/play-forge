@@ -16,7 +16,7 @@ describe('RenderClock', () => {
       c.update(DT)
     }
     // Each state arrives at the frame start, so `since` is one frame after the last update.
-    expect(Math.abs(c.tick - (c.newest - 1 + 1))).toBeLessThan(0.05)
+    expect(Math.abs(c.tick - c.newest /* newest - delay(1) + 1 tick of age */)).toBeLessThan(0.05)
   })
 
   it('rate stays within ±10% under jitter', () => {

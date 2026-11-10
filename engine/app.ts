@@ -34,6 +34,7 @@ import { GAME_RELAY_URL, relayMode } from './net/net-config'
 import { createRelayTransport } from './net/relay'
 import { avatarEl, avatarPicker } from './social/avatar-ui'
 import { avatarFor, storedAvatar } from './social/avatars'
+import { ReactionBridge } from './social/reaction-bridge'
 import { ReactionLayer, reactionPicker } from './social/reaction-ui'
 import { t as ts } from './social/i18n'
 import { RoomSocial } from './social/room-social'
@@ -86,6 +87,11 @@ export interface SummaryRow {
   highlight?: boolean
 }
 
+/** What the shell hands a game's `mount`. Online rooms only: `reactions.active` is false when offline. */
+export interface MountContext {
+  reactions: ReactionBridge
+}
+
 export interface GameAppOptions<S, I> {
   def: GameDefinition<S, I>
   title: string
@@ -106,9 +112,10 @@ export interface GameAppOptions<S, I> {
   music?: Track | null
   /**
    * Called once per session with the stage element to render into. Set up
-   * rendering, input and sounds here and return a cleanup function.
+   * rendering, input and sounds here and return a cleanup function. `ctx`
+   * (optional to use): online rooms only; `ctx.reactions.active` is false offline.
    */
-  mount(session: Session<S, I>, stage: HTMLElement): () => void
+  mount(session: Session<S, I>, stage: HTMLElement, ctx: MountContext): () => void
   /** Scores shown in the top bar while playing and on the seats afterwards. */
   scores?(state: S): Scoreline[]
   /**
@@ -240,6 +247,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   let social: RoomSocial | null = null
   const reactBtn = reactionPicker((id) => social?.reactions.send(id) ?? false)
   const reactionLayer = new ReactionLayer()
+  const reactionBridge = new ReactionBridge()
   // Everyday room controls (mic, chat, reactions) and settings (voice, language,
   // sound, leave). Desktop shows them all in the bar; phones put the everyday
   // ones behind a floating button and the settings behind ⋯ (CSS decides).
@@ -352,10 +360,13 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     seenTokens.clear()
     seenReady.clear()
     if (!extra.offline) store.save({ playerId, room, host, snapshot: host ? s.snapshot() : undefined })
-    const unmount = opts.mount(s, stage)
+    const unmount = opts.mount(s, stage, { reactions: reactionBridge })
     // After mount, so the game's key handlers run before chat's Enter shortcut.
-    const roomSocial = extra.offline ? null : new RoomSocial(s as Session<unknown, unknown>, reactionLayer)
+    const roomSocial = extra.offline
+      ? null
+      : new RoomSocial(s as Session<unknown, unknown>, reactionLayer, (p, r) => reactionBridge.claim(p, r))
     social = roomSocial
+    reactionBridge.attach(roomSocial?.reactions ?? null)
     quickSlot.replaceChildren(...(roomSocial?.quick ?? []))
     settingsSlot.replaceChildren(...(roomSocial?.settings ?? []))
     const offs = [
@@ -410,6 +421,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       joinTrack = null
       netBtn.attach(null)
       offs.forEach((off) => off())
+      reactionBridge.attach(null)
       roomSocial?.dispose()
       social = null
       quickSlot.replaceChildren()

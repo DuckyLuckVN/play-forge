@@ -140,6 +140,17 @@ export const REACTIONS: readonly ReactionDef[] = [
 ]
 
 export const REACTION_IDS: readonly string[] = REACTIONS.map((r) => r.id)
+/** Reaction wheel slots, clockwise from the top. Mic helpers stay in the tray (they are about voice). */
+export const WHEEL_REACTIONS: readonly string[] = [
+  'gg',
+  'fire',
+  'laugh',
+  'clap',
+  'heart',
+  'cry',
+  'rage',
+  'skull',
+]
 export const reactionDef = (id: string) => REACTIONS.find((r) => r.id === id)
 
 /** Sliding-window limit: at most `max` hits per `windowMs`. */

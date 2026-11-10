@@ -6,6 +6,8 @@ import {
   type NetHint,
   type NetPanelView,
   type NetStatus,
+  type PanelRow,
+  type Route,
 } from '../net/status'
 import { h, icon, iconButton, toast } from './dom'
 import { t } from './i18n'
@@ -40,8 +42,31 @@ const HINT_TEXT: Record<NetHint, () => string> = {
     t(
       'A direct connection failed: your networks block it. Try the same Wi-Fi, or turn off VPN / switch from mobile data.',
     ),
+  relayed: () =>
+    t(
+      "Some players can't link directly, so the game goes through our backup server. It works the same, ping may be a bit higher.",
+    ),
   connecting: () => t('Still connecting to someone. This usually takes a few seconds.'),
   lag: () => t('High ping: moves may feel delayed. A stronger or wired connection helps.'),
+}
+
+/** A connected player's state says which way the game data goes. */
+const ROUTE_TEXT: Record<Route, () => string> = {
+  direct: () => t('Direct'),
+  relay: () => t('Via server'),
+}
+const ROUTE_TITLE: Record<Route, () => string> = {
+  direct: () => t('Connected browser to browser'),
+  relay: () => t('Connected through our backup server'),
+}
+
+function stateCell(r: PanelRow) {
+  const cell = h('span', {
+    class: `pf-net-state${r.route ? ` ${r.route}` : ''}`,
+    textContent: r.route ? ROUTE_TEXT[r.route]() : STATE_TEXT[r.state](),
+  })
+  if (r.route) cell.title = ROUTE_TITLE[r.route]()
+  return cell
 }
 
 /**
@@ -160,6 +185,7 @@ function drawHead(head: HTMLElement, src: NetPanelSource) {
 function drawBody(body: HTMLElement, view: NetPanelView) {
   body.replaceChildren(
     ...(view.local ? [] : [servers(view)]),
+    ...(view.gameRelay ? [backupServer(view.gameRelay)] : []),
     h('div', { class: 'pf-net-label', textContent: t('Players') }),
     view.rows.length
       ? h(
@@ -170,7 +196,7 @@ function drawBody(body: HTMLElement, view: NetPanelView) {
               'li',
               { class: `pf-net-player ${r.state}` },
               h('span', { class: 'pf-net-name', textContent: r.name }),
-              h('span', { class: 'pf-net-state', textContent: STATE_TEXT[r.state]() }),
+              stateCell(r),
               h('span', {
                 class: 'pf-net-ping',
                 textContent: r.rttMs !== null ? t('{ms} ms', { ms: r.rttMs }) : '–',
@@ -204,4 +230,21 @@ function servers(view: NetPanelView) {
     }),
   )
   return h('div', { class: 'pf-net-servers' }, summary, list)
+}
+
+/** Our relay server: the way through when a direct link can't be made. */
+function backupServer(relay: NonNullable<NetPanelView['gameRelay']>) {
+  const status = relay.ok
+    ? relay.rttMs !== null
+      ? t('Connected · {ms} ms', { ms: relay.rttMs })
+      : t('Connected')
+    : t('Not connected')
+  const head = h(
+    'div',
+    { class: 'pf-net-servers-head' },
+    h('span', { class: 'pf-net-label', textContent: t('Backup server') }),
+    h('strong', { class: relay.ok ? 'ok' : 'bad', textContent: status }),
+  )
+  head.title = t('Carries the game when a direct link between players is blocked.')
+  return h('div', { class: 'pf-net-servers pf-net-backup' }, head)
 }

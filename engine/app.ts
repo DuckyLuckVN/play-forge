@@ -29,6 +29,9 @@ import {
 import { createOfflineTransport, randomId, type Transport } from './net/transport'
 import { netLog } from './net/debug'
 import { createTrysteroTransport } from './net/trystero'
+import { createHybridTransport } from './net/hybrid'
+import { GAME_RELAY_URL, relayMode } from './net/net-config'
+import { createRelayTransport } from './net/relay'
 import { avatarEl, avatarPicker } from './social/avatar-ui'
 import { avatarFor, storedAvatar } from './social/avatars'
 import { ReactionLayer, reactionPicker } from './social/reaction-ui'
@@ -156,7 +159,13 @@ function newRoomCode(): string {
 function createTransport(appId: string, room: string): Transport {
   // `?net=local` connects tabs of this browser only (for development).
   const local = new URLSearchParams(location.search).get('net') === 'local'
-  return local ? createBroadcastTransport(appId, room) : createTrysteroTransport(appId, room)
+  if (local) return createBroadcastTransport(appId, room)
+  const direct = createTrysteroTransport(appId, room)
+  const mode = relayMode()
+  if (mode === 'off') return direct
+  // Same peer id on both paths, so a peer is one peer whichever way it's reached.
+  const relay = createRelayTransport(GAME_RELAY_URL, { app: appId, room, id: direct.selfId })
+  return createHybridTransport(direct, relay, { relayOnly: mode === 'only' })
 }
 
 function storedName(value?: string): string {

@@ -6,12 +6,18 @@ import type { Transport } from './transport'
 
 export type RelayState = 'connecting' | 'open' | 'closed'
 export type LinkState = 'connecting' | 'connected' | 'failed'
+/** How messages reach a peer: browser to browser, or through our relay server. */
+export type Route = 'direct' | 'relay'
+/** The socket to our game relay server ('off': not used, e.g. `?relay=off`). */
+export type GameRelayState = 'off' | 'connecting' | 'open' | 'closed'
 
 export interface PeerLink {
   id: string
   state: LinkState
   /** Round trip in milliseconds, from the last measure. */
   rttMs?: number
+  /** Which way messages go once connected. Absent for transports without a relay. */
+  route?: Route
 }
 
 export interface NetStatus {
@@ -30,6 +36,8 @@ export interface NetStatus {
    */
   openFailures: number
   peers: PeerLink[]
+  /** Our game relay server (fallback path), when the transport uses one. */
+  gameRelay?: { state: GameRelayState; rttMs?: number }
 }
 
 /** How long a failed connection counts against the room's health. */
@@ -86,6 +94,7 @@ export function statusOf(transport: Transport): NetStatus {
 }
 
 export const relaysOpen = (s: NetStatus): number => s.relays.filter((r) => r.state === 'open').length
+const gameRelayOpen = (s: NetStatus): boolean => s.gameRelay?.state === 'open'
 
 // ---------- Joining a room ----------
 
@@ -115,7 +124,8 @@ export function startJoin(now: number): JoinTrack {
 
 /** Advance the joining state with the latest status. Pure; returns a new track. */
 export function stepJoin(track: JoinTrack, status: NetStatus, now: number): JoinTrack {
-  const relaysOk = status.kind === 'local' || relaysOpen(status) > 0
+  // Either way of finding the room will do: the matchmaking servers or our relay.
+  const relaysOk = status.kind === 'local' || relaysOpen(status) > 0 || gameRelayOpen(status)
   const seen = status.negotiating > 0 || status.peers.length > 0 || status.failures > 0
   const relaysAt = track.relaysAt ?? (relaysOk || seen ? now : null)
   const seenAt = track.seenAt ?? (seen ? now : null)
@@ -149,7 +159,7 @@ export const joinStep = (phase: JoinPhase): 0 | 1 | 2 =>
 export const LAG_MS = 200
 
 export type Health = 'good' | 'warn' | 'bad' | 'local'
-export type NetHint = 'no-servers' | 'blocked' | 'connecting' | 'lag' | 'local'
+export type NetHint = 'no-servers' | 'blocked' | 'relayed' | 'connecting' | 'lag' | 'local'
 
 /** Someone we have a direct link with: for the host every guest, for a guest the host. */
 export interface LinkedPlayer {
@@ -164,6 +174,8 @@ export interface PanelRow {
   name: string
   state: LinkState
   rttMs: number | null
+  /** Set once connected, when the transport reports it. */
+  route: Route | null
 }
 
 export interface NetPanelView {
@@ -171,6 +183,8 @@ export interface NetPanelView {
   local: boolean
   relays: { host: string; ok: boolean }[]
   relaysOk: number
+  /** Our backup (relay) server; null when not used. */
+  gameRelay: { ok: boolean; rttMs: number | null } | null
   rows: PanelRow[]
   hints: NetHint[]
 }
@@ -191,23 +205,31 @@ export function netPanelView(
   const local = status.kind === 'local'
   const rows: PanelRow[] = players.map((p) => {
     const link = p.peer ? status.peers.find((l) => l.id === p.peer) : undefined
+    const state = link && p.connected ? link.state : 'connecting'
     return {
       name: p.name,
-      state: link && p.connected ? link.state : 'connecting',
+      state,
       rttMs: link?.rttMs ?? null,
+      route: state === 'connected' ? (link?.route ?? null) : null,
     }
   })
   const relaysOk = relaysOpen(status)
-  const starting = !local && relaysOk === 0 && onlineForMs < JOIN_TIMEOUTS.servers
-  const noServers = !local && relaysOk === 0 && !starting
+  const relayUp = gameRelayOpen(status)
+  const reachable = relaysOk > 0 || relayUp
+  const starting = !local && !reachable && onlineForMs < JOIN_TIMEOUTS.servers
+  const noServers = !local && !reachable && !starting
   const failed = rows.some((r) => r.state === 'failed')
   const connecting = rows.some((r) => r.state === 'connecting') || status.negotiating > 0
-  const lag = rows.some((r) => r.rttMs !== null && r.rttMs > LAG_MS)
+  const slow = (r: PanelRow) => r.rttMs !== null && r.rttMs > LAG_MS
+  // Relayed links are slower by design: their own hint says so, the "get a better connection" one would mislead.
+  const lag = rows.some((r) => slow(r) && r.route !== 'relay')
+  const relayLag = rows.some((r) => slow(r) && r.route === 'relay')
 
   const hints: NetHint[] = []
   if (local) hints.push('local')
   if (noServers) hints.push('no-servers')
   if (failed || status.openFailures > 0) hints.push('blocked')
+  if (rows.some((r) => r.route === 'relay')) hints.push('relayed')
   if (connecting) hints.push('connecting')
   if (lag) hints.push('lag')
 
@@ -215,7 +237,7 @@ export function netPanelView(
     ? 'local'
     : noServers || failed
       ? 'bad'
-      : starting || connecting || lag || status.openFailures > 0
+      : starting || connecting || lag || relayLag || status.openFailures > 0
         ? 'warn'
         : 'good'
   return {
@@ -223,6 +245,10 @@ export function netPanelView(
     local,
     relays: status.relays.map((r) => ({ host: relayHost(r.url), ok: r.state === 'open' })),
     relaysOk,
+    gameRelay:
+      status.gameRelay && status.gameRelay.state !== 'off'
+        ? { ok: relayUp, rttMs: status.gameRelay.rttMs ?? null }
+        : null,
     rows,
     hints,
   }

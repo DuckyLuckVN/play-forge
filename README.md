@@ -23,7 +23,7 @@ Fun mini-games to play with friends: solo, on one device, or online. No accounts
 
 ## Features
 
-- **Multiplayer without a server:** browsers connect directly over WebRTC ([Trystero](https://github.com/dmotz/trystero)). See [How multiplayer works](#how-multiplayer-works).
+- **Multiplayer, direct first:** browsers connect directly over WebRTC ([Trystero](https://github.com/dmotz/trystero)), with a small relay server as the fallback when networks block that. See [How multiplayer works](#how-multiplayer-works).
 - **In every online room:** avatars, emoji reactions, text chat (press **Enter**) and voice chat (open mic or hold **V** to talk).
 - **Host controls:** the host can remove a player with the ✕ on their seat (confirmed in the room). Their seat frees at once, also mid-match; they can join again with the code.
 - **English and Vietnamese**, generated music and sounds, and a phone-friendly layout.
@@ -32,12 +32,16 @@ Fun mini-games to play with friends: solo, on one device, or online. No accounts
 
 ```
  Browser A (host) ◄──── direct WebRTC connection ────► Browser B
-        ▲                                                   ▲
-        └────── public Nostr relays (only to find each other) ┘
+     ▲     ▲                                              ▲     ▲
+     │     └── public Nostr relays (only to find each other) ──┘     │
+     └──────── game relay server (fallback, wss://relay.haonguyen.dev) ┘
 ```
 
-- **No server:** players find each other through public relays, then talk directly, browser to browser. The relays are pinned in `engine/net/net-config.ts` (`RELAY_URLS`, with how to re-check them).
-- **Network status:** in an online room, the signal-bars button in the top bar shows connection health (green / yellow / red) and opens a live panel: room code, your role, matchmaking servers, and each player's link (connected, ping). Joining shows each step (servers → room → host) and says which one failed, with **Try again**. Add `?netdebug=1` to log connection changes to the console.
+- **Direct first:** players find each other through public relays, then talk directly, browser to browser. The relays are pinned in `engine/net/net-config.ts` (`RELAY_URLS`, with how to re-check them).
+- **Relay fallback:** every player also opens a WebSocket to our game relay server (`server/relay`). Messages to a player go directly when that link is up, otherwise through the relay (`engine/net/hybrid.ts`): while WebRTC is still connecting, when a strict network (corporate, some mobile carriers) blocks it, or when a direct link drops mid-game. The relay also lets players find the room if the Nostr relays are down. Voice stays direct only. The relay only forwards messages within a room; the host still runs the game.
+  - URL: `VITE_GAME_RELAY_URL` at build time (default `wss://relay.haonguyen.dev`, none on the dev server; empty = no relay, direct only as before).
+  - Testing: `?relay=only` sends all game data through the relay, `?relay=off` skips it.
+- **Network status:** in an online room, the signal-bars button in the top bar shows connection health (green / yellow / red) and opens a live panel: room code, your role, matchmaking servers, the backup (relay) server, and each player's link (**Direct** or **Via server**, ping). Joining shows each step (servers → room → host) and says which one failed, with **Try again**. Add `?netdebug=1` to log connection and route changes to the console.
 - **The host runs the game:** guests send their moves to the host, and the host sends the game state back to everyone.
 - **Reconnecting:**
   - A player who reloads or drops keeps their seat for 20 seconds and rejoins automatically.
@@ -45,7 +49,7 @@ Fun mini-games to play with friends: solo, on one device, or online. No accounts
 - **Limits:**
   - A host reload ends the current match (the room survives).
   - Keep the host's tab visible, because browsers slow down background tabs.
-  - A few strict networks can't connect directly and would need a TURN server.
+  - Players who can't connect directly play through the relay: a bit more ping, and no voice between them.
 
 ## Develop
 
@@ -59,6 +63,8 @@ npm run build        # dist/ (or: npm run build -- snake)
 
 Test multiplayer without internet: open a game in two tabs with `?net=local` (voice needs the real network).
 
+Run the game relay locally: `npm run relay` (ws://localhost:8080, allows localhost pages), then build or run the dev server with `VITE_GAME_RELAY_URL=ws://localhost:8080`.
+
 ## Project layout
 
 ```
@@ -66,6 +72,7 @@ engine/      shared library ('@forge'): game shell (app.ts), net, social, audio,
 games/       one folder per game + games.json (launcher and README table)
 launcher/    the game picker page
 scripts/     single-file build and README table generator
+server/relay game relay server (Node + ws, Docker): fallback path for blocked direct links
 ```
 
 ## Adding a game
@@ -92,5 +99,15 @@ Heavy setup (building a 3D scene, compiling shaders) goes in `createGameApp({ pr
 ## Deploy
 
 Every push to `main` is tested, built and published to GitHub Pages (`.github/workflows/pages.yml`).
+
+The game relay (`server/relay`) is deployed separately, as a Docker container behind a Cloudflare Tunnel (no open ports):
+
+```bash
+docker build -f server/relay/Dockerfile -t play-forge-relay .   # from the repo root
+```
+
+- Env: `PORT` (8080, WebSocket + `/healthz`), `METRICS_PORT` (9464, Prometheus `/metrics`; keep it off the tunnel), `ALLOWED_ORIGINS` (comma-separated page origins), `CLIENT_IP_HEADER` (default `cf-connecting-ip`; only trust it when the tunnel is the sole way in).
+- Limits (per room, socket, address and message rate) are in `engine/net/relay-protocol.ts` (`RELAY_LIMITS`). Nothing is stored on disk.
+- Clients built before the relay keep working: they just use direct links only. Protocol changes get a new path (`/v2`).
 
 The version shown at the bottom of the launcher is `MAJOR.MINOR.<commit count>` (`scripts/version.mjs`): it goes up by itself with every commit on `main`. Bump `MAJOR.MINOR` in `package.json` for a big release. The dev server shows it with `-dev`.

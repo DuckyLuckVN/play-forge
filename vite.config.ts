@@ -27,6 +27,12 @@ export default defineConfig({
     alias: { '@forge': fileURLToPath(new URL('./engine', import.meta.url)) },
   },
   test: {
-    include: ['engine/**/*.test.ts', 'games/**/*.test.ts', 'launcher/**/*.test.ts', 'scripts/**/*.test.ts'],
+    include: [
+      'engine/**/*.test.ts',
+      'games/**/*.test.ts',
+      'launcher/**/*.test.ts',
+      'scripts/**/*.test.ts',
+      'server/**/*.test.ts',
+    ],
   },
 })

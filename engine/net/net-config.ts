@@ -31,3 +31,29 @@ export function roomConfig(appId: string): JoinRoomConfig {
     relayConfig: { urls: [...RELAY_URLS] },
   }
 }
+
+/**
+ * Our game relay server (server/relay, on the home server behind the
+ * Cloudflare Tunnel): the fallback path when two browsers can't link
+ * directly. Override with VITE_GAME_RELAY_URL (e.g. ws://localhost:8080 for
+ * `npm run relay`); an empty string means no relay (direct WebRTC only, as
+ * before). The dev server has none unless set: the real relay only accepts
+ * the published sites.
+ */
+export const GAME_RELAY_URL: string =
+  import.meta.env.VITE_GAME_RELAY_URL ?? (import.meta.env.DEV ? '' : 'wss://relay.haonguyen.dev')
+
+/**
+ * `?relay=` in the page URL, for testing: `off` skips the relay server,
+ * `only` sends all game data through it (WebRTC still carries voice).
+ * Anything else: direct first, relay as fallback.
+ */
+export type RelayMode = 'auto' | 'off' | 'only'
+
+export function relayMode(
+  search: string = typeof location !== 'undefined' ? location.search : '',
+): RelayMode {
+  if (!GAME_RELAY_URL) return 'off'
+  const v = new URLSearchParams(search).get('relay')
+  return v === 'off' || v === 'only' ? v : 'auto'
+}

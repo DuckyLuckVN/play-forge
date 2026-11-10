@@ -58,8 +58,11 @@ export function sideName(names: readonly string[]): string {
   return names.length > 1 ? t('{a} & {b}', { a: names[0], b: names[1] }) : (names[0] ?? '')
 }
 
-/** tie: distance gap (m) under which slot 0 takes; centre: view-x dead zone; splitX: cover lane × halfWidth. */
-export const COVER = { tie: 0.05, centre: 0.3, splitX: 0.5 }
+/**
+ * tie: distance gap (m) under which slot 0 takes; centre: view-x dead zone; splitX: cover lane × halfWidth;
+ * depth: the pair's waiting / cover depth × the 1v1 ready depth (ai.ts readyDepth).
+ */
+export const COVER = { tie: 0.05, centre: 0.3, splitX: 0.5, depth: 0.9 }
 
 /** AI teammate who hits: nearest (xz) to the predicted landing, ties → slot 0, skipping `busy` (stunned / locked). */
 export function takerOf<T extends Seat & { x: number; z: number }>(

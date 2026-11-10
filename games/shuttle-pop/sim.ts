@@ -499,17 +499,18 @@ export function setupDoubles(
 /** The computer's inputs this tick (botStep per AI seat; its plan lives in player.bot). */
 function botInputs(state: SpState): InputEvent<SpInput>[] {
   const out: InputEvent<SpInput>[] = []
-  for (const p of state.players) {
-    if (p.kind !== 'ai' || !p.level) continue
-    const mem = (p.bot ??= newBotMemory(state.rng, p.side))
+  state.players.forEach((p, i) => {
+    if (p.kind !== 'ai' || !p.level) return
+    // Seat index = side in 1v1 (the same stream as before 2v2).
+    const mem = (p.bot ??= newBotMemory(state.rng, i))
     const rng = () => {
       const r = { seed: mem.rng }
       const v = random(r)
       mem.rng = r.seed
       return v
     }
-    for (const input of botStep(state, p.side, p.level, mem, rng)) out.push({ player: p.id, input })
-  }
+    for (const input of botStep(state, i, p.level, mem, rng)) out.push({ player: p.id, input })
+  })
   return out
 }
 
@@ -1089,6 +1090,8 @@ function takeSeat(state: SpState, i: number): void {
   p.bot = newBotMemory(state.rng, i)
   p.move = { x: 0, z: 0 }
   p.chargeAt = p.pressAt = -1
+  // The computer never wears a remaining human's look.
+  separateAi(state)
 }
 
 export const shuttlePopGame: GameDefinition<SpState, SpInput> = {

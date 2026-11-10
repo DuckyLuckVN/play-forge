@@ -4,10 +4,11 @@
 import { random } from '@forge/core/rng'
 import { COURT, isIn, predictLanding, stepShuttle, type CourtDims, type Flight } from './physics'
 import { findContact, REACH, WINDOW, type Grade } from './shots'
-import { ABILITY, actReady, leadOf, pickAbility, reachOf, type Strike } from './ability'
+import { ABILITY, acting, actReady, leadOf, pickAbility, reachOf, type Strike } from './ability'
 import { CHARGE } from './charge'
 import { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld } from './court'
-import { canAct, canStrike, type SpInput, type SpState } from './sim'
+import { COVER, coverSpot, mateOf, takerOf } from './doubles'
+import { canAct, canStrike, serverPlayer, type SpInput, type SpPlayer, type SpState } from './sim'
 import { stunned } from './stun'
 
 type GradeRoll = Grade | 'whiff'
@@ -78,6 +79,8 @@ export interface BotMemory {
    * draws exactly today's `rng` sequence. Missing (older state) = derived from `rng` on first use.
    */
   actRng?: number
+  /** Doubles: this plan leaves the shot to the mate (doubles.ts takerOf) and covers the other half. */
+  cover?: boolean
 }
 
 /** Server swings this many ticks into the serve phase (well under SERVE_TIMEOUT). */
@@ -112,6 +115,11 @@ const MOVE_PAST_LINE = 0.75
 /** Ready position depth (m from the net) on `court`: BASE_Z stretched with the court's length. */
 export function readyDepth(court: CourtDims): number {
   return BASE_Z * (court.halfLen / COURT.halfLen)
+}
+
+/** Doubles: the pair's waiting / cover depth (m from the net) on `court`. */
+export function coverDepth(court: CourtDims): number {
+  return readyDepth(court) * COVER.depth
 }
 
 /** seed: the match seed; each seat (index in players; 1v1 = side) gets its own stream. */
@@ -187,13 +195,14 @@ function clampTarget(t: { x: number; z: number }, side: 0 | 1, court: CourtDims)
  */
 function meetSpot(
   s: SpState,
-  side: 0 | 1,
+  idx: number,
   level: BotLevel,
   prefY: number,
   maxTicks: number,
   box: { minY: number; maxY: number } = REACH,
 ) {
-  const me = s.players[side]
+  const me = s.players[idx]
+  const side = me.side
   const speed = (MOVE_SPEED * LEVELS[level].speedMul) / TICK_RATE // m per tick
   const f = scratch
   Object.assign(f.pos, s.shuttle.pos)
@@ -226,10 +235,10 @@ function meetSpot(
   return best && { ...best, late: bestScore >= 100 }
 }
 
-/** Plan the reply to the shuttle now in flight toward `side`. */
+/** Plan seat `idx`'s reply to the shuttle now in flight toward its side. */
 function plan(
   s: SpState,
-  side: 0 | 1,
+  idx: number,
   level: BotLevel,
   mem: BotMemory,
   rng: () => number,
@@ -239,32 +248,54 @@ function plan(
   // Made here (once per shot), not per tick: an AI seat that isn't planning allocates nothing.
   const actRng = injected ?? actRngOf(mem)
   const land = predictLanding(s.shuttle)
-  const back = side === 0 ? -1 : 1 // world z sign of "away from the net"
+  const me = s.players[idx]
+  const side = me.side
+  const mate = mateOf(s.players, me)
   mem.plannedSwingTick = -1
   mem.plannedChargeTick = -1
   mem.plannedAct = null
+  if (mate) mem.cover = false
   // Leave shots that go into the net or out (near-line calls can be misjudged on low levels).
   let callIn = isIn(land.pos, side, s.court)
   if (nearLine(land.pos, s.court) && rng() < L.misjudge) callIn = !callIn
   if (land.netHit || !callIn) {
-    mem.target = { x: 0, z: back * readyDepth(s.court) }
+    mem.target = homeSpot(s, me, mate)
     return
+  }
+  // Doubles: the teammate nearest the landing takes it (a human by where they stand); the other covers.
+  if (mate) {
+    const busy = (p: SpPlayer) => stunned(p.stunAt, s.tick) || acting(p.act, s.tick)
+    const taker = takerOf(s.players, side, land.pos, busy)
+    if (taker && taker !== me) {
+      mem.cover = true
+      const takerX = toWorld(side, land.pos.x, land.pos.z).x
+      mem.target = coverSpot(s.court, side, takerX, toWorld(side, me.x, me.z).x, coverDepth(s.court))
+      return
+    }
   }
   const grade = rollGrade(level, rng)
   const smashTry = rng() < L.smash
   // A rolled whiff meets the shuttle high so the too-late swing still happens in the air (visible whiff).
   const meetY = smashTry || grade === 'whiff' ? SMASH_MEET_Y : MEET_Y
-  const meet = meetSpot(s, side, level, meetY, land.ticks)
+  const meet = meetSpot(s, idx, level, meetY, land.ticks)
   const high = smashTry && grade !== 'whiff' && meet !== null && meet.y >= REACH.smashY
+  const back = side === 0 ? -1 : 1 // world z sign of "away from the net"
   const target = meet ? { x: meet.x, z: meet.z } : { x: land.pos.x, z: land.pos.z + back * SIDE_OFFSET }
   clampTarget(target, side, s.court)
   mem.target = target
   const c = findContact(s.shuttle, target, 0, land.ticks)
   if (!c) return
   mem.plannedSwingTick = Math.max(s.tick, s.tick + c.dt + swingOffset(grade, rng))
-  // Aim away from the opponent, in my view frame (held x = screen right; shotTarget mirrors it per side).
-  const opp = s.players[side === 0 ? 1 : 0]
-  const oppView = toWorld(side, opp.x, opp.z).x
+  // Aim away from the opponents (their mean), in my view frame (held x = screen right; shotTarget
+  // mirrors it per side).
+  let oppSum = 0
+  let opps = 0
+  for (const q of s.players)
+    if (q.side !== side) {
+      oppSum += toWorld(side, q.x, q.z).x
+      opps++
+    }
+  const oppView = oppSum / opps
   const away = Math.abs(oppView) > 0.3 ? -Math.sign(oppView) : rng() < 0.5 ? -1 : 1
   const heldX = away * (0.3 + 0.5 * rng())
   let heldZ: number
@@ -284,18 +315,18 @@ function plan(
   if (smashTry) {
     // A jump smash: stand under the shuttle where it passes above the plain reach (ability.ts picks a
     // jump there), if I can get there in time.
-    const jm = meetSpot(s, side, level, JUMP_MEET_Y, land.ticks, JUMP_BOX)
+    const jm = meetSpot(s, idx, level, JUMP_MEET_Y, land.ticks, JUMP_BOX)
     if (jm && !jm.late) {
       const spot = { x: jm.x, z: jm.z }
       clampTarget(spot, side, s.court)
       const jc = findContact(s.shuttle, spot, 0, land.ticks, reachOf('jump'))
-      if (jc && jc.pos.y > REACH.maxY && planAct(s, side, mem, 'jump', spot, jc.dt, grade, actRng)) return
+      if (jc && jc.pos.y > REACH.maxY && planAct(s, idx, mem, 'jump', spot, jc.dt, grade, actRng)) return
     }
   }
   // A lunge save: the plain meet is out of time, but the dive reaches it from the spot I'm heading to.
   if (meet?.late) {
     const lc = findContact(s.shuttle, target, 0, land.ticks, reachOf('lunge'))
-    if (lc) planAct(s, side, mem, 'lunge', target, lc.dt, grade, actRng)
+    if (lc) planAct(s, idx, mem, 'lunge', target, lc.dt, grade, actRng)
   }
 }
 
@@ -305,7 +336,7 @@ function plan(
  */
 function planAct(
   s: SpState,
-  side: 0 | 1,
+  idx: number,
   mem: BotMemory,
   act: Strike,
   spot: { x: number; z: number },
@@ -314,7 +345,7 @@ function planAct(
   rng: () => number,
 ): boolean {
   const at = Math.max(s.tick, s.tick + dt - leadOf(act) + swingOffset(grade, rng))
-  if (!actReady(s.players[side].act, at)) return false
+  if (!actReady(s.players[idx].act, at)) return false
   mem.plannedAct = act
   mem.target = spot
   if (act === 'jump') mem.plannedHeld = { x: mem.plannedHeld.x, z: 1 }
@@ -327,21 +358,19 @@ function planAct(
  * Press the planned ability now: the button is ready (sim.ts canAct) and the shuttle still makes it the
  * planned move from where I stand (else it would be a hop: swing instead).
  */
-function actNow(s: SpState, side: 0 | 1, act: Strike): boolean {
-  const me = s.players[side]
+function actNow(s: SpState, me: SpPlayer, act: Strike): boolean {
   if (!canAct(s, me) || !canStrike(s, me)) return false
-  return pickAbility(s.shuttle, me, side, s.shuttle.lastHitter, true).k === act
+  return pickAbility(s.shuttle, me, me.side, s.shuttle.lastHitter, true).k === act
 }
 
 /** Move input (view-relative, length = speedMul when far) toward a world-space point. */
-function moveToward(s: SpState, side: 0 | 1, level: BotLevel, to: { x: number; z: number }): SpInput {
-  const p = s.players[side]
+function moveToward(p: SpPlayer, level: BotLevel, to: { x: number; z: number }): SpInput {
   const dx = to.x - p.x
   const dz = to.z - p.z
   const d = Math.hypot(dx, dz)
   if (d < STOP) return { t: 'move', x: 0, z: 0 }
   const k = (LEVELS[level].speedMul * Math.min(1, d / ARRIVE)) / d
-  const v = toWorld(side, dx * k, dz * k) // toWorld is its own inverse
+  const v = toWorld(p.side, dx * k, dz * k) // toWorld is its own inverse
   return { t: 'move', x: v.x, z: v.z }
 }
 
@@ -353,34 +382,49 @@ function lastShotTick(s: SpState, opp: 0 | 1): number {
   return at
 }
 
+/**
+ * Where to wait (own team hit last / still reacting / a shot left alone): the centre of my half; with a
+ * mate, side by side at ready depth: the half away from the mate (view x), mate centred → slot 0 left,
+ * slot 1 right.
+ */
+export function homeSpot(s: SpState, me: SpPlayer, mate: SpPlayer | undefined): { x: number; z: number } {
+  if (!mate) return { x: 0, z: (me.side === 0 ? -1 : 1) * readyDepth(s.court) }
+  const depth = coverDepth(s.court)
+  const mateX = toWorld(me.side, mate.x, mate.z).x
+  const lane = Math.abs(mateX) < COVER.centre ? (me.slot === 0 ? -1 : 1) : mateX > 0 ? -1 : 1
+  return toWorld(me.side, lane * s.court.halfWidth * COVER.splitX, -depth)
+}
+
 const STILL: SpInput = { t: 'move', x: 0, z: 0 }
 const CHARGE_IN: SpInput = { t: 'charge' }
 const UNCHARGE: SpInput = { t: 'charge', cancel: true }
 
 /**
- * The AI seat's inputs for this tick. Mutates `mem` (the plan cache). `actRng` = the ability rolls
- * (default: mem's own ability stream, made when a plan is; tests inject it).
+ * The inputs this tick of the AI seat `idx` (index in s.players; 1v1: = its side). Mutates `mem` (the
+ * plan cache). `actRng` = the ability rolls (default: mem's own ability stream, made when a plan is;
+ * tests inject it).
  */
 export function botStep(
   s: SpState,
-  side: 0 | 1,
+  idx: number,
   level: BotLevel,
   mem: BotMemory,
   rng: () => number,
   actRng?: () => number,
 ): SpInput[] {
   // A charge left over (the rally ended before the planned swing) would slow the next rally: drop it.
-  const charging = s.players[side].chargeAt >= 0
+  const me = s.players[idx]
+  const side = me.side
+  const charging = me.chargeAt >= 0
   if (s.phase === 'serve') {
     mem.targetAt = -1
-    if (s.server === side && s.phaseT === BOT_SERVE_TICKS) {
+    if (serverPlayer(s) === me && s.phaseT === BOT_SERVE_TICKS) {
       const z = rng() < LONG_SERVE_P ? -1 : 0
       return [STILL, { t: 'swing', x: 0, z, tick: s.tick }]
     }
     return charging ? [STILL, UNCHARGE] : [STILL]
   }
   if (s.phase !== 'rally') return charging ? [STILL, UNCHARGE] : [STILL]
-  const me = s.players[side]
   if (stunned(me.stunAt, s.tick)) {
     // Bonked (stun.ts): no move, swing, charge or ability. The plan is dropped and re-made from the
     // state on the first free tick. A charge the bonk dropped (TAPPED) is let go so its button-up
@@ -389,11 +433,10 @@ export function botStep(
     return me.chargeAt === -1 ? [STILL] : [STILL, UNCHARGE]
   }
   const opp: 0 | 1 = side === 0 ? 1 : 0
-  const back = side === 0 ? -1 : 1
-  const home = { x: 0, z: back * readyDepth(s.court) }
+  const home = homeSpot(s, me, mateOf(s.players, me))
   if (s.shuttle.lastHitter !== opp) {
     mem.targetAt = -1
-    const toHome = moveToward(s, side, level, home)
+    const toHome = moveToward(me, level, home)
     return charging ? [toHome, UNCHARGE] : [toHome]
   }
   // The shot's event outlives reactTicks; once it scrolls out of the log the cached plan still holds.
@@ -403,12 +446,12 @@ export function botStep(
   const replan = shot < 0 && mem.targetAt < 0
   if (replan || (shot >= 0 && s.tick >= planAt && mem.targetAt !== planAt)) {
     mem.targetAt = replan ? s.tick : planAt
-    plan(s, side, level, mem, rng, actRng)
+    plan(s, idx, level, mem, rng, actRng)
   }
   const planned = mem.targetAt >= 0 && (shot < 0 || mem.targetAt === planAt)
   // Still reacting: drift back toward base until the plan is made.
   const to = planned ? mem.target : home
-  const out: SpInput[] = [moveToward(s, side, level, to)]
+  const out: SpInput[] = [moveToward(me, level, to)]
   if (
     planned &&
     mem.plannedChargeTick >= 0 &&
@@ -419,7 +462,7 @@ export function botStep(
     mem.plannedChargeTick = -1
     out.push(CHARGE_IN)
   }
-  if (planned && s.tick === mem.plannedSwingTick && mem.plannedAct && !actNow(s, side, mem.plannedAct)) {
+  if (planned && s.tick === mem.plannedSwingTick && mem.plannedAct && !actNow(s, me, mem.plannedAct)) {
     // The button would hop here (not where planned in time): swing at the plain contact instead.
     mem.plannedAct = null
     const c = findContact(s.shuttle, me, 0, 2 * ABILITY.horizon)

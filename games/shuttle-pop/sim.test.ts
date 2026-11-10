@@ -2171,6 +2171,14 @@ describe('doubles', () => {
     expect(game.isFinished(s)).toBe(false)
     expect(scoreSoon(s)).toBe(true)
   })
+  it("the computer taking a leaver's seat doesn't wear a remaining human's look", () => {
+    const s = doubles(0, 2)
+    byId(s, 'p0').preset = byId(s, 'p2').preset // two humans may match
+    game.removePlayer!(s, 'p2')
+    const looks = s.players.map((p) => p.preset)
+    expect(looks[2]).not.toBe(byId(s, 'p0').preset)
+    expect(new Set(looks).size).toBe(4)
+  })
   it('a human leaving 1v1 still ends it (other side wins)', () => {
     const s = duel()
     game.removePlayer!(s, 'p1')
@@ -2185,6 +2193,9 @@ describe('doubles', () => {
     const shots = seen.filter((e) => e.k === 'hit' || e.k === 'serve')
     expect(shots.length).toBeGreaterThan(2)
     expect(shots.every((e) => 'by' in e && !!e.by)).toBe(true)
-    expect(scoreSoon(s)).toBe(true)
+    // Each seat plans from its own spot: both teammates of a side get to hit, and points come quickly.
+    const hitters = new Set(seen.filter((e) => e.k === 'hit').map((e) => ('by' in e ? e.by : '')))
+    expect(hitters.size).toBeGreaterThanOrEqual(3)
+    expect(s.score[0] + s.score[1]).toBeGreaterThan(0)
   })
 })

@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { random } from '@forge/core/rng'
-import { botStep, LEVELS, NEAR_LINE, newBotMemory, readyDepth, type BotLevel, type BotMemory } from './ai'
+import {
+  BOT_SERVE_TICKS,
+  botStep,
+  coverDepth,
+  LEVELS,
+  NEAR_LINE,
+  newBotMemory,
+  readyDepth,
+  type BotLevel,
+  type BotMemory,
+} from './ai'
 import type { InputEvent } from '@forge/net/session'
 import { COURT } from './physics'
 import { COURT_SIZES, courtDims } from './courtsize'
@@ -8,7 +18,10 @@ import { toWorld } from './court'
 import { STUN } from './stun'
 import {
   canAct,
+  createState,
+  serverPlayer,
   setupBots,
+  setupDoubles,
   shuttlePopGame as game,
   TICK_RATE,
   type Level,
@@ -545,5 +558,175 @@ describe('bot under a racket stun', () => {
     const noAim = (outs: SpInput[][]) =>
       outs.map((o) => o.map((i) => (i.t === 'swing' || i.t === 'ability' ? i.t : i)))
     expect(noAim(run(2, -5))).toEqual(noAim(atNet))
+  })
+})
+
+/** FNV-1a over a string: a compact fingerprint of a long input log. */
+function fnv(str: string): number {
+  let h = 0x811c9dc5
+  for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 0x01000193) >>> 0
+  return h
+}
+
+describe('doubles AI', () => {
+  it(
+    '1v1 botStep output is unchanged',
+    () => {
+      // Pinned before 2v2 teammates (Task 5): 1v1 bots draw the same rng and send the same inputs.
+      const s = setupBots('normal', 'hard', 5)
+      for (const p of s.players) p.level = undefined
+      const log: string[] = []
+      for (let t = 0; t < 4000 && s.phase !== 'over'; t++) {
+        const inputs: InputEvent<SpInput>[] = []
+        s.players.forEach((p, i) => {
+          const mem = p.bot!
+          const rng = () => {
+            const r = { seed: mem.rng }
+            const v = random(r)
+            mem.rng = r.seed
+            return v
+          }
+          for (const input of botStep(s, i as 0 | 1, i === 0 ? 'normal' : 'hard', mem, rng))
+            inputs.push({ player: p.id, input })
+        })
+        log.push(JSON.stringify(inputs))
+        game.tick(s, inputs)
+      }
+      expect(fnv(log.join('|'))).toBe(731777172)
+    },
+    SLOW,
+  )
+
+  /**
+   * normal×4 doubles run by the sim; at each shot's plan tick, the receiving pair's memories (both plan
+   * on the same tick: same level). Shots where a receiver was stunned (no plan) are skipped.
+   */
+  function pairPlans(seed: number, shots: number) {
+    const s = setupDoubles(['normal', 'normal', 'normal', 'normal'], seed)
+    const react = LEVELS.normal.reactTicks
+    const out: { side: 0 | 1; mems: BotMemory[] }[] = []
+    let due: { at: number; side: 0 | 1 } | null = null
+    let lastId = s.nextEventId - 1
+    while (out.length < shots && s.phase !== 'over') {
+      game.tick(s, [])
+      for (const e of s.events)
+        if (e.id > lastId && (e.k === 'hit' || e.k === 'serve'))
+          due = { at: e.tick + react, side: e.side === 0 ? 1 : 0 }
+      lastId = s.nextEventId - 1
+      if (!due || s.tick !== due.at) continue
+      const team = s.players.filter((p) => p.side === due!.side)
+      if (team.every((p) => p.bot!.targetAt === due!.at))
+        out.push({ side: due.side, mems: team.map((p) => structuredClone(p.bot!)) })
+    }
+    return out
+  }
+
+  it(
+    'doubles: exactly one AI per side plans a swing for a shot',
+    () => {
+      const plans = pairPlans(21, 30)
+      expect(plans).toHaveLength(30)
+      let one = 0
+      for (const { mems } of plans) {
+        const swings = mems.filter((m) => m.plannedSwingTick >= 0).length
+        expect(swings).toBeLessThanOrEqual(1)
+        // A shot called in has one taker and one cover; a shot left alone (out / net): neither covers.
+        const covers = mems.filter((m) => m.cover).length
+        expect(covers).toBeLessThanOrEqual(1)
+        if (swings === 1) {
+          one++
+          expect(covers).toBe(1)
+        }
+      }
+      expect(one / plans.length).toBeGreaterThanOrEqual(0.7)
+    },
+    SLOW,
+  )
+
+  it(
+    'doubles: the cover AI stands on the other half',
+    () => {
+      let checked = 0
+      for (const { side, mems } of pairPlans(33, 30)) {
+        const taker = mems.find((m) => !m.cover && m.plannedSwingTick >= 0)
+        const cover = mems.find((m) => m.cover)
+        if (!taker || !cover) continue
+        const tx = toWorld(side, taker.target.x, taker.target.z).x
+        if (Math.abs(tx) < 0.6) continue
+        checked++
+        expect(Math.sign(toWorld(side, cover.target.x, cover.target.z).x)).toBe(-Math.sign(tx))
+        expect(Math.abs(cover.target.z)).toBeCloseTo(coverDepth(COURT), 6)
+      }
+      expect(checked).toBeGreaterThanOrEqual(5)
+    },
+    SLOW,
+  )
+
+  /** 2v2 alone (human p0 + ai2 on side 0) mid-rally: a shuttle falling straight onto (x, z) on side 0. */
+  function teamRally(x: number, z: number): SpState {
+    const s = createState([{ id: 'p0', name: 'P0', slot: 0, ready: true, connected: true }], 1, {
+      mode: '2v2',
+    })
+    s.phase = 'rally'
+    s.phaseT = 0
+    s.shuttle.pos = { x, y: 3, z }
+    s.shuttle.vel = { x: 0, y: 0, z: 0 }
+    s.shuttle.lastHitter = 1
+    s.shuttle.pending = null
+    s.events = [{ id: s.nextEventId++, tick: s.tick, k: 'hit', side: 1, grade: 'good', shot: 'clear' }]
+    s.tick += 30
+    return s
+  }
+
+  it('doubles: AI defers to a nearer human teammate', () => {
+    const near = teamRally(1.2, -3)
+    Object.assign(near.players[0], { x: 1.0, z: -3.2 })
+    Object.assign(near.players[2], { x: -1.5, z: -2 })
+    const mem = newBotMemory(1, 2)
+    botStep(
+      near,
+      2,
+      'normal',
+      mem,
+      () => 0.5,
+      () => 0.99,
+    )
+    expect(mem.cover).toBe(true)
+    expect(mem.plannedSwingTick).toBe(-1)
+    expect(Math.sign(toWorld(0, mem.target.x, mem.target.z).x)).toBe(-Math.sign(toWorld(0, 1.2, -3).x))
+    // The human far away: the computer takes it.
+    const far = teamRally(1.2, -3)
+    Object.assign(far.players[0], { x: -2.5, z: -1 })
+    Object.assign(far.players[2], { x: 0.5, z: -3 })
+    const mem2 = newBotMemory(1, 2)
+    botStep(
+      far,
+      2,
+      'normal',
+      mem2,
+      () => 0.5,
+      () => 0.99,
+    )
+    expect(mem2.cover).toBe(false)
+    expect(mem2.plannedSwingTick).toBeGreaterThanOrEqual(0)
+  })
+
+  it('doubles: AI serves only when it is the server', () => {
+    const s = setupDoubles(['normal', 'normal', 'normal', 'normal'], 4)
+    for (const [server, slots] of [
+      [0, [0, 0]],
+      [0, [1, 0]],
+      [1, [0, 1]],
+    ] as const) {
+      s.phase = 'serve'
+      s.phaseT = BOT_SERVE_TICKS
+      s.server = server
+      s.serveSlot = [slots[0], slots[1]]
+      const servers = s.players.filter((_, i) =>
+        botStep(s, i, 'normal', newBotMemory(1, i), () => 0.5).some((input) => input.t === 'swing'),
+      )
+      expect(servers).toEqual([serverPlayer(s)])
+      expect(servers[0].slot).toBe(slots[server])
+    }
   })
 })

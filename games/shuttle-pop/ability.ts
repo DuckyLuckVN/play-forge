@@ -58,8 +58,10 @@ export function leadOf(k?: Strike): number {
 }
 
 /**
- * The move a press makes from `at`: a jump when the shuttle passes high in the jump box on my half within
- * ABILITY.horizon, else a lunge when it passes in the lunge box, else (or when it is not mine to hit) a hop.
+ * The move a press makes from `at`: a jump when the shuttle passes in the jump box on my half within
+ * ABILITY.horizon and a plain swing can't reach it (or the jump contact is above REACH.maxY), else a lunge
+ * when it passes in the lunge box and a plain swing can't reach it, else (or when not mine to hit) a hop.
+ * Never an always-correct button: anything a plain swing reaches hops.
  * Direction = unit (contact − at), 0/0 when on top of it. `f` is not mutated.
  */
 export function pickAbility(
@@ -70,9 +72,13 @@ export function pickAbility(
   canHit: boolean,
 ): { k: AbilityKind; dx: number; dz: number } {
   if (canHit && lastHitter !== side) {
+    const mine = (c: { pos: { z: number } } | null): boolean => !!c && onHalf(c.pos.z, side, lastHitter)
+    // A plain swing reaches it: the button only jumps for what is above the plain box, never lunges.
+    const plain = mine(findContact(f, at, 0, ABILITY.horizon))
     for (const k of ['jump', 'lunge'] as const) {
       const c = findContact(f, at, 0, ABILITY.horizon, reachOf(k))
-      if (!c || !onHalf(c.pos.z, side, lastHitter)) continue
+      if (!c || !mine(c)) continue
+      if (plain && (k === 'lunge' || c.pos.y <= REACH.maxY)) continue
       const x = c.pos.x - at.x
       const z = c.pos.z - at.z
       const d = Math.hypot(x, z)
@@ -117,8 +123,8 @@ export function acting(act: Act | null, tick: number): boolean {
 
 /** Movement speed multiplier: jump air ABILITY.jump.airMul, jump landing lock 0, lunge 0, else 1. */
 export function actMoveMul(act: Act | null, tick: number): number {
-  if (!acting(act, tick)) return 1
-  if (act!.k === 'jump' && tick - act!.at < ABILITY.jump.air) return ABILITY.jump.airMul
+  if (!act || !acting(act, tick)) return 1
+  if (act.k === 'jump' && tick - act.at < ABILITY.jump.air) return ABILITY.jump.airMul
   return 0
 }
 

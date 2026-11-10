@@ -18,7 +18,7 @@ import type { Flight } from './physics'
 import { REACH } from './shots'
 
 const act = (k: AbilityKind, at: number): Act => ({ k, at, dx: 0, dz: 0 })
-/** A high lob on side 0's half: apex ~3.4 m around z -2.2. */
+/** A high lob on side 0's half: apex ~3.4 m around z -2.2 (enters plain reach at y 2.9, peaks above it). */
 const lob = (): Flight => ({ pos: { x: 0, y: 2.9, z: -1.5 }, vel: { x: 0, y: 3.5, z: -2.5 } })
 /** A low drive, y ~0.8, passing 1.8 m wide of a player at (0, -5.4). */
 const drive = (): Flight => ({ pos: { x: 1.8, y: 0.8, z: -7 }, vel: { x: 0, y: 1.2, z: 9 } })
@@ -35,6 +35,9 @@ describe('ability', () => {
   })
 
   it('picks jump for a high shuttle, lunge for a low far one, hop otherwise', () => {
+    // a shuttle only above plain reach: jump; its contact is above REACH.maxY
+    const over: Flight = { pos: { x: -3, y: 3.2, z: -2 }, vel: { x: 12, y: 2.6, z: 0 } }
+    expect(pickAbility(over, { x: 0, z: -2 }, 0, 1, true).k).toBe('jump')
     const f = lob()
     const snap = JSON.stringify(f)
     const j = pickAbility(f, { x: 0.4, z: -2.2 }, 0, 1, true)
@@ -56,6 +59,10 @@ describe('ability', () => {
     expect(pickAbility(lob(), { x: 0.4, z: -2.2 }, 1, 0, true)).toEqual(hop)
     expect(pickAbility(lob(), { x: 0.4, z: -2.2 }, 0, 1, false)).toEqual(hop)
     expect(pickAbility(lob(), { x: 0.4, z: -2.2 }, 0, 0, true)).toEqual(hop)
+    // a plain swing reaches it: hop (no free jump / lunge)
+    const mid: Flight = { pos: { x: 0, y: 2.2, z: -1.5 }, vel: { x: 0, y: 1.5, z: -2.5 } }
+    expect(pickAbility(mid, { x: 0.4, z: -2.2 }, 0, 1, true)).toEqual(hop)
+    expect(pickAbility(drive(), { x: 1.0, z: -5.4 }, 0, 1, true)).toEqual(hop)
     // nothing in any box: hop
     expect(pickAbility(lob(), { x: 2.5, z: -6 }, 0, 1, true)).toEqual(hop)
   })

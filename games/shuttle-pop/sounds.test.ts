@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Sound } from '@forge/audio/sound'
+import type { Sound, Tone } from '@forge/audio/sound'
 import { chargeSound, eventSound, SHUTTLE_SOUNDS, swingSound } from './sounds'
 import type { SpEvent } from './sim'
 
@@ -71,10 +71,19 @@ describe('power sounds (hold-to-charge)', () => {
     expect(eventSound(hit('perfect', 'smash'), 0)?.sound).toBe(SHUTTLE_SOUNDS.smash)
   })
 
-  it('the release whoosh gets bigger with the charge; a tap keeps the old whoosh', () => {
-    expect(swingSound(0)).toBe(SHUTTLE_SOUNDS.swing)
-    expect(swingSound(0.5)).toBe(SHUTTLE_SOUNDS.swingMid)
-    expect(swingSound(1)).toBe(SHUTTLE_SOUNDS.swingFull)
+  it('swing = whoosh + body at every charge; louder and lower the more it was charged', () => {
+    const layers = (c: number) => swingSound(c) as Tone[]
+    expect(layers(0).length).toBeGreaterThanOrEqual(2) // layered even for a tap
+    const vol = (c: number) => layers(c).reduce((a, t) => a + (t.vol ?? 0), 0)
+    expect(vol(0.5)).toBeGreaterThan(vol(0))
+    expect(vol(1)).toBeGreaterThan(vol(0.5))
+    expect(layers(1)[1].freq).toBeLessThan(layers(0)[1].freq) // heavier body
+    expect(layers(1)[0].dur).toBeGreaterThan(layers(0)[0].dur)
+  })
+
+  it('the same charge step returns the same precomputed sound (no allocation per swing)', () => {
+    expect(swingSound(0.98)).toBe(swingSound(1))
+    expect(swingSound(NaN)).toBe(swingSound(0))
   })
 
   it('charging rises in pitch stage by stage and tings at full; no sound before it starts', () => {
@@ -102,6 +111,11 @@ describe('sound headroom', () => {
           const r = eventSound({ ...at, k: 'hit', side: 0, grade, shot, charge: power, power }, 0)!
           expect(onsetPeak(r.sound) * r.vol * SFX_BUS, `${grade} ${shot} ${power}`).toBeLessThanOrEqual(1)
         }
+  })
+
+  it('every swing step peaks at most 1.0 at full effects volume', () => {
+    for (const c of [0, 0.25, 0.5, 0.75, 1])
+      expect(onsetPeak(swingSound(c)) * SFX_BUS, `charge ${c}`).toBeLessThanOrEqual(1)
   })
 
   it('the power smash is not boosted on top (its layers are the boost)', () => {

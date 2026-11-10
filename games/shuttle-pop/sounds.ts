@@ -1,6 +1,7 @@
 // Shuttle Pop sound effects (synthesised, see @forge/audio/sound). Music is the stock ARCADE track.
 import type { Sound, Tone } from '@forge/audio/sound'
-import { CHARGE, isFull } from './charge'
+import { levelStep, soundSteps, type ToneRecipe } from '@forge/audio/recipe'
+import { CHARGE } from './charge'
 import { isPowerHit } from './power'
 import type { Grade } from './shots'
 import type { SpEvent } from './sim'
@@ -17,17 +18,6 @@ const THWACK: Tone[] = [
 ]
 
 export const SHUTTLE_SOUNDS = {
-  /** Racket through the air: plays on the release itself, before the state comes back. A tap's. */
-  swing: { freq: 2600, to: 700, dur: 0.12, wave: 'noise', vol: 0.22 },
-  /** A charged release: deeper and louder whooshes. */
-  swingMid: [
-    { freq: 2200, to: 450, dur: 0.15, wave: 'noise', vol: 0.32 },
-    { freq: 150, to: 80, dur: 0.12, wave: 'sine', vol: 0.18 },
-  ],
-  swingFull: [
-    { freq: 1800, to: 300, dur: 0.2, wave: 'noise', vol: 0.45 },
-    { freq: 120, to: 55, dur: 0.18, wave: 'sine', vol: 0.3 },
-  ],
   /** Charging: a whirr per stage (CHARGE.steps), each a step higher, then a bright ting at full. */
   charge1: [
     { freq: 220, to: 300, dur: 0.14, wave: 'triangle', vol: 0.14 },
@@ -104,10 +94,39 @@ const CHARGED: Record<Grade, Sound> = {
   perfect: [...SHUTTLE_SOUNDS.perfect, ...THWACK],
 }
 
+/**
+ * Racket through the air, plays on the release itself (before the state comes back). Level = charge:
+ * a tap is a short airy whoosh + soft body; full charge is a long deep whoosh, a heavy body and a
+ * high rip on the front edge (the rip only exists once charged).
+ */
+const SWING_RECIPE: readonly ToneRecipe[] = [
+  {
+    freq: [2600, 1500],
+    to: [700, 260],
+    dur: [0.12, 0.22],
+    vol: [0.24, 0.42],
+    wave: 'noise',
+    filter: 'bandpass',
+    q: [0.9, 0.6],
+  },
+  { freq: [190, 120], to: [90, 50], dur: [0.08, 0.18], vol: [0.08, 0.3], wave: 'sine' },
+  {
+    freq: [3000, 2400],
+    to: [5000, 4200],
+    dur: 0.1,
+    vol: [0, 0.16],
+    at: [0.02, 0.03],
+    wave: 'noise',
+    filter: 'highpass',
+  },
+]
+export const SWING_STEPS = 5
+/** The swing at each charge step (built once). */
+export const SWING: readonly Tone[][] = soundSteps(SWING_RECIPE, SWING_STEPS)
+
 /** The release whoosh for a swing charged `charge` (0 = a tap). */
 export function swingSound(charge: number): Sound {
-  if (isFull(charge)) return SHUTTLE_SOUNDS.swingFull
-  return charge >= THWACK_FROM ? SHUTTLE_SOUNDS.swingMid : SHUTTLE_SOUNDS.swing
+  return SWING[levelStep(charge, SWING_STEPS)]
 }
 
 const CHARGE_STAGES: readonly Sound[] = [

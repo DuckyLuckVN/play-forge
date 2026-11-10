@@ -40,7 +40,8 @@ import { DustPuffs } from './dust'
 import { Hud, matchPoint, newEvents, newestShotId, trackerAction, type PopKind } from './hud'
 import { t } from './i18n'
 import { damp, Gait, GaitEvent } from './locomotion'
-import { leapAtHit, leapStartAge, lookAround, SMASH, smashJump, SWING, type Hop } from './moves'
+import { CONTACT_T } from './arm'
+import { leapAtHit, leapStartAge, lookAround, SMASH, smashJump, SwingDriver, type Hop } from './moves'
 import { COURT, predictLanding, type Vec3 } from './physics'
 import type { GuestPredictor } from './predict'
 import { SpringPunch } from './punch'
@@ -96,6 +97,8 @@ const SHUTTLE_SNAP = 2
 const MOTION = {
   readyRate: 6,
   crouchRate: 18,
+  /** Plain swing ↔ overhead smash blend (fast: it settles during the ~50 ms wind-up). */
+  smashRate: 30,
   moodRate: 8,
   squash: { k: 260, zeta: 0.35 },
   lean: { k: 160, zeta: 0.3 },
@@ -173,8 +176,8 @@ interface PlayerView {
   preset: number
   /** Drawn as the tinted far twin (both sides on the same preset). */
   alt: boolean
-  /** Seconds since the last swing started (Infinity = idle). */
-  swingAge: number
+  /** Racket swing timeline (wind-up / hold / strike). */
+  swing: SwingDriver
   /** Last swingAt seen in the state (NaN = none yet). */
   swingAt: number
   /** Seconds since the last smash leap started (Infinity = grounded, < 0 = scheduled, crouching). */
@@ -200,7 +203,7 @@ function makePlayer(preset: number): PlayerView {
     chibi,
     preset: -1,
     alt: false,
-    swingAge: Infinity,
+    swing: new SwingDriver(),
     swingAt: NaN,
     jumpAge: Infinity,
     leapTick: NaN,
@@ -444,7 +447,7 @@ export class Court3D {
     this.settle = QUALITY_SETTLE
     this.quality.restart()
     onLocalSwing(() => {
-      this.players[this.localIdx].swingAge = 0
+      this.players[this.localIdx].swing.press()
       this.localPressAt = this.time
       playSound(SHUTTLE_SOUNDS.swing)
     })
@@ -477,7 +480,7 @@ export class Court3D {
     this.dust.reset()
     this.lastPop[0] = this.lastPop[1] = -Infinity
     for (const p of this.players) {
-      p.swingAge = Infinity
+      p.swing.reset()
       p.swingAt = NaN
       p.jumpAge = Infinity
       p.leapTick = NaN
@@ -557,26 +560,28 @@ export class Court3D {
       if (cp.swingAt !== view.swingAt) {
         const pressed = i === this.localIdx && this.time - this.localPressAt < LOCAL_SWING_GRACE
         if (!Number.isNaN(view.swingAt) && !pressed) {
-          view.swingAge = 0
+          view.swing.press()
           playSound(SHUTTLE_SOUNDS.swing, i === this.localIdx ? 1 : 0.5)
         }
         view.swingAt = cp.swingAt
       }
-      view.swingAge += dt
-      // A pending smash of mine: schedule the leap so its rise tops out at the contact tick (render
-      // time sits between the prev and curr ticks). Once per pending shot.
+      // A pending contact of mine (render time sits between the prev and curr ticks): the racket holds
+      // its wind-up so the strike meets the shuttle on the contact tick. A smash also schedules the leap
+      // so its rise tops out there (once per pending shot).
       const pend = curr.shuttle.pending
-      const loading = pend !== null && pend.kind === 'smash' && pend.side === cp.side
+      const mine = pend !== null && pend.side === cp.side
+      const lead = mine ? (pend.atTick - (prev.tick + (curr.tick - prev.tick) * a)) / TICK_RATE : 0
+      view.swing.update(dt, lead - CONTACT_T)
+      const loading = mine && pend.kind === 'smash'
       if (loading && pend.atTick !== view.leapTick) {
         view.leapTick = pend.atTick
-        const now = prev.tick + (curr.tick - prev.tick) * a
-        view.jumpAge = leapStartAge((pend.atTick - now) / TICK_RATE)
+        view.jumpAge = leapStartAge(lead)
       }
       const landed = view.jumpAge < SMASH.land && view.jumpAge + dt >= SMASH.land
       view.jumpAge += dt
       // Celebrate / slump through the point pause and on the results screen.
       const mood = moodOf(curr.phase, curr.winner, this.pointSide, cp.side)
-      const swinging = view.swingAge < SWING.time
+      const swinging = view.swing.busy
 
       // Gait from the interpolated sim velocity (render space), facing the net when swinging / posing.
       const netYaw = z < 0 ? 0 : Math.PI
@@ -598,7 +603,12 @@ export class Court3D {
       pose.stride = g.phase
       pose.fwd = g.fwd
       pose.side = g.side
-      pose.swing = swinging ? view.swingAge / SWING.time : 0
+      const sw = view.swing
+      pose.load = sw.load
+      pose.strike = sw.strike
+      pose.prev = sw.prev
+      const leaping = view.jumpAge >= 0 && view.jumpAge < SMASH.land
+      pose.smash = damp(pose.smash, loading || leaping ? 1 : 0, MOTION.smashRate, dt)
       smashJump(view.jumpAge, this.leap)
       pose.jump = this.leap.height
       pose.squash = view.squash.update(dt) + this.leap.squash

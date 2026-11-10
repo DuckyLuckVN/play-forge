@@ -8,44 +8,60 @@ import {
   SMASH,
   SWING,
   smashJump,
-  swingCurve,
-  type SwingPose,
+  SwingDriver,
 } from './moves'
+import { CONTACT_T, FOLLOW_T, STRIKE_END } from './arm'
 
-const pose = (): SwingPose => ({ weight: 0, arm: 0, out: 0, wrist: 0, twist: 0, streak: 0 })
-
-describe('swingCurve', () => {
-  it('blends in from and back out to the base pose (weight 0 at both ends)', () => {
-    expect(swingCurve(0, pose()).weight).toBe(0)
-    expect(swingCurve(1, pose()).weight).toBe(0)
-    expect(swingCurve(0.5, pose()).weight).toBe(1)
+describe('SwingDriver', () => {
+  it('winds up, strikes after the wind-up, settles and goes idle', () => {
+    const d = new SwingDriver()
+    expect(d.busy).toBe(false)
+    d.press()
+    expect(d.busy).toBe(true)
+    d.update(SWING.load / 2)
+    expect(d.load).toBeGreaterThan(0)
+    expect(d.load).toBeLessThan(1)
+    expect(d.strike).toBe(-1)
+    d.update(SWING.load / 2 + 0.01)
+    expect(d.load).toBe(1)
+    expect(d.strike).toBeCloseTo(0.01, 9)
+    d.update(FOLLOW_T)
+    expect(d.busy).toBe(false)
+    d.update(STRIKE_END)
+    expect([d.load, d.strike, d.age]).toEqual([0, -1, Infinity])
   })
 
-  it('winds up behind the head (~80 ms), then strikes fast forward, then follows through', () => {
-    const windupEnd = swingCurve(SWING.windup, pose())
-    expect(windupEnd.arm).toBeCloseTo(SWING.armBack, 6)
-    expect(SWING.windup * SWING.time).toBeGreaterThan(0.06)
-    expect(SWING.windup * SWING.time).toBeLessThan(0.1)
-    const strikeEnd = swingCurve(SWING.strike, pose())
-    expect(strikeEnd.arm).toBeCloseTo(SWING.armFollow, 6)
-    // The strike covers more angle per unit time than the wind-up.
-    const upRate = Math.abs(SWING.armBack) / SWING.windup
-    const strikeRate = Math.abs(SWING.armFollow - SWING.armBack) / (SWING.strike - SWING.windup)
-    expect(strikeRate).toBeGreaterThan(upRate * 1.5)
-  })
-
-  it('is continuous (no pops) and streaks only around the strike', () => {
-    const a = pose()
-    const b = pose()
-    for (let s = 0; s < 1; s += 0.005) {
-      swingCurve(s, a)
-      swingCurve(s + 0.005, b)
-      expect(Math.abs(b.arm - a.arm)).toBeLessThan(0.3)
-      expect(Math.abs(b.weight - a.weight)).toBeLessThan(0.15)
+  it('holds the loaded pose so the racket meets a known contact on time, at most maxHold', () => {
+    const d = new SwingDriver()
+    d.press()
+    const lead = 0.3 // contact 0.3 s after the press
+    let t = 0
+    while (d.strike < 0) {
+      d.update(1 / 120, lead - t - CONTACT_T)
+      t += 1 / 120
     }
-    expect(swingCurve(0.05, a).streak).toBe(0)
-    expect(swingCurve((SWING.windup + SWING.strike) / 2, a).streak).toBeGreaterThan(0.5)
-    expect(swingCurve(0.95, a).streak).toBe(0)
+    // Released so that release + CONTACT_T = the contact.
+    expect(t - d.strike + CONTACT_T).toBeCloseTo(lead, 6)
+    const far = new SwingDriver()
+    far.press()
+    far.update(0.5, 5)
+    expect(far.strike).toBeCloseTo(0.5 - SWING.load - SWING.maxHold, 9)
+  })
+
+  it('ignores a second press mid wind-up; a press mid strike keeps the old strike as prev', () => {
+    const d = new SwingDriver()
+    d.press()
+    d.update(0.02)
+    d.press()
+    expect(d.age).toBeCloseTo(0.02, 9)
+    d.update(0.1)
+    const strike = d.strike
+    expect(strike).toBeGreaterThan(0)
+    d.press()
+    expect(d.prev).toBe(strike)
+    expect(d.strike).toBe(-1)
+    d.update(STRIKE_END)
+    expect(d.prev).toBe(-1)
   })
 })
 

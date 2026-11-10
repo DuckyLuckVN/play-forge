@@ -166,7 +166,7 @@ function emit(state: SpState, body: EventBody) {
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 
 /** Finite, length ≤ 1 (no faster diagonals). Junk → 0. */
-function clampDir(x: unknown, z: unknown): { x: number; z: number } {
+export function clampDir(x: unknown, z: unknown): { x: number; z: number } {
   const fx = finite(x) ? x : 0
   const fz = finite(z) ? z : 0
   const len = Math.hypot(fx, fz)

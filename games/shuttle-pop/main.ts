@@ -2,6 +2,7 @@ import { createGameApp, h, landscapeGuard, smoothState, type Session } from '@fo
 import { ARCADE } from '@forge/audio/tracks'
 import { webglAvailable } from '@forge/render3d'
 import './shuttle-pop.css'
+import { chargeOf } from './charge'
 import { t } from './i18n'
 import { TouchPad } from './hud'
 import { bindInput } from './input'
@@ -16,6 +17,7 @@ import {
   canCharge,
   canSwing,
   createState,
+  MAX_REWIND,
   seedPreset,
   shownName,
   shuttlePopGame,
@@ -68,24 +70,52 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
     const me = s?.players.find((p) => p.id === session.selfId)
     return !!s && !!me && can(s, me)
   }
+  // Online guests show their own hit at once (GuestShuttle.predictHit, the sim's contact rules): the
+  // held press (its screen tick + local time, for the charge and the tap rules) and the move last sent.
+  let press: { tick: number | undefined; ms: number } | null = null
+  const moved = { x: 0, z: 0 }
+  const predictHit = (held: { x: number; z: number }, tap: boolean, charge: number, pressTick?: number) => {
+    const me = smooth.curr?.players.find((p) => p.id === session.selfId)
+    if (!guest || !predictor || !me) return
+    const player = { x: predictor.x, z: predictor.z }
+    guest.shuttle.predictHit({ side: me.side, held, charge, player, tap, pressTick })
+  }
   const send = (input: SpInput) => {
     // Animate our own swing button this frame (not when the session or the sim would drop it); the
     // prediction slows with the charge and moves with exactly the moves the host gets.
     if (input.t === 'charge') {
       if (input.cancel) {
+        press = null
         predictor?.setCharging(false)
         onSwing?.('cancel')
       } else if (live() && seatCan((s, me) => canCharge(s, me) && me.chargeAt !== TAPPED)) {
         // (A press already swung as a tap waits for its button-up: e.g. a resync while still held.)
         predictor?.setCharging(true)
         onSwing?.('charge')
+        // A fresh press may swing at once as a tap (sim tapOnPress); a repeat press keeps the first.
+        if (!press) {
+          press = { tick: input.tick, ms: performance.now() }
+          if (seatCan((s, me) => canSwing(s, me) && me.chargeAt === -1)) predictHit({ ...moved }, true, 0)
+        }
       } else return // the host would ignore it: don't send (no slow-down disagreement with the prediction)
     } else if (input.t === 'swing') {
       predictor?.setCharging(false)
       // A press that already swung as a tap (sim tapOnPress): its button-up is no second swing.
       const counts = live() && seatCan((s, me) => canSwing(s, me) && me.chargeAt !== TAPPED)
       onSwing?.(counts ? 'swing' : 'cancel')
-    } else if (input.t === 'move' && live()) predictor?.setMove(input.x, input.z)
+      if (counts) {
+        // The hold is the charge (the sim counts it in arrival ticks); a short tap is graded at its press.
+        const ticks = press ? ((performance.now() - press.ms) / 1000) * session.tickRate : 0
+        const charge = chargeOf(ticks)
+        const atPress = press && charge === 0 && ticks <= MAX_REWIND ? press.tick : undefined
+        predictHit({ x: input.x, z: input.z }, false, charge, atPress)
+      }
+      press = null
+    } else if (input.t === 'move' && live()) {
+      moved.x = input.x
+      moved.z = input.z
+      predictor?.setMove(input.x, input.z)
+    }
     session.sendInput(input)
   }
   // Touch: floating stick (left) + swing button (bottom-right), over the court.

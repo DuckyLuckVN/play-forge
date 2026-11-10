@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { GuestShuttle } from './guestshuttle'
+import { GuestShuttle, PREDICT, type OwnSwing } from './guestshuttle'
 import { solveLaunch, type Vec3 } from './physics'
 import { RenderClock } from './renderclock'
-import { createState, step, type SpState } from './sim'
+import { createState, step, type SpInput, type SpState } from './sim'
+import type { InputEvent } from '@forge/net/session'
 
 const DT = 1 / 60
 
@@ -266,5 +267,312 @@ describe('GuestShuttle', () => {
     expect(Math.abs(gs.pos.x - want.x)).toBeLessThan(1e-9)
     expect(Math.abs(gs.pos.y - want.y)).toBeLessThan(1e-9)
     expect(Math.abs(gs.pos.z - want.z)).toBeLessThan(1e-9)
+  })
+})
+
+// ---- Own-hit prediction: the guest (seat b, side 1) and the real host sim over a jittery link. ----
+
+const TICK_MS = 1000 / 60
+const dist = (a: Vec3, b: Vec3) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+const sub = (a: Vec3, b: Vec3): Vec3 => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z })
+
+/** A slow serve-like lob dropping toward seat b (side 1): it passes b at (0.3, 4.0) around y ≈ 1.9 m. */
+function incoming(host: { x: number; z: number } = { x: 0.3, z: 4 }): SpState {
+  const s = rally({ x: 0, y: 1.6, z: -3 }, { x: 0, y: 0, z: 0 })
+  s.shuttle.vel = solveLaunch(s.shuttle.pos, { x: 0, z: 5.5 }, 25, 40)
+  s.players[1].x = host.x
+  s.players[1].z = host.z
+  // The rally began with a serve: its event is still in the state's recent events (a serve return).
+  s.events = [{ id: 0, tick: s.tick, k: 'serve', side: 0 }]
+  return s
+}
+
+interface CoFrame {
+  tick: number
+  pos: Vec3
+}
+
+/**
+ * Host sim + guest view, both on fake time: host ticks every TICK_MS; states reach the guest after
+ * 40 + 0..25 ms (RTT ~100 ms, 25 ms jitter, ordered); the guest's swing reaches the host after
+ * `inputMs` (default the same link). The guest swings on the first frame `when(seenTick)` holds.
+ */
+function coSim(o: {
+  state: SpState
+  /** The guest's own predicted spot (reach is judged from it). */
+  guestAt: { x: number; z: number }
+  held: { x: number; z: number }
+  when: (seen: number) => boolean
+  inputMs?: number
+  seed?: number
+  ticks?: number
+}) {
+  let x = (o.seed ?? 1) >>> 0 || 1
+  const rnd = () => (x = (Math.imul(x, 1664525) + 1013904223) >>> 0) / 4294967296
+  const s = o.state
+  const base = s.tick
+  const host: SpState[] = [structuredClone(s)]
+  const sent: { at: number; state: SpState }[] = []
+  const inputs: { at: number; ev: InputEvent<SpInput> }[] = []
+  const clock = new RenderClock(60)
+  const gs = new GuestShuttle(clock)
+  const frames: CoFrame[] = []
+  let lastArr = -Infinity
+  let next = 0
+  let swingFrame = -1
+  let predicted = false
+  /** Frame index at which each host tick arrived. */
+  const arrivedAt = new Map<number, number>()
+  const end = (o.ticks ?? 110) * TICK_MS
+  for (let t = 7; t <= end; t += TICK_MS) {
+    // Host ticks due by now.
+    while ((s.tick + 1 - base) * TICK_MS <= t) {
+      const tt = (s.tick + 1 - base) * TICK_MS
+      const due = inputs.filter((i) => i.at <= tt)
+      for (const d of due) inputs.splice(inputs.indexOf(d), 1)
+      step(
+        s,
+        due.map((d) => d.ev),
+      )
+      const c = structuredClone(s)
+      host.push(c)
+      sent.push({ at: (lastArr = Math.max(lastArr, tt + 40 + rnd() * 25)), state: c })
+    }
+    while (next < sent.length && sent[next].at <= t) {
+      const st = sent[next++].state
+      clock.onState(st.tick)
+      gs.push(st)
+      arrivedAt.set(st.tick, frames.length)
+    }
+    clock.update(DT)
+    gs.update(DT)
+    frames.push({ tick: clock.tick, pos: { ...gs.pos } })
+    if (swingFrame < 0 && next > 0 && o.when(clock.seenTick())) {
+      swingFrame = frames.length - 1
+      const tick = clock.seenTick()
+      const sw: OwnSwing = { side: 1, held: o.held, charge: 0, player: o.guestAt, tap: false }
+      predicted = gs.predictHit(sw)
+      inputs.push({
+        at: t + (o.inputMs ?? 40 + rnd() * 25),
+        ev: { player: 'b', input: { t: 'swing', x: o.held.x, z: o.held.z, tick } },
+      })
+    }
+  }
+  /** The host's flight at fractional state tick k. */
+  const hostAt = (k: number): Vec3 => {
+    const i = Math.floor(k) - base
+    const a = host[Math.min(i, host.length - 1)].shuttle.pos
+    const b = host[Math.min(i + 1, host.length - 1)].shuttle.pos
+    return lerp(a, b, k - Math.floor(k))
+  }
+  const own = (k: 'hit' | 'whiff') =>
+    host[host.length - 1].events.find((e) => e.k === k && 'side' in e && e.side === 1) ??
+    host.flatMap((h) => h.events).find((e) => e.k === k && 'side' in e && e.side === 1)
+  return { frames, host, base, hostAt, own, swingFrame, predicted, arrivedAt }
+}
+
+/** First state tick the closest approach of the shuttle to seat b (history tick = state tick + 1). */
+function closest(s: SpState, at: { x: number; z: number }): number {
+  const c = structuredClone(s)
+  let best = Infinity
+  let tick = 0
+  for (let i = 0; i < 90; i++) {
+    const d = Math.hypot(c.shuttle.pos.x - at.x, c.shuttle.pos.z - at.z)
+    if (d < best) {
+      best = d
+      tick = c.tick + 1
+    }
+    step(c, [])
+  }
+  return tick
+}
+
+describe('GuestShuttle own-hit prediction', () => {
+  const ON = { x: 0.3, z: 4 }
+
+  it('predicted shot leaves from the contact tick (no fly-past)', () => {
+    for (let seed = 1; seed <= 5; seed++) {
+      const C = closest(incoming(), ON)
+      const r = coSim({ state: incoming(), guestAt: ON, held: { x: 0, z: -1 }, when: (k) => k >= C, seed })
+      expect(r.predicted, `seed ${seed}`).toBe(true)
+      expect(r.own('hit'), `seed ${seed}`).toMatchObject({ grade: 'perfect' })
+      const maxHostZ = Math.max(...r.host.map((h) => h.shuttle.pos.z))
+      const after = r.frames.slice(r.swingFrame + 1, r.swingFrame + 40)
+      for (let i = 1; i < after.length; i++) {
+        // Side 1: toward the net is −z.
+        expect(after[i].pos.z - after[i - 1].pos.z, `seed ${seed} frame ${i}`).toBeLessThan(0)
+      }
+      for (const f of after) expect(f.pos.z, `seed ${seed}`).toBeLessThanOrEqual(maxHostZ + 0.05)
+    }
+  })
+
+  it.each(['perfect', 'good'] as const)('host agrees: no visible correction (%s)', (grade) => {
+    for (let seed = 1; seed <= 5; seed++) {
+      const C = closest(incoming(), ON)
+      const late = grade === 'good' ? 8 : 0
+      const r = coSim({
+        state: incoming(),
+        guestAt: ON,
+        held: { x: 0.4, z: -1 },
+        when: (k) => k >= C + late,
+        seed,
+      })
+      expect(r.predicted).toBe(true)
+      const hit = r.own('hit')!
+      expect(hit, `seed ${seed}`).toMatchObject({ grade })
+      // From the frame the host's hit state arrived: drawn steps follow the host flight's steps.
+      const from = r.arrivedAt.get(hit.tick)!
+      let first = true
+      for (let i = from; i < r.frames.length; i++) {
+        const a = r.frames[i - 1]
+        const b = r.frames[i]
+        if (a.tick < hit.tick) continue
+        if (first) {
+          expect(dist(b.pos, r.hostAt(b.tick)), `seed ${seed} at arrival`).toBeLessThan(0.1)
+          first = false
+        }
+        const corr = dist(sub(b.pos, a.pos), sub(r.hostAt(b.tick), r.hostAt(a.tick)))
+        expect(corr, `seed ${seed} frame ${i}`).toBeLessThanOrEqual(0.02)
+      }
+      expect(first).toBe(false)
+    }
+  })
+
+  it.each(['perfect', 'good'] as const)(
+    'an un-jittered host hit is exactly the predicted flight (%s)',
+    (grade) => {
+      for (let seed = 1; seed <= 5; seed++) {
+        const C = closest(incoming(), ON)
+        const state = incoming()
+        // mulberry32 seed whose 2nd draw (the aim jitter radius) is ~7e-10: the host aims un-jittered too.
+        state.rng = 25632116
+        const r = coSim({
+          state,
+          guestAt: ON,
+          held: { x: 0.4, z: -1 },
+          when: (k) => k >= C + (grade === 'good' ? 8 : 0),
+          seed,
+        })
+        const hit = r.own('hit')!
+        expect(hit, `seed ${seed}`).toMatchObject({ grade })
+        let n = 0
+        for (let i = r.swingFrame + 1; i < r.frames.length; i++) {
+          const f = r.frames[i]
+          if (f.tick < hit.tick) continue
+          expect(dist(f.pos, r.hostAt(f.tick)), `seed ${seed} frame ${i}`).toBeLessThan(1e-3)
+          n++
+        }
+        expect(n).toBeGreaterThan(20)
+      }
+    },
+  )
+
+  /** Every frame after the host's answer moves ≤ maxStep + the host's own step; on the host path within 30 ticks. */
+  function expectConverges(r: ReturnType<typeof coSim>, answerTick: number) {
+    const from = r.arrivedAt.get(answerTick)!
+    for (let i = from; i < r.frames.length; i++) {
+      const a = r.frames[i - 1]
+      const b = r.frames[i]
+      const hostStep = dist(r.hostAt(b.tick), r.hostAt(a.tick))
+      expect(dist(b.pos, a.pos), `frame ${i}`).toBeLessThanOrEqual(PREDICT.maxStep + hostStep + 1e-9)
+      if (i >= from + 30) expect(dist(b.pos, r.hostAt(b.tick)), `frame ${i}`).toBeLessThan(0.02)
+    }
+    expect(r.frames.length).toBeGreaterThan(from + 31)
+  }
+
+  it('host says miss: converges within 30 ticks, ≤ 0.3 m per frame', () => {
+    const guestAt = { x: 0.9, z: 4 }
+    for (let seed = 1; seed <= 5; seed++) {
+      // On the host the guest stands 0.5 m further: out of reach.
+      const C = closest(incoming(), guestAt)
+      const r = coSim({
+        state: incoming({ x: 1.4, z: 4 }),
+        guestAt,
+        held: { x: 0, z: 1 },
+        when: (k) => k >= C,
+        seed,
+        ticks: 120,
+      })
+      expect(r.predicted).toBe(true)
+      expect(r.own('hit')).toBeUndefined()
+      const whiff = r.own('whiff')!
+      expect(whiff).toBeDefined()
+      expectConverges(r, whiff.tick)
+    }
+  })
+
+  it('host picks a different shot: converges', () => {
+    for (let seed = 1; seed <= 5; seed++) {
+      const C = closest(incoming(), ON)
+      // The host has the guest further back than its prediction: the same swing is 13+ ticks early
+      // there (late → a clear, not the predicted Perfect drop).
+      const r = coSim({
+        state: incoming({ x: 0.3, z: 4.9 }),
+        guestAt: ON,
+        held: { x: 0, z: 0 },
+        when: (k) => k >= C,
+        seed,
+        ticks: 130,
+      })
+      expect(r.predicted).toBe(true)
+      const hit = r.own('hit')!
+      expect(hit, `seed ${seed}`).toMatchObject({ grade: 'late', shot: 'clear' })
+      expectConverges(r, hit.tick)
+    }
+  })
+
+  it('a press predicts only a contact within CHARGE.start ticks (the sim tap rule)', () => {
+    const C = closest(incoming(), ON)
+    const tryAt = (seen: number, tap: boolean) => {
+      const states = host(incoming(), C + 2)
+      const clock = new RenderClock(60)
+      const gs = new GuestShuttle(clock)
+      for (const st of states) {
+        clock.onState(st.tick)
+        gs.push(st)
+      }
+      clock.tick = seen - 1 // seenTick() = round(tick) + 1
+      gs.update(DT)
+      return gs.predictHit({ side: 1, held: { x: 0, z: -1 }, charge: 0, player: ON, tap })
+    }
+    expect(tryAt(C - 12, true)).toBe(false)
+    expect(tryAt(C - 12, false)).toBe(true)
+    expect(tryAt(C - 9, true)).toBe(true)
+  })
+
+  it('no prediction when the opponent hit last or a hit is pending', () => {
+    const states = host(incoming(), 30)
+    const sw: OwnSwing = { side: 1, held: { x: 0, z: 0 }, charge: 0, player: { x: 0, z: 0 }, tap: false }
+    for (const mutate of [
+      (s: SpState) => (s.shuttle.lastHitter = 1),
+      (s: SpState) =>
+        (s.shuttle.pending = {
+          atTick: s.tick + 3,
+          side: 0,
+          kind: 'clear',
+          grade: 'good',
+          aimX: 0,
+          charge: 0,
+          fromTick: s.tick + 3,
+        }),
+    ]) {
+      const clock = new RenderClock(60)
+      const gs = new GuestShuttle(clock)
+      for (const st of states) {
+        const c = structuredClone(st)
+        mutate(c)
+        // The shuttle sits on seat b: any allowed swing would connect.
+        sw.player = { x: c.shuttle.pos.x, z: c.shuttle.pos.z }
+        clock.onState(c.tick)
+        gs.push(c)
+        clock.update(DT)
+        gs.update(DT)
+      }
+      const before = { ...gs.pos }
+      expect(gs.predictHit({ ...sw, player: { x: gs.pos.x, z: Math.max(0.1, gs.pos.z) } })).toBe(false)
+      clock.update(DT)
+      gs.update(DT)
+      expect(gs.pos.z).toBeGreaterThan(before.z)
+    }
   })
 })

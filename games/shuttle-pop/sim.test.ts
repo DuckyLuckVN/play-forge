@@ -2198,6 +2198,41 @@ describe('doubles', () => {
     expect(looks[2]).not.toBe(byId(s, 'p0').preset)
     expect(new Set(looks).size).toBe(4)
   })
+  it('a human seat in its grace window is driven by the computer; on return the human resumes', () => {
+    const s = doubles(0, 2)
+    s.aiLevel = 'easy'
+    const seat = byId(s, 'p2')
+    // Connected: no bot input for a human seat, only its own input moves it.
+    run(s, 20)
+    expect(seat.bot).toBeUndefined()
+    game.setConnected!(s, 'p2', false)
+    expect(seat.away).toBe(true)
+    expect(seat.kind).toBe('human')
+    run(s, 60)
+    expect(seat.bot).toBeDefined() // botInputs stepped it
+    game.setConnected!(s, 'p2', true)
+    expect(seat.away).toBeUndefined()
+    expect(seat.move).toEqual({ x: 0, z: 0 })
+    delete seat.bot
+    run(s, 60)
+    expect(seat.bot).toBeUndefined() // no bot step runs for it any more
+    expect(seat.id).toBe('p2')
+  })
+  it('setConnected is a no-op in 1v1 and for the computer seats', () => {
+    const s = duel()
+    game.setConnected!(s, 'p1', false)
+    expect(s.players.some((p) => p.away)).toBe(false)
+    const d = doubles(0)
+    game.setConnected!(d, `${AI_ID}1`, false)
+    expect(d.players.some((p) => p.away)).toBe(false)
+  })
+  it("a computer taking a seat keeps the other computers' looks", () => {
+    const s = doubles(0, 2)
+    s.players[3].preset = byId(s, 'p0').preset // an old clash the takeover must not touch
+    const keep = [s.players[1].preset, s.players[3].preset]
+    game.removePlayer!(s, 'p2')
+    expect([s.players[1].preset, s.players[3].preset]).toEqual(keep)
+  })
   it('a human leaving 1v1 still ends it (other side wins)', () => {
     const s = duel()
     game.removePlayer!(s, 'p1')

@@ -130,6 +130,8 @@ export interface SpPlayer {
   level?: Level
   /** AI seats: the bot's cached plan (see ai.ts). */
   bot?: BotMemory
+  /** 2v2 human seat in its reconnect grace: the computer drives it until they return. */
+  away?: boolean
 }
 
 export type SpEvent = { id: number; tick: number } &
@@ -232,9 +234,9 @@ export interface SpState {
 
 const other = (side: 0 | 1): 0 | 1 => (side === 0 ? 1 : 0)
 
-/** The player due to serve: the serving side's `serveSlot` player (1v1: the side's only player). */
+/** The player due to serve: the serving side's `serveSlot` player (1v1: the side's only player). Every side always has one; players[0] only satisfies the type. */
 export function serverPlayer(state: SpState): SpPlayer {
-  return serverOf(state.players, state.server, state.serveSlot)
+  return serverOf(state.players, state.server, state.serveSlot) ?? state.players[0]
 }
 
 function rand(state: SpState): number {
@@ -509,7 +511,8 @@ export function setupDoubles(
 function botInputs(state: SpState): InputEvent<SpInput>[] {
   const out: InputEvent<SpInput>[] = []
   state.players.forEach((p, i) => {
-    if (p.kind !== 'ai' || !p.level) return
+    const level = p.kind === 'ai' ? p.level : p.away ? state.aiLevel : undefined
+    if (!level) return
     // Seat index = side in 1v1 (the same stream as before 2v2).
     const mem = (p.bot ??= newBotMemory(state.rng, i))
     const rng = () => {
@@ -518,7 +521,7 @@ function botInputs(state: SpState): InputEvent<SpInput>[] {
       mem.rng = r.seed
       return v
     }
-    for (const input of botStep(state, i, p.level, mem, rng)) out.push({ player: p.id, input })
+    for (const input of botStep(state, i, level, mem, rng)) out.push({ player: p.id, input })
   })
   return out
 }
@@ -935,10 +938,14 @@ export function shownName(p: SpPlayer): string {
  * The computer never wears a human's look, nor an earlier computer's: an AI seat on a taken preset moves
  * to the next free one. (Two humans may match; the view tints the far one.)
  */
-export function separateAi(state: SpState): void {
+export function separateAi(state: SpState, only?: number): void {
   state.players.forEach((q, i) => {
-    if (q.kind !== 'ai') return
-    const taken = (n: number) => state.players.some((h, j) => (h.kind === 'human' || j < i) && h.preset === n)
+    if (q.kind !== 'ai' || (only !== undefined && i !== only)) return
+    // `only`: just this seat re-picks, clear of every other look (humans and computers alike).
+    const taken = (n: number) =>
+      state.players.some(
+        (h, j) => h.preset === n && (only !== undefined ? j !== i : h.kind === 'human' || j < i),
+      )
     if (!isAvailable(q.preset) || taken(q.preset)) q.preset = nextAvailable(q.preset, taken)
   })
 }
@@ -1099,8 +1106,20 @@ function takeSeat(state: SpState, i: number): void {
   p.bot = newBotMemory(state.rng, i)
   p.move = { x: 0, z: 0 }
   p.chargeAt = p.pressAt = -1
-  // The computer never wears a remaining human's look.
-  separateAi(state)
+  delete p.away
+  // The computer never wears a remaining human's look; the other computers keep theirs.
+  separateAi(state, i)
+}
+
+/** 2v2: a human seat in its grace window is played by the computer; back on return (a held input is dropped). */
+function setAway(state: SpState, id: string, away: boolean): void {
+  if (state.players.length !== MAX_SEATS) return
+  const p = state.players.find((q) => q.id === id)
+  if (!p || p.kind !== 'human' || !!p.away === away) return
+  if (away) p.away = true
+  else delete p.away
+  p.move = { x: 0, z: 0 }
+  p.chargeAt = p.pressAt = -1
 }
 
 export const shuttlePopGame: GameDefinition<SpState, SpInput> = {
@@ -1155,6 +1174,7 @@ export const shuttlePopGame: GameDefinition<SpState, SpInput> = {
     const { history, rng, ...rest } = state
     return rest
   },
+  setConnected: (state, id, connected) => setAway(state, id, !connected),
   removePlayer(state, id) {
     if (state.phase === 'over') return
     const i = state.players.findIndex((p) => p.id === id)

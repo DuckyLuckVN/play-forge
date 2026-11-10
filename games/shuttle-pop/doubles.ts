@@ -37,7 +37,7 @@ export function serverOf<T extends Seat>(
   players: readonly T[],
   server: 0 | 1,
   serveSlot: readonly [0 | 1, 0 | 1],
-): T {
+): T | undefined {
   const team = players.filter((p) => p.side === server)
   return team.find((p) => p.slot === serveSlot[server]) ?? team[0]
 }
@@ -71,7 +71,7 @@ export function teamName<T extends { kind: 'human' | 'ai' }>(
  * tie: distance gap (m) under which slot 0 takes; centre: view-x dead zone; splitX: cover lane × halfWidth;
  * depth: the pair's waiting / cover depth × the 1v1 ready depth (ai.ts readyDepth).
  */
-export const COVER = { tie: 0.05, centre: 0.3, splitX: 0.5, depth: 0.9 }
+export const COVER = { tie: 0.05, centre: 0.3, splitX: 0.5, depth: 0.9 } as const
 
 /** AI teammate who hits: nearest (xz) to the predicted landing, ties → slot 0, skipping `busy` (stunned / locked). */
 export function takerOf<T extends Seat & { x: number; z: number }>(

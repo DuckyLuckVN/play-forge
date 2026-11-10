@@ -45,6 +45,7 @@ Fun mini-games to play with friends: solo, on one device, or online. No accounts
 - **The host runs the game:** guests send their moves to the host, and the host sends the game state back to everyone.
 - **Reconnecting:**
   - A player who reloads or drops keeps their seat for 20 seconds and rejoins automatically.
+  - Shuttle Pop 2v2: a leaver who rejoins within the grace window gets their seat back (the computer plays it meanwhile); after it the computer keeps the seat.
   - If the host reloads, the room reopens with the same code and seats. Guests wait up to 30 seconds.
 - **Limits:**
   - A host reload ends the current match (the room survives).

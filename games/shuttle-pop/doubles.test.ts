@@ -53,8 +53,9 @@ describe('serve rotation', () => {
     expect(mateOf([ps[0]], ps[0])).toBeUndefined()
   })
   it('serverOf', () => {
-    expect(serverOf(ps, 1, [0, 1]).id).toBe('b1')
-    expect(serverOf([ps[0], ps[1]], 0, [1, 1]).id).toBe('a0')
+    expect(serverOf(ps, 1, [0, 1])?.id).toBe('b1')
+    expect(serverOf([ps[0], ps[1]], 0, [1, 1])?.id).toBe('a0')
+    expect(serverOf([ps[0]], 1, [0, 0])).toBeUndefined()
   })
   it('flipServe', () => {
     expect(flipServe([0, 0], 0, 1, true)).toEqual([1, 0])
@@ -67,7 +68,7 @@ describe('serve rotation', () => {
     const walk = (winner: 0 | 1): string => {
       slots = flipServe(slots, server, winner, true)
       server = winner
-      return serverOf(ps, server, slots).id
+      return serverOf(ps, server, slots)!.id
     }
     expect([1, 0, 0, 1, 1, 0].map((w) => walk(w as 0 | 1))).toEqual(['b0', 'a1', 'a1', 'b1', 'b1', 'a0'])
   })

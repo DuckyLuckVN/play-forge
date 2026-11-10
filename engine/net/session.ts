@@ -54,6 +54,8 @@ export interface GameDefinition<S, I> {
   netView?(state: S): unknown
   /** Called on the host when a player is gone for good mid-game. */
   removePlayer?(state: S, playerId: string): void
+  /** Called on the host mid-game when a player drops (grace window starts) or returns within it. */
+  setConnected?(state: S, playerId: string, connected: boolean): void
   /**
    * Opt-in seating: how many seats the room opens for these options, in how
    * many teams (seat s plays for team s % teams), and whether the game fills
@@ -566,7 +568,9 @@ export class Session<S, I> {
       this.playerOfPeer.set(peer, id)
       clearTimeout(this.dropTimers.get(id))
       this.dropTimers.delete(id)
+      const wasAway = !existing.connected
       existing.connected = true
+      if (wasAway) this.setConnected(id, true)
       existing.name = name
       if (avatar) existing.avatar = avatar
       else delete existing.avatar
@@ -614,6 +618,7 @@ export class Session<S, I> {
     const player = id && this.lobby.players.find((p) => p.id === id)
     if (!player) return
     player.connected = false
+    this.setConnected(player.id, false)
     this.scheduleDrop(player.id)
     this.broadcastLobby()
   }
@@ -627,6 +632,11 @@ export class Session<S, I> {
         this.removePlayer(id)
       }, this.graceMs),
     )
+  }
+
+  private setConnected(id: string, connected: boolean) {
+    const inMatch = this.lobby.phase === 'playing' || this.lobby.phase === 'countdown'
+    if (this.state && inMatch) this.def.setConnected?.(this.state, id, connected)
   }
 
   private removePlayer(id: string) {

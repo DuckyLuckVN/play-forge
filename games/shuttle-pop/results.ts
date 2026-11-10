@@ -39,12 +39,17 @@ export function outcomeOf(s: SpState, selfId: string): Outcome {
   const side = s.winner === 1 ? 1 : 0
   if (s.players.length > 2) {
     // 2v2 never ends early (the computer takes a leaver's seat).
-    const names = teamName(
-      s.players.filter((p) => p.side === side),
-      shownName,
-    )
-    if (!me) return { headline: t('{names} win!', { names }), result: 'done' }
+    const team = s.players.filter((p) => p.side === side)
+    const names = teamName(team, shownName)
+    // One name or "the computer" reads singular, not "Computer win".
+    const allAi = team.every((p) => p.kind === 'ai')
+    if (!me)
+      return {
+        headline: allAi ? t('{name} wins!', { name: names }) : t('{names} win!', { names }),
+        result: 'done',
+      }
     if (me.side === side) return { headline: t('Your team wins {score}!', { score }), result: 'win' }
+    if (allAi) return { headline: t('The computer wins {score}. Rematch?', { score }), result: 'lose' }
     return { headline: t('{names} win {score}.', { names, score }), result: 'lose' }
   }
   const won = s.players[side]

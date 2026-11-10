@@ -11,6 +11,7 @@ import { createCanvas2D } from '@forge/render2d/canvas'
 import { audioMenu } from '@forge/ui/audio-menu'
 import { button } from '@forge/ui/components'
 import { langMenu } from '@forge/ui/lang-menu'
+import { dismissSplash } from '@forge/ui/splash'
 import { h, icon, toast } from '@forge/ui/dom'
 import { fullscreenButton } from '@forge/ui/fullscreen'
 import { icons } from '@forge/ui/icons'
@@ -1568,3 +1569,5 @@ document.addEventListener('visibilitychange', () => {
 })
 
 showHome()
+// Own shell (no createGameApp): lift the first-paint splash ourselves.
+dismissSplash()

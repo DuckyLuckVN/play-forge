@@ -844,6 +844,44 @@ describe('hold-to-charge', () => {
       expect(hit.charge).toBeCloseTo(chargeOf(s.tick - at), 9)
     })
 
+    it("a moving guest's stamped swing is judged from where it saw itself (its predicted, current spot)", () => {
+      for (const lag of [5, 6, 7]) {
+        const s = duel()
+        const p1 = s.players[1]
+        p1.z = 3
+        p1.x = -1.5 // out of reach when the shuttle passes (host time)…
+        // A fast shuttle crossing 0.8 m from (0, 3) on the next tick (T), gone by T + lag.
+        rally(s, { x: -0.2, y: 1.5, z: 3.8 }, { x: 12, y: 1, z: 0 }, 0)
+        game.tick(s, [])
+        const T = s.tick
+        for (let k = 1; k < lag; k++) {
+          p1.x = -1.5 + (1.5 * k) / lag // …running in, ahead on its own (predicted) screen
+          game.tick(s, [])
+        }
+        p1.x = 0
+        game.tick(s, [ev('p1', { t: 'swing', x: 0, z: 0, tick: T })])
+        expect(
+          s.events.find((e) => e.k === 'hit'),
+          `lag ${lag}`,
+        ).toMatchObject({ side: 1, grade: 'perfect' })
+      }
+    })
+
+    it('the hold counts arrival to arrival: a lagged release (rewind 7) still gets the full hold', () => {
+      const s = duel()
+      s.phase = 'rally'
+      game.tick(s, [ev('p1', { t: 'charge' })])
+      const at = s.tick
+      run(s, 24)
+      rally(s, { x: 0, y: 1.5, z: 3 }, { x: 1.2, y: 1, z: 0 }, 0)
+      s.players[1].x = 0
+      s.players[1].z = 3
+      s.history.length = 0
+      game.tick(s, [ev('p1', { t: 'swing', x: 0, z: 0, tick: s.tick + 1 - MAX_REWIND })])
+      const hit = s.events.find((e) => e.k === 'hit') as { charge: number }
+      expect(hit.charge).toBeCloseTo(chargeOf(s.tick - at), 9)
+    })
+
     it('a press while the last one is TAPPED is ignored (a resync after a tap starts no new charge)', () => {
       const s = duel()
       s.phase = 'rally'

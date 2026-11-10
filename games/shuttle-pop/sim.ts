@@ -431,12 +431,16 @@ function contactFor(
   let bestD = Infinity
   let bestTick = 0
   let bestY = 0
-  for (const h of state.history) {
+  const hist = state.history
+  for (let i = 0; i < hist.length; i++) {
+    const h = hist[i]
     // Every in-reach past position competes (no pastGrace pre-filter): the grade is anchored on the
     // closest approach, so a swing well after it whiffs even if the shuttle still hovers in reach.
     if (h.tick >= state.tick || h.pos.y < REACH.minY || h.pos.y > REACH.maxY) continue
     if (!onHalf(h.pos.z, p.side, s.lastHitter)) continue
-    const at = h.who[p.side]
+    // Reach from where the swinger saw itself beside that shuttle: its own chibi runs ahead of the shown
+    // shuttle by the rewind (a guest's is predicted), so its spot `rewind` ticks later (or now).
+    const at = seenAt(hist, i, rewind, state.tick, p)
     const d = Math.hypot(h.pos.x - at.x, h.pos.z - at.z)
     if (d <= REACH.radius && d < bestD) {
       bestD = d
@@ -455,6 +459,22 @@ function contactFor(
   }
   const grade = bestD === Infinity ? null : gradeOf(bestTick - swingTick)
   return grade ? { tick: bestTick, y: bestY, grade } : null
+}
+
+/** `p`'s spot (by side) at tick hist[i].tick + rewind: from the history (contiguous ticks), or now. */
+function seenAt(
+  hist: SpState['history'],
+  i: number,
+  rewind: number,
+  now: number,
+  p: SpPlayer,
+): { x: number; z: number } {
+  const want = hist[i].tick + rewind
+  if (want >= now) return p
+  const j = i + rewind
+  if (j < hist.length && hist[j].tick === want) return hist[j].who[p.side]
+  for (const h of hist) if (h.tick === want) return h.who[p.side]
+  return p
 }
 
 /**
@@ -603,9 +623,9 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
         continue
       }
       // The release: the hold is the charge (no press before = a tap), counted from the press's arrival
-      // to the rewound release, so lag or a stamped tick only ever shortens it.
+      // to the release's: stamped ticks can't change it, and a guest who saw FULL gets full.
       const released = humanRewind(state, p, input.tick)
-      const charge = p.chargeAt >= 0 ? chargeOf(state.tick - released - p.chargeAt) : 0
+      const charge = p.chargeAt >= 0 ? chargeOf(state.tick - p.chargeAt) : 0
       const rewind = gradeRewind(state.tick, p.chargeAt >= 0 ? p.pressAt : -1, released, charge)
       p.chargeAt = p.pressAt = -1
       // Only swings that resolve (any rally swing, the server's serve) start the cooldown.

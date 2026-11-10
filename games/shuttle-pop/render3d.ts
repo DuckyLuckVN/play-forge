@@ -79,7 +79,7 @@ import {
   SwingDriver,
   type Hop,
 } from './moves'
-import { COURT, predictLanding, type Vec3 } from './physics'
+import { COURT, predictLanding, type CourtDims, type Vec3 } from './physics'
 import type { GuestView, PredictedHit } from './guestshuttle'
 import { HitEcho } from './hitecho'
 import type { GuestPredictor } from './predict'
@@ -396,6 +396,8 @@ export class Court3D {
   private spectating = false
   /** Online guest only: our own player's prediction (null = draw it from the interpolated state). */
   private predictor: GuestPredictor | null = null
+  /** The match's court (state.court; old hosts send none → Normal). The camera frames this one. */
+  private court: CourtDims = COURT
   /** Online guests only: the shuttle's smooth clock + flight (null = host / vs-AI: plain interpolation). */
   private guest: GuestView | null = null
   /** Online guest: the predicted own hit already heard, so the host's answering hit stays silent. */
@@ -745,6 +747,7 @@ export class Court3D {
       this.lastShotId = newestShotId(curr.events)
     }
     this.lastTick = curr.tick
+    this.syncCourt(curr.court ?? COURT)
     // Quality ladder dropped the players' real shadows: apply between rallies so they don't vanish
     // mid-shot. Blob shadows stay either way.
     if (this.wantShadows !== this.shadows && curr.phase !== 'rally') this.setShadows(this.wantShadows)
@@ -1343,15 +1346,23 @@ export class Court3D {
     this.camTweak = clampCameraTweak(this.camWant, {
       aspect: this.view.width / Math.max(1, this.view.height),
       tight: this.tight,
-      court: COURT,
+      court: this.court,
     })
+  }
+
+  /** A match on a different court size: refit the tweak clamp (on change only) and tell the guest predictor. */
+  private syncCourt(court: CourtDims) {
+    if (this.predictor) this.predictor.court = court
+    if (court.halfLen === this.court.halfLen && court.halfWidth === this.court.halfWidth) return
+    this.court = court
+    this.refitCamera()
   }
 
   /** Damped: x slides with the local player, the look-at rises with the shuttle (see world.ts). */
   private placeCamera(targetX: number, shuttleY: number, dt = 1) {
     this.camX += (targetX - this.camX) * (1 - Math.exp(-6 * dt))
     this.focus = dampFocus(this.focus, shuttleY, dt)
-    const p = cameraPose(this.camX, this.focus, this.pose, this.tight, this.camTweak)
+    const p = cameraPose(this.camX, this.focus, this.pose, this.tight, this.camTweak, this.court)
     const cam = this.view.camera
     if (Math.abs(cam.fov - p.fov) > 1e-3) {
       cam.fov = p.fov

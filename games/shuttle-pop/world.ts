@@ -59,6 +59,13 @@ export const CAMERA = {
   focusRate: 5,
   /** How much the camera slides with the local player's x (0 = fixed). */
   followX: 0.3,
+  /**
+   * Share of the court's length growth (Large / XL) that the camera's height and distance behind the
+   * baseline grow by. 0.75: at 0.5 a mid personal tweak was
+   * clamped to nothing at Large / XL (a clear's ~9 m apex needs the room). Normal: no growth, so Normal's
+   * pose is unchanged.
+   */
+  courtFollow: 0.75,
 } as const
 
 /**
@@ -118,6 +125,8 @@ export const CAMERA_TWEAK = {
   edge: 0.94,
   /** Focus height (m) of a high shot, checked on top of the resting focus. */
   focusHigh: 7,
+  /** Same on a Large / XL court: clears climb higher there (apex ~8.9 m, capped by the shuttle's max speed). */
+  focusHighBig: 9,
 } as const
 
 /**
@@ -136,9 +145,10 @@ export function cameraPose(
   const t = clamp01(tight)
   const T = CAMERA_TIGHT
   const above = Math.max(0, focusY - CAMERA.riseFrom)
+  const grow = 1 + (court.halfLen / COURT.halfLen - 1) * CAMERA.courtFollow
   out.x = camX
-  out.y = mix(CAMERA.height, T.height, t) + tweak.height * CAMERA_TWEAK.height
-  out.z = -(court.halfLen + mix(CAMERA.back, T.back, t))
+  out.y = mix(CAMERA.height, T.height, t) * grow + tweak.height * CAMERA_TWEAK.height
+  out.z = -(court.halfLen + mix(CAMERA.back, T.back, t) * grow)
   out.lookX = camX * 0.5
   out.lookZ = mix(CAMERA.lookZ, T.lookZ, t)
   out.lookY =
@@ -191,9 +201,10 @@ export function clampCameraTweak(
   const sane = (v: number) => (Number.isFinite(v) ? Math.min(1, Math.max(-1, v)) : 0)
   const w: CameraTweak = { height: sane(want.height), tilt: sane(want.tilt) }
   const m = court.halfWidth * CAMERA.followX
+  const focusTop = court.halfLen > COURT.halfLen ? CAMERA_TWEAK.focusHighBig : CAMERA_TWEAK.focusHigh
   const fits = (tw: CameraTweak): boolean => {
     for (const camX of [-m, 0, m])
-      for (const focus of [1, CAMERA_TWEAK.focusHigh]) {
+      for (const focus of [1, focusTop]) {
         cameraPose(camX, focus, scratchPose, frame.tight, tw, court)
         for (const s of [-1, 1])
           for (const [y, z] of [

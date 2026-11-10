@@ -25,7 +25,7 @@ export interface NetPanelSource {
 
 /** While the panel is open it refreshes this often; the button's colour, less often. */
 const OPEN_REFRESH_MS = 1000
-const HEALTH_REFRESH_MS = 1000
+const HEALTH_REFRESH_MS = 2000
 
 const STATE_TEXT: Record<LinkState, () => string> = {
   connecting: () => t('Connecting…'),
@@ -83,24 +83,29 @@ export function netStatusButton() {
   }
 
   // Measure, draw, wait, repeat: no overlapping stats calls on a slow device.
-  const tick = async () => {
+  // Each open starts a new generation; a refresh from an older one (closed and
+  // reopened while it was measuring) stops instead of running a second chain.
+  let generation = 0
+  const tick = async (gen: number) => {
     const src = source
     if (!src) return
     await src.measure().catch(() => {})
-    if (src !== source || !pop.isOpen) return
+    if (gen !== generation || src !== source || !pop.isOpen) return
     const view = viewNow()!
     setHealth(view)
     drawBody(body, view)
-    liveTimer = setTimeout(tick, OPEN_REFRESH_MS)
+    liveTimer = setTimeout(() => void tick(gen), OPEN_REFRESH_MS)
   }
   function startLive() {
     if (!source) return
+    stopLive()
     const view = viewNow()!
     drawBody(body, view)
     setHealth(view)
-    void tick()
+    void tick(generation)
   }
   function stopLive() {
+    generation++
     if (liveTimer) clearTimeout(liveTimer)
     liveTimer = null
   }
@@ -128,8 +133,12 @@ export function netStatusButton() {
 
 function drawHead(head: HTMLElement, src: NetPanelSource) {
   const copy = iconButton(icons.copy, t('Copy room code'), async () => {
-    await navigator.clipboard?.writeText(src.room).catch(() => {})
-    toast(t('Room code copied'))
+    const copied =
+      (await navigator.clipboard?.writeText(src.room).then(
+        () => true,
+        () => false,
+      )) ?? false
+    toast(copied ? t('Room code copied') : t("Couldn't copy. The code is {room}.", { room: src.room }))
   })
   head.replaceChildren(
     h(

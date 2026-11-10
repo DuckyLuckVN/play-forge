@@ -21,9 +21,46 @@ export interface NetStatus {
   relays: { url: string; state: RelayState }[]
   /** Connections with a peer that answered over the relays, not open yet. */
   negotiating: number
-  /** Direct connections that failed since joining. Never goes down. */
+  /** Direct connections that failed since joining. Never goes down (the joining screen uses it). */
   failures: number
+  /**
+   * Failures still unresolved: the peer hasn't connected since, and it failed
+   * within FAILURE_TTL_MS. The Network panel uses this, so one guest who gave
+   * up doesn't mark the room as broken for the rest of the session.
+   */
+  openFailures: number
   peers: PeerLink[]
+}
+
+/** How long a failed connection counts against the room's health. */
+export const FAILURE_TTL_MS = 30_000
+
+/** Connection failures with timestamps; a peer's failure clears once it connects. Time is passed in (testable). */
+export class FailureLog {
+  /** Every failure ever logged. */
+  total = 0
+  private byPeer = new Map<string, number>()
+  private unnamed: number[] = []
+
+  add(now: number, peerId?: string): void {
+    this.total++
+    if (peerId) this.byPeer.set(peerId, now)
+    else this.unnamed.push(now)
+  }
+
+  /** The peer connected after all. */
+  resolve(peerId: string): void {
+    this.byPeer.delete(peerId)
+  }
+
+  /** Unresolved recent failures: peer ids, and a count that includes failures without an id. */
+  open(now: number, isConnected: (peerId: string) => boolean): { peers: string[]; count: number } {
+    const fresh = (at: number) => now - at < FAILURE_TTL_MS
+    for (const [id, at] of this.byPeer) if (!fresh(at) || isConnected(id)) this.byPeer.delete(id)
+    this.unnamed = this.unnamed.filter(fresh)
+    const peers = [...this.byPeer.keys()]
+    return { peers, count: peers.length + this.unnamed.length }
+  }
 }
 
 /** Optional transport extra: live connection details. */
@@ -42,6 +79,7 @@ export function statusOf(transport: Transport): NetStatus {
       relays: [],
       negotiating: 0,
       failures: 0,
+      openFailures: 0,
       peers: transport.peers().map((id) => ({ id, state: 'connected' })),
     }
   )
@@ -84,7 +122,9 @@ export function stepJoin(track: JoinTrack, status: NetStatus, now: number): Join
   let phase: JoinPhase
   if (seenAt !== null) {
     const connected = status.peers.some((p) => p.state === 'connected')
-    if (status.failures > 0 && !connected) phase = 'blocked'
+    // A failure only means blocked once nothing else is still connecting: the
+    // failed link may be with another guest while the host's is in progress.
+    if (status.failures > 0 && !connected && status.negotiating === 0) phase = 'blocked'
     // Connected to someone who never sent the room (another guest, no host): the room's host is missing.
     else if (now - seenAt >= JOIN_TIMEOUTS.connect) phase = connected ? 'not-found' : 'blocked'
     else phase = 'connecting'
@@ -167,7 +207,7 @@ export function netPanelView(
   const hints: NetHint[] = []
   if (local) hints.push('local')
   if (noServers) hints.push('no-servers')
-  if (failed || status.failures > 0) hints.push('blocked')
+  if (failed || status.openFailures > 0) hints.push('blocked')
   if (connecting) hints.push('connecting')
   if (lag) hints.push('lag')
 
@@ -175,7 +215,7 @@ export function netPanelView(
     ? 'local'
     : noServers || failed
       ? 'bad'
-      : starting || connecting || lag || status.failures > 0
+      : starting || connecting || lag || status.openFailures > 0
         ? 'warn'
         : 'good'
   return {

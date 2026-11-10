@@ -2,7 +2,14 @@ import { getRelaySockets, joinRoom, selfId, type DataPayload, type MessageAction
 import { Emitter } from '../core/emitter'
 import { netLog } from './debug'
 import { RELAY_URLS, roomConfig } from './net-config'
-import type { LinkState, NetDiagnostics, NetStatus, PeerLink, RelayState } from './status'
+import {
+  FailureLog,
+  type LinkState,
+  type NetDiagnostics,
+  type NetStatus,
+  type PeerLink,
+  type RelayState,
+} from './status'
 import type { Transport } from './transport'
 
 /**
@@ -12,14 +19,12 @@ import type { Transport } from './transport'
  * direct peer to peer.
  */
 export function createTrysteroTransport(appId: string, roomId: string): Transport {
-  const pcs = createPcTracker()
-  let joinErrors = 0
-  const failedPeers = new Set<string>()
+  const failures = new FailureLog()
+  const pcs = createPcTracker(() => failures.add(performance.now()))
   const room = joinRoom({ ...roomConfig(appId), rtcPolyfill: pcs.ctor }, roomId, {
     // A peer we exchanged offers with but could not connect to.
     onJoinError({ peerId, error }) {
-      joinErrors++
-      if (peerId) failedPeers.add(peerId)
+      failures.add(performance.now(), peerId || undefined)
       netLog('join error', peerId, error)
     },
   })
@@ -30,7 +35,7 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
   const measured = new Map<string, { rttMs?: number }>()
 
   room.onPeerJoin = (id) => {
-    failedPeers.delete(id)
+    failures.resolve(id)
     events.emit('join', id)
   }
   room.onPeerLeave = (id) => {
@@ -52,17 +57,20 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
   const diagnostics: NetDiagnostics = {
     snapshot(): NetStatus {
       const sockets = (getRelaySockets() ?? {}) as Record<string, WebSocket | undefined>
-      const peers: PeerLink[] = Object.entries(room.getPeers()).map(([id, pc]) => ({
+      const links = room.getPeers()
+      const peers: PeerLink[] = Object.entries(links).map(([id, pc]) => ({
         id,
         state: linkState(pc),
         ...measured.get(id),
       }))
-      for (const id of failedPeers) if (!peers.some((p) => p.id === id)) peers.push({ id, state: 'failed' })
+      const open = failures.open(performance.now(), (id) => links[id]?.connectionState === 'connected')
+      for (const id of open.peers) if (!links[id]) peers.push({ id, state: 'failed' })
       return {
         kind: 'internet',
         relays: RELAY_URLS.map((url) => ({ url, state: relayState(sockets[url]) })),
         negotiating: pcs.negotiating(),
-        failures: joinErrors + pcs.failures,
+        failures: failures.total,
+        openFailures: open.count,
         peers,
       }
     },
@@ -144,12 +152,12 @@ async function roundTrip(pc: RTCPeerConnection): Promise<number | undefined> {
 /**
  * Watches every RTCPeerConnection Trystero makes. It pre-creates offers, so a
  * connection alone means nothing; one with a remote description is a peer
- * that answered over the relays. Counts those still negotiating, and failures.
+ * that answered over the relays. Counts those still negotiating, and reports
+ * each connection that fails (connection or ICE state 'failed', once per connection).
  */
-function createPcTracker() {
+function createPcTracker(onFailed: () => void) {
   const live = new Set<RTCPeerConnection>()
   const tracker = {
-    failures: 0,
     ctor: undefined as typeof RTCPeerConnection | undefined,
     negotiating() {
       let n = 0
@@ -164,13 +172,18 @@ function createPcTracker() {
     constructor(config?: RTCConfiguration) {
       super(config)
       live.add(this)
-      this.addEventListener('connectionstatechange', () => {
-        if (this.connectionState === 'failed') {
-          tracker.failures++
-          netLog('peer connection failed')
+      let failed = false
+      const check = () => {
+        const isFailed = this.connectionState === 'failed' || this.iceConnectionState === 'failed'
+        if (isFailed && !failed) {
+          failed = true
+          onFailed()
+          netLog('peer connection failed', this.connectionState, this.iceConnectionState)
         }
-        if (this.connectionState === 'failed' || this.connectionState === 'closed') live.delete(this)
-      })
+        if (isFailed || this.connectionState === 'closed') live.delete(this)
+      }
+      this.addEventListener('connectionstatechange', check)
+      this.addEventListener('iceconnectionstatechange', check)
     }
     override close() {
       live.delete(this)

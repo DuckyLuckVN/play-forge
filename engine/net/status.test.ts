@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { RELAY_URLS, roomConfig } from './net-config'
 import {
+  FAILURE_TTL_MS,
+  FailureLog,
   JOIN_TIMEOUTS,
   joinFailed,
   joinStep,
@@ -23,6 +25,7 @@ const net = (over: Partial<NetStatus> = {}): NetStatus => ({
   relays: relays('open', 'open', 'connecting'),
   negotiating: 0,
   failures: 0,
+  openFailures: 0,
   peers: [],
   ...over,
 })
@@ -69,6 +72,7 @@ describe('statusOf', () => {
       relays: [],
       negotiating: 0,
       failures: 0,
+      openFailures: 0,
       peers: [
         { id: 'a', state: 'connected' },
         { id: 'b', state: 'connected' },
@@ -169,6 +173,17 @@ describe('joining state machine', () => {
     ).toEqual(['looking', 'not-found'])
   })
 
+  it("doesn't say blocked while another link (the host's) is still connecting", () => {
+    // A failed guest↔guest link while the host's connection is in progress.
+    expect(
+      run([
+        [0, net({ negotiating: 1 })],
+        [3000, net({ failures: 1, negotiating: 1 })],
+        [5000, net({ failures: 1, negotiating: 0 })],
+      ]),
+    ).toEqual(['connecting', 'connecting', 'blocked'])
+  })
+
   it('maps phases to steps and failures', () => {
     expect(
       ['servers', 'servers-failed', 'looking', 'not-found', 'connecting', 'blocked'].map((p) =>
@@ -224,8 +239,19 @@ describe('network panel view', () => {
   })
 
   it('warns when someone failed to connect, and is bad when a player link failed', () => {
-    expect(netPanelView(net({ failures: 1 }), [])).toMatchObject({ health: 'warn', hints: ['blocked'] })
+    expect(netPanelView(net({ failures: 1, openFailures: 1 }), [])).toMatchObject({
+      health: 'warn',
+      hints: ['blocked'],
+    })
     expect(netPanelView(net({ peers: [{ id: 'p1', state: 'failed' }] }), [host]).health).toBe('bad')
+  })
+
+  it('ignores past failures that are resolved', () => {
+    const v = netPanelView(
+      net({ failures: 3, openFailures: 0, peers: [{ id: 'p1', state: 'connected', rttMs: 20 }] }),
+      [host],
+    )
+    expect(v).toMatchObject({ health: 'good', hints: [] })
   })
 
   it('is bad with no matchmaking server', () => {
@@ -254,5 +280,50 @@ describe('network panel view', () => {
   it('shortens relay urls', () => {
     expect(relayHost('wss://relay.example.com/')).toBe('relay.example.com')
     expect(relayHost('wss://host:8443')).toBe('host:8443')
+  })
+})
+
+describe('failure log', () => {
+  const none = () => false
+
+  it('clears a peer once it connects', () => {
+    const log = new FailureLog()
+    log.add(0, 'g1')
+    expect(log.open(10, none)).toEqual({ peers: ['g1'], count: 1 })
+    log.resolve('g1')
+    expect(log.open(20, none)).toEqual({ peers: [], count: 0 })
+    expect(log.total).toBe(1)
+  })
+
+  it('clears a peer that is connected now, even without a resolve', () => {
+    const log = new FailureLog()
+    log.add(0, 'g1')
+    expect(log.open(10, (id) => id === 'g1').count).toBe(0)
+  })
+
+  it('forgets failures after the TTL, with or without a peer id', () => {
+    const log = new FailureLog()
+    log.add(0, 'g1')
+    log.add(5000)
+    expect(log.open(FAILURE_TTL_MS - 1, none).count).toBe(2)
+    expect(log.open(FAILURE_TTL_MS, none).count).toBe(1)
+    expect(log.open(FAILURE_TTL_MS + 5000, none)).toEqual({ peers: [], count: 0 })
+    expect(log.total).toBe(2)
+  })
+
+  it('keeps the host healthy once the guest that failed connects', () => {
+    const log = new FailureLog()
+    log.add(0, 'g1')
+    log.resolve('g1')
+    const open = log.open(1000, none)
+    const status = net({
+      failures: log.total,
+      openFailures: open.count,
+      peers: [{ id: 'g1', state: 'connected', rttMs: 30 }],
+    })
+    expect(netPanelView(status, [{ name: 'Bao', peer: 'g1', connected: true }])).toMatchObject({
+      health: 'good',
+      hints: [],
+    })
   })
 })

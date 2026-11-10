@@ -106,6 +106,7 @@ export const VI: Dictionary = {
   Network: 'Mạng',
   'Copy room code': 'Sao chép mã phòng',
   'Room code copied': 'Đã sao chép mã phòng',
+  "Couldn't copy. The code is {room}.": 'Không sao chép được. Mã phòng là {room}.',
   'You are': 'Bạn là',
   Guest: 'Khách',
   Players: 'Người chơi',

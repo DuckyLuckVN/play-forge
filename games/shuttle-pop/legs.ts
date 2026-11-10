@@ -10,6 +10,12 @@
 
 import { HIP_X, LEG } from './model/dims'
 
+/** Leg segment lengths (m). */
+export interface LegDims {
+  thigh: number
+  shin: number
+}
+
 export interface LegIn {
   /** sin(2π stride) and stride amplitude (rad). */
   cycle: number
@@ -28,6 +34,8 @@ export interface LegIn {
   dir: number
   /** Lunge weight 0..1. */
   lunge: number
+  /** Leg lengths (the look's rig; default model/dims LEG). */
+  leg?: LegDims
 }
 
 export interface LegOut {
@@ -56,13 +64,13 @@ export function legOut(): LegOut {
 }
 
 /** How much shorter (vertically) a leg with this hip pitch and knee bend is than a straight one (m). */
-export function kneeDrop(hipX: number, knee: number): number {
-  return LEG.thigh + LEG.shin - (LEG.thigh * Math.cos(hipX) + LEG.shin * Math.cos(hipX + knee))
+export function kneeDrop(hipX: number, knee: number, leg: LegDims = LEG): number {
+  return leg.thigh + leg.shin - (leg.thigh * Math.cos(hipX) + leg.shin * Math.cos(hipX + knee))
 }
 
 /** Sideways position (m, rig space) of leg `k`'s foot for these angles (hip order XYZ: roll first). */
-export function footX(k: 0 | 1, o: LegOut): number {
-  return (k === 0 ? -HIP_X : HIP_X) + (LEG.thigh + LEG.shin * Math.cos(o.knee[k])) * Math.sin(o.hipZ[k])
+export function footX(k: 0 | 1, o: LegOut, leg: LegDims = LEG, hipX = HIP_X): number {
+  return (k === 0 ? -hipX : hipX) + (leg.thigh + leg.shin * Math.cos(o.knee[k])) * Math.sin(o.hipZ[k])
 }
 
 export function legAngles(i: LegIn, out: LegOut): LegOut {
@@ -85,7 +93,8 @@ export function legAngles(i: LegIn, out: LegOut): LegOut {
   // The hop peaks as the trail foot closes up (the gap is smallest).
   const hopAmp = Math.min(1, i.amp / SHUFFLE.fullAmp) * i.across
   out.lift = SHUFFLE.hop * hopAmp * (1 - Math.cos(TAU * (i.phase - 0.5 - SHUFFLE.lag / 2))) * 0.5
-  let drop = kneeDrop(-bend, KNEE.bend * bend)
+  const leg = i.leg ?? LEG
+  let drop = kneeDrop(-bend, KNEE.bend * bend, leg)
 
   const l = Math.min(1, Math.max(0, i.lunge))
   if (l > 0) {
@@ -98,7 +107,7 @@ export function legAngles(i: LegIn, out: LegOut): LegOut {
     out.hipZ[1] += (L.roll - out.hipZ[1]) * l
     out.lift *= 1 - l
     // The longer (vertically) leg stands on the ground.
-    const stand = Math.min(kneeDrop(out.hipX[0], out.knee[0]), kneeDrop(out.hipX[1], out.knee[1]))
+    const stand = Math.min(kneeDrop(out.hipX[0], out.knee[0], leg), kneeDrop(out.hipX[1], out.knee[1], leg))
     drop += (stand - drop) * l
   }
   out.drop = drop

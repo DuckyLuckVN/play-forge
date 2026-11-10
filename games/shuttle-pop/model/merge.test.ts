@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { BoxGeometry, Color, SphereGeometry, Vector3 } from 'three'
-import { mergeParts, part, place } from './merge'
+import { made, mergeParts, part, place, SURFS } from './merge'
 
 const lin = (hex: number) => new Color().setHex(hex)
 
@@ -51,5 +51,20 @@ describe('mergeParts', () => {
     const parts = place([part(new BoxGeometry(1, 1, 1), 0xffffff)], { p: [0, 5, 0] })
     parts[0].geo.computeBoundingBox()
     expect(parts[0].geo.boundingBox!.min.y).toBeCloseTo(4.5)
+  })
+
+  it("writes a per vertex surface (roughness, clear coat, sheen): the merge default, or the part's own", () => {
+    const box = new BoxGeometry(1, 1, 1)
+    const n = box.getAttribute('position').count
+    const g = mergeParts([part(box, 0xffffff), ...made('hair', [part(box, 0xffffff)])], { surf: 'skin' })
+    const s = g.getAttribute('surf')
+    expect([s.getX(0), s.getY(0), s.getZ(0)]).toEqual(SURFS.skin.map((v) => Math.fround(v)))
+    expect([s.getX(n), s.getY(n), s.getZ(n)]).toEqual(SURFS.hair.map((v) => Math.fround(v)))
+    // A surface function of the placed position (a lathe: neck skin over a cloth shirt).
+    const split = part(box, 0xffffff)
+    split.surf = (_x, y) => (y > 0 ? 'skin' : 'cloth')
+    const h = mergeParts([split]).getAttribute('surf')
+    const P = box.getAttribute('position')
+    for (let i = 0; i < n; i++) expect(h.getX(i)).toBeCloseTo(P.getY(i) > 0 ? SURFS.skin[0] : SURFS.cloth[0])
   })
 })

@@ -125,3 +125,18 @@ describe('legAngles', () => {
     }
   })
 })
+
+describe('per-look leg lengths', () => {
+  it('a longer (human) leg drops exactly enough to keep the crouched / lunging foot on the ground', () => {
+    const leg = { thigh: 0.145, shin: 0.165 }
+    for (const o of [
+      legAngles(input({ bend: 0.38, leg }), legOut()),
+      legAngles(input({ lunge: 1, leg }), legOut()),
+    ]) {
+      const reach = (k: number) =>
+        leg.thigh * Math.cos(o.hipX[k]) + leg.shin * Math.cos(o.hipX[k] + o.knee[k])
+      expect(Math.max(reach(0), reach(1)) + o.drop).toBeCloseTo(leg.thigh + leg.shin, 9)
+    }
+    expect(kneeDrop(0.3, 0.6, leg)).toBeGreaterThan(kneeDrop(0.3, 0.6))
+  })
+})

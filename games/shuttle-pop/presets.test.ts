@@ -3,7 +3,8 @@ import type { BufferGeometry } from 'three'
 import { BODIES, FEET, HANDS } from './model/body'
 import { EXTRAS, extraMeshes, type ExtraSpec } from './model/extras'
 import { EARS, HEADS, MUZZLES, STYLES } from './model/head'
-import { legless } from './model/look'
+import { RIG, TALL_RIG } from './model/dims'
+import { legless, rigOf } from './model/look'
 import { modelOf, type ModelGeos } from './model/model'
 import { PRESETS } from './presets'
 import { PRESETS as SIM_PRESETS } from './sim'
@@ -63,6 +64,17 @@ describe('preset table', () => {
     }
   })
 
+  it('every rig stands on the ground (thigh + shin = hip height); humans stand on the taller rig', () => {
+    for (const p of PRESETS) {
+      const r = rigOf(p.look)
+      expect(r.thigh + r.shin, p.name).toBeCloseTo(r.hipY, 9)
+      // The upper body keeps its layout relative to the hips (torso / head builders are hip-relative).
+      expect(r.headY - r.hipY).toBeCloseTo(RIG.headY - RIG.hipY, 9)
+      expect(r.shoulderY - r.hipY).toBeCloseTo(RIG.shoulderY - RIG.hipY, 9)
+      expect(r).toBe(p.look.body === 'human' ? TALL_RIG : RIG)
+    }
+  })
+
   it('looks with the same racket colours share one racket geometry', () => {
     const a = PRESETS[0]
     const b = { id: 1000, look: { ...PRESETS[1].look, accent: a.look.accent, grip: a.look.grip } }
@@ -85,7 +97,7 @@ describe('preset table', () => {
 
 /**
  * Per look: triangles over every drawn bone, head mesh alone, extra meshes. The toy-style humans (Task 18:
- * sculpted hair, kit stripes, chunky sneakers) need ~17k; draw calls, not triangles, are the budget that
- * matters on phones (two chibis ≈ 35k triangles).
+ * sculpted hair clumps, knit ribs, kit stripes, chunky sneakers) need ~22k, heads ~10k; draw calls, not
+ * triangles, are the budget that matters on phones (two chibis ≈ 45k triangles).
  */
-const BUDGET = { tris: 18500, head: 7000, extraMeshes: 4 }
+const BUDGET = { tris: 22500, head: 10000, extraMeshes: 4 }

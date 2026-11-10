@@ -1,3 +1,5 @@
+import { RIG, TALL_RIG, type Rig } from './dims'
+
 // What a character looks like, as data. Every body part is picked from a builder table by key (head.ts,
 // body.ts, face.ts, extras.ts, racket.ts), so a new character (a new species included: other head shape,
 // ears, muzzle, paws, feet, a tail, no legs at all) is a new preset row plus, if needed, a new builder
@@ -93,6 +95,9 @@ export interface Look {
   kit?: Kit
   shoes?: Shoes
 }
+
+/** The rig (joint layout) a look stands on: humans are taller in the legs. */
+export const rigOf = (l: Look): Rig => (l.body === 'human' ? TALL_RIG : RIG)
 
 /** The arm / leg colour. */
 export const limbOf = (l: Look): number => l.limb ?? l.skin

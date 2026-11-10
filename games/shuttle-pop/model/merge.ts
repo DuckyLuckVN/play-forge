@@ -17,10 +17,33 @@ import {
 /** A vertex colour: one hex for the whole part, or a function of the placed vertex position. */
 export type Paint = number | ((x: number, y: number, z: number) => number)
 
-/** A placed (already transformed) geometry with its paint. */
+/**
+ * What a surface is made of (toy render): skin (soft, a little sheen), cloth (fabric sheen), knit (matte,
+ * rough), hair / plastic (glossy clear coat), rubber (soles), metal.
+ */
+export type Surf = 'skin' | 'cloth' | 'knit' | 'hair' | 'plastic' | 'rubber' | 'metal'
+/** Per surface: roughness, clear-coat weight, sheen weight (the `surf` vertex attribute; actors.ts reads it). */
+export const SURFS: Record<Surf, Triple> = {
+  skin: [0.5, 0.05, 0.35],
+  cloth: [0.72, 0, 0.9],
+  knit: [0.95, 0, 0.55],
+  hair: [0.48, 0.25, 0],
+  plastic: [0.32, 0.5, 0],
+  rubber: [0.55, 0.15, 0],
+  metal: [0.32, 0.5, 0],
+}
+
+/** A placed (already transformed) geometry with its paint (and surface, else the merge's default). */
 export interface Part {
   geo: BufferGeometry
   paint: Paint
+  surf?: Surf | ((x: number, y: number, z: number) => Surf)
+}
+
+/** Marks `parts` as made of `surf` (returns them). */
+export function made(surf: Part['surf'], parts: Part[]): Part[] {
+  for (const pt of parts) pt.surf = surf
+  return parts
 }
 
 export type Triple = readonly [number, number, number]
@@ -93,6 +116,8 @@ const col = new Color()
 /** Merge options: bake ambient occlusion into the colours (with other bones' rest geometry as occluders). */
 export interface MergeOpts {
   ao?: { extra?: readonly Part[] }
+  /** Surface of parts that don't name one (default cloth). */
+  surf?: Surf
 }
 
 /** A placed part as an AO occluder. */
@@ -116,6 +141,7 @@ export function mergeParts(parts: readonly Part[], opts: MergeOpts = {}): Buffer
   const pos = new Float32Array(verts * 3)
   const nor = new Float32Array(verts * 3)
   const rgb = new Float32Array(verts * 3)
+  const srf = new Float32Array(verts * 3)
   const index = verts > 65535 ? new Uint32Array(tris) : new Uint16Array(tris)
   let v = 0
   let t = 0
@@ -124,6 +150,8 @@ export function mergeParts(parts: readonly Part[], opts: MergeOpts = {}): Buffer
     const N = pt.geo.getAttribute('normal')
     const I = pt.geo.getIndex()!
     const fixed = typeof pt.paint === 'number' ? col.setHex(pt.paint).clone() : null
+    const surf = pt.surf ?? opts.surf ?? 'cloth'
+    const fixedSurf = typeof surf === 'string' ? SURFS[surf] : null
     for (let i = 0; i < P.count; i++) {
       const x = P.getX(i)
       const y = P.getY(i)
@@ -139,6 +167,10 @@ export function mergeParts(parts: readonly Part[], opts: MergeOpts = {}): Buffer
       rgb[k] = c.r
       rgb[k + 1] = c.g
       rgb[k + 2] = c.b
+      const sf = fixedSurf ?? SURFS[(surf as (x: number, y: number, z: number) => Surf)(x, y, z)]
+      srf[k] = sf[0]
+      srf[k + 1] = sf[1]
+      srf[k + 2] = sf[2]
     }
     for (let i = 0; i < I.count; i++) index[t + i] = I.getX(i) + v
     v += P.count
@@ -156,6 +188,7 @@ export function mergeParts(parts: readonly Part[], opts: MergeOpts = {}): Buffer
   out.setAttribute('position', new BufferAttribute(pos, 3))
   out.setAttribute('normal', new BufferAttribute(nor, 3))
   out.setAttribute('color', new BufferAttribute(rgb, 3))
+  out.setAttribute('surf', new BufferAttribute(srf, 3))
   out.setIndex(new BufferAttribute(index, 1))
   out.computeBoundingSphere()
   return out

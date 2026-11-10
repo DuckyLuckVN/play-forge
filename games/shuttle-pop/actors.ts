@@ -17,26 +17,26 @@ import {
   BackSide,
   BufferAttribute,
   BufferGeometry,
-  CircleGeometry,
   Color,
   DoubleSide,
   Group,
   Mesh,
   MeshBasicMaterial,
-  MeshStandardMaterial,
+  MeshPhysicalMaterial,
   Object3D,
   Vector3,
   type Material,
+  type Texture,
 } from 'three'
 import { basePose, CH, streakGlow, swingPose, upper, type BaseIn, type SwingIn, type Upper } from './arm'
 import { lateralShare } from './footwork'
-import { legAngles, legOut, type LegIn } from './legs'
+import { legAngles, legOut, type LegDims, type LegIn } from './legs'
 import { glideParams, strideParams, type Glide, type Stride } from './locomotion'
 import { ARM, HEAD_Y, HIP_X, HIP_Y, LEG, RACKET, SHOULDER_X, SHOULDER_Y } from './model/dims'
 import { extraOut, extraPose, type FlairIn } from './flair'
 import type { ExtraSpec } from './model/extras'
 import { blinkAt, faceMix } from './model/face'
-import { legless } from './model/look'
+import { legless, rigOf } from './model/look'
 import { HEAD_SCALE } from './model/head'
 import { modelOf } from './model/model'
 import { celebrateSpin, hop, type Hop } from './moves'
@@ -201,6 +201,37 @@ const PIVOTS = 6
 
 let shadowGeo: BufferGeometry | null = null
 
+/**
+ * Soft contact shadow: a disc in the xy plane whose black fades from the centre (alpha 1) through a mid
+ * ring to nothing at the rim (vertex alpha), so it reads as a soft occlusion pool under the feet.
+ */
+function contactShadow(r: number, seg: number): BufferGeometry {
+  const pos = [0, 0, 0]
+  const col = [0, 0, 0, 1]
+  const rings: [number, number][] = [
+    [0.55, 0.75],
+    [1, 0],
+  ]
+  for (const [k, a] of rings)
+    for (let i = 0; i < seg; i++) {
+      const t = (i / seg) * Math.PI * 2
+      pos.push(Math.cos(t) * r * k, Math.sin(t) * r * k, 0)
+      col.push(0, 0, 0, a)
+    }
+  const idx: number[] = []
+  for (let i = 0; i < seg; i++) idx.push(0, 1 + i, 1 + ((i + 1) % seg))
+  for (let i = 0; i < seg; i++) {
+    const a = 1 + i
+    const b = 1 + ((i + 1) % seg)
+    idx.push(a, a + seg, b, b, a + seg, b + seg)
+  }
+  const g = new BufferGeometry()
+  g.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3))
+  g.setAttribute('color', new BufferAttribute(new Float32Array(col), 4))
+  g.setIndex(idx)
+  return g
+}
+
 const materials = new Map<string, Material>()
 function cached<M extends Material>(key: string, make: () => M): M {
   let m = materials.get(key) as M | undefined
@@ -217,49 +248,95 @@ function faceMat(alt: boolean): MeshBasicMaterial {
   })
 }
 /**
- * Toy shading on top of the standard lighting (shared by every kit material): a fresnel rim that lifts
- * silhouettes off the court, and a soft studio gloss (a broad highlight where the surface mirrors the sky).
- * Plain uniforms, so the quality governor can turn them off (setToyShading) without a recompile.
+ * Toy render (the reference's studio look): physically based, per vertex surface (model/merge.ts SURFS:
+ * roughness, clear coat, sheen in the `surf` attribute), so one merged bone mesh can hold soft skin, sheeny
+ * fabric, matte knit and glossy hair / plastic in a single draw call. Lit by the scene lights plus an
+ * environment map (setToyEnvironment: a procedural PMREM room) for soft reflections, and a fresnel rim
+ * that lifts silhouettes off the court.
+ *
+ * Slow devices (setToyShading(false)): the clear-coat and sheen lobes and the rim drop. Both program
+ * variants are compiled up front (Court3D.warm), so the switch never compiles mid-match.
  */
-const TOY = { rim: 0.32, gloss: 0.2, fill: 0.14 }
-const toyUniforms = {
-  toyRim: { value: TOY.rim },
-  toyGloss: { value: TOY.gloss },
-  toyFill: { value: TOY.fill },
-}
-const TOY_FRAGMENT = /* glsl */ `
-  {
+const TOY = { rim: 0.22, clearcoat: 1, sheen: 1 }
+const toyUniforms = { toyRim: { value: TOY.rim } }
+const TOY_VERTEX_HEAD = /* glsl */ `#include <common>
+attribute vec3 surf;
+varying vec3 vSurf;`
+const TOY_FRAGMENT_HEAD = /* glsl */ `#include <common>
+varying vec3 vSurf;
+uniform float toyRim;`
+/** Per vertex roughness. */
+const TOY_ROUGHNESS = /* glsl */ `#include <roughnessmap_fragment>
+roughnessFactor = vSurf.x;`
+/** Per vertex clear coat + sheen weights. */
+const TOY_LOBES = /* glsl */ `#include <lights_physical_fragment>
+#ifdef USE_CLEARCOAT
+  material.clearcoat *= vSurf.y;
+#endif
+#ifdef USE_SHEEN
+  // Fabric sheen takes the fabric's own colour (no white haze).
+  material.sheenColor *= vSurf.z * diffuseColor.rgb;
+#endif`
+const TOY_RIM = /* glsl */ `{
     vec3 toyN = normalize(normal);
-    vec3 toyV = normalize(vViewPosition);
-    float toyF = pow(1.0 - clamp(dot(toyN, toyV), 0.0, 1.0), 3.0);
-    vec3 toyUp = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
-    float toyG = pow(max(dot(reflect(-toyV, toyN), toyUp), 0.0), 12.0);
+    float toyF = pow(1.0 - clamp(dot(toyN, normalize(vViewPosition)), 0.0, 1.0), 3.0);
     outgoingLight += toyRim * toyF * (0.35 + 0.65 * diffuseColor.rgb);
-    outgoingLight += toyGloss * toyG * (0.6 + 0.4 * diffuseColor.rgb);
-    // Soft studio fill: keeps the shadow side bright and toy-like.
-    outgoingLight += toyFill * diffuseColor.rgb;
   }
   #include <opaque_fragment>`
 
-/** Toy rim + gloss on (full quality) or off (slow devices). */
+const kits: MeshPhysicalMaterial[] = []
+
+/** Full toy lobes (clear coat, sheen, rim) on, or off for slow devices (no recompile once warmed). */
 export function setToyShading(on: boolean): void {
   toyUniforms.toyRim.value = on ? TOY.rim : 0
-  toyUniforms.toyGloss.value = on ? TOY.gloss : 0
+  for (const m of kits) {
+    if (m.clearcoat > 0 === on && m.sheen > 0 === on) continue
+    m.clearcoat = on ? TOY.clearcoat : 0
+    m.sheen = on ? TOY.sheen : 0
+  }
 }
 
-/** Glossy vinyl-toy vertex-colour material (the far twin's is shaded toward ALT_SHADE_COLOR). */
-function kitMat(alt: boolean): MeshStandardMaterial {
+/** Environment map (a PMREM texture) for every chibi material, at `intensity`; null removes it. */
+export function setToyEnvironment(env: Texture | null, intensity = 1): void {
+  for (const m of kits) {
+    m.envMap = env
+    m.envMapIntensity = intensity
+    m.needsUpdate = true
+  }
+  toyEnv = { env, intensity }
+}
+let toyEnv: { env: Texture | null; intensity: number } = { env: null, intensity: 1 }
+
+/** Toy vertex-colour material (the far twin's is shaded toward ALT_SHADE_COLOR). */
+function kitMat(alt: boolean): MeshPhysicalMaterial {
   return cached(alt ? 'kitAlt' : 'kit', () => {
     const color = new Color(0xffffff)
     if (alt) color.lerp(ALT_SHADE_COLOR, ALT_SHADE)
-    const m = new MeshStandardMaterial({ color, vertexColors: true, roughness: 0.42 })
+    const m = new MeshPhysicalMaterial({
+      color,
+      vertexColors: true,
+      roughness: 0.6,
+      clearcoat: TOY.clearcoat,
+      clearcoatRoughness: 0.28,
+      sheen: TOY.sheen,
+      sheenColor: new Color(0xffffff),
+      sheenRoughness: 0.55,
+      envMap: toyEnv.env,
+      envMapIntensity: toyEnv.intensity,
+    })
     m.onBeforeCompile = (sh) => {
       Object.assign(sh.uniforms, toyUniforms)
-      sh.fragmentShader =
-        'uniform float toyRim;\nuniform float toyGloss;\nuniform float toyFill;\n' +
-        sh.fragmentShader.replace('#include <opaque_fragment>', TOY_FRAGMENT)
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', TOY_VERTEX_HEAD)
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSurf = surf;')
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', TOY_FRAGMENT_HEAD)
+        .replace('#include <roughnessmap_fragment>', TOY_ROUGHNESS)
+        .replace('#include <lights_physical_fragment>', TOY_LOBES)
+        .replace('#include <opaque_fragment>', TOY_RIM)
     }
     m.customProgramCacheKey = () => 'toy'
+    kits.push(m)
     return m
   })
 }
@@ -283,10 +360,11 @@ export function createChibi(preset: number): Chibi {
   const root = new Group()
   // Ground shadow stays down when the rig jumps.
   const shadow = new Mesh(
-    (shadowGeo ??= new CircleGeometry(0.3, 18)),
+    (shadowGeo ??= contactShadow(0.32, 20)),
     cached(
       'shadow',
-      () => new MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.2, depthWrite: false }),
+      () =>
+        new MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.42, depthWrite: false }),
     ),
   )
   shadow.rotation.x = -Math.PI / 2
@@ -396,6 +474,8 @@ export function createChibi(preset: number): Chibi {
   let used = 0
   let hasLegs = true
   let legKind: 'pair' | 'hop' | 'float' = 'pair'
+  /** This chibi's leg lengths (its look's rig; legIn is shared scratch, so set per pose). */
+  let legDims: LegDims = LEG
 
   // Real shadows (when the renderer has them on) from the three shapes that read in a long low-sun
   // shadow: body, head and racket. Everything else would only add shadow-pass draw calls.
@@ -409,6 +489,18 @@ export function createChibi(preset: number): Chibi {
     hasLegs = !legless(p.look)
     legKind = p.look.legs
     hips.rotation.set(0, 0, 0)
+    // Joint layout of this look's rig.
+    const r = rigOf(p.look)
+    hips.position.y = r.hipY
+    torso.position.y = r.hipY
+    head.position.y = r.headY - r.hipY
+    for (let i = 0; i < 2; i++) {
+      const s = i === 0 ? -1 : 1
+      legs[i].hip.position.set(s * r.hipX, r.hipY, 0)
+      legs[i].knee.position.y = -r.thigh
+      arms[i].shoulder.position.set(s * r.shoulderX, r.shoulderY - r.hipY, 0)
+    }
+    legDims = r
     for (const l of legs) l.hip.visible = hasLegs
     hips.geometry = g.hips
     chest.geometry = g.torso
@@ -529,6 +621,7 @@ export function createChibi(preset: number): Chibi {
     legIn.phase = p.stride
     legIn.dir = p.side
     legIn.lunge = p.lunge
+    legIn.leg = legDims
     legIn.tuck = p.jump * 0.7 + hopO.height * happy * 0.4 + p.split * 0.3
     legIn.splay = STANCE.splay * st + 0.2 * p.crouch + SPLIT_SPLAY * p.split
     legIn.bend =

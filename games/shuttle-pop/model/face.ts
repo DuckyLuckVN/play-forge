@@ -109,13 +109,13 @@ const MOUTH_Y = -0.125
  * brows (gap over the eye top); mouth height; soft blush; tongue colour.
  */
 const TOY = {
-  eye: { a: 0.08, b: 0.097, x: 0.152, y: -0.034 } as EyeDims,
+  eye: { a: 0.086, b: 0.102, x: 0.158, y: -0.062 } as EyeDims,
   iris: { a: 0.9, b: 0.9, dy: -0.004 },
   pupil: { a: 0.5, b: 0.54, dy: 0.008 },
   lid: { mid: 0.13, end: 0.05, from: 0.06 },
   brow: { gap: 0.034, w: 0.046, th: 0.011 },
-  mouthY: -0.158,
-  blush: { a: 0.064, b: 0.036, x: 0.236, y: -0.135 },
+  mouthY: -0.19,
+  blush: { a: 0.066, b: 0.038, x: 0.245, y: -0.165 },
   tongue: 0xf07a8a,
 }
 /** Mouth size share (shapes below are drawn at 1). */
@@ -352,10 +352,10 @@ export function faceLayout(look: Look, e: Expr): FaceLayout {
     disc(ex, eyeY, E.a, E.b, L, eyeCol, at)
     if (st.toy) {
       // Iris: dark at the top, glowing toward the bottom; pupil; then the lid line over the top arc.
-      const top = shade(look.iris, 0.55)
-      const bottom = tint(look.iris, 0.22)
+      const top = shade(look.iris, 0.6)
+      const bottom = tint(look.iris, 0.15)
       const I = TOY.iris
-      disc(ex, eyeY + I.dy, E.a * I.a, E.b * I.b, L + 1, shade(look.iris, 0.1), at, (ang) =>
+      disc(ex, eyeY + I.dy, E.a * I.a, E.b * I.b, L + 1, look.iris, at, (ang) =>
         mixHex(top, bottom, (1 - Math.sin(ang)) / 2),
       )
       const Pu = TOY.pupil

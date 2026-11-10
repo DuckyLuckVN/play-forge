@@ -21,6 +21,7 @@ import {
   CylinderGeometry,
   DoubleSide,
   Mesh,
+  PMREMGenerator,
   MeshBasicMaterial,
   MeshStandardMaterial,
   PlaneGeometry,
@@ -36,7 +37,16 @@ import { startRenderLoop } from '@forge/core/loop'
 import type { Smoothed } from '@forge/net/smoothing'
 import { playSound } from '@forge/audio/sound'
 import { createScene3D, Particles3D, QualityGovernor, type Scene3D } from '@forge/render3d'
-import { createChibi, PRESETS, restPose, setToyShading, type Chibi, type ChibiPose } from './actors'
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
+import {
+  createChibi,
+  PRESETS,
+  restPose,
+  setToyEnvironment,
+  setToyShading,
+  type Chibi,
+  type ChibiPose,
+} from './actors'
 import { chargeOf, chargeStage, CHARGE, isFull } from './charge'
 import { ChargeRing } from './chargering'
 import { TICK_RATE } from './court'
@@ -146,6 +156,8 @@ export type LocalSwing = 'charge' | 'swing' | 'cancel'
 const CHIBI_SCALE = 1.15
 /** Court surface beyond the lines (m); the warm border (SURROUND) is props.ts. */
 const COURT_RUNOFF = { x: 0.35, z: 0.45 }
+/** Environment-map strength on the chibis in the park (the studio room is brighter than golden hour). */
+const TOY_ENV = 0.55
 /** Quality level (QualityGovernor) from which players stop casting real shadows. */
 const SHADOWS_OFF_LEVEL = 1
 /** Seconds after attach the shadow governor ignores (first frames hitch: buffers, textures, GC). */
@@ -353,6 +365,10 @@ export class Court3D {
     const { scene, renderer } = this.view
     renderer.shadowMap.enabled = true
     this.park = new Park(scene)
+    // The chibis' soft reflections: a procedural studio room baked into a PMREM map (no asset files).
+    const pmrem = new PMREMGenerator(renderer)
+    setToyEnvironment(pmrem.fromScene(new RoomEnvironment(), 0.04).texture, TOY_ENV)
+    pmrem.dispose()
 
     this.buildCourt()
     // The engine's own governor restarts its window on every resize (buffers realloc); so does ours.
@@ -474,7 +490,12 @@ export class Court3D {
       p.ring.shown = true
     }
     this.placeCamera(0, 1)
-    // Scenery, crowd and the shadow variants of every lit material are all in the scene by now.
+    // Scenery, crowd and the shadow variants of every lit material are all in the scene by now. The
+    // chibis' slow-device variant (no clear coat / sheen) too, so the governor's switch never compiles.
+    setToyShading(false)
+    await this.view.renderer.compileAsync(this.view.scene, this.view.camera)
+    this.view.render(0)
+    setToyShading(true)
     await this.view.renderer.compileAsync(this.view.scene, this.view.camera)
     this.view.render(0)
     // Upload every look's merged geometries now (a first-time preset would otherwise upload mid-match).

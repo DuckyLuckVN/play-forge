@@ -18,5 +18,42 @@ export const LEG = { thigh: 0.11, shin: 0.13 }
  * far rim along the handle axis.
  */
 export const RACKET = { mount: 0.35, head: 0.42, tip: 0.59 }
+/** The joint layout a look's rig is built on (model space, m). */
+export interface Rig {
+  /** Hip joints + torso pivot height, hip joints' half spacing. */
+  hipY: number
+  hipX: number
+  /** Hip → knee, knee → sole (thigh + shin = hipY: feet on the ground). */
+  thigh: number
+  shin: number
+  shoulderY: number
+  shoulderX: number
+  /** Head centre. */
+  headY: number
+}
+/** Default rig (animals, creatures). */
+export const RIG: Rig = {
+  hipY: HIP_Y,
+  hipX: HIP_X,
+  thigh: LEG.thigh,
+  shin: LEG.shin,
+  shoulderY: SHOULDER_Y,
+  shoulderX: SHOULDER_X,
+  headY: HEAD_Y,
+}
+/**
+ * Human rig (the toy reference): longer legs and a wider stance; everything above the hips rides up by
+ * the same 7 cm, so the torso, arms and head keep their layout relative to the hips.
+ */
+export const TALL_RIG: Rig = {
+  hipY: 0.31,
+  hipX: 0.098,
+  thigh: 0.145,
+  shin: 0.165,
+  shoulderY: SHOULDER_Y + 0.07,
+  shoulderX: SHOULDER_X + 0.008,
+  headY: HEAD_Y + 0.07,
+}
+
 /** Robot head: a rounded box (superellipsoid half sizes, exponent), centred like the round head. */
 export const BOX_HEAD = { a: 0.37, b: 0.33, c: 0.34, n: 4 }

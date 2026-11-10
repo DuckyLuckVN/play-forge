@@ -12,9 +12,18 @@ import {
   TorusGeometry,
   Vector2,
 } from 'three'
-import { ARM, HIP_Y, LEG } from './dims'
-import { bellyOf, limbOf, type BodyKind, type FootKind, type HandKind, type Look, type Shoes } from './look'
-import { part, place, shade, tint, type Part, type Triple } from './merge'
+import { ARM, HIP_Y } from './dims'
+import {
+  bellyOf,
+  limbOf,
+  rigOf,
+  type BodyKind,
+  type FootKind,
+  type HandKind,
+  type Look,
+  type Shoes,
+} from './look'
+import { made, part, place, shade, tint, type Part, type Triple } from './merge'
 import { PALETTE } from './palette'
 import { roundBox } from './shapes'
 
@@ -49,18 +58,18 @@ const TORSO_PROFILE: readonly (readonly [number, number])[] = [
 
 /** Human shirt outline (radius, world y), bottom to top: a short boxy tee whose hem flares over the shorts. */
 const HUMAN_PROFILE: readonly (readonly [number, number])[] = [
-  [0, 0.236],
-  [0.16, 0.238],
-  [0.19, 0.244],
-  [0.198, 0.256],
-  [0.198, 0.29],
-  [0.193, 0.34],
-  [0.185, 0.39],
-  [0.172, 0.44],
-  [0.155, 0.482],
-  [0.134, 0.512],
-  [0.11, 0.535],
-  [0.085, 0.55],
+  [0, 0.226],
+  [0.16, 0.228],
+  [0.184, 0.234],
+  [0.19, 0.246],
+  [0.192, 0.3],
+  [0.193, 0.36],
+  [0.19, 0.41],
+  [0.18, 0.455],
+  [0.165, 0.49],
+  [0.142, 0.518],
+  [0.115, 0.538],
+  [0.088, 0.551],
   [0.07, NECK_Y],
   [0.062, NECK_Y + 0.001],
   [0.06, 0.62],
@@ -69,11 +78,11 @@ const HUMAN_PROFILE: readonly (readonly [number, number])[] = [
 ]
 /** Two contrast stripes round the hem (world y bands). */
 const HEM_BANDS: readonly (readonly [number, number])[] = [
-  [0.26, 0.272],
-  [0.283, 0.295],
+  [0.25, 0.262],
+  [0.273, 0.285],
 ]
 /** Shirt depth / width share (a tee is wider than deep). */
-const TEE = { sx: 1.1, sz: 0.94 }
+const TEE = { sx: 1.12, sz: 0.92 }
 
 /** Radius of a (radius, y) outline at height y (linear between points). */
 function radiusAt(prof: readonly (readonly [number, number])[], y: number): number {
@@ -114,8 +123,10 @@ function humanTorso(l: Look): Part[] {
   const front = (wy: number) => radiusAt(HUMAN_PROFILE, wy)
   const v = new CapsuleGeometry(0.009, 0.075, 3, 8)
   const vy = 0.515
+  const lathePart = part(lathe, paint)
+  lathePart.surf = (_x, y) => (y > neckY + 0.0005 ? 'skin' : 'cloth')
   const out: Part[] = [
-    part(lathe, paint),
+    lathePart,
     // V collar: two strips meeting on the chest, a band round the back of the neck.
     part(v, k.trim, { p: [-0.033, vy - HIP_Y, front(vy) - 0.004], r: [-0.55, 0, 0.6] }),
     part(v, k.trim, { p: [0.033, vy - HIP_Y, front(vy) - 0.004], r: [-0.55, 0, -0.6] }),
@@ -373,15 +384,17 @@ export function upperArmParts(l: Look): Part[] {
   const SLEEVE = 0.077
   return [
     part(arm, limbOf(l)),
-    part(new SphereGeometry(SLEEVE, 16, 8, 0, Math.PI * 2, 0, HALF_PI), k.shirt),
-    part(
-      new CylinderGeometry(SLEEVE, SLEEVE + 0.004, 0.07, 18),
-      (_x, y) => (y < -0.046 && y > -0.058 ? k.stripe : k.shirt),
-      {
-        p: [0, -0.035, 0],
-      },
-    ),
-    part(new TorusGeometry(SLEEVE + 0.003, 0.008, 6, 20), k.trim, { p: [0, -0.07, 0], r: [HALF_PI, 0, 0] }),
+    ...made('cloth', [
+      part(new SphereGeometry(SLEEVE, 16, 8, 0, Math.PI * 2, 0, HALF_PI), k.shirt),
+      part(
+        new CylinderGeometry(SLEEVE, SLEEVE + 0.004, 0.07, 18),
+        (_x, y) => (y < -0.046 && y > -0.058 ? k.stripe : k.shirt),
+        {
+          p: [0, -0.035, 0],
+        },
+      ),
+      part(new TorusGeometry(SLEEVE + 0.003, 0.008, 6, 20), k.trim, { p: [0, -0.07, 0], r: [HALF_PI, 0, 0] }),
+    ]),
   ]
 }
 
@@ -393,13 +406,15 @@ export function foreArmParts(l: Look, side: number): Part[] {
     // Terry wristband: light ribbed edges painted on (no extra rings).
     const edge = tint(l.accent, 0.3)
     out.push(
-      part(
-        new CylinderGeometry(0.061, 0.061, 0.036, 18, 4),
-        (_x, y) => (Math.abs(y - 0.022 + ARM.fore) > 0.012 ? edge : l.accent),
-        {
-          p: [0, -ARM.fore + 0.022, 0],
-        },
-      ),
+      ...made('cloth', [
+        part(
+          new CylinderGeometry(0.061, 0.061, 0.036, 18, 4),
+          (_x, y) => (Math.abs(y - 0.022 + ARM.fore) > 0.012 ? edge : l.accent),
+          {
+            p: [0, -ARM.fore + 0.022, 0],
+          },
+        ),
+      ]),
     )
   }
   return out
@@ -465,35 +480,51 @@ export function handParts(l: Look, side: number): Part[] {
   return HANDS[l.hands](l, side)
 }
 
-/** Thigh hanging from the hip joint (y = 0 → knee at −LEG.thigh); shorts legs (hem + side stripes) over the top. */
+/** Thigh hanging from the hip joint (y = 0 → knee at −rigOf(l).thigh); shorts legs (hem + side stripes) over the top. */
 export function thighParts(l: Look): Part[] {
-  const thigh = new CapsuleGeometry(0.062, LEG.thigh - 0.05, 4, 12).translate(0, -LEG.thigh / 2, 0)
+  const T = rigOf(l).thigh
+  const thigh = new CapsuleGeometry(0.064, T - 0.05, 4, 12).translate(0, -T / 2, 0)
   const out = [part(thigh, limbOf(l))]
   const k = l.kit
   if (k?.bottom === 'shorts') {
-    const R = 0.084
+    // Shorts legs down to mid-thigh.
+    const R = 0.088
+    const H = 0.105
     out.push(
-      part(new CylinderGeometry(R, R + 0.005, 0.08, 20), k.bottomColor, { p: [0, -0.022, 0] }),
-      part(new TorusGeometry(R + 0.004, 0.007, 5, 20), k.stripe, { p: [0, -0.058, 0], r: [HALF_PI, 0, 0] }),
-      // Side stripes (both sides: the geometry is shared by the two legs).
-      ...[-1, 1].map((s) =>
-        part(new BoxGeometry(0.008, 0.074, 0.018), k.stripe, { p: [s * (R + 0.002), -0.02, 0] }),
-      ),
+      ...made('cloth', [
+        part(new CylinderGeometry(R, R + 0.006, H, 20), k.bottomColor, { p: [0, -H / 2 + 0.03, 0] }),
+        part(new TorusGeometry(R + 0.005, 0.007, 5, 20), k.stripe, {
+          p: [0, -H + 0.035, 0],
+          r: [HALF_PI, 0, 0],
+        }),
+        // Side stripes (both sides: the geometry is shared by the two legs).
+        ...[-1, 1].map((s) =>
+          part(new BoxGeometry(0.008, H - 0.012, 0.018), k.stripe, {
+            p: [s * (R + 0.003), -H / 2 + 0.032, 0],
+          }),
+        ),
+      ]),
     )
   }
   return out
 }
 
+/** The sneaker a touch bigger than built (chunky toy trainers), scaled about its sole centre. */
+const SHOE_SCALE = (g: number) => {
+  const k = 1.14
+  return { p: [0, g * (1 - k), 0.03 * (1 - k)] as const, s: k }
+}
+
 const DEFAULT_SHOES: Shoes = { socks: 0xffffff, shoe: 0xffffff, sole: 0xffffff }
 
-/** Foot (+ sock) on the shin, in knee space: ground at y = −LEG.shin, toe on +z. */
+/** Foot (+ sock) on the shin, in knee space: ground at y = −rigOf(l).shin, toe on +z. */
 export const FEET: Record<FootKind, (l: Look) => Part[]> = {
   /** Dragon: a paw foot with cream claws. */
   claw: (l) => [
     ...FEET.paw(l),
     ...[-0.035, 0, 0.035].map((x) =>
       part(new ConeGeometry(0.012, 0.035, 6), l.hair, {
-        p: [x, -LEG.shin + 0.02, 0.135],
+        p: [x, -rigOf(l).shin + 0.02, 0.135],
         r: [HALF_PI, 0, 0],
       }),
     ),
@@ -501,14 +532,14 @@ export const FEET: Record<FootKind, (l: Look) => Part[]> = {
   /** Robot: a rounded box boot with an accent sole. */
   boot: (l) => [
     part(roundBox(0.065, 0.042, 0.095, 4, 16, 12), shade(limbOf(l), 0.15), {
-      p: [0, -LEG.shin + 0.045, 0.03],
+      p: [0, -rigOf(l).shin + 0.045, 0.03],
     }),
-    part(new BoxGeometry(0.12, 0.012, 0.18), l.accent, { p: [0, -LEG.shin + 0.006, 0.03] }),
+    part(new BoxGeometry(0.12, 0.012, 0.18), l.accent, { p: [0, -rigOf(l).shin + 0.006, 0.03] }),
   ],
   /** Round paw: a soft pad foot with three toe bumps and a light sole. */
   paw: (l) => {
     const c = limbOf(l)
-    const g = -LEG.shin
+    const g = -rigOf(l).shin
     const out = [
       part(new SphereGeometry(0.066, 18, 10), c, { p: [0, g + 0.034, 0.03], s: [1.05, 0.6, 1.45] }),
       part(new CylinderGeometry(0.058, 0.06, 0.012, 16), bellyOf(l), {
@@ -520,35 +551,61 @@ export const FEET: Record<FootKind, (l: Look) => Part[]> = {
       out.push(part(new SphereGeometry(0.026, 10, 8), c, { p: [x, g + 0.026, 0.105], s: [1, 0.85, 1] }))
     return out
   },
-  /** Striped sock, chunky sneaker: white sole, rounded upper, toe cap, side stripe, laces, heel tab. */
+  /**
+   * Chunky sneaker on a striped sock: thick white rubber sole, a rounded coloured upper with a white toe
+   * cap and side stripes, laces, heel tab (the reference's toy trainer).
+   */
   sneaker: (l) => {
     const k = l.shoes ?? DEFAULT_SHOES
-    const g = -LEG.shin
-    const lace = new CylinderGeometry(0.005, 0.005, 0.056, 5)
+    const g = -rigOf(l).shin
+    const lace = new CapsuleGeometry(0.006, 0.05, 2, 6)
+    const sockTop = g + 0.16
     const sock = (_x: number, y: number) =>
-      (y > -0.07 && y < -0.062) || (y > -0.056 && y < -0.048) ? l.accent : k.socks
+      (y > sockTop - 0.022 && y < sockTop - 0.012) || (y > sockTop - 0.038 && y < sockTop - 0.028)
+        ? l.accent
+        : k.socks
     return [
-      part(new CylinderGeometry(0.058, 0.059, 0.06, 18), sock, { p: [0, -0.07, 0] }),
-      part(new CylinderGeometry(0.068, 0.07, 0.03, 20), k.sole, { p: [0, g + 0.015, 0.03], s: [1, 1, 1.62] }),
-      part(new SphereGeometry(0.068, 18, 10), k.shoe, { p: [0, g + 0.04, 0.026], s: [0.98, 0.74, 1.52] }),
-      part(new SphereGeometry(0.046, 12, 6), k.sole, { p: [0, g + 0.034, 0.104], s: [1.18, 0.62, 0.8] }),
-      // Side stripe (both sides).
-      ...[-1, 1].map((s) =>
-        part(new SphereGeometry(0.04, 8, 6), k.sole, {
-          p: [s * 0.061, g + 0.042, 0.02],
-          r: [0, 0, 0],
-          s: [0.18, 0.32, 1.15],
-        }),
+      ...made('cloth', [
+        part(new CylinderGeometry(0.058, 0.058, 0.07, 18, 4), sock, { p: [0, sockTop - 0.035, 0] }),
+      ]),
+      ...place(
+        [
+          ...made('rubber', [
+            part(roundBox(0.066, 0.02, 0.118, 3, 24, 10), k.sole, { p: [0, g + 0.02, 0.032] }),
+          ]),
+          ...made('plastic', [
+            part(new SphereGeometry(0.07, 20, 12), k.shoe, {
+              p: [0, g + 0.055, 0.02],
+              s: [0.93, 0.82, 1.42],
+            }),
+            part(new SphereGeometry(0.05, 14, 8), k.sole, {
+              p: [0, g + 0.045, 0.098],
+              s: [1.22, 0.78, 0.95],
+            }),
+            // Side stripes (both sides), laces, heel tab.
+            ...[-1, 1].flatMap((s) =>
+              [-0.012, 0.016].map((dz) =>
+                part(new CapsuleGeometry(0.006, 0.05, 2, 6), k.sole, {
+                  p: [s * 0.064, g + 0.06, 0.02 + dz],
+                  r: [0.8, 0, 0],
+                }),
+              ),
+            ),
+            part(lace, k.sole, { p: [0, g + 0.105, 0.035], r: [0.2, 0, HALF_PI] }),
+            part(lace, k.sole, { p: [0, g + 0.096, 0.062], r: [0.45, 0, HALF_PI] }),
+            part(new SphereGeometry(0.032, 10, 6), k.shoe, { p: [0, g + 0.1, -0.055], s: [1, 1, 0.55] }),
+          ]),
+        ],
+        SHOE_SCALE(g),
       ),
-      part(new SphereGeometry(0.03, 8, 6), k.shoe, { p: [0, g + 0.068, -0.05], s: [1, 1, 0.5] }),
-      part(lace, k.sole, { p: [0, g + 0.08, 0.03], r: [0.25, 0, HALF_PI] }),
-      part(lace, k.sole, { p: [0, g + 0.074, 0.056], r: [0.45, 0, HALF_PI] }),
     ]
   },
 }
 
 /** Shin hanging from the knee with the foot (rigid: no ankle joint yet). */
 export function shinParts(l: Look): Part[] {
-  const shin = new CapsuleGeometry(0.054, 0.035, 4, 12).translate(0, -0.045, 0)
+  // Knee down to just above the foot (the sneaker's sock covers the end).
+  const len = rigOf(l).shin - 0.095
+  const shin = new CapsuleGeometry(0.054, len, 4, 12).translate(0, -0.0275 - len / 2, 0)
   return [part(shin, limbOf(l)), ...FEET[l.feet](l)]
 }

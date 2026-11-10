@@ -13,7 +13,7 @@ export interface Preset {
   look: Look
 }
 
-const SKIN = 0xffd6bc
+const SKIN = 0xffbb94
 const HUMAN = {
   skin: SKIN,
   body: 'human',
@@ -49,17 +49,17 @@ export const PRESETS: readonly Preset[] = [
       accent: 0xf2447f,
       grip: 0xffffff,
       hair: 0x5e3b2c,
-      iris: 0xd23a6c,
+      iris: 0xe0307a,
       style: 'bowPigtails',
       face: 'chibiLash',
       kit: {
-        shirt: 0xff5c95,
+        shirt: 0xf0457f,
         trim: 0xffffff,
         stripe: 0xffffff,
         bottom: 'skirt',
         bottomColor: 0xffffff,
       },
-      shoes: { socks: 0xffffff, shoe: 0xff5c95, sole: 0xffffff },
+      shoes: { socks: 0xffffff, shoe: 0xf0457f, sole: 0xffffff },
     },
   },
   {
@@ -68,19 +68,19 @@ export const PRESETS: readonly Preset[] = [
     tint: 0x7cc6fe,
     look: {
       ...HUMAN,
-      accent: 0x2f6ee8,
+      accent: 0x1f60d8,
       grip: 0xffffff,
-      hair: 0x24202c,
-      iris: 0x2a66f0,
+      hair: 0x1c1a22,
+      iris: 0x1f6ef0,
       style: 'capFringe',
       kit: {
-        shirt: 0x3f8ef2,
+        shirt: 0x2f80e8,
         trim: 0xffffff,
         stripe: 0xffffff,
         bottom: 'shorts',
         bottomColor: 0x1f2d5c,
       },
-      shoes: { socks: 0xffffff, shoe: 0x2f6ee8, sole: 0xffffff },
+      shoes: { socks: 0xffffff, shoe: 0x1f60d8, sole: 0xffffff },
     },
   },
   {
@@ -91,15 +91,15 @@ export const PRESETS: readonly Preset[] = [
       ...HUMAN,
       accent: 0xff7a1f,
       grip: 0xffffff,
-      hair: 0x8e4a26,
-      iris: 0xd8701e,
+      hair: 0x8a4422,
+      iris: 0xd88a22,
       style: 'bandSpiky',
       kit: {
-        shirt: 0xffc531,
+        shirt: 0xffb21f,
         trim: 0xff7a1f,
         stripe: 0xff8a2a,
         bottom: 'shorts',
-        bottomColor: 0xc7541c,
+        bottomColor: 0xb8501c,
       },
       shoes: { socks: 0xffffff, shoe: 0xff7a1f, sole: 0xffffff },
     },
@@ -110,19 +110,19 @@ export const PRESETS: readonly Preset[] = [
     tint: 0x9be7a8,
     look: {
       ...HUMAN,
-      accent: 0x23a866,
+      accent: 0x1c9c5e,
       grip: 0xffffff,
       hair: 0x5a3626,
-      iris: 0x1fa37a,
+      iris: 0x1ea860,
       style: 'beanie',
       kit: {
-        shirt: 0x2fbf78,
+        shirt: 0x14a05e,
         trim: 0xffffff,
         stripe: 0xffffff,
         bottom: 'shorts',
-        bottomColor: 0x22a466,
+        bottomColor: 0x1a9a5c,
       },
-      shoes: { socks: 0xffffff, shoe: 0x23a866, sole: 0xffffff },
+      shoes: { socks: 0xffffff, shoe: 0x1c9c5e, sole: 0xffffff },
     },
   },
   {

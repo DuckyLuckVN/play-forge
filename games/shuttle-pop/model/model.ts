@@ -51,6 +51,8 @@ export interface ModelSource {
 const cache = new Map<number, ModelGeos>()
 /** Baked creases (ao.ts) on every bone but the racket. */
 const AO: MergeOpts = { ao: {} }
+/** Limbs and extras: skin unless a part says otherwise (sleeves, shorts, socks, shoes). */
+const SKIN: MergeOpts = { ao: {}, surf: 'skin' }
 /** The head at rest over the torso (torso space), shading the neck. */
 const neckShade = (): Part[] => [part(new SphereGeometry(HEAD_R, 24, 16), 0, { p: [0, HEAD_Y - HIP_Y, 0] })]
 const rackets = new Map<string, BufferGeometry>()
@@ -78,27 +80,28 @@ export function modelOf(src: ModelSource): ModelGeos {
   let m = cache.get(src.id)
   if (!m) {
     const l = src.look
-    const head = mergeParts(headParts(l), AO)
+    const head = mergeParts(headParts(l), { ...AO, surf: 'skin' })
     const rk = `${l.accent}:${l.grip}`
     let racket = rackets.get(rk)
-    if (!racket) rackets.set(rk, (racket = mergeParts(racketParts(l))))
+    if (!racket) rackets.set(rk, (racket = mergeParts(racketParts(l), { surf: 'plastic' })))
     const legs = !legless(l)
     m = {
       // The neck sits in the head's shadow, the shorts' top under the shirt hem.
       torso: mergeParts(torsoParts(l), { ao: { extra: neckShade() } }),
-      hips: mergeParts(hipsParts(l), { ao: { extra: torsoParts(l) } }),
+      // (Humans only: the animals' rounder torso sits inside their shorts and would blot them.)
+      hips: mergeParts(hipsParts(l), { ao: { extra: l.body === 'human' ? torsoParts(l) : [] } }),
       head,
       face: faceGeometry(l),
       hull: inflate(head, OUTLINE_W),
-      upperArm: mergeParts(upperArmParts(l), AO),
-      foreArm: [mergeParts(foreArmParts(l, -1), AO), mergeParts(foreArmParts(l, 1), AO)],
-      hand: [mergeParts(handParts(l, -1), AO), mergeParts(handParts(l, 1), AO)],
-      thigh: legs ? mergeParts(thighParts(l), AO) : EMPTY,
-      shin: legs ? mergeParts(shinParts(l), AO) : EMPTY,
+      upperArm: mergeParts(upperArmParts(l), SKIN),
+      foreArm: [mergeParts(foreArmParts(l, -1), SKIN), mergeParts(foreArmParts(l, 1), SKIN)],
+      hand: [mergeParts(handParts(l, -1), SKIN), mergeParts(handParts(l, 1), SKIN)],
+      thigh: legs ? mergeParts(thighParts(l), SKIN) : EMPTY,
+      shin: legs ? mergeParts(shinParts(l), SKIN) : EMPTY,
       racket,
       extras: l.extras.map((k) => {
         const spec: ExtraSpec = EXTRAS[k]
-        const geo = mergeParts(spec.parts(l), AO)
+        const geo = mergeParts(spec.parts(l), SKIN)
         return {
           spec,
           geo,

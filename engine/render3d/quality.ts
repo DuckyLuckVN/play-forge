@@ -25,6 +25,8 @@ export interface QualityLevel {
   /** Extra cap on pixel ratio. */
   dpr: number
   bloom: boolean
+  /** Screen-space ambient occlusion (only when the view was made with an `ao` option). */
+  ao?: boolean
   /** Game-drawn extra, e.g. real shadows. The engine ignores it; games read `Scene3D.quality`. */
   shadows?: boolean
 }

@@ -3,7 +3,8 @@
 // benches + lantern strings, the cheering crowd (crowd.ts) and ambient life (ambient.ts).
 //
 // Draw-call lean: every repeated thing is one InstancedMesh (or one merged geometry), so the whole
-// park is ~22 draw calls. Nothing here casts or receives shadows. The background is kept soft
+// park is ~22 draw calls. With real shadows on (look.ts tiers), the lawn and the near props cast / receive
+// the sun's soft shadow; the painted far layer, sky and ambient life never do. The background is kept soft
 // (muted colours, fog, pre-hazed far layer) so the court, players and white shuttle pop; nothing tall
 // stands between the camera and the court, and nothing pale sits behind the far baseline.
 //
@@ -25,7 +26,7 @@ import {
   LineSegments,
   type Material,
   Mesh,
-  MeshBasicMaterial,
+  MeshLambertMaterial,
   Object3D,
   ShaderMaterial,
   SphereGeometry,
@@ -38,13 +39,13 @@ import { Backdrop, HAZE } from './backdrop'
 import { courtScale, spreadXZ } from './courtsize'
 import { Crowd } from './crowd'
 import { buildProps, instanced, lambert, yawTo } from './kit'
+import { LOOK, type LookTier } from './look'
 import type { CourtDims } from './physics'
 import { BENCHES, LANTERN, lanternHang, parkLayout } from './props'
-import { prefersTouch } from '@forge/core/device'
 
-/** The sun's shadow map edge (px): 512 on touch devices, 1024 elsewhere. */
-export function shadowMapSize(touch: boolean): number {
-  return touch ? 512 : 1024
+/** The sun's shadow map edge (px) for a look: none on Low, then per tier (look.ts). */
+export function shadowMapSize(tier: LookTier): number {
+  return tier === 'low' ? 0 : LOOK.shadow[tier].map
 }
 
 const SKY = {
@@ -54,21 +55,25 @@ const SKY = {
   sun: '#ffb877',
 }
 const PARK = {
-  grass: '#a3bd7c',
-  hemiSky: '#ffe2c6',
-  hemiGround: '#6f8a5e',
-  sun: '#ffc890',
+  /** Lit now (sun + sky ≈ 1× albedo in full sun, look.ts). */
+  grass: '#7db552',
   wood: '#8a6a52',
   wire: '#4a3b45',
 }
 
-/** Sun direction (from the scene toward the sun): low, behind the camera and to one side, so faces toward the camera are lit and shadows fall long across the court. */
-const SUN_DIR = new Vector3(-9, 7, -10).normalize()
+/**
+ * Sun direction (from the scene toward the sun): from the left, a touch toward the far end, ~44° up. Shadows
+ * fall to the right across the court and lawn (about a body length), where the camera sees them, and every
+ * prop gets a lit and a shaded side; faces toward the camera stay half lit.
+ */
+const SUN_DIR = new Vector3(-12, 12, 2).normalize()
 const SKY_R = 100
-const FOG_NEAR = 28
-const FOG_FAR = 90
+const FOG_NEAR = 40
+const FOG_FAR = 150
 /** Sun shadow box half-size on the Normal court (grows with the court). */
-const SHADOW_HALF = 10
+const SHADOW_HALF = LOOK.shadowHalf
+/** How far up the sun's beam the shadow camera sits (m), and its depth range. */
+const SUN_DIST = 40
 
 /** Golden-hour gradient + a soft sun glow. One draw call, no fog. */
 function makeSky(): Mesh {
@@ -121,7 +126,7 @@ function makeBenches(): InstancedMesh {
     part(0.08, 0.45, 0.38, -0.6, 0.225, 0),
     part(0.08, 0.45, 0.38, 0.6, 0.225, 0),
   ])
-  return instanced(geo, lambert(PARK.wood), BENCHES.length)
+  return instanced(geo, lambert(PARK.wood), BENCHES.length, true)
 }
 
 /** Benches spread with the court (`k` = courtScale), facing it. */
@@ -163,7 +168,7 @@ function wireGeometry(k: Spread): BufferGeometry {
 /** Sky, lights, fog and park scenery. Add once; call `update` every frame for the crowd. */
 export class Park {
   readonly root = new Group()
-  /** The low warm sun; the only shadow-casting light (players only; Court3D pauses its pass when slow). */
+  /** The low warm sun; the only shadow light (players + park; off on the Low look, see setLook). */
   private sun: DirectionalLight
   private crowd = new Crowd()
   private backdrop = new Backdrop()
@@ -179,28 +184,30 @@ export class Park {
     scene.background = new Color(SKY.horizon)
     scene.fog = new Fog(SKY.horizon, FOG_NEAR, FOG_FAR)
 
-    this.sun = new DirectionalLight(PARK.sun, 2.4)
-    this.sun.position.copy(SUN_DIR).multiplyScalar(20)
+    this.sun = new DirectionalLight(LOOK.sun.color, LOOK.sun.intensity)
+    this.sun.position.copy(SUN_DIR).multiplyScalar(SUN_DIST)
     const cam = this.sun.shadow.camera
     cam.left = -SHADOW_HALF
     cam.right = SHADOW_HALF
     cam.top = SHADOW_HALF
     cam.bottom = -SHADOW_HALF
     cam.near = 1
-    cam.far = 45
-    // Phones: a quarter of the shadow pixels (the chibis' soft shadows read the same at phone size).
-    const map = shadowMapSize(prefersTouch())
-    this.sun.shadow.mapSize.set(map, map)
-    this.sun.shadow.bias = -0.0005
-    this.sun.shadow.normalBias = 0.02
-    this.sun.castShadow = true
+    cam.far = SUN_DIST * 2
+    this.sun.shadow.intensity = LOOK.shadowIntensity
+    this.sun.shadow.bias = LOOK.shadowBias
+    this.sun.shadow.normalBias = LOOK.shadowNormalBias
+    this.setLook('high')
 
-    const grass = new Mesh(new CircleGeometry(SKY_R * 0.9, 48), new MeshBasicMaterial({ color: PARK.grass }))
+    const grass = new Mesh(
+      new CircleGeometry(SKY_R * 0.9, 48),
+      new MeshLambertMaterial({ color: PARK.grass }),
+    )
     grass.rotation.x = -Math.PI / 2
+    grass.receiveShadow = true
 
     this.root.add(
       makeSky(),
-      new HemisphereLight(PARK.hemiSky, PARK.hemiGround, 1.3),
+      new HemisphereLight(LOOK.hemi.sky, LOOK.hemi.ground, LOOK.hemi.intensity),
       this.sun,
       grass,
       this.backdrop.root,
@@ -239,6 +246,24 @@ export class Park {
     cam.left = cam.bottom = -half
     cam.right = cam.top = half
     cam.updateProjectionMatrix()
+  }
+
+  /**
+   * Real shadows for a graphics look: Low has none (the sun stops casting: no shadow pass at all), Medium /
+   * High a soft map of their size. Turning casting on / off swaps the lit materials' shadow program variant
+   * (both are compiled in Court3D.warm); a new map size reallocates the map. Rare: between rallies only.
+   */
+  setLook(tier: LookTier) {
+    const on = tier !== 'low'
+    this.sun.castShadow = on
+    if (!on) return
+    const { map, radius } = LOOK.shadow[tier]
+    const shadow = this.sun.shadow
+    shadow.radius = radius
+    if (shadow.mapSize.x === map) return
+    shadow.mapSize.set(map, map)
+    shadow.map?.dispose()
+    shadow.map = null
   }
 
   /** `cheer` = crowd excitement 0..1 (see world.ts cheerLevel), `t` = seconds. */

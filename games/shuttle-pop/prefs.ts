@@ -4,6 +4,7 @@
 // Schema grows by optional fields only; a missing / invalid field falls back to its default.
 import { t } from './i18n'
 import { DEFAULT_PATH, DEFAULT_RING, RING_MODES, type RingMode } from './landing'
+import { DEFAULT_GRAPHICS, GRAPHICS_PREFS, type GraphicsPref } from './look'
 import type { CameraTweak } from './world'
 
 export const PREFS_KEY = 'play-forge:shuttle-pop:prefs'
@@ -15,6 +16,8 @@ export interface SpPrefs {
   path: RingMode
   /** The Jump / Dive buttons also swing by themselves (default false: the player swings). */
   autoSwing: boolean
+  /** Graphics look (look.ts / quality.ts): Auto (the quality governor picks) or a pinned Low / Medium / High. */
+  graphics: GraphicsPref
 }
 
 export interface Prefs {
@@ -43,7 +46,7 @@ const unit = (v: unknown): number =>
 export function parsePrefs(raw: unknown): SpPrefs {
   const r =
     raw && typeof raw === 'object'
-      ? (raw as { camera?: unknown; ring?: unknown; path?: unknown; autoSwing?: unknown })
+      ? (raw as { camera?: unknown; ring?: unknown; path?: unknown; autoSwing?: unknown; graphics?: unknown })
       : {}
   const cam = r.camera
   const c = cam && typeof cam === 'object' ? (cam as Record<string, unknown>) : {}
@@ -54,6 +57,7 @@ export function parsePrefs(raw: unknown): SpPrefs {
     ring,
     path,
     autoSwing: r.autoSwing === true,
+    graphics: GRAPHICS_PREFS.find((g) => g === r.graphics) ?? DEFAULT_GRAPHICS,
   }
 }
 

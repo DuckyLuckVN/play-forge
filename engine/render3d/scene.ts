@@ -4,9 +4,11 @@ import {
   Scene,
   SRGBColorSpace,
   Vector2,
+  Vector3,
   WebGLRenderer,
   WebGLRenderTarget,
   ACESFilmicToneMapping,
+  type ToneMapping,
 } from 'three'
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
@@ -14,6 +16,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { prefersReducedMotion } from '../fx/tween'
+import { SceneAoPass, type AoOptions } from './ao'
 import { pickDpr, QualityGovernor, type QualityLevel } from './quality'
 
 export interface Scene3DOptions {
@@ -26,6 +29,23 @@ export interface Scene3DOptions {
   levels?: readonly QualityLevel[]
   /** Ladder index to start at (default 0, the best). Clean frames still probe back up. */
   startLevel?: number
+  /** Tone mapping (default ACES filmic) and its exposure (default 1). */
+  toneMapping?: ToneMapping
+  exposure?: number
+  /** Screen-space ambient occlusion, on for levels with `ao: true` (default: none built). */
+  ao?: AoOptions
+  /** Colour grade in the punch pass (frames that use post only; default: none, the shader is unchanged). */
+  grade?: ColorGrade
+}
+
+/**
+ * A light colour grade on the linear, pre-tone-mapping image: saturation around luma, contrast around
+ * mid grey (a power curve, so HDR highlights stay intact) and an rgb tint (1,1,1 = none).
+ */
+export interface ColorGrade {
+  saturation: number
+  contrast: number
+  tint: readonly [number, number, number]
 }
 
 export interface Scene3D {
@@ -43,6 +63,10 @@ export interface Scene3D {
   readonly quality: QualityLevel
   /** Glow strength right now (e.g. softer in daylight). No-op without bloom. */
   setBloom(strength: number): void
+  /** Swap the quality ladder (e.g. a player-picked graphics tier), starting at `start`; refits at once. */
+  setLevels(levels: readonly QualityLevel[], start?: number): void
+  /** Draw one frame through every post pass the view has (bloom, AO), so their shaders compile now. */
+  warmPasses(): void
   render(dt: number): void
   onResize(listener: (w: number, h: number) => void): () => void
   destroy(): void
@@ -60,19 +84,32 @@ export function webglAvailable(): boolean {
   }
 }
 
-/** Chromatic split + vignette, driven by `amount`. */
+/** Chromatic split + vignette, driven by `amount`; with the GRADE define, the colour grade first. */
 const PunchShader = {
-  uniforms: { tDiffuse: { value: null }, amount: { value: 0 } },
+  uniforms: {
+    tDiffuse: { value: null },
+    amount: { value: 0 },
+    saturation: { value: 1 },
+    contrast: { value: 1 },
+    tint: { value: new Vector3(1, 1, 1) },
+  },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
     void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: /* glsl */ `
     uniform sampler2D tDiffuse; uniform float amount; varying vec2 vUv;
+    uniform float saturation; uniform float contrast; uniform vec3 tint;
     void main() {
       vec2 d = (vUv - 0.5) * amount * 0.03;
       vec4 c = texture2D(tDiffuse, vUv);
       c.r = texture2D(tDiffuse, vUv + d).r;
       c.b = texture2D(tDiffuse, vUv - d).b;
+      #ifdef GRADE
+        vec3 g = max(c.rgb, 0.0) * tint;
+        g = 0.18 * pow(g / 0.18, vec3(contrast));
+        float l = dot(g, vec3(0.2126, 0.7152, 0.0722));
+        c.rgb = max(mix(vec3(l), g, saturation), 0.0);
+      #endif
       float v = smoothstep(0.85, 0.2, length(vUv - 0.5));
       c.rgb *= mix(1.0, v, 0.25 + amount * 0.5);
       gl_FragColor = c;
@@ -96,8 +133,8 @@ export function wantsMsaa(deviceDpr: number): boolean {
  * the scene then renders straight to the canvas (the renderer applies the same tone mapping and
  * sRGB output as OutputPass), two full-screen passes fewer per frame. Phones are fill-bound.
  */
-export function needsPost(glitch: number, bloomOn: boolean): boolean {
-  return bloomOn || glitch > 0
+export function needsPost(glitch: number, effectsOn: boolean): boolean {
+  return effectsOn || glitch > 0
 }
 
 /**
@@ -123,7 +160,8 @@ export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): S
   const msaa = wantsMsaa(window.devicePixelRatio)
   const renderer = new WebGLRenderer({ antialias: msaa, powerPreference: 'high-performance' })
   renderer.outputColorSpace = SRGBColorSpace
-  renderer.toneMapping = ACESFilmicToneMapping
+  renderer.toneMapping = opts.toneMapping ?? ACESFilmicToneMapping
+  renderer.toneMappingExposure = opts.exposure ?? 1
   renderer.domElement.style.cssText = 'display:block;width:100%;height:100%'
   root.appendChild(renderer.domElement)
   // The punch pass's resting vignette (amount 0), as a static layer: frames without post effects
@@ -135,13 +173,24 @@ export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): S
   const scene = new Scene()
   const camera = new PerspectiveCamera(opts.fov ?? 60, 1, 0.1, opts.far ?? 400)
   const maxDpr = opts.maxDpr ?? 2
-  const quality = new QualityGovernor(opts.levels, opts.startLevel)
+  let quality = new QualityGovernor(opts.levels, opts.startLevel)
 
   const composer = new EffectComposer(
     renderer,
     msaa ? new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: MSAA_SAMPLES }) : undefined,
   )
   composer.addPass(new RenderPass(scene, camera))
+  const ao = opts.ao ? new SceneAoPass(scene, camera, opts.ao) : null
+  if (ao) {
+    // At no more than CSS resolution, like bloom: the occlusion is soft and denoised anyway.
+    const setSize = ao.setSize.bind(ao)
+    ao.setSize = (w, h) => {
+      const k = Math.min(1, 1 / renderer.getPixelRatio())
+      setSize(Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k)))
+    }
+    ao.enabled = false
+    composer.addPass(ao)
+  }
   const bloom =
     opts.bloom && !prefersReducedMotion()
       ? new UnrealBloomPass(new Vector2(1, 1), opts.bloom.strength, opts.bloom.radius, opts.bloom.threshold)
@@ -157,6 +206,13 @@ export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): S
     composer.addPass(bloom)
   }
   const punch = new ShaderPass(PunchShader)
+  if (opts.grade) {
+    const g = opts.grade
+    punch.material.defines.GRADE = ''
+    punch.uniforms.saturation.value = g.saturation
+    punch.uniforms.contrast.value = g.contrast
+    punch.uniforms.tint.value.set(g.tint[0], g.tint[1], g.tint[2])
+  }
   composer.addPass(punch)
   composer.addPass(new OutputPass())
 
@@ -172,6 +228,19 @@ export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): S
     setBloom(strength) {
       if (bloom) bloom.strength = strength
     },
+    setLevels(levels, start = 0) {
+      quality = new QualityGovernor(levels, start)
+      fit()
+    },
+    warmPasses() {
+      const bloomWas = bloom?.enabled ?? false
+      const aoWas = ao?.enabled ?? false
+      if (bloom) bloom.enabled = true
+      if (ao) ao.enabled = true
+      composer.render(0)
+      if (bloom) bloom.enabled = bloomWas
+      if (ao) ao.enabled = aoWas
+    },
     render,
     onResize(l) {
       listeners.add(l)
@@ -185,6 +254,7 @@ export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): S
       observer.disconnect()
       canvas.removeEventListener('webglcontextlost', onLost)
       canvas.removeEventListener('webglcontextrestored', fit)
+      ao?.dispose()
       composer.dispose()
       renderer.dispose()
       root.remove()
@@ -205,6 +275,7 @@ export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): S
       console.info('[render3d] quality', quality.level, 'dpr', dpr)
     }
     if (bloom) bloom.enabled = level.bloom
+    if (ao) ao.enabled = level.ao === true
     renderer.setPixelRatio(dpr)
     renderer.setSize(w, h, false)
     composer.setPixelRatio(dpr)
@@ -217,7 +288,7 @@ export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): S
 
   function render(dt: number) {
     if (quality.sample(dt)) fit()
-    const post = needsPost(view.glitch, !!bloom?.enabled)
+    const post = needsPost(view.glitch, !!bloom?.enabled || !!ao?.enabled)
     vignette.hidden = post
     if (!post) return renderer.render(scene, camera)
     punch.uniforms.amount.value = view.glitch

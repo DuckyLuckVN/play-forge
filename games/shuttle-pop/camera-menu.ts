@@ -5,11 +5,13 @@ import { popover } from '@forge/ui/popover'
 import { slider } from '@forge/ui/slider'
 import { t } from './i18n'
 import { RING_MODES, type RingMode } from './landing'
+import { GRAPHICS_PREFS, type GraphicsPref } from './look'
 import { fromStep, prefs, stepLabel, toStep, TWEAK_STEPS, type SpPrefs } from './prefs'
 import { NO_TWEAK } from './world'
 
 const RING_LABELS: Record<RingMode, string> = { hidden: 'Hidden', near: 'Near drop', always: 'Always' }
 const PATH_LABELS: Record<RingMode, string> = { hidden: 'Off', near: 'Near drop', always: 'Always' }
+const GRAPHICS_LABELS: Record<GraphicsPref, string> = { auto: 'Auto', low: 'Low', medium: 'Medium', high: 'High' }
 
 /**
  * A pref picked from a few values: the engine's segmented radiogroup markup (engine/ui/options.ts).
@@ -76,9 +78,18 @@ const autoSwingPicker = (): HTMLElement =>
     'sp-auto-row',
   )
 
+/** Graphics look: Auto (steps down by itself when frames run slow) or a pinned Low / Medium / High. */
+const graphicsPicker = (): HTMLElement =>
+  segmentedPref(
+    'graphics',
+    t('Graphics'),
+    GRAPHICS_PREFS.map((g) => ({ value: g, text: t(GRAPHICS_LABELS[g]) })),
+    'sp-graphics-row',
+  )
+
 /**
  * The panel body of the view-settings menu: height and tilt of the player's own camera, when the
- * landing ring shows and whether Jump / Dive swing by themselves. Saved in this browser (prefs.ts) and applied live by the renderer; sliders show
+ * landing ring shows, whether Jump / Dive swing by themselves and the graphics look. Saved in this browser (prefs.ts) and applied live by the renderer; sliders show
  * the raw saved value, the court-framing clamp is applied at render time.
  */
 export function viewPanel(): { nodes: HTMLElement[] } {
@@ -102,7 +113,7 @@ export function viewPanel(): { nodes: HTMLElement[] } {
     height.set(toStep(p.camera.height))
     tilt.set(toStep(p.camera.tilt))
   })
-  return { nodes: [height.row, tilt.row, reset, ringPicker(), pathPicker(), autoSwingPicker(), note] }
+  return { nodes: [height.row, tilt.row, reset, ringPicker(), pathPicker(), autoSwingPicker(), graphicsPicker(), note] }
 }
 
 /**

@@ -21,22 +21,25 @@ export function surroundOf(court: CourtDims): { x: number; z: number } {
 }
 
 const COLORS = {
-  trunk: '#8f7563',
-  canopies: ['#93b07c', '#a1ba86', '#86a576', '#adbf8c', '#cdb07e'],
-  /** Far row: hazier, so depth reads. */
-  farCanopies: ['#a9b78f', '#b4bd93', '#c2b48f', '#c9a99a'],
-  blossomTree: '#d9a6a6',
-  hedge: '#6f8f5c',
-  /** Far backstop wood (dark, so the shuttle reads) and its banners (mid tones, never pale). */
+  /** Lit, flat-shaded (look.ts sun + sky): fresh greens + an autumn orange. */
+  trunk: '#946a48',
+  canopies: ['#78b84a', '#8cc653', '#62a842', '#9ccc5a', '#e8a849'],
+  /** Far row: lighter and warmer (pink / peach), so depth reads. */
+  farCanopies: ['#9ccf6a', '#b0d27a', '#e8b065', '#e8a0ab'],
+  blossomTree: '#e8a0ac',
+  hedge: '#5ea840',
+  /** Far backstop wood (dark, so the shuttle reads) and its banners: self-lit LED panels, mid tones, never pale. */
   backstop: '#5b4636',
-  banners: ['#d9645a', '#3f86b8', '#d79a35', '#7c5cb8', '#2f9a84'],
+  banners: ['#e0574a', '#2f9e6a', '#8a4fc4', '#e8952e', '#2f8fb8'],
+  /** The backstop's LED strips (glow bulbs: they bloom a little). */
+  led: '#ffe4b8',
   cooler: '#4f9bc9',
   cardLid: '#e9e1d2',
   shuttle: '#f6f2ea',
   bag: '#c8524f',
   bottle: '#7cc6e8',
   bottleCap: '#3d6fa8',
-  fence: '#b98f6d',
+  fence: '#c28b55',
   stone: '#cbb49a',
   flowers: ['#e6918f', '#f0c36a', '#c4a0d8', '#f2a7b5', '#ef9f72'],
   lampPost: '#5e5160',
@@ -57,7 +60,7 @@ const COLORS = {
   /** Mid-tone (not near-black), so the board by the net doesn't pull the eye on a small screen. */
   board: '#7a6f93',
   card: '#efe2c8',
-  tufts: ['#7f9f63', '#8fae6b', '#6f8f58'],
+  tufts: ['#62a242', '#72b24b', '#55963b'],
 }
 
 /** Picnic blanket spots (x, z) beside the court; the crowd sits on them. */
@@ -158,11 +161,12 @@ function bushesAndBeds(out: Prop[], r: () => number) {
 }
 
 /** The far backstop (Normal court): half-length, post spacing, post height, banner drop. */
-const BACKSTOP = { half: 4.55, step: 1.1, postH: 1.25, bannerH: 0.55 } as const
+const BACKSTOP = { half: 4.55, step: 1.1, postH: 1.25, bannerH: 0.55, ledsPerSpan: 4, led: 0.055 } as const
 
 /**
- * The far end: a low dark-wood tournament backstop (posts, top rail, kick board) hung with cloth banners
- * in alternating colours, a bunting line along the top. Everything stays under the net's height, so the
+ * The far end: a low dark-wood tournament backstop (posts, top rail, kick board) hung with LED banner panels
+ * in alternating colours (self-lit: they stay bright with the sun behind them), warm LED strips along the top
+ * rail and the kick board, a bunting line along the top. Everything stays under the net's height, so the
  * white shuttle still reads against it.
  */
 function farBackstop(out: Prop[], court: CourtDims) {
@@ -172,7 +176,7 @@ function farBackstop(out: Prop[], court: CourtDims) {
   const half = BACKSTOP.half * kx
   const spans = Math.max(2, Math.round((half * 2) / BACKSTOP.step))
   const step = (half * 2) / spans
-  const { postH, bannerH } = BACKSTOP
+  const { postH, bannerH, ledsPerSpan, led } = BACKSTOP
   for (let i = 0; i <= spans; i++)
     out.push(prop('box', COLORS.backstop, -half + i * step, postH / 2, z, 0.1, postH, 0.1))
   out.push(prop('box', COLORS.backstop, 0, postH - 0.04, z, half * 2 + 0.1, 0.07, 0.08))
@@ -182,7 +186,13 @@ function farBackstop(out: Prop[], court: CourtDims) {
     const x = -half + (i + 0.5) * step
     const c = COLORS.banners[i % COLORS.banners.length]
     const y = postH - 0.12 - bannerH / 2
-    out.push(prop('box', c, x, y, z - 0.06, step - 0.14, bannerH, 0.03))
+    out.push(prop('panel', c, x, y, z - 0.06, step - 0.14, bannerH, 0.03))
+    // LED strips: small warm bulbs on the face of the top rail and the kick board.
+    for (let k = 0; k < ledsPerSpan; k++) {
+      const lx = x + ((k + 0.5) / ledsPerSpan - 0.5) * step
+      out.push(prop('glow', COLORS.led, lx, postH - 0.04, z - 0.06, led))
+      out.push(prop('glow', COLORS.led, lx, 0.14, z - 0.05, led))
+    }
     out.push(prop('box', COLORS.backstop, x, y - bannerH / 2 + 0.03, z - 0.075, step - 0.14, 0.05, 0.02))
     // Bunting: two little pennants (flat cones, tip down) per span along the top rail.
     for (const f of [-0.25, 0.25]) {

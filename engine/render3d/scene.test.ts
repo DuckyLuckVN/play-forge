@@ -6,7 +6,7 @@ describe('needsPost', () => {
     expect(needsPost(0, false)).toBe(false)
   })
 
-  it('uses the composer while a glitch plays or bloom is on', () => {
+  it('uses the composer while a glitch plays or a post effect (bloom, AO) is on', () => {
     expect(needsPost(0.4, false)).toBe(true)
     expect(needsPost(0, true)).toBe(true)
   })

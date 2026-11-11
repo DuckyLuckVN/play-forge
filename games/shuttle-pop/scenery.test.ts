@@ -1,9 +1,23 @@
 // @vitest-environment jsdom
-import { BufferGeometry, Group, InstancedMesh, Material, Matrix4, Mesh, Scene, Texture, Vector3 } from 'three'
+import {
+  BufferGeometry,
+  Color,
+  DirectionalLight,
+  Group,
+  InstancedMesh,
+  Material,
+  Matrix4,
+  Mesh,
+  MeshBasicMaterial,
+  Scene,
+  Texture,
+  Vector3,
+} from 'three'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { courtDims } from './courtsize'
 import { Net } from './net'
 import { COURT } from './physics'
+import { LOOK } from './look'
 import { Park, shadowMapSize } from './scenery'
 
 const propsOf = (park: Park) =>
@@ -115,8 +129,50 @@ describe('Net.dispose', () => {
 })
 
 describe('shadowMapSize', () => {
-  it('a quarter of the shadow pixels on touch devices', () => {
-    expect(shadowMapSize(true)).toBe(512)
-    expect(shadowMapSize(false)).toBe(1024)
+  it('no map on the Low look, a bigger one on High than on Medium', () => {
+    expect(shadowMapSize('low')).toBe(0)
+    expect(shadowMapSize('medium')).toBe(1024)
+    expect(shadowMapSize('high')).toBe(2048)
+  })
+})
+
+describe('Park.setLook', () => {
+  const sunOf = (park: Park) =>
+    (park.root.children.find((o) => (o as DirectionalLight).isDirectionalLight) as DirectionalLight)
+  it('Low: the sun casts nothing; Medium / High: soft shadows of their map size', () => {
+    const park = new Park(new Scene())
+    const sun = sunOf(park)
+    park.setLook('low')
+    expect(sun.castShadow).toBe(false)
+    park.setLook('medium')
+    expect(sun.castShadow).toBe(true)
+    expect(sun.shadow.mapSize.x).toBe(1024)
+    expect(sun.shadow.radius).toBeGreaterThan(1)
+    park.setLook('high')
+    expect(sun.shadow.mapSize.x).toBe(2048)
+    expect(sun.shadow.intensity).toBeLessThan(1)
+  })
+  it('lit props cast + receive the sun shadow; glow bulbs (unlit, HDR for bloom) never do; LED panels only cast', () => {
+    const meshes = propsOf(new Park(new Scene())).children as InstancedMesh[]
+    const unlit = meshes.filter((m) => (m.material as MeshBasicMaterial).isMeshBasicMaterial)
+    const glow = unlit.filter((m) => !(m.material as MeshBasicMaterial).fog)
+    const panel = unlit.filter((m) => !glow.includes(m))
+    const lit = meshes.filter((m) => !unlit.includes(m))
+    expect([glow.length, panel.length]).toEqual([1, 1])
+    expect(lit.length).toBeGreaterThan(0)
+    for (const m of lit) expect([m.castShadow, m.receiveShadow]).toEqual([true, true])
+    expect([glow[0].castShadow, glow[0].receiveShadow]).toEqual([false, false])
+    expect([panel[0].castShadow, panel[0].receiveShadow]).toEqual([true, false])
+    // Every bulb's luminance clears the bloom threshold (so the lamps glow on Medium / High).
+    const c = new Color()
+    for (let i = 0; i < glow[0].count; i++) {
+      glow[0].getColorAt(i, c)
+      expect(0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b).toBeGreaterThan(LOOK.bloom.threshold)
+    }
+    // Panels stay under the bloom threshold: bright, never glowing behind the shuttle.
+    for (let i = 0; i < panel[0].count; i++) {
+      panel[0].getColorAt(i, c)
+      expect(Math.max(c.r, c.g, c.b)).toBeLessThanOrEqual(1)
+    }
   })
 })

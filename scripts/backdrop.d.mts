@@ -15,6 +15,8 @@ export function ridgeRects(
   body: string,
   edge: string,
 ): PixelRect[]
+/** Rects for a filled circle of radius r centred on a size×size grid. */
+export function discRects(size: number, r: number, color: string): PixelRect[]
 /** Standalone CSS for the pixel-arcade backdrop (raw colours, no tokens). */
 export const BACKDROP_CSS: string
 /** The decorative backdrop element's markup (aria-hidden, static). */

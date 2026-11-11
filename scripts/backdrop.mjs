@@ -1,5 +1,6 @@
-// The pixel-arcade backdrop: a banded dusk sky with pixel stars and a moon,
-// parallax mountains, hills and a grass-and-brick ground scrolling left at
+// The pixel-arcade backdrop: a banded sunset sky (plum to orange to gold) with
+// a few early stars and a big sun setting behind the mountains,
+// parallax brown mountains, hills and a grass-and-dirt ground scrolling left at
 // different speeds, drifting clouds and a few spinning coins, hearts and stars.
 // Shared by the launcher (launcher/main.ts) and the game loading splash
 // (scripts/splash.mjs), so the two feel like one place.
@@ -79,9 +80,33 @@ export function ridgeRects(w, h, base, waves, body, edge) {
   return [...bodies, ...edges]
 }
 
+/** Rects for a filled circle of radius r centred on a size×size grid, one rect per row. */
+export function discRects(size, r, color) {
+  const c = (size - 1) / 2
+  const rects = []
+  for (let y = 0; y < size; y++) {
+    const dy = (y - c) ** 2
+    if (dy > r * r) continue
+    const s = Math.sqrt(r * r - dy)
+    const from = Math.max(0, Math.ceil(c - s))
+    const to = Math.min(size - 1, Math.floor(c + s))
+    if (to >= from) rects.push([from, y, to - from + 1, 1, color])
+  }
+  return rects
+}
+
 // ---- The art ----
 
-const NIGHT = '#161a3a'
+const SUNSET = [
+  ['#2a1638', 14], // deep plum up top, so the title and text stay readable
+  ['#43193f', 26],
+  ['#6b2346', 38],
+  ['#9c3346', 50],
+  ['#cc4d40', 61],
+  ['#ea7339', 72],
+  ['#f79d3c', 82],
+  ['#ffc65e', 100], // gold at the horizon
+]
 const COIN = { K: '#c98f00', Y: '#ffc83d', W: '#fff3c4' }
 
 const ART = {
@@ -103,27 +128,19 @@ const ART = {
     [70, 30, 1, 1, '#a3a8d6'],
     [25, 44, 1, 1, '#f4f1ff'],
     [60, 50, 1, 1, '#a3a8d6'],
-    [14, 33, 3, 1, '#5ab8ff'],
-    [15, 32, 1, 3, '#5ab8ff'],
+    [14, 33, 3, 1, '#ffe8a8'],
+    [15, 32, 1, 3, '#ffe8a8'],
   ]),
-  moon: (() => {
-    const rects = []
-    const disc = (r, c) => {
-      // One rect per row: the pixels whose centre-offset lies within r.
-      for (let y = 0; y < 22; y++) {
-        const dy = (y - 10.5) ** 2
-        if (dy > r * r) continue
-        const s = Math.sqrt(r * r - dy)
-        const from = Math.ceil(10.5 - s)
-        const to = Math.floor(10.5 + s)
-        if (to >= from) rects.push([from, y, to - from + 1, 1, c])
-      }
-    }
-    disc(11, 'rgb(255 232 168 / .12)') // stepped halo
-    disc(9, 'rgb(255 232 168 / .18)')
-    disc(7, '#ffe8a8')
-    rects.push([7, 8, 2, 2, '#e8cf7f'], [12, 12, 3, 2, '#e8cf7f'], [10, 6, 1, 1, '#e8cf7f'])
-    return svgUrl(22, 22, rects)
+  sun: (() => {
+    const disc = (r, c) => discRects(40, r, c)
+    return svgUrl(40, 40, [
+      ...disc(20, 'rgb(255 170 80 / .2)'), // stepped halo
+      ...disc(17, 'rgb(255 190 100 / .35)'),
+      ...disc(14, '#ffd36b'),
+      ...disc(10, '#ffe9a6'),
+      [13, 10, 5, 2, '#fff6d6'], // shine
+      [12, 12, 2, 3, '#fff6d6'],
+    ])
   })(),
   far: svgUrl(
     160,
@@ -137,8 +154,8 @@ const ART = {
         [7, 5, 1],
         [3, 11, 2],
       ],
-      '#2a2a6a',
-      '#3e3c8c',
+      '#8c4a35',
+      '#bd6a45',
     ),
   ),
   near: svgUrl(
@@ -152,18 +169,18 @@ const ART = {
         [6, 3, 1],
         [4, 7, 2],
       ],
-      '#1d2050',
-      '#2c3478',
+      '#5a2e22',
+      '#80452e',
     ),
   ),
   ground: (() => {
     const rects = [
-      [0, 0, 32, 16, '#2b2f6b'], // bricks
-      [0, 0, 32, 3, '#4be3a0'], // grass
-      [0, 3, 32, 1, '#1f9e68'],
+      [0, 0, 32, 16, '#7a4128'], // dirt bricks
+      [0, 0, 32, 3, '#9bd84e'], // grass
+      [0, 3, 32, 1, '#5c9a2c'],
     ]
-    for (const x of [2, 9, 15, 22, 28]) rects.push([x, 3, 2, 1, '#4be3a0']) // grass tufts
-    for (const y of [7, 11, 15]) rects.push([0, y, 32, 1, '#1b1f4a']) // mortar rows
+    for (const x of [2, 9, 15, 22, 28]) rects.push([x, 3, 2, 1, '#9bd84e']) // grass tufts
+    for (const y of [7, 11, 15]) rects.push([0, y, 32, 1, '#4e2817']) // mortar rows
     for (const [x, y] of [
       [7, 4],
       [23, 4],
@@ -172,12 +189,12 @@ const ART = {
       [7, 12],
       [23, 12],
     ])
-      rects.push([x, y, 1, 3, '#1b1f4a'])
+      rects.push([x, y, 1, 3, '#4e2817'])
     return svgUrl(32, 16, rects)
   })(),
   cloud: sprite(
     ['.....WWWW.......', '...WWWWWWWW.WW..', '.WWWWWWWWWWWWWW.', 'WWWWWWWWWWWWWWWW', '.SSSSSSSSSSSSSS.'],
-    { W: '#3d4285', S: '#2f3470' },
+    { W: '#ff9f7f', S: '#d9614f' },
   ),
   coin: sprite(
     ['..KKKK..', '.KYYYYK.', 'KYYWYYYK', 'KYWYYYYK', 'KYWYYYYK', 'KYYYYYKK', '.KYYYKK.', '..KKKK..'],
@@ -210,11 +227,11 @@ const CLOUDS = [
 ]
 
 export const BACKDROP_CSS = `
-.pf-bd{--px:4px;position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;image-rendering:pixelated;background:linear-gradient(#10132c 0 22%,${NIGHT} 22% 44%,#1b1c48 44% 58%,#232259 58% 70%,#2f2668 70% 80%,#40296f 80% 88%,#5a2d6e 88%)}
+.pf-bd{--px:4px;position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;image-rendering:pixelated;background:linear-gradient(${SUNSET.map(([c, to], i) => `${c} ${i ? SUNSET[i - 1][1] : 0}% ${to}%`).join(',')})}
 .pf-bd>*{position:absolute}
-.pf-bd-stars{inset:0 0 30%;background:${ART.stars} 0 0/calc(64*var(--px)) calc(48*var(--px))}
+.pf-bd-stars{inset:0 0 58%;background:${ART.stars} 0 0/calc(64*var(--px)) calc(48*var(--px))}
 .pf-bd-stars+.pf-bd-stars{background:${ART.stars2} 0 0/calc(80*var(--px)) calc(56*var(--px));animation:pf-bd-blink 1.6s steps(1) infinite}
-.pf-bd-moon{top:9%;right:12%;width:calc(22*var(--px));height:calc(22*var(--px));background:${ART.moon} 0 0/100% 100%}
+.pf-bd-sun{bottom:calc(52*var(--px));right:12%;width:calc(40*var(--px));height:calc(40*var(--px));background:${ART.sun} 0 0/100% 100%}
 .pf-bd-pan{left:0;width:calc(100% + var(--tw));height:var(--th);background:var(--art) 0 0/var(--tw) var(--th) repeat-x;animation:pf-bd-pan var(--d) linear infinite}
 .pf-bd-far{--tw:calc(160*var(--px));--th:calc(56*var(--px));--art:${ART.far};--d:90s;bottom:calc(30*var(--px))}
 .pf-bd-near{--tw:calc(160*var(--px));--th:calc(32*var(--px));--art:${ART.near};--d:45s;bottom:calc(14*var(--px))}
@@ -245,7 +262,7 @@ export function backdropMarkup() {
   )
   return (
     `<div class="pf-bd" aria-hidden="true">` +
-    `<div class="pf-bd-stars"></div><div class="pf-bd-stars"></div><div class="pf-bd-moon"></div>` +
+    `<div class="pf-bd-stars"></div><div class="pf-bd-stars"></div><div class="pf-bd-sun"></div>` +
     clouds.join('') +
     `<div class="pf-bd-pan pf-bd-far"></div><div class="pf-bd-pan pf-bd-near"></div><div class="pf-bd-pan pf-bd-ground"></div>` +
     pickups.join('') +

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BACKDROP_CSS, backdropMarkup, ridgeRects, spriteRects, svgUrl } from './backdrop.mjs'
+import { BACKDROP_CSS, backdropMarkup, discRects, ridgeRects, spriteRects, svgUrl } from './backdrop.mjs'
 
 describe('spriteRects', () => {
   it('turns ASCII rows into merged runs, skipping empty pixels', () => {
@@ -56,5 +56,17 @@ describe('backdrop', () => {
     const url = svgUrl(2, 1, [[0, 0, 1, 1, '#fff']])
     expect(url.startsWith('url("data:image/svg+xml,')).toBe(true)
     expect(decodeURIComponent(url)).toContain("viewBox='0 0 2 1'")
+  })
+})
+
+describe('discRects', () => {
+  it('is a symmetric circle inside the grid, one rect per row', () => {
+    const rects = discRects(10, 4, '#c')
+    expect(rects.length).toBe(new Set(rects.map((r) => r[1])).size)
+    for (const [x, , w] of rects) {
+      expect(x).toBeGreaterThanOrEqual(0)
+      expect(x + w).toBeLessThanOrEqual(10)
+      expect(x).toBe(10 - (x + w)) // centred
+    }
   })
 })

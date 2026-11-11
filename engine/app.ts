@@ -40,6 +40,7 @@ import { ReactionBridge } from './social/reaction-bridge'
 import { ReactionLayer, reactionPicker } from './social/reaction-ui'
 import { t as ts } from './social/i18n'
 import { RoomSocial } from './social/room-social'
+import { clearVoiceRejoin } from './social/voice-state'
 import { audioMenu } from './ui/audio-menu'
 import { button } from './ui/components'
 import { langMenu } from './ui/lang-menu'
@@ -376,7 +377,10 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     // After mount, so the game's key handlers run before chat's Enter shortcut.
     const roomSocial = extra.offline
       ? null
-      : new RoomSocial(s as Session<unknown, unknown>, reactionLayer, (p, r) => reactionBridge.claim(p, r))
+      : new RoomSocial(s as Session<unknown, unknown>, reactionLayer, (p, r) => reactionBridge.claim(p, r), {
+          gameId: def.id,
+          room,
+        })
     social = roomSocial
     reactionBridge.attach(roomSocial?.reactions ?? null)
     quickSlot.replaceChildren(...(roomSocial?.quick ?? []))
@@ -403,6 +407,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       }),
       s.on('hostGone', () => {
         store.save(null)
+        clearVoiceRejoin(def.id, room)
         showMessage(t('The room closed'), t('The host left the room. Create a new room to keep playing.'))
       }),
       s.on('kicked', () => {
@@ -482,6 +487,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     session?.leave()
     session = cleanup = null
     closeFirstGuide?.()
+    // Left on purpose (or removed): don't rejoin this room's voice next time.
+    if (room) clearVoiceRejoin(def.id, room)
     room = ''
     store.save(null)
     countdownEl.replaceChildren()

@@ -98,6 +98,7 @@ export const VI: Dictionary = {
     'Micro bị chặn. Hãy cho phép trong cài đặt trình duyệt để nói.',
   'No microphone found.': 'Không tìm thấy micro.',
   "Couldn't start the microphone.": 'Không bật được micro.',
+  'Tap 🎤 to rejoin voice chat': 'Chạm 🎤 để vào lại kênh thoại',
 }
 
 export const t = translator(VI)

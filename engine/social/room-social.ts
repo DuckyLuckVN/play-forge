@@ -1,12 +1,21 @@
 import type { PlayerInfo, Session } from '../net/session'
+import { toast } from '../ui/dom'
 import { playerColor, theme } from '../ui/theme'
 import { avatarFor } from './avatars'
 import { ChatHub } from './chat'
 import { chatControls, chatShortcut, type ChatControls } from './chat-ui'
 import type { ReactionLayer } from './reaction-ui'
 import { ReactionHub } from './reactions'
-import { VoiceChat } from './voice'
+import { t } from './i18n'
+import { micPermission, VoiceChat } from './voice'
+import { clearVoiceRejoin, loadVoiceRejoin, saveVoiceRejoin, shouldAutoJoin } from './voice-state'
 import { showSpeaking, voiceControls, type VoiceControls } from './voice-ui'
+
+/** Which room this is, so voice can be rejoined after a reload or a reopened link. */
+export interface RoomKey {
+  gameId: string
+  room: string
+}
 
 /** How a player looks in social UI: name, avatar and seat colour. */
 export const socialLook = (p: PlayerInfo) => ({
@@ -31,12 +40,15 @@ export class RoomSocial {
   private voiceUi: VoiceControls | null = null
   private chatUi: ChatControls
   private offs: (() => void)[] = []
+  private disposed = false
 
   constructor(
     session: Session<unknown, unknown>,
     layer: ReactionLayer,
     /** A game that draws reactions itself returns true: the shell then only plays the sound. */
     claim?: (playerId: string, reactionId: string) => boolean,
+    /** Remember voice for this room (online rooms only). */
+    roomKey?: RoomKey,
   ) {
     const s = session
     const player = (id: string) => s.lobby.players.find((p) => p.id === id)
@@ -69,9 +81,51 @@ export class RoomSocial {
         s.lobby.players.filter((p) => p.id !== s.selfId).map((p) => ({ id: p.id, ...socialLook(p) })),
       )
       this.offs.push(showSpeaking(voice))
+      if (roomKey) this.rememberVoice(s, voice, this.voiceUi, roomKey)
     }
     this.quick = [this.voiceUi?.mic, this.chatUi.root].filter((el): el is HTMLElement => !!el)
     this.settings = this.voiceUi ? [this.voiceUi.settings] : []
+  }
+
+  /**
+   * Keeps this room's voice state in localStorage (in voice? muted?) and, once
+   * the room is reached, rejoins voice the way it was before a reload or a
+   * reopened invite link.
+   */
+  private rememberVoice(s: Session<unknown, unknown>, voice: VoiceChat, ui: VoiceControls, key: RoomKey) {
+    let savedMuted: boolean | null = null
+    this.offs.push(
+      voice.on('change', () => {
+        if (voice.joined) {
+          if (savedMuted !== voice.isMuted) saveVoiceRejoin(key.gameId, key.room, voice.isMuted)
+          savedMuted = voice.isMuted
+        } else if (savedMuted !== null) {
+          // We left voice (not the room): don't rejoin next time.
+          clearVoiceRejoin(key.gameId, key.room)
+          savedMuted = null
+        }
+      }),
+    )
+    const restore = async () => {
+      const saved = loadVoiceRejoin(key.gameId, key.room)
+      if (!saved) return
+      const permission = await micPermission()
+      if (this.disposed || voice.joined) return
+      const action = shouldAutoJoin(saved, permission, true)
+      if (action === 'join') await ui.join({ muted: saved.muted })
+      else if (action === 'ask') toast(t('Tap 🎤 to rejoin voice chat'))
+      else clearVoiceRejoin(key.gameId, key.room)
+    }
+    // Guests wait for the host to answer, so a failed join never leaves the mic on.
+    if (s.lobby.hostId) void restore()
+    else {
+      const off = s.on('lobby', () => {
+        if (!s.lobby.hostId) return
+        off()
+        void restore()
+      })
+      this.offs.push(off)
+    }
   }
 
   /** Call when the lobby changes (players joined, left, renamed). */
@@ -85,6 +139,8 @@ export class RoomSocial {
   }
 
   dispose(): void {
+    this.disposed = true
+    // First, so voice switching off here isn't saved as "left voice".
     this.offs.forEach((off) => off())
     this.reactions.dispose()
     this.chatUi.destroy()

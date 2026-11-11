@@ -3,6 +3,7 @@
 // fullscreen, so the button hides there; Add to Home Screen covers it instead.
 import { t } from './i18n'
 import { icon, iconButton, setLabel } from './dom'
+import { FullscreenChrome } from './fullscreen-chrome'
 import { icons } from './icons'
 
 /** The parts of an element used to enter fullscreen (standard + webkit). */
@@ -71,8 +72,12 @@ export function fullscreenButton(doc: FullscreenDoc = defaultDoc()): HTMLButtonE
     button.blur() // Space / Enter go to the game, not this button.
   })
   button.hidden = !isFullscreenSupported(doc)
+  // Phones: the bar this button sits in tucks away while fullscreen (see fullscreen-chrome.ts).
+  let chrome: FullscreenChrome | null = null
   onFullscreenChange(() => {
     const on = isFullscreen(doc)
+    const bar = button.closest<HTMLElement>('.pf-bar')
+    if (bar) (chrome ??= new FullscreenChrome(bar)).set(on)
     button.replaceChildren(icon(on ? icons.fullscreenExit : icons.fullscreen))
     setLabel(button, t(on ? 'Exit full screen' : 'Full screen'))
   }, doc)

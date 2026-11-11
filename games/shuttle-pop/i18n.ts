@@ -114,6 +114,7 @@ export const VI: Dictionary = {
   'Only changes your own screen.': 'Chỉ thay đổi trên màn hình của bạn.',
   'Reset camera': 'Đặt lại camera',
   'Landing ring': 'Vòng điểm rơi',
+  'Flight path': 'Đường bay',
   Hidden: 'Ẩn',
   'Near drop': 'Sắp rơi',
   Always: 'Luôn hiện',

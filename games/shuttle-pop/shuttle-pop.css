@@ -933,12 +933,16 @@
   z-index: var(--pf-z-popover);
 }
 /* Ring row: set apart from the camera controls; narrow segments so "Near drop" / "Luôn hiện" never wrap at 320 px. */
+.sp-cam-panel .sp-path-row {
+  margin-top: 10px;
+}
 .sp-cam-panel .sp-ring-row {
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid var(--pf-rim);
 }
-.sp-cam-panel .sp-ring-row .pf-segment {
+.sp-cam-panel .sp-ring-row .pf-segment,
+.sp-cam-panel .sp-path-row .pf-segment {
   font-size: 13px;
   padding: 10px 2px;
   white-space: nowrap;

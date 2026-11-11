@@ -13,6 +13,12 @@ import { BufferAttribute, BufferGeometry, Color, LatheGeometry, Vector2 } from '
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 
 /** Metres, model space (see the header). */
+/**
+ * How much bigger the shuttlecock is drawn than its real size (SHUTTLECOCK): easier to follow on a phone.
+ * Look only: the sim's shuttle (contact, net, floor) is a point and never reads this.
+ */
+export const SHUTTLE_LOOK_SCALE = 1.5
+
 export const SHUTTLECOCK = {
   /** Cork dome radius; the dome's centre sits `neck` above the junction. */
   cork: 0.041,

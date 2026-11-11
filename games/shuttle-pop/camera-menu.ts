@@ -9,6 +9,7 @@ import { fromStep, prefs, stepLabel, toStep, TWEAK_STEPS, type SpPrefs } from '.
 import { NO_TWEAK } from './world'
 
 const RING_LABELS: Record<RingMode, string> = { hidden: 'Hidden', near: 'Near drop', always: 'Always' }
+const PATH_LABELS: Record<RingMode, string> = { hidden: 'Off', near: 'Near drop', always: 'Always' }
 
 /**
  * A pref picked from a few values: the engine's segmented radiogroup markup (engine/ui/options.ts).
@@ -54,6 +55,15 @@ const ringPicker = (): HTMLElement =>
     'sp-ring-row',
   )
 
+/** When does the flight path of shots coming to me show (default off). */
+const pathPicker = (): HTMLElement =>
+  segmentedPref(
+    'path',
+    t('Flight path'),
+    RING_MODES.map((mode) => ({ value: mode, text: t(PATH_LABELS[mode]) })),
+    'sp-path-row',
+  )
+
 /** Does the Jump / Dive button also swing by itself (default off: the player swings). */
 const autoSwingPicker = (): HTMLElement =>
   segmentedPref(
@@ -92,7 +102,7 @@ export function viewPanel(): { nodes: HTMLElement[] } {
     height.set(toStep(p.camera.height))
     tilt.set(toStep(p.camera.tilt))
   })
-  return { nodes: [height.row, tilt.row, reset, ringPicker(), autoSwingPicker(), note] }
+  return { nodes: [height.row, tilt.row, reset, ringPicker(), pathPicker(), autoSwingPicker(), note] }
 }
 
 /**

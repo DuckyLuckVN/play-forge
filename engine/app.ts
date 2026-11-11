@@ -1034,7 +1034,12 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   /** The game's end-of-match leaderboard, if it has one. */
   function boardOf(state: S, selfId: string): HTMLElement | null {
     const lb = opts.leaderboard?.(state, selfId)
-    return lb ? leaderboardTable(lb) : null
+    if (!lb) return null
+    const players = session?.lobby.players ?? []
+    return leaderboardTable(lb, (id) => {
+      const p = players.find((q) => q.id === id)
+      return p ? avatarFor(p) : undefined
+    })
   }
 
   /** Results ranking: #1 first, each in their seat colour, you highlighted. */

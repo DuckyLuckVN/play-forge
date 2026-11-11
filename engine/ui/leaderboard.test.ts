@@ -25,6 +25,24 @@ describe('leaderboardTable', () => {
     expect(el.querySelector('.pf-lb-note')!.textContent).toBe('Longest rally: 9 shots')
   })
 
+  it("an avatar per row: the row's own (e.g. the robot), else the resolver's, else none", () => {
+    const el = leaderboardTable(
+      {
+        columns: ['Points'],
+        rows: [
+          { id: 'cpu', name: 'Computer', values: ['1'], avatar: 'robot' },
+          { id: 'a', name: 'Ann', values: ['2'] },
+          { id: 'x', name: 'Gone', values: ['0'] },
+        ],
+      },
+      (id) => (id === 'a' ? 'cat' : undefined),
+    )!
+    const avatars = [...el.querySelectorAll('tbody tr')].map(
+      (r) => (r.querySelector('.pf-lb-avatar') as HTMLElement | null)?.dataset.avatar ?? null,
+    )
+    expect(avatars).toEqual(['robot', 'cat', null])
+  })
+
   it('nothing for no rows', () => {
     expect(leaderboardTable({ columns: [], rows: [] })).toBeNull()
   })

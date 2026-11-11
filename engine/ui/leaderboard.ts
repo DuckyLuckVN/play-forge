@@ -1,5 +1,6 @@
 // End-of-match leaderboard: players ranked (#1 first) with a few stat columns, a badge (e.g. MVP) and
 // the local player highlighted. Games build the data (GameAppOptions.leaderboard); this only draws it.
+import { avatarEl } from '../social/avatar-ui'
 import { h } from './dom'
 import { t } from './i18n'
 
@@ -14,6 +15,8 @@ export interface LeaderboardRow {
   badge?: string
   /** The local player. */
   self?: boolean
+  /** Avatar id (e.g. 'robot' for the computer); none = the shell's resolver (the lobby player's). */
+  avatar?: string
 }
 
 export interface Leaderboard {
@@ -25,7 +28,11 @@ export interface Leaderboard {
   note?: string
 }
 
-export function leaderboardTable(lb: Leaderboard): HTMLElement | null {
+/** `avatarOf` = the avatar for a row without its own (the shell looks the player up in the lobby). */
+export function leaderboardTable(
+  lb: Leaderboard,
+  avatarOf: (id: string) => string | undefined = () => undefined,
+): HTMLElement | null {
   if (!lb.rows.length) return null
   const head = h(
     'tr',
@@ -35,8 +42,15 @@ export function leaderboardTable(lb: Leaderboard): HTMLElement | null {
     ...lb.columns.map((c) => h('th', { textContent: c })),
   )
   const rows = lb.rows.map((r, i) => {
-    const name = h('td', { class: 'pf-lb-name' }, h('span', { textContent: r.name }))
-    if (r.badge) name.append(h('span', { class: 'pf-lb-badge', textContent: r.badge }))
+    const avatar = r.avatar ?? avatarOf(r.id)
+    const who = h(
+      'span',
+      { class: 'pf-lb-who' },
+      avatar ? avatarEl(avatar, 'pf-avatar pf-lb-avatar') : false,
+      h('span', { class: 'pf-lb-player', textContent: r.name }),
+    )
+    if (r.badge) who.append(h('span', { class: 'pf-lb-badge', textContent: r.badge }))
+    const name = h('td', { class: 'pf-lb-name' }, who)
     const tr = h(
       'tr',
       { class: r.self ? 'self' : '' },

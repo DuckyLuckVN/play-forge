@@ -99,6 +99,8 @@ export function leaderboardOf(s: SpState, selfId: string): Leaderboard {
       color: tintCss(PRESETS[p.preset]?.tint ?? PRESETS[p.side].tint),
       ...(p.id === mvp ? { badge: t('MVP') } : {}),
       ...(p.id === selfId ? { self: true } : {}),
+      // The computer's own face; humans get their lobby avatar from the shell.
+      ...(p.kind === 'ai' ? { avatar: 'robot' } : {}),
     })),
     note: longestText(s.stats.longest),
   }

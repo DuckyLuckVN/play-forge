@@ -133,6 +133,9 @@ describe('leaderboardOf (results)', () => {
       values: ['4', '2', '0', '0', '0'],
     })
     expect(lb.note).toBe('Longest rally: 7 shots')
+    // The computer seats show the robot; humans leave it to the shell (lobby avatar).
+    for (const r of lb.rows)
+      expect(r.avatar).toBe(s.players.find((p) => p.id === r.id)!.kind === 'ai' ? 'robot' : undefined)
   })
 
   it("1v1 from the sim: p1's Perfect hit is in p1's row", () => {

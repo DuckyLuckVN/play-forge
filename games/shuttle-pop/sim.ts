@@ -6,7 +6,7 @@ import {
   abilityShot,
   acting,
   diveAllowed,
-  diveSwing,
+  freeSwing,
   holdsRacket,
   actMoveMul,
   actReady,
@@ -98,7 +98,7 @@ export type SpInput =
    * `x, z` = held direction (aims the strike, like a swing's; a dive also goes that way); `tick` = the
    * presser's screen tick (rewind-clamped like a swing's). Older hosts ignore `k` (auto pick).
    */
-  | { t: 'ability'; x: number; z: number; tick?: number; k?: Want }
+  | { t: 'ability'; x: number; z: number; tick?: number; k?: Want; auto?: boolean }
 
 export interface SpPlayer {
   id: string
@@ -634,7 +634,7 @@ export function resolveSwing(
     return
   }
   // A swing in a Dive's window strikes as a lunge (its box, its shot).
-  const k = act ?? (divingSwing(state, p, rewind) ? 'lunge' : undefined)
+  const k = act ?? freeStrike(state, p, rewind)
   // A jump / lunge plays its own shot (ability.ts abilityShot) instead of the held direction's.
   const shot = k
     ? abilityShot(k, held, c.grade)
@@ -656,7 +656,8 @@ export function resolveSwing(
 /**
  * The contact a swing `rewind` ticks ago would make (resolveSwing's rules), or null = a whiff. A jump /
  * lunge (`act`) uses its reach box and is graded `leadOf(act)` ticks after the press (its wind-up). A
- * plain swing in a Dive's window (ability.ts diveSwing) uses the lunge box from the slide end, no lead.
+ * plain swing in a free move's window (ability.ts freeSwing) uses that move's box (a dive's from its
+ * slide end), no lead.
  */
 function contactFor(
   state: SpState,
@@ -670,8 +671,9 @@ function contactFor(
   const off = act === 'lunge' && p.act ? slideEnd({ x: 0, z: 0 }, p.act.dx, p.act.dz) : null
   const past = contactCandidates(state, p, rewind)
   if (off) for (const c of past) c.at = { x: c.at.x + off.x, z: c.at.z + off.z }
+  const free = act ? undefined : freeStrike(state, p, rewind)
   // A Dive's swing: judged from where the slide ends (now + the slide still ahead), like a lunge.
-  const dive = !act && divingSwing(state, p, rewind) ? strikeFrom(p, p.act, state.tick) : null
+  const dive = free === 'lunge' ? strikeFrom(p, p.act, state.tick) : null
   if (dive) for (const c of past) c.at = dive
   return pickContact(
     past,
@@ -683,16 +685,16 @@ function contactFor(
     swingTick,
     state.tick,
     perfectWindowOf(s.pressured),
-    reachOf(act ?? (dive ? 'lunge' : undefined)),
+    reachOf(act ?? free),
   )
 }
 
 /**
- * A plain swing by `p` (`rewind` ticks old) in its Dive's window: graded then or arriving now (a short
- * charge is graded at its press, maybe before the dive).
+ * The strike of a plain swing by `p` (`rewind` ticks old) in its free move's window (ability.ts
+ * freeSwing): graded then or arriving now (a short charge is graded at its press, maybe before the move).
  */
-function divingSwing(state: SpState, p: SpPlayer, rewind: number): boolean {
-  return diveSwing(p.act, state.tick - rewind) || diveSwing(p.act, state.tick)
+function freeStrike(state: SpState, p: SpPlayer, rewind: number): Strike | undefined {
+  return freeSwing(p.act, state.tick - rewind) ?? freeSwing(p.act, state.tick)
 }
 
 /**
@@ -919,6 +921,7 @@ function resolveAct(
   rewind: number,
   hitter: -1 | 0 | 1,
   want?: Want,
+  auto = false,
 ): boolean {
   const s = state.shuttle
   const hist = state.history
@@ -929,7 +932,7 @@ function resolveAct(
   // The Jump / Dive buttons force their move in a rally (the serve set-up only hops); a dive goes the held way.
   const forced = state.phase === 'rally' ? want : undefined
   const dir = held.x || held.z ? toWorld(p.side, held.x, held.z) : undefined
-  const pick = pickAbility(flight, at, p.side, s.lastHitter, canHit, forced, dir)
+  const pick = pickAbility(flight, at, p.side, s.lastHitter, canHit, forced, dir, auto)
   p.act = {
     k: pick.k,
     at: state.tick,
@@ -937,6 +940,7 @@ function resolveAct(
     dz: pick.dz,
     ...(pick.empty ? { empty: true } : {}),
     ...(pick.free ? { free: true } : {}),
+    ...(pick.free && pick.k === 'lunge' && auto ? { auto: true } : {}),
   }
   emit(state, { k: 'act', side: p.side, act: pick.k, by: p.id })
   // A hop, an empty jump and a Dive (it only slides: the player swings) strike nothing.
@@ -944,6 +948,27 @@ function resolveAct(
   p.swingAt = state.tick
   resolveSwing(state, p, held, rewind, 0, rewind, pick.k)
   return true
+}
+
+/** Ticks before its contact an Auto swing dive swings (inside the Perfect band; a lunge caps it at Good). */
+const AUTO_DIVE_LEAD = 4
+
+/**
+ * Auto swing dives (Act.auto): once per dive, inside its swing window, the sim swings for the diver as
+ * soon as a contact (the dive's reach from the slide end) is AUTO_DIVE_LEAD ticks away or nearer.
+ * `hitter` = lastHitter before this tick's swings; swingers join `swung` (bonks).
+ */
+function autoDiveSwings(state: SpState, hitter: -1 | 0 | 1, swung: SpPlayer[]): void {
+  for (const p of state.players) {
+    const a = p.act
+    if (!a?.auto || p.swingAt >= a.at || !freeSwing(a, state.tick) || swung.includes(p)) continue
+    if (!canSwing(state, p) || !canStrike(state, p, hitter)) continue
+    const c = contactFor(state, p, 0)
+    if (!c || c.tick - state.tick > AUTO_DIVE_LEAD) continue
+    p.swingAt = state.tick
+    resolveSwing(state, p, p.move, 0, 0, 0)
+    swung.push(p)
+  }
 }
 
 /**
@@ -1026,7 +1051,8 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
     lag: number
   }[] = []
   const presses: SpPlayer[] = []
-  const acts: { p: SpPlayer; held: { x: number; z: number }; rewind: number; want?: Want }[] = []
+  const acts: { p: SpPlayer; held: { x: number; z: number }; rewind: number; want?: Want; auto: boolean }[] =
+    []
   for (const { player, input } of [...inputs, ...botInputs(state)]) {
     const p = state.players.find((q) => q.id === player)
     if (!p || !input) continue
@@ -1067,7 +1093,7 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
       const held = clampDir(input.x, input.z)
       // The Dive button while moving backward: nothing (no escape dives; no cooldown spent).
       if (want === 'lunge' && state.phase === 'rally' && !diveAllowed(held)) continue
-      acts.push({ p, held, rewind: humanRewind(state, p, input.tick), want })
+      acts.push({ p, held, rewind: humanRewind(state, p, input.tick), want, auto: input.auto === true })
     }
   }
   const srv = serverPlayer(state)
@@ -1095,7 +1121,7 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
     else if (state.phaseT >= SERVE_TIMEOUT) serve(state, srv, { x: 0, z: 0 })
     // Presses in the serve hop (nothing to strike yet; a serve this tick is the server's own hit).
     for (const a of acts)
-      if (canAct(state, a.p, a.want)) resolveAct(state, a.p, a.held, a.rewind, before, a.want)
+      if (canAct(state, a.p, a.want)) resolveAct(state, a.p, a.held, a.rewind, before, a.want, a.auto)
   } else if (state.phase === 'rally') {
     // 3. Swings: who can hit is decided by lastHitter + the shuttle's half, so at most one schedules.
     // A shuttle hit this tick can't be hit back on the same tick (else input order would decide).
@@ -1111,8 +1137,9 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
       if (s.lastHitter === hitter && !swings.some((w) => w.p === p) && tapOnPress(state, p)) swung.push(p)
     // After swings and taps (a charge pressed this tick wins: canAct re-checked), before a scheduled hit fires.
     for (const a of acts)
-      if (canAct(state, a.p, a.want) && resolveAct(state, a.p, a.held, a.rewind, hitter, a.want))
+      if (canAct(state, a.p, a.want) && resolveAct(state, a.p, a.held, a.rewind, hitter, a.want, a.auto))
         swung.push(a.p)
+    autoDiveSwings(state, hitter, swung)
     // A contact already made (pending) still fires below, even if its swinger was just bonked.
     if (swung.length > 0) bonks(state, swung)
     if (s.pending && s.pending.atTick <= state.tick) firePending(state)

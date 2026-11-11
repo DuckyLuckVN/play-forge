@@ -5,44 +5,70 @@ import { popover } from '@forge/ui/popover'
 import { slider } from '@forge/ui/slider'
 import { t } from './i18n'
 import { RING_MODES, type RingMode } from './landing'
-import { fromStep, prefs, stepLabel, toStep, TWEAK_STEPS } from './prefs'
+import { fromStep, prefs, stepLabel, toStep, TWEAK_STEPS, type SpPrefs } from './prefs'
 import { NO_TWEAK } from './world'
 
 const RING_LABELS: Record<RingMode, string> = { hidden: 'Hidden', near: 'Near drop', always: 'Always' }
 
 /**
- * The "when does the landing ring show" row: the engine's segmented radiogroup markup
- * (engine/ui/options.ts). Updates in place on pref changes, so focus stays on the pressed segment.
+ * A pref picked from a few values: the engine's segmented radiogroup markup (engine/ui/options.ts).
+ * Updates in place on pref changes, so focus stays on the pressed segment. `cls` = the row's extra class.
  */
-function ringPicker(): HTMLElement {
+function segmentedPref<K extends keyof SpPrefs>(
+  key: K,
+  label: string,
+  choices: readonly { value: SpPrefs[K]; text: string }[],
+  cls: string,
+): HTMLElement {
   const group = h('div', { class: 'pf-segmented', role: 'radiogroup' } as never)
-  group.setAttribute('aria-label', t('Landing ring'))
-  const segs = RING_MODES.map((mode) => {
-    const b = h('button', { type: 'button', class: 'pf-segment', textContent: t(RING_LABELS[mode]) })
+  group.setAttribute('aria-label', label)
+  const segs = choices.map(({ value, text }) => {
+    const b = h('button', { type: 'button', class: 'pf-segment', textContent: text })
     b.setAttribute('role', 'radio')
-    b.onclick = () => prefs.set({ ring: mode })
+    b.onclick = () => prefs.set({ [key]: value } as Partial<SpPrefs>)
     group.append(b)
-    return { mode, b }
+    return { value, b }
   })
-  const sync = (ring: RingMode) => {
-    for (const { mode, b } of segs) {
-      b.classList.toggle('on', mode === ring)
-      b.setAttribute('aria-checked', String(mode === ring))
+  const sync = (now: SpPrefs[K]) => {
+    for (const { value, b } of segs) {
+      b.classList.toggle('on', value === now)
+      b.setAttribute('aria-checked', String(value === now))
     }
   }
-  sync(prefs.get().ring)
-  prefs.onChange((p) => sync(p.ring))
+  sync(prefs.get()[key])
+  prefs.onChange((p) => sync(p[key]))
   return h(
     'div',
-    { class: 'pf-option sp-ring-row' },
-    h('span', { class: 'pf-option-label', textContent: t('Landing ring') }),
+    { class: `pf-option ${cls}` },
+    h('span', { class: 'pf-option-label', textContent: label }),
     group,
   )
 }
 
+/** When does the landing ring show. */
+const ringPicker = (): HTMLElement =>
+  segmentedPref(
+    'ring',
+    t('Landing ring'),
+    RING_MODES.map((mode) => ({ value: mode, text: t(RING_LABELS[mode]) })),
+    'sp-ring-row',
+  )
+
+/** Does the Jump / Dive button also swing by itself (default off: the player swings). */
+const autoSwingPicker = (): HTMLElement =>
+  segmentedPref(
+    'autoSwing',
+    t('Auto swing (Jump / Dive)'),
+    [
+      { value: false, text: t('Off') },
+      { value: true, text: t('On') },
+    ],
+    'sp-auto-row',
+  )
+
 /**
- * The panel body of the view-settings menu: height and tilt of the player's own camera and when the
- * landing ring shows. Saved in this browser (prefs.ts) and applied live by the renderer; sliders show
+ * The panel body of the view-settings menu: height and tilt of the player's own camera, when the
+ * landing ring shows and whether Jump / Dive swing by themselves. Saved in this browser (prefs.ts) and applied live by the renderer; sliders show
  * the raw saved value, the court-framing clamp is applied at render time.
  */
 export function viewPanel(): { nodes: HTMLElement[] } {
@@ -66,7 +92,7 @@ export function viewPanel(): { nodes: HTMLElement[] } {
     height.set(toStep(p.camera.height))
     tilt.set(toStep(p.camera.tilt))
   })
-  return { nodes: [height.row, tilt.row, reset, ringPicker(), note] }
+  return { nodes: [height.row, tilt.row, reset, ringPicker(), autoSwingPicker(), note] }
 }
 
 /**

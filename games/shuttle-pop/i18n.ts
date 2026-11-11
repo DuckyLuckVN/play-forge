@@ -36,10 +36,10 @@ export const VI: Dictionary = {
   'Racket bonk': 'Cốc vợt',
   "Swing your racket into another player and they see stars for a moment. Then they can't be bonked for 2 s.":
     'Vung vợt trúng người chơi khác là họ choáng, thấy sao một lúc. Sau đó 2 giây họ không bị cốc nữa.',
-  'Reach high shuttles: a jump smash. Then a short cooldown.':
-    'Với tới cầu cao: bật nhảy đập cầu. Sau đó chờ hồi chiêu một chút.',
-  'Slide far the way you are moving, then swing to save a far, low shuttle. Works while charging too. You stay down a moment.':
-    'Trượt xa theo hướng đang chạy, rồi vung vợt để cứu cầu thấp và xa. Đang tích lực cũng trượt được. Bạn sẽ nằm sân một chút.',
+  'Jump, then swing in the air to smash a high shuttle. Then a short cooldown. (Auto swing: view settings.)':
+    'Nhảy lên rồi vung vợt trên không để đập cầu cao. Sau đó chờ hồi chiêu một chút. (Tự vung vợt: cài đặt góc nhìn.)',
+  'Slide far the way you are moving (not backward), then swing to save a far, low shuttle. Works while charging too. You run slower for a moment after.':
+    'Trượt xa theo hướng đang chạy (không lùi), rồi vung vợt để cứu cầu thấp và xa. Đang tích lực cũng trượt được. Sau đó bạn chạy chậm lại một chút.',
   'jump button': 'nút nhảy',
   'dive button': 'nút bổ nhào',
   'Doubles (2 vs 2)': 'Đánh đôi (2 đấu 2)',
@@ -119,6 +119,9 @@ export const VI: Dictionary = {
   Hidden: 'Ẩn',
   'Near drop': 'Sắp rơi',
   Always: 'Luôn hiện',
+  'Auto swing (Jump / Dive)': 'Tự vung vợt (Nhảy / Bổ nhào)',
+  Off: 'Tắt',
+  On: 'Bật',
 }
 
 export const t = translator(VI)

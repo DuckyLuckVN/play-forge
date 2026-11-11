@@ -11,6 +11,8 @@ export const PREFS_KEY = 'play-forge:shuttle-pop:prefs'
 export interface SpPrefs {
   camera: CameraTweak
   ring: RingMode
+  /** The Jump / Dive buttons also swing by themselves (default false: the player swings). */
+  autoSwing: boolean
 }
 
 export interface Prefs {
@@ -37,11 +39,12 @@ const unit = (v: unknown): number =>
 
 /** Turns anything read from storage into valid prefs; unknown fields are dropped. */
 export function parsePrefs(raw: unknown): SpPrefs {
-  const r = raw && typeof raw === 'object' ? (raw as { camera?: unknown; ring?: unknown }) : {}
+  const r =
+    raw && typeof raw === 'object' ? (raw as { camera?: unknown; ring?: unknown; autoSwing?: unknown }) : {}
   const cam = r.camera
   const c = cam && typeof cam === 'object' ? (cam as Record<string, unknown>) : {}
   const ring = RING_MODES.find((m) => m === r.ring) ?? DEFAULT_RING
-  return { camera: { height: unit(c.height), tilt: unit(c.tilt) }, ring }
+  return { camera: { height: unit(c.height), tilt: unit(c.tilt) }, ring, autoSwing: r.autoSwing === true }
 }
 
 export function createPrefs(store: Store = local()): Prefs {

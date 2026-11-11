@@ -8,7 +8,7 @@ import {
   acting,
   actMoveMul,
   actReady,
-  diveSwing,
+  freeSwing,
   holdsRacket,
   cooldownLeft,
   horizonOf,
@@ -202,17 +202,27 @@ describe('ability', () => {
   })
 
   describe('Jump / Dive buttons (forced moves)', () => {
-    it('jump: strikes a high shuttle; nothing in the box (or not mine) = an empty jump, never a hop', () => {
-      const j = pickAbility(lob(), { x: 0.4, z: -2.2 }, 0, 1, true, 'jump')
+    it('jump, auto swing off: always a free jump (the player swings), never a hop', () => {
+      expect(pickAbility(lob(), { x: 0.4, z: -2.2 }, 0, 1, true, 'jump')).toEqual({
+        k: 'jump',
+        dx: 0,
+        dz: 0,
+        free: true,
+      })
+    })
+
+    it('jump, auto swing on: strikes a high shuttle; nothing in the box (or not mine) = an empty jump', () => {
+      const j = pickAbility(lob(), { x: 0.4, z: -2.2 }, 0, 1, true, 'jump', undefined, true)
       expect(j).toMatchObject({ k: 'jump' })
       expect(j.empty).toBeUndefined()
-      expect(pickAbility(drive(), { x: 0, z: -5.4 }, 0, 1, true, 'jump')).toEqual({
+      expect(j.free).toBeUndefined()
+      expect(pickAbility(drive(), { x: 0, z: -5.4 }, 0, 1, true, 'jump', undefined, true)).toEqual({
         k: 'jump',
         dx: 0,
         dz: 0,
         empty: true,
       })
-      expect(pickAbility(lob(), { x: 0.4, z: -2.2 }, 0, 1, false, 'jump').empty).toBe(true)
+      expect(pickAbility(lob(), { x: 0.4, z: -2.2 }, 0, 1, false, 'jump', undefined, true).empty).toBe(true)
     })
 
     it('dive: always a free dive (never strikes by itself) the held way, else toward the shuttle, else the net', () => {
@@ -243,11 +253,16 @@ describe('ability', () => {
       expect(z).toBeCloseTo(slide)
       expect(strikeFrom({ x: 0, z: 0 }, d, 0)).toEqual({ x: 0, z: slide })
       expect(landTick(d)).toBe(glide)
-      expect(diveSwing(d, -1)).toBe(false)
-      expect(diveSwing(d, 0)).toBe(true)
-      expect(diveSwing(d, glide + grace)).toBe(true)
-      expect(diveSwing(d, glide + grace + 1)).toBe(false)
-      expect(diveSwing({ ...d, free: undefined }, 3)).toBe(false)
+      expect(freeSwing(d, -1)).toBeUndefined()
+      expect(freeSwing(d, 0)).toBe('lunge')
+      expect(freeSwing(d, glide + grace)).toBe('lunge')
+      expect(freeSwing(d, glide + grace + 1)).toBeUndefined()
+      expect(freeSwing({ ...d, free: undefined }, 3)).toBeUndefined()
+      const j: Act = { k: 'jump', at: 0, dx: 0, dz: 0, free: true }
+      expect(freeSwing(j, ABILITY.jump.air + ABILITY.jump.grace)).toBe('jump')
+      expect(freeSwing(j, ABILITY.jump.air + ABILITY.jump.grace + 1)).toBeUndefined()
+      expect(actReady(j, ABILITY.jump.freeCooldown)).toBe(true)
+      expect(actReady(j, ABILITY.jump.freeCooldown - 1)).toBe(false)
       expect(acting(d, glide + floor - 1)).toBe(true)
       expect(acting(d, glide + floor)).toBe(false)
       expect(holdsRacket(d, 3)).toBe(false)

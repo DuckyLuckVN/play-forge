@@ -2,7 +2,8 @@ import { createGameApp, h, landscapeGuard, smoothState, type MountContext, type 
 import { ARCADE } from '@forge/audio/tracks'
 import { webglAvailable } from '@forge/render3d'
 import './shuttle-pop.css'
-import { diveAllowed, diveSwing, slideEnd, type Strike } from './ability'
+import { diveAllowed, freeSwing, slideEnd, type Strike } from './ability'
+import { prefs } from './prefs'
 import { toWorld } from './court'
 import { chargeOf } from './charge'
 import { mountEmotes } from './emotes'
@@ -90,9 +91,9 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement, ctx: Moun
   ) => {
     const me = smooth.curr?.players.find((p) => p.id === session.selfId)
     if (!guest || !predictor || !me) return
-    // A swing in our Dive's window strikes from the slide end with the dive's shot (sim contactFor): the
-    // host's hit is shown when it comes instead of a plain-reach guess.
-    if (!act && diveSwing(predictor.act, predictor.stepNow)) return
+    // A swing in our free Jump / Dive's window strikes with that move's box and shot (sim contactFor):
+    // the host's hit is shown when it comes instead of a plain-reach guess.
+    if (!act && freeSwing(predictor.act, predictor.stepNow)) return
     const player = from ?? { x: predictor.x, z: predictor.z }
     // Heard at once; the host's answering hit is then skipped (Court3D's echo).
     if (
@@ -111,7 +112,10 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement, ctx: Moun
     const hit = guest.shuttle.predicted()
     if (hit) court?.ownHitPredicted(hit)
   }
-  const send = (input: SpInput) => {
+  const send = (sent: SpInput) => {
+    // The Jump / Dive buttons also swing by themselves when the player turned Auto swing on (prefs.ts).
+    const input: SpInput =
+      sent.t === 'ability' && sent.k && prefs.get().autoSwing ? { ...sent, auto: true } : sent
     // Animate our own swing button this frame (not when the session or the sim would drop it); the
     // prediction slows with the charge and moves with exactly the moves the host gets.
     if (input.t === 'charge') {
@@ -155,7 +159,7 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement, ctx: Moun
         const at = { x: predictor.x, z: predictor.z }
         const want = smooth.curr?.phase === 'rally' ? input.k : undefined
         const dir = input.x || input.z ? toWorld(me.side, input.x, input.z) : undefined
-        const pick = guest.shuttle.pickAbility(at, me.side, seatCan(canSwing), want, dir)
+        const pick = guest.shuttle.pickAbility(at, me.side, seatCan(canSwing), want, dir, input.auto === true)
         predictor.startAct(pick.k, pick.dx, pick.dz, !!pick.empty, !!pick.free)
         // Heard and seen at once; the host's answering `act` event then stays silent (Court3D).
         court?.ownActPredicted(pick.k)
@@ -300,7 +304,9 @@ createGameApp<SpState, SpInput>({
     },
     {
       action: t('Jump'),
-      note: t('Reach high shuttles: a jump smash. Then a short cooldown.'),
+      note: t(
+        'Jump, then swing in the air to smash a high shuttle. Then a short cooldown. (Auto swing: view settings.)',
+      ),
       keys: [['Space']],
       touch: 'button',
       touchLabel: t('jump button'),
@@ -308,7 +314,7 @@ createGameApp<SpState, SpInput>({
     {
       action: t('Dive'),
       note: t(
-        'Slide far the way you are moving, then swing to save a far, low shuttle. Works while charging too. You stay down a moment.',
+        'Slide far the way you are moving (not backward), then swing to save a far, low shuttle. Works while charging too. You run slower for a moment after.',
       ),
       keys: [['Shift']],
       mouse: 'right',

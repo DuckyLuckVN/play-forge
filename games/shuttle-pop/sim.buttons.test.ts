@@ -121,11 +121,15 @@ describe('Jump / Dive buttons', () => {
     expect(mul(glide + floor)).toBe(1)
   })
 
-  it('a jump with nothing high is an empty jump (no whiff), not a hop', () => {
+  it('a jump with nothing high: a free jump (auto off) or an empty one (auto on); no whiff, not a hop', () => {
     const s = wide()
     const seen = run(s, 5, [press(0, 0, 'jump')])
     expect(seen.find((e) => e.k === 'act')).toMatchObject({ act: 'jump' })
-    expect(s.players[0].act).toMatchObject({ k: 'jump', empty: true })
+    expect(s.players[0].act).toMatchObject({ k: 'jump', free: true })
+    expect(seen.some((e) => e.k === 'whiff' || e.k === 'hit')).toBe(false)
+    const a = wide()
+    run(a, 2, [{ player: 'p0', input: { t: 'ability', x: 0, z: 0, k: 'jump', auto: true } }])
+    expect(a.players[0].act).toMatchObject({ k: 'jump', empty: true })
     expect(seen.some((e) => e.k === 'whiff' || e.k === 'hit')).toBe(false)
   })
 

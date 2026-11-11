@@ -12,7 +12,8 @@ export type Strike = Exclude<AbilityKind, 'hop'>
  * A press in progress: `at` = host tick of its arrival; `dx, dz` = unit world direction (a jump: to the
  * picked contact; a lunge: the dive's direction, the way it slides; 0/0 for a hop). `empty` = a forced
  * jump with nothing to strike: the body moves, no swing, the short (hop) cooldown. `free` = the Dive
- * button's dive (ABILITY.dive): it only slides, the player swings by hand (J) with the dive's reach.
+ * button's dive (ABILITY.dive) or, with auto swing off, the Jump button's jump: the body moves, the
+ * player swings by hand with the move's reach (freeSwing).
  */
 export interface Act {
   k: AbilityKind
@@ -21,6 +22,8 @@ export interface Act {
   dz: number
   empty?: boolean
   free?: boolean
+  /** A free dive the sim swings for (the player's Auto swing setting): see sim autoDiveSwings. */
+  auto?: boolean
 }
 
 /** A forced move (the Jump / Dive buttons); undefined = the shuttle picks (one-button press). */
@@ -47,6 +50,9 @@ export const ABILITY = {
     height: 1.1,
     charge: 0.8,
     reach: { radius: 1.1, minY: 2.2, maxY: 3.85 } as Readonly<Reach>,
+    /** A free jump (the Jump button, auto swing off): swings until `grace` ticks after landing reach high; one cooldown. */
+    grace: 6,
+    freeCooldown: 120,
   },
   lunge: {
     lead: 8,
@@ -79,7 +85,7 @@ const FREE_GLIDE: Glide = { dive: ABILITY.dive.glide, slide: ABILITY.dive.slide,
 
 /** The shape of a lunge `act`: the Dive button's (free) or the auto-pick's. */
 export function glideOf(act: Act | null | undefined): Glide {
-  return act?.free ? FREE_GLIDE : LUNGE_GLIDE
+  return act?.free && act.k === 'lunge' ? FREE_GLIDE : LUNGE_GLIDE
 }
 
 /** Ticks a lunge's dive eases back up at the end of its floor time. */
@@ -182,8 +188,9 @@ export function pickAbility(
   canHit: boolean,
   want?: Want,
   dir?: { x: number; z: number },
+  auto = false,
 ): { k: AbilityKind; dx: number; dz: number; empty?: boolean; free?: boolean } {
-  if (want) return forcedPick(f, at, side, lastHitter, canHit, want, dir)
+  if (want) return forcedPick(f, at, side, lastHitter, canHit, want, dir, auto)
   if (canHit && lastHitter !== side) {
     const mine = (c: { pos: { z: number } } | null): boolean => !!c && onHalf(c.pos.z, side, lastHitter)
     // A plain swing reaches it: the button only jumps for what is above the plain box, never lunges.
@@ -207,11 +214,12 @@ const unit = (x: number, z: number): { x: number; z: number } | null => {
 }
 
 /**
- * The Jump / Dive buttons: the move is the player's, never a hop. A jump strikes when the shuttle passes
- * in its box on my half within its horizon (no "a plain swing reaches it" rule); nothing to strike (or
- * `canHit` false): `empty` (moves, no swing). A dive is always `free` (ABILITY.dive: slides, never swings
- * by itself) along `dir` (unit world, the held stick; none = toward the contact it could reach, else
- * toward the net).
+ * The Jump / Dive buttons: the move is the player's, never a hop. A dive is always `free` (ABILITY.dive:
+ * slides; the sim swings for it only with `auto`) along `dir` (unit world, the held stick; none = toward
+ * the contact it could reach, else toward the net). A jump without `auto` is `free` too (leaps; the
+ * player swings in the air). With `auto` (the player's Auto swing setting) a jump strikes when the
+ * shuttle passes in its box on my half within its horizon; nothing to strike (or `canHit` false):
+ * `empty` (moves, no swing).
  */
 function forcedPick(
   f: Flight,
@@ -220,11 +228,13 @@ function forcedPick(
   lastHitter: -1 | 0 | 1,
   canHit: boolean,
   want: Want,
-  dir?: { x: number; z: number },
+  dir: { x: number; z: number } | undefined,
+  auto: boolean,
 ): { k: AbilityKind; dx: number; dz: number; empty?: boolean; free?: boolean } {
   const hit = canHit && lastHitter !== side
   const mine = (c: { pos: { z: number } } | null): c is { dt: number; pos: Flight['pos'] } =>
     !!c && onHalf(c.pos.z, side, lastHitter)
+  if (want === 'jump' && !auto) return { k: 'jump', dx: 0, dz: 0, free: true }
   if (want === 'jump') {
     const c = hit ? findContact(f, at, 0, horizonOf('jump'), reachOf('jump')) : null
     if (!mine(c)) return { k: 'jump', dx: 0, dz: 0, empty: true }
@@ -248,11 +258,15 @@ export function diveAllowed(held: { x: number; z: number }): boolean {
 /** Ticks from a Dive press its swings still reach like a lunge (the glide + its grace). */
 const diveWindow = (): number => ABILITY.dive.glide + ABILITY.dive.grace
 
-/** True when a swing at `tick` gets the dive's reach: within a free dive's window (diveWindow). */
-export function diveSwing(act: Act | null | undefined, tick: number): boolean {
-  if (!act?.free) return false
+/**
+ * The strike a plain swing at `tick` makes inside a free move's window (a dive: its glide + grace; a jump:
+ * its air + grace), else undefined (a plain swing).
+ */
+export function freeSwing(act: Act | null | undefined, tick: number): Strike | undefined {
+  if (!act?.free || act.k === 'hop') return undefined
   const e = tick - act.at
-  return e >= 0 && e <= diveWindow()
+  const end = act.k === 'lunge' ? diveWindow() : ABILITY.jump.air + ABILITY.jump.grace
+  return e >= 0 && e <= end ? act.k : undefined
 }
 
 /**
@@ -300,7 +314,7 @@ export function holdsRacket(act: Act | null, tick: number): boolean {
 export function actMoveMul(act: Act | null, tick: number): number {
   if (!act || !acting(act, tick)) return 1
   const e = tick - act.at
-  if (act.free) {
+  if (act.free && act.k === 'lunge') {
     const { glide, floor, slow } = ABILITY.dive
     if (e < glide) return 0
     const u = (e - glide) / floor
@@ -312,7 +326,7 @@ export function actMoveMul(act: Act | null, tick: number): number {
 
 /** A press's cooldown (ticks from `at`): its kind's, the short hop one for an empty forced move, the Dive button's own. */
 export function cooldownOf(act: Act): number {
-  if (act.free) return ABILITY.dive.cooldown
+  if (act.free) return act.k === 'jump' ? ABILITY.jump.freeCooldown : ABILITY.dive.cooldown
   return act.empty ? ABILITY.hop.cooldown : ABILITY[act.k].cooldown
 }
 
@@ -354,7 +368,7 @@ export function actArcInto(act: Act | null, tick: number, out: ActArc): ActArc {
     const end = dive + floor
     if (e <= 0 || e >= end) return out
     if (e < dive) out.dive = e / dive
-    else if (act.free) {
+    else if (act.free && act.k === 'lunge') {
       // A free dive gets up over its whole floor (the run is coming back: ABILITY.dive.slow).
       const u = (end - e) / floor
       out.dive = u * u * (3 - 2 * u)

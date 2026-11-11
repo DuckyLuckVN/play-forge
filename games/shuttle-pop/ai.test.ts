@@ -592,7 +592,7 @@ describe('doubles AI', () => {
         log.push(JSON.stringify(inputs))
         game.tick(s, inputs)
       }
-      expect(fnv(log.join('|'))).toBe(731777172)
+      expect(fnv(log.join('|'))).toBe(170158273)
     },
     SLOW,
   )

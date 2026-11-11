@@ -104,7 +104,7 @@ import type { GuestPredictor } from './predict'
 import { flashAt, hitJuice } from './hitfx'
 import { SpringPunch } from './punch'
 import type { Grade, ShotKind } from './shots'
-import { SHUTTLECOCK, shuttlecockGeometry, SHUTTLECOCK_COLORS } from './model/shuttlecock'
+import { SHUTTLE_LOOK_SCALE, SHUTTLECOCK, shuttlecockGeometry, SHUTTLECOCK_COLORS } from './model/shuttlecock'
 import {
   corkAxis,
   floorClearance,
@@ -246,7 +246,7 @@ const SHADOW_OPACITY = 0.26
  */
 const TRAIL_SAMPLES = 40
 const TRAIL_STEP = 1 / 60
-const TRAIL_GAP = SHUTTLECOCK.length + 0.05
+const TRAIL_GAP = SHUTTLECOCK.length * SHUTTLE_LOOK_SCALE + 0.05
 /** Perfect-trail sparkles (trail.ts): a tiny gold twinkle at the ribbon's tip every `every` s. */
 const TRAIL_SPARK = {
   every: 0.07,
@@ -606,6 +606,8 @@ export class Court3D {
     )
     this.shuttle.renderOrder = rim.renderOrder = SHUTTLE_ORDER
     this.shuttle.add(rim)
+    // Drawn bigger than life (look only); the outline and the glow below are children, so they follow.
+    this.shuttle.scale.setScalar(SHUTTLE_LOOK_SCALE)
     // Soft glow around the shuttle: depth-tested (never through posts / court), after the net, the wind and
     // the shuttlecock (HALO_ORDER) so none of them blends over it. Never on a player: hidden while the
     // shuttle is held and faded out wherever it overlaps any player on screen (updateVisibility).
@@ -625,7 +627,7 @@ export class Court3D {
     halo.renderOrder = HALO_ORDER
     this.shuttle.add(halo)
     this.shadow = new Mesh(
-      new CircleGeometry(0.12, 16),
+      new CircleGeometry(0.12 * SHUTTLE_LOOK_SCALE, 16),
       new MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.22, depthWrite: false }),
     )
     this.shadow.rotation.x = -Math.PI / 2
@@ -1281,7 +1283,11 @@ export class Court3D {
     }
     this.drawn.set(x, y, z)
     this.drawnOk = true
-    this.shuttle.position.set(x, Math.max(y, floorClearance(corkAxis(q, this.shAxis).y)), z)
+    this.shuttle.position.set(
+      x,
+      Math.max(y, floorClearance(corkAxis(q, this.shAxis).y, SHUTTLE_LOOK_SCALE)),
+      z,
+    )
   }
 
   /**

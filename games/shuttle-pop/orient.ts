@@ -96,13 +96,14 @@ export function restingDir(hx: number, hz: number, out: Vec3): Vec3 {
 /**
  * Lowest the model's origin may sit (m above the floor) with its cork axis at height component `ay`, so
  * neither the cork nor the skirt's rim pokes through. At REST_TILT both touch (the resting height).
+ * `scale`: the model's drawn size (SHUTTLE_LOOK_SCALE); every term is a model length, so it scales linearly.
  */
-export function floorClearance(ay: number): number {
+export function floorClearance(ay: number, scale = 1): number {
   const s = Math.min(1, Math.max(-1, ay))
   const flat = Math.sqrt(1 - s * s)
   // Cork: the dome (centre `neck` along the axis) or its tip; rim: the open end's lowest point.
   const cork = SHUTTLECOCK.cork - SHUTTLECOCK.neck * s
   const tip = -CORK_TIP * s
   const rim = SHUTTLECOCK.length * s + SHUTTLECOCK.skirtEnd * flat
-  return Math.max(cork, tip, rim, 0)
+  return Math.max(cork, tip, rim, 0) * scale
 }

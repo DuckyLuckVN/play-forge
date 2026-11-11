@@ -92,6 +92,11 @@ describe('resting pose', () => {
     expect(floorClearance(-1)).toBeGreaterThan(rest)
     expect(floorClearance(1)).toBeGreaterThan(0.1)
   })
+
+  it('a bigger drawn model (SHUTTLE_LOOK_SCALE) is lifted in proportion: never sinks into the floor', () => {
+    for (const ay of [-1, -Math.sin(REST_TILT), 0, 0.5, 1])
+      expect(floorClearance(ay, 1.5)).toBeCloseTo(floorClearance(ay) * 1.5, 9)
+  })
 })
 
 describe('shuttleMode', () => {

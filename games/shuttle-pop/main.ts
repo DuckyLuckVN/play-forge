@@ -310,7 +310,7 @@ createGameApp<SpState, SpInput>({
     {
       action: t('Jump'),
       note: t(
-        'Jump, then swing in the air to smash a high shuttle. Then a short cooldown. (Auto swing: view settings.)',
+        'Jump, then swing in the air to smash a high shuttle. Jump and Dive share a cooldown; each Perfect hit cuts it by 0.2 s. (Auto swing: view settings.)',
       ),
       keys: [['Space']],
       touch: 'button',

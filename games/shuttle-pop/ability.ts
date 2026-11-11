@@ -24,6 +24,8 @@ export interface Act {
   free?: boolean
   /** A free dive the sim swings for (the player's Auto swing setting): see sim autoDiveSwings. */
   auto?: boolean
+  /** Ticks cut off this press's cooldown by the player's Perfect hits since (ABILITY.perfectCut each). */
+  cut?: number
 }
 
 /** A forced move (the Jump / Dive buttons); undefined = the shuttle picks (one-button press). */
@@ -52,7 +54,7 @@ export const ABILITY = {
     reach: { radius: 1.1, minY: 2.2, maxY: 3.85 } as Readonly<Reach>,
     /** A free jump (the Jump button, auto swing off): swings until `grace` ticks after landing reach high; one cooldown. */
     grace: 6,
-    freeCooldown: 150,
+    freeCooldown: 210,
   },
   lunge: {
     lead: 8,
@@ -63,15 +65,17 @@ export const ABILITY = {
     reach: { radius: 1.6, minY: 0.05, maxY: 1.6 } as Readonly<Reach>,
   },
   hop: { air: 18, cooldown: 60, height: 0.25 },
+  /** Ticks each Perfect hit takes off the player's running Jump / Dive cooldown (0.2 s). */
+  perfectCut: 12,
   /**
    * The Dive button (a `free` lunge): slides `slide` m over `glide` ticks (0.27 s), never swings by itself.
    * A swing (J) from the press until `grace` ticks after the glide reaches like a lunge (reach box at the
    * slide end, its capped clear). After the glide the run is slowed to `slow`, easing back to full over
    * `floor` ticks (a get-up, never stuck; swinging allowed). `back` = the held view z below which the
-   * button does nothing (moving away from the net: no escape dives). One cooldown, hit or not (2 s:
-   * between an empty move's 1 s and a striking one's 3 s).
+   * button does nothing (moving away from the net: no escape dives). One cooldown, hit or not (3 s; Perfect
+   * hits cut it: perfectCut).
    */
-  dive: { glide: 16, slide: 1.8, grace: 15, floor: 30, slow: 0.3, back: -0.5, cooldown: 120 },
+  dive: { glide: 16, slide: 1.8, grace: 15, floor: 30, slow: 0.3, back: -0.5, cooldown: 180 },
 } as const
 
 /** A dive's shape: ticks sliding (`dive`), metres, ticks down after. */
@@ -330,21 +334,29 @@ export function cooldownOf(act: Act): number {
   return act.empty ? ABILITY.hop.cooldown : ABILITY[act.k].cooldown
 }
 
-/** Ticks of cooldown left at `tick` (0 = ready). */
-export function cooldownTicksLeft(act: Act | null, tick: number): number {
-  return act ? Math.max(0, act.at + cooldownOf(act) - tick) : 0
+/**
+ * Ticks of cooldown left at `tick` (0 = ready), Perfect cuts off. `cut` = the cut to use (default the
+ * act's own; the renderer passes the host's for its predicted press).
+ */
+export function cooldownTicksLeft(act: Act | null, tick: number, cut = act?.cut ?? 0): number {
+  return act ? Math.max(0, act.at + cooldownOf(act) - cut - tick) : 0
 }
 
-/** True when a new press may start (the cooldown counts from the press's `at`). */
+/** True when a new press may start (the cooldown counts from the press's `at`, less its Perfect cut). */
 export function actReady(act: Act | null, tick: number): boolean {
-  return !act || tick >= act.at + cooldownOf(act)
+  return !act || tick >= act.at + cooldownOf(act) - (act.cut ?? 0)
 }
 
-/** Remaining cooldown share, 1 (just pressed) .. 0 (ready). */
-export function cooldownLeft(act: Act | null, tick: number): number {
+/** Remaining cooldown share, 1 (just pressed) .. 0 (ready), Perfect cuts off (`cut` as cooldownTicksLeft). */
+export function cooldownLeft(act: Act | null, tick: number, cut = act?.cut ?? 0): number {
   if (!act) return 0
   const cd = cooldownOf(act)
-  return Math.min(1, Math.max(0, (act.at + cd - tick) / cd))
+  return Math.min(1, Math.max(0, (act.at + cd - cut - tick) / cd))
+}
+
+/** A Perfect hit by the player whose last press is `act`: its cooldown ends ABILITY.perfectCut sooner. */
+export function cutCooldown(act: Act | null): void {
+  if (act) act.cut = (act.cut ?? 0) + ABILITY.perfectCut
 }
 
 /** A body offset for the renderer (actArc). */

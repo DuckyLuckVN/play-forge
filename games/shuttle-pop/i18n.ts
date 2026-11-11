@@ -33,8 +33,8 @@ export const VI: Dictionary = {
     'Thả ra để đánh. Khi tích lực bạn đi chậm hơn, và chậm hẳn trong giây lát sau cú đánh mạnh tối đa.',
   Jump: 'Nhảy',
   Dive: 'Bổ nhào',
-  'Jump, then swing in the air to smash a high shuttle. Then a short cooldown. (Auto swing: view settings.)':
-    'Nhảy lên rồi vung vợt trên không để đập cầu cao. Sau đó chờ hồi chiêu một chút. (Tự vung vợt: cài đặt góc nhìn.)',
+  'Jump, then swing in the air to smash a high shuttle. Jump and Dive share a cooldown; each Perfect hit cuts it by 0.2 s. (Auto swing: view settings.)':
+    'Nhảy lên rồi vung vợt trên không để đập cầu cao. Nhảy và Bổ nhào dùng chung thời gian hồi; mỗi cú Hoàn hảo giảm 0,2 giây. (Tự vung vợt: cài đặt góc nhìn.)',
   'Slide far the way you are moving (not backward), then swing to save a far, low shuttle. Works while charging too. You run slower for a moment after.':
     'Trượt xa theo hướng đang chạy (không lùi), rồi vung vợt để cứu cầu thấp và xa. Đang tích lực cũng trượt được. Sau đó bạn chạy chậm lại một chút.',
   'jump button': 'nút nhảy',

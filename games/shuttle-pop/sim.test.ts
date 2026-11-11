@@ -1,7 +1,7 @@
 import { tallyOf } from './tally'
 import { describe, expect, it } from 'vitest'
 import { resolveOptions, type InputEvent, type PlayerInfo } from '@forge/net/session'
-import { ABILITY, acting, actReady, type Act } from './ability'
+import { ABILITY, acting, actReady, cooldownOf, type Act } from './ability'
 import { CHARGE, chargeOf } from './charge'
 import { COURT_SIZES, courtDims } from './courtsize'
 import { COURT, DT, predictLanding } from './physics'
@@ -1458,6 +1458,16 @@ describe('jump / lunge ability', () => {
     const seen = untilStrike(s, at(s, contact - ABILITY.jump.lead, [button('jump', 0, 0, true)]))
     expect(s.players[0].act!.free).toBeUndefined()
     expect(seen.find((e) => e.k === 'hit')).toMatchObject({ side: 0, act: 'jump', shot: 'smash' })
+  })
+
+  it('a Perfect hit cuts the running Jump / Dive cooldown by ABILITY.perfectCut', () => {
+    const { s, contact } = scene(LOB)
+    const seen = untilStrike(s, at(s, contact - ABILITY.jump.lead, [button('jump', 0, 0, true)]))
+    expect(seen.find((e) => e.k === 'hit')).toMatchObject({ side: 0, grade: 'perfect' })
+    const a = s.players[0].act!
+    expect(a.cut).toBe(ABILITY.perfectCut)
+    expect(actReady(a, a.at + cooldownOf(a) - ABILITY.perfectCut)).toBe(true)
+    expect(actReady(a, a.at + cooldownOf(a) - ABILITY.perfectCut - 1)).toBe(false)
   })
 
   it('auto swing on: the Dive button slides and strikes the wide drive by itself', () => {

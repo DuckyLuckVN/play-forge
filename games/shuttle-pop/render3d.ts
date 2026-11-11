@@ -1002,7 +1002,9 @@ export class Court3D {
       const act = pred?.act ?? cp.act ?? null
       const actTick = pred?.act ? pred.stepNow : shownTick
       const arc = actArcInto(act, actTick, view.arc)
-      const cd = cooldownLeft(act, actTick)
+      // Perfect cuts come from the host's act (the predicted press doesn't know them).
+      const cut = cp.act?.cut ?? 0
+      const cd = cooldownLeft(act, actTick, cut)
       // A dive's slide is real movement now (sim + prediction): the body just follows the player.
       const root = view.chibi.root
       root.position.set(x, 0, z)
@@ -1051,7 +1053,7 @@ export class Court3D {
       )
       if (local) {
         this.localCd = cd
-        this.localCdSec = cooldownTicksLeft(act, actTick) / TICK_RATE
+        this.localCdSec = cooldownTicksLeft(act, actTick, cut) / TICK_RATE
       }
       // A pending contact of mine (render time sits between the prev and curr ticks): the racket holds
       // its wind-up, or hurries, so the strike meets the shuttle on the contact tick (a hit that already

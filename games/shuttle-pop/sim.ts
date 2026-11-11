@@ -5,6 +5,7 @@ import type { GameDefinition, GameOptions, InputEvent, PlayerInfo } from '@forge
 import {
   abilityShot,
   acting,
+  cutCooldown,
   diveAllowed,
   freeSwing,
   holdsRacket,
@@ -803,6 +804,8 @@ function hit(state: SpState) {
   state.stats.shots++
   if (pend.grade === 'perfect') state.stats.perfect[pend.side]++
   noteHit(state.stats, pend.id, pend.grade, pend.kind, pend.act)
+  // A Perfect hit shortens the hitter's running Jump / Dive cooldown.
+  if (pend.grade === 'perfect') cutCooldown(state.players.find((q) => q.id === pend.id)?.act ?? null)
   emit(state, {
     k: 'hit',
     side: pend.side,

@@ -90,6 +90,8 @@ export const VI: Dictionary = {
   'Next point wins': 'Ai ghi điểm tiếp sẽ thắng',
 
   // Results
+  'Victory!': 'Chiến thắng!',
+  Defeat: 'Thất bại',
   '{name} wins!': '{name} thắng!',
   'Your opponent left. You win!': 'Đối thủ đã rời đi. Bạn thắng!',
   'You win {score}!': 'Bạn thắng {score}!',

@@ -138,7 +138,7 @@ describe('shadowMapSize', () => {
 
 describe('Park.setLook', () => {
   const sunOf = (park: Park) =>
-    (park.root.children.find((o) => (o as DirectionalLight).isDirectionalLight) as DirectionalLight)
+    park.root.children.find((o) => (o as DirectionalLight).isDirectionalLight) as DirectionalLight
   it('Low: the sun casts nothing; Medium / High: soft shadows of their map size', () => {
     const park = new Park(new Scene())
     const sun = sunOf(park)

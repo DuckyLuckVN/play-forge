@@ -670,7 +670,12 @@ export class Court3D {
     this.shuttle.add(halo)
     this.shadow = new Mesh(
       new CircleGeometry(0.12 * SHUTTLE_LOOK_SCALE, 16),
-      new MeshBasicMaterial({ color: '#000000', transparent: true, opacity: LOOK.shuttleShadow, depthWrite: false }),
+      new MeshBasicMaterial({
+        color: '#000000',
+        transparent: true,
+        opacity: LOOK.shuttleShadow,
+        depthWrite: false,
+      }),
     )
     this.shadow.rotation.x = -Math.PI / 2
     this.shadow.position.y = 0.012
@@ -1444,9 +1449,7 @@ export class Court3D {
     info.reset()
     this.view.render(dt)
     // eslint-disable-next-line no-console
-    console.info(
-      `[shuttle-pop] draw calls per frame: ${info.render.calls} (look ${this.tier})`,
-    )
+    console.info(`[shuttle-pop] draw calls per frame: ${info.render.calls} (look ${this.tier})`)
     info.autoReset = true
     this.callsLogged = true
   }

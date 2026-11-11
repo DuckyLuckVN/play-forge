@@ -330,6 +330,11 @@ export function cooldownOf(act: Act): number {
   return act.empty ? ABILITY.hop.cooldown : ABILITY[act.k].cooldown
 }
 
+/** Ticks of cooldown left at `tick` (0 = ready). */
+export function cooldownTicksLeft(act: Act | null, tick: number): number {
+  return act ? Math.max(0, act.at + cooldownOf(act) - tick) : 0
+}
+
 /** True when a new press may start (the cooldown counts from the press's `at`). */
 export function actReady(act: Act | null, tick: number): boolean {
   return !act || tick >= act.at + cooldownOf(act)

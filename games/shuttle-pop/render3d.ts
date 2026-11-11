@@ -49,6 +49,7 @@ import {
   actArcInto,
   actorIndex,
   cooldownLeft,
+  cooldownTicksLeft,
   glideOf,
   type AbilityKind,
   type ActArc,
@@ -528,8 +529,10 @@ export class Court3D {
   private splitO: Hop = { height: 0, squash: 0 }
   /** The local player's jump / lunge cooldown left 0..1 this frame (the phone button reads it). */
   private localCd = 0
+  /** The local cooldown left in seconds (the HUD's countdown). */
+  private localCdSec = 0
   /** Called every frame with the local ability cooldown (the phone button follows it; set by main.ts). */
-  onCooldown: ((cd: number) => void) | null = null
+  onCooldown: ((cd: number, seconds: number) => void) | null = null
   /** Online guest: when our own ability press was predicted and heard (s; its host `act` stays silent). */
   private lastOwnActAt = -Infinity
   /** Scratch body box for the occlusion pass. */
@@ -803,6 +806,7 @@ export class Court3D {
     this.localPressAt = -Infinity
     this.localChargeAt = -1
     this.localCd = 0
+    this.localCdSec = 0
     this.lastOwnActAt = -Infinity
     this.rally = 0
     this.pointHits = 0
@@ -896,7 +900,7 @@ export class Court3D {
 
   private frame(dt: number) {
     this.time += dt
-    this.onCooldown?.(this.localCd)
+    this.onCooldown?.(this.localCd, this.localCdSec)
     const curr = this.smooth?.curr
     if (!curr) return this.view.render(dt)
     const track = trackerAction(this.seeded, curr.nextEventId, this.lastEventId, curr.tick, this.lastTick)
@@ -965,6 +969,7 @@ export class Court3D {
 
     let localX = 0
     this.localCd = 0
+    this.localCdSec = 0
     // Host ticks on screen: a guest's render clock (remotes, the shuttle), else the interpolated tick.
     const renderTick = prev.tick + (curr.tick - prev.tick) * a
     const shownTick = g0 ? g0.clock.tick : renderTick
@@ -1043,7 +1048,10 @@ export class Court3D {
         this.time,
         local ? 1 : THEIR_CD_ALPHA,
       )
-      if (local) this.localCd = cd
+      if (local) {
+        this.localCd = cd
+        this.localCdSec = cooldownTicksLeft(act, actTick) / TICK_RATE
+      }
       // A pending contact of mine (render time sits between the prev and curr ticks): the racket holds
       // its wind-up, or hurries, so the strike meets the shuttle on the contact tick (a hit that already
       // happened tells the driver in onHit). A smash also schedules the leap so its rise tops out there

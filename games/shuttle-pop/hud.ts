@@ -3,6 +3,7 @@
 // (tested).
 // DOM nodes are made once and reused; animations are CSS (time-based, so frame-rate independent).
 import { h } from '@forge'
+import { CooldownBadge } from './cooldown'
 import { t } from './i18n'
 import { STICK_RADIUS } from './joystick'
 import type { SpEvent } from './sim'
@@ -188,8 +189,7 @@ export class TouchPad {
   readonly diveEl: HTMLElement
   private stickEl: HTMLElement
   private knobEl: HTMLElement
-  /** The cooldown step last drawn (setAbility; −1 = none yet). */
-  private cdStep = -1
+  private badges: CooldownBadge[]
 
   constructor() {
     this.knobEl = h('div', { class: 'sp-knob' })
@@ -201,6 +201,7 @@ export class TouchPad {
     this.root = h('div', { class: 'sp-touch' }, this.stickEl, this.actEl, this.diveEl, this.swingEl)
     this.root.setAttribute('aria-hidden', 'true')
     this.root.hidden = !globalThis.matchMedia?.('(pointer: coarse)').matches
+    this.badges = [new CooldownBadge(this.actEl), new CooldownBadge(this.diveEl)]
   }
 
   /** Show the controls (first touch on a device that didn't report a coarse pointer). */
@@ -243,16 +244,39 @@ export class TouchPad {
   }
 
   /**
-   * Ability cooldown left 0..1 (0 = ready): the button dims clockwise by it. Called every frame: the DOM is
-   * touched only when the shown step (1 / 100) changes.
+   * Ability cooldown left 0..1 (0 = ready) and in seconds: the buttons dim clockwise, count down and
+   * flash when ready (cooldown.ts). Called every frame.
    */
-  setAbility(cooldown: number) {
-    const step = Math.round(Math.min(1, Math.max(0, cooldown || 0)) * 100)
-    if (step === this.cdStep) return
-    this.cdStep = step
-    for (const el of [this.actEl, this.diveEl]) {
-      el.style.setProperty('--sp-cd', (step / 100).toFixed(2))
-      el.classList.toggle('cooling', step > 0)
-    }
+  setAbility(cooldown: number, seconds = 0) {
+    for (const b of this.badges) b.set(cooldown, seconds)
+  }
+}
+
+/**
+ * Desktop: the Jump [Space] and Dive [Shift] chips at the bottom centre, with the shared cooldown's
+ * sweep, seconds left and ready flash. Hidden while the touch controls show (CSS).
+ */
+export class AbilityChips {
+  readonly root: HTMLElement
+  private badges: CooldownBadge[]
+
+  constructor() {
+    const chip = (cls: string, svg: SVGSVGElement, key: string, label: string) =>
+      h(
+        'div',
+        { class: `sp-chip ${cls}` },
+        h('span', { class: 'sp-chip-icon' }, svg),
+        h('span', { class: 'sp-chip-label', textContent: label }),
+        h('kbd', { class: 'pf-key wide', textContent: key }),
+      )
+    const jump = chip('sp-chip-jump', actIcon(), 'Space', t('Jump'))
+    const dive = chip('sp-chip-dive', diveIcon(), 'Shift', t('Dive'))
+    this.root = h('div', { class: 'sp-abilities' }, jump, dive)
+    this.root.setAttribute('aria-hidden', 'true')
+    this.badges = [new CooldownBadge(jump), new CooldownBadge(dive)]
+  }
+
+  set(cooldown: number, seconds: number) {
+    for (const b of this.badges) b.set(cooldown, seconds)
   }
 }

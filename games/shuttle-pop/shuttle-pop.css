@@ -698,11 +698,116 @@
     0 1px 0 #a8620f,
     0 0 20px rgb(255 209 102 / 0.75);
 }
+/* Cooldown seconds over the touch buttons / chips (cooldown.ts), and the flash when it is ready again. */
+.sp-cd-num {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  font: 900 20px / 1 var(--pf-font);
+  color: var(--sp-white);
+  -webkit-text-stroke: 1px rgb(0 0 0 / 0.55);
+  text-shadow: 0 2px 0 rgb(0 0 0 / 0.45);
+  pointer-events: none;
+}
+.sp-cd-num:empty {
+  display: none;
+}
+.sp-act.cooling svg,
+.sp-chip.cooling .sp-chip-icon {
+  opacity: 0.35;
+}
+.sp-act.ready,
+.sp-chip.ready {
+  animation: sp-cd-ready 0.45s ease-out;
+}
+@keyframes sp-cd-ready {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  35% {
+    transform: scale(1.18);
+    filter: brightness(1.6) drop-shadow(0 0 10px rgb(255 240 180 / 0.95));
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+/* Desktop: Jump [Space] / Dive [Shift] chips at the bottom centre (hidden while the touch controls show). */
+.sp-abilities {
+  position: absolute;
+  left: 50%;
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  pointer-events: none;
+}
+.sp-touch:not([hidden]) ~ .sp-abilities,
+.pf-stage:not(.sp-playing) .sp-abilities {
+  display: none;
+}
+.sp-chip {
+  --sp-cd: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 6px 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  color: var(--sp-white);
+  background: rgb(36 26 48 / 0.78);
+  border: 2px solid rgb(255 255 255 / 0.85);
+  box-shadow: 0 4px 0 rgb(0 0 0 / 0.3);
+  font: 800 15px / 1 var(--pf-font);
+}
+.sp-chip-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 28%, #7be3d4, #1fb5a3 55%, #0e8576);
+}
+.sp-chip-dive .sp-chip-icon {
+  background: radial-gradient(circle at 35% 28%, var(--sp-cream), var(--sp-gold) 45%, var(--sp-amber));
+}
+.sp-chip-icon svg {
+  width: 22px;
+  height: 22px;
+}
+.sp-chip .pf-key {
+  height: 24px;
+  font-size: 13px;
+}
+/* The sweep: the cooling share darkens the chip from the left; the seconds sit over the icon. */
+.sp-chip.cooling::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: calc(var(--sp-cd) * 100%);
+  background: rgb(10 10 20 / 0.55);
+  pointer-events: none;
+}
+.sp-chip .sp-cd-num {
+  inset: 0 auto 0 6px;
+  width: 34px;
+  font-size: 15px;
+}
 @media (prefers-reduced-motion: reduce) {
   .sp-stick,
   .sp-swing,
   .sp-act {
     transition: none;
+  }
+  .sp-act.ready,
+  .sp-chip.ready {
+    animation: none;
   }
 }
 

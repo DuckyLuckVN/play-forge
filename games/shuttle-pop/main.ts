@@ -8,7 +8,7 @@ import { toWorld } from './court'
 import { chargeOf } from './charge'
 import { mountEmotes } from './emotes'
 import { t } from './i18n'
-import { TouchPad } from './hud'
+import { AbilityChips, TouchPad } from './hud'
 import { bindInput } from './input'
 import { loadPreset, pickerStrip } from './picker'
 import { GuestShuttle, type GuestView } from './guestshuttle'
@@ -178,9 +178,14 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement, ctx: Moun
   }
   // Touch: floating stick (left) + swing button (bottom-right), over the court.
   const pad = new TouchPad()
-  court.surface.append(pad.root)
-  // The phone button's cooldown follows the local player's (Court3D draws the same on its feet ring).
-  court.onCooldown = (cd) => pad.setAbility(cd)
+  // Desktop chips (Jump [Space] / Dive [Shift]) after the pad: CSS hides them while the touch controls show.
+  const chips = new AbilityChips()
+  court.surface.append(pad.root, chips.root)
+  // The buttons' cooldown follows the local player's (Court3D draws the same on its feet ring).
+  court.onCooldown = (cd, sec) => {
+    pad.setAbility(cd, sec)
+    chips.set(cd, sec)
+  }
   // Every human swing carries the tick on screen (the host rewinds up to MAX_REWIND): a guest's covers
   // its lag, the host's own its interpolation (0–1 ticks), so both sides get screen-aligned timing.
   // A guest's is the tick of the shuttle it sees (RenderClock), the same meaning as swingTick.

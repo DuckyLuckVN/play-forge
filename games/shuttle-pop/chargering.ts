@@ -24,11 +24,11 @@ export const CHARGE_LOOK: Readonly<RingLook> = {
   pulse: true,
 }
 
-/** The ability cooldown ring: a thin cool-blue band just outside the charge ring (no overlap). */
-const COOL = new Color('#8fd3ff')
+/** The ability cooldown ring: a bright cool-blue band just outside the charge ring (no overlap). */
+const COOL = new Color('#5cc8ff')
 export const COOLDOWN_LOOK: Readonly<RingLook> = {
   inner: 0.6,
-  outer: 0.66,
+  outer: 0.72,
   low: COOL,
   high: COOL,
   full: COOL,

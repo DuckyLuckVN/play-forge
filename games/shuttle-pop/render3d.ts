@@ -25,7 +25,10 @@ import {
   CircleGeometry,
   Color,
   DataTexture,
+  IcosahedronGeometry,
+  InstancedMesh,
   LinearFilter,
+  Matrix4,
   Mesh,
   PMREMGenerator,
   MeshBasicMaterial,
@@ -81,6 +84,7 @@ import { Hud, newEvents, newestShotId, sameMatchPrev, trackerAction, type PopKin
 import { ScoreCards } from './boardprop'
 import { Net } from './net'
 import { prefs } from './prefs'
+import { createPath, firstAhead, samplePath } from './flightpath'
 import { ringShown, type RingMode } from './landing'
 import { mountCameraButton } from './camera-menu'
 import { headAnchorY, ReactionBubbles, toScreen } from './bubbles'
@@ -252,6 +256,10 @@ const TRAIL_SPARK = {
   every: 0.07,
   burst: { count: 2, color: ['#ffd166', '#fff3b0'], speed: 0.6, life: 0.32, size: 0.12 },
 }
+/** Flight-path dots (flightpath.ts): radius (m), opacity, the first dot's size share (they grow to the landing). */
+const PATH_DOT = { r: 0.075, opacity: 0.9, minScale: 0.6 }
+/** After the trail (2), before the halo (2.5) and the shuttlecock (3). */
+const PATH_ORDER = 2.2
 /** Draw order (transparent pass): net 1 → trail / sparkles 2 → halo 2.5 → shuttlecock 3 → chibis (CHIBI_ORDER). */
 const SHUTTLE_ORDER = 3
 const HALO_ORDER = 2.5
@@ -433,6 +441,15 @@ export class Court3D {
   private ringColor = { mine: new Color(PALETTE.ringMine), theirs: new Color(PALETTE.ringTheirs) }
   /** Personal landing-ring setting (Hidden / Near drop / Always). */
   private ringMode: RingMode = prefs.get().ring
+  /** Personal flight-path setting (same modes, default off): dots along an incoming shot's flight. */
+  private pathMode: RingMode = prefs.get().path
+  private readonly path = createPath()
+  /** An incoming shot's path is sampled (this shot lands on my half, clear of the net). */
+  private pathOn = false
+  /** First dot index laid out in pathDots (-1 = none): the layout only changes when a dot is passed. */
+  private pathFrom = -1
+  private readonly pathDots: InstancedMesh
+  private readonly pathM = new Matrix4()
   /** The ring's prediction is valid (rally, a hitter, ball not stopped by the net). */
   private ringOn = false
   /** Sim tick the shuttle lands at; compared with the tick being shown (render clock online) so Near drop matches the visible flight. */
@@ -581,6 +598,7 @@ export class Court3D {
     prefs.onChange((p) => {
       this.camWant = p.camera
       this.ringMode = p.ring
+      this.pathMode = p.path
       this.refitCamera()
     })
 
@@ -637,7 +655,22 @@ export class Court3D {
     this.ring = new Mesh(new TorusGeometry(0.32, 0.035, 8, 32), this.ringMat)
     this.ring.rotation.x = -Math.PI / 2
     this.ring.position.y = 0.03
-    scene.add(this.shuttle, this.shadow, this.ring)
+    // Flight path: one instanced draw of small dots, in the ring's colour, never writing depth.
+    this.pathDots = new InstancedMesh(
+      new IcosahedronGeometry(PATH_DOT.r, 0),
+      new MeshBasicMaterial({
+        color: PALETTE.ringMine,
+        transparent: true,
+        opacity: PATH_DOT.opacity,
+        depthWrite: false,
+      }),
+      this.path.x.length,
+    )
+    this.pathDots.count = 0
+    this.pathDots.frustumCulled = false
+    this.pathDots.renderOrder = PATH_ORDER
+    this.pathDots.visible = false
+    scene.add(this.shuttle, this.shadow, this.ring, this.pathDots)
 
     // Drawn after the net mesh (renderOrder 1), so it never blends over a trail / sparkle in front of it.
     this.trail.mesh.renderOrder = this.fx.points.renderOrder = 2
@@ -727,6 +760,8 @@ export class Court3D {
   /** Compile every shader up front, so the first match starts without a hitch. */
   async warm(): Promise<void> {
     this.ring.visible = true
+    this.pathDots.visible = true
+    this.pathDots.count = 1
     this.trail.mesh.visible = true
     this.dust.mesh.visible = true
     // Every view's fade materials (per chibi, one toy program) and its twin outline + kit materials (both
@@ -756,6 +791,8 @@ export class Court3D {
       this.view.render(0)
     }
     this.ring.visible = false
+    this.pathDots.visible = false
+    this.pathDots.count = 0
     this.trail.mesh.visible = false
     this.dust.mesh.visible = false
     for (let i = 0; i < this.players.length; i++) {
@@ -831,6 +868,7 @@ export class Court3D {
     this.pointAt = -Infinity
     this.ring.visible = false
     this.ringOn = false
+    this.pathOn = false
     this.hud.reset()
     this.bubbles.reset()
     this.board.reset()
@@ -1245,6 +1283,7 @@ export class Court3D {
       this.ringOn &&
       curr.phase === 'rally' &&
       ringShown(this.ringMode, (this.ringLandTick - shownTick) / TICK_RATE)
+    this.updatePath(curr, shownTick)
 
     this.park.update(cheerLevel(this.rally, this.time - this.pointAt, this.pointHits), this.time, dt)
 
@@ -1627,6 +1666,7 @@ export class Court3D {
     this.lastHitter = hitter
     if (s.phase !== 'rally' || hitter === -1) {
       this.ringOn = false
+      this.pathOn = false
       return
     }
     const land = predictLanding(s.shuttle)
@@ -1638,8 +1678,44 @@ export class Court3D {
     this.ringLandTick = s.tick + land.ticks
     // Coming to my half: bright yellow; going away: faint white.
     const mine = z < 0
+    // The flight path: only for a shot coming to me (the dots are my read, never a preview of my own shot).
+    this.pathOn = mine && !land.netHit && samplePath(s.shuttle, s.tick, this.path) > 0
+    if (this.pathOn)
+      for (let i = 0; i < this.path.n; i++) {
+        this.path.x[i] *= flip
+        this.path.z[i] *= flip
+      }
+    this.pathFrom = -1
     this.ringMat.color.copy(mine ? this.ringColor.mine : this.ringColor.theirs)
     this.ringMat.opacity = mine ? 0.95 : 0.45
+  }
+
+  /**
+   * The flight-path dots still ahead of the shuttle (the passed ones drop off), shown like the ring by its
+   * own setting. The instances are laid out again only when the shuttle passes a dot. Allocates nothing.
+   */
+  private updatePath(curr: SpState, shownTick: number) {
+    const shown =
+      this.pathOn &&
+      curr.phase === 'rally' &&
+      ringShown(this.pathMode, (this.ringLandTick - shownTick) / TICK_RATE)
+    const from = shown ? firstAhead(this.path, shownTick) : this.path.n
+    if (from !== this.pathFrom) {
+      this.pathFrom = from
+      const m = this.pathM
+      const p = this.path
+      const left = p.n - from
+      for (let k = 0; k < left; k++) {
+        const i = from + k
+        // Bigger toward the landing: the drop reads at a glance.
+        const size = PATH_DOT.minScale + (1 - PATH_DOT.minScale) * (left > 1 ? k / (left - 1) : 1)
+        m.makeScale(size, size, size).setPosition(p.x[i], p.y[i], p.z[i])
+        this.pathDots.setMatrixAt(k, m)
+      }
+      this.pathDots.count = left
+      this.pathDots.instanceMatrix.needsUpdate = true
+    }
+    this.pathDots.visible = shown && this.pathDots.count > 0
   }
 
   /**

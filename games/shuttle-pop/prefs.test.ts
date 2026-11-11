@@ -71,10 +71,20 @@ describe('shuttle-pop prefs', () => {
     expect(createPrefs(s).get()).toEqual({
       camera: { height: 0.3, tilt: 0 },
       ring: 'always',
+      path: 'hidden',
       autoSwing: false,
     })
     for (const ring of ['x', 3, null, 'Near']) expect(parsePrefs({ ring }).ring).toBe('always')
     expect(parsePrefs({ ring: 'near' }).ring).toBe('near')
+  })
+
+  it('flight path: off by default (old saves too), garbage → off, a choice persists', () => {
+    expect(createPrefs(mem()).get().path).toBe('hidden')
+    for (const path of ['x', 3, null, 'Always']) expect(parsePrefs({ path }).path).toBe('hidden')
+    const s = mem()
+    createPrefs(s).set({ path: 'near' })
+    expect(createPrefs(s).get().path).toBe('near')
+    expect(createPrefs(s).get().ring).toBe('always')
   })
 
   it('setting the ring keeps the camera and persists', () => {
@@ -85,6 +95,7 @@ describe('shuttle-pop prefs', () => {
     expect(createPrefs(s).get()).toEqual({
       camera: { height: -0.2, tilt: 0.1 },
       ring: 'hidden',
+      path: 'hidden',
       autoSwing: false,
     })
   })

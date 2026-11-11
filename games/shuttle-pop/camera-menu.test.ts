@@ -144,6 +144,17 @@ describe('ring picker', () => {
     expect(panel().hidden).toBe(false)
   })
 
+  it('flight path row: Off / Near drop / Always, off by default, click saves', () => {
+    prefs.set({ path: 'hidden' })
+    button().click()
+    const segs = [...panel().querySelectorAll<HTMLButtonElement>('.sp-path-row [role=radio]')]
+    expect(segs.map((b) => b.textContent)).toEqual(['Off', 'Near drop', 'Always'])
+    expect(segs.map((b) => b.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false'])
+    segs[2].click()
+    expect(prefs.get().path).toBe('always')
+    expect(prefs.get().ring).not.toBe(undefined)
+  })
+
   it('Reset camera leaves the ring alone', () => {
     prefs.set({ ring: 'hidden', camera: { height: 0.5, tilt: 0 } })
     button().click()

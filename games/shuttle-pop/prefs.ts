@@ -3,7 +3,7 @@
 // setting simply lasts for the page.
 // Schema grows by optional fields only; a missing / invalid field falls back to its default.
 import { t } from './i18n'
-import { DEFAULT_RING, RING_MODES, type RingMode } from './landing'
+import { DEFAULT_PATH, DEFAULT_RING, RING_MODES, type RingMode } from './landing'
 import type { CameraTweak } from './world'
 
 export const PREFS_KEY = 'play-forge:shuttle-pop:prefs'
@@ -11,6 +11,8 @@ export const PREFS_KEY = 'play-forge:shuttle-pop:prefs'
 export interface SpPrefs {
   camera: CameraTweak
   ring: RingMode
+  /** Dotted flight path of shots coming to my side (flightpath.ts); same choices as the ring, default off. */
+  path: RingMode
   /** The Jump / Dive buttons also swing by themselves (default false: the player swings). */
   autoSwing: boolean
 }
@@ -40,11 +42,19 @@ const unit = (v: unknown): number =>
 /** Turns anything read from storage into valid prefs; unknown fields are dropped. */
 export function parsePrefs(raw: unknown): SpPrefs {
   const r =
-    raw && typeof raw === 'object' ? (raw as { camera?: unknown; ring?: unknown; autoSwing?: unknown }) : {}
+    raw && typeof raw === 'object'
+      ? (raw as { camera?: unknown; ring?: unknown; path?: unknown; autoSwing?: unknown })
+      : {}
   const cam = r.camera
   const c = cam && typeof cam === 'object' ? (cam as Record<string, unknown>) : {}
   const ring = RING_MODES.find((m) => m === r.ring) ?? DEFAULT_RING
-  return { camera: { height: unit(c.height), tilt: unit(c.tilt) }, ring, autoSwing: r.autoSwing === true }
+  const path = RING_MODES.find((m) => m === r.path) ?? DEFAULT_PATH
+  return {
+    camera: { height: unit(c.height), tilt: unit(c.tilt) },
+    ring,
+    path,
+    autoSwing: r.autoSwing === true,
+  }
 }
 
 export function createPrefs(store: Store = local()): Prefs {

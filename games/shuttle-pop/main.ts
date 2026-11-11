@@ -258,7 +258,7 @@ createGameApp<SpState, SpInput>({
   title: 'Shuttle Pop',
   // Same line as the launcher card.
   tagline: t(
-    'Chibi badminton. Time your swing for a Perfect, smash on high balls. Play the computer or a friend online.',
+    'Chibi badminton. Time your swing for a Perfect, smash on high balls. Play the computer or friends online, 1 vs 1 or 2 vs 2.',
   ),
   // Desktop rows (keys / mouse) and touch rows (stick / racket button); each device sees its own.
   guide: [

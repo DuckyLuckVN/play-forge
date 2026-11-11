@@ -21,8 +21,8 @@ export const VI: Dictionary = {
   '{a} & {b}': '{a} & {b}',
 
   // Start screen
-  'Chibi badminton. Time your swing for a Perfect, smash on high balls. Play the computer or a friend online.':
-    'Cầu lông chibi. Vung vợt đúng lúc để được Perfect, đập mạnh khi cầu cao. Chơi với máy hoặc với bạn bè trực tuyến.',
+  'Chibi badminton. Time your swing for a Perfect, smash on high balls. Play the computer or friends online, 1 vs 1 or 2 vs 2.':
+    'Cầu lông chibi. Vung vợt đúng lúc để được Perfect, đập mạnh khi cầu cao. Chơi với máy hoặc với bạn bè trực tuyến, 1 đấu 1 hoặc 2 đấu 2.',
   // Control guide (main.ts)
   Move: 'Di chuyển',
   'left side': 'nửa trái',

@@ -9,6 +9,7 @@ import { h, icon } from '@forge/ui/dom'
 import { icons } from '@forge/ui/icons'
 import { applyTheme } from '@forge/ui/theme'
 import games from '../games/games.json'
+import { BACKDROP_CSS, backdropMarkup } from '../scripts/backdrop.mjs'
 import { t } from './i18n'
 import { formatUpdated, versionLabel } from './version'
 
@@ -37,6 +38,9 @@ function versionTag(): HTMLElement {
 }
 
 applyTheme()
+// The arcade backdrop behind everything (the same one as the game loading splash).
+document.head.append(h('style', { textContent: BACKDROP_CSS }))
+document.body.insertAdjacentHTML('afterbegin', backdropMarkup())
 // Music starts with the first click or key press (browsers block autoplay).
 playMusic(LOUNGE)
 

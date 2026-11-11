@@ -8,6 +8,9 @@
 }
 
 .lc {
+  /* Above the arcade backdrop (scripts/backdrop.mjs). */
+  position: relative;
+  z-index: 1;
   max-width: 880px;
   margin: 0 auto;
   padding: calc(56px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
@@ -24,7 +27,9 @@
   line-height: 0.95;
   letter-spacing: -0.02em;
   color: var(--pf-yolk);
-  text-shadow: 0 6px 0 var(--pf-yolk-edge);
+  text-shadow:
+    0 6px 0 var(--pf-yolk-edge),
+    0 0 36px rgb(255 200 61 / 0.35);
   animation: lc-drop 700ms cubic-bezier(0.3, 1.5, 0.5, 1) both;
 }
 

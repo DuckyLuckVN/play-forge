@@ -177,6 +177,21 @@ const BEND_CROUCH = 0.38
  */
 const STANCE = { splay: 0.15, lean: 0.14, sideLean: 0.4, short: 0.4 }
 const LUNGE_LEAN = 0.18
+/**
+ * The Dive pose (pose.dive 0..1; the body already faces the dash): a deep crouch with a modest lean, not
+ * lying down, and the racket arm stretched far out along the dash (rPitch ≈ −1.45 = arm level forward,
+ * elbow almost straight), the free arm back for balance. A swing in the dive keeps most of its path.
+ */
+const DIVE = {
+  bend: 0.75,
+  lean: 0.38,
+  squash: 0.1,
+  rPitch: -1.45,
+  rElbow: 0.12,
+  rAcross: 0.05,
+  lPitch: 0.7,
+  swingKeep: 0.65,
+}
 const SPLIT_H = 0.07
 const SPLIT_SPLAY = 0.1
 /** Waiting bounce on the balls of the feet: rad/s, lift (m), extra knee bend at the bottom (rad). */
@@ -700,7 +715,7 @@ export function createChibi(preset: number): Chibi {
       BEND_CROUCH * p.crouch +
       BOUNCE.bend * (1 - bounce) * bounceW +
       p.jumpCrouch * 2 +
-      p.dive * 0.28 +
+      p.dive * DIVE.bend +
       sad * 0.25
     legAngles(legIn, legO)
     for (let i = 0; i < 2; i++) {
@@ -735,7 +750,7 @@ export function createChibi(preset: number): Chibi {
       0.1 * p.crouch +
       0.08 * sad +
       LUNGE_LEAN * p.lunge +
-      p.dive * 1.03 +
+      p.dive * DIVE.lean +
       sad * 0.18
     rig.rotation.z = -LEAN_SIDE * p.side * (1 - STANCE.sideLean * st)
     rig.rotation.y = celebrateSpin(t + blinkSeed * 0.21) * p.cheer
@@ -748,7 +763,8 @@ export function createChibi(preset: number): Chibi {
       SQUASH_CROUCH * p.crouch +
       SQUASH_READY * ready +
       0.05 * sad +
-      p.jumpCrouch -
+      p.jumpCrouch +
+      p.dive * DIVE.squash -
       p.jumpStretch * 0.09
     sq -= Math.sin(t * (sad ? 1.6 : 3)) * BREATHE * calm
     rig.scale.set(1 + sq * 0.5, 1 - sq, 1 + sq * 0.5)
@@ -779,9 +795,14 @@ export function createChibi(preset: number): Chibi {
       swingIn.prev = k === 0 || p.prev < 0 ? p.prev : Math.max(0, p.prev - back)
       swingPose(base, swingIn, p.smash, ang)
       // Add action accents after the swing so a mid-air hit still owns the racket path.
-      ang[CH.rPitch] -= p.jumpCock * 0.8 + p.dive * 1.1
-      ang[CH.rElbow] -= p.jumpCock * 0.3 + p.dive * 0.24
-      ang[CH.rAcross] += p.dive * 0.38
+      ang[CH.rPitch] -= p.jumpCock * 0.8
+      ang[CH.rElbow] -= p.jumpCock * 0.3
+      // The Dive reach: blend toward the stretched arm (less while a swing plays, so the hit still shows).
+      const reach = p.dive * (swingIn.strike >= 0 ? 1 - DIVE.swingKeep : 1)
+      ang[CH.rPitch] += (DIVE.rPitch - ang[CH.rPitch]) * reach
+      ang[CH.rElbow] += (DIVE.rElbow - ang[CH.rElbow]) * reach
+      ang[CH.rAcross] += (DIVE.rAcross - ang[CH.rAcross]) * reach
+      ang[CH.lPitch] += (DIVE.lPitch - ang[CH.lPitch]) * reach
       ang[CH.lPitch] -= p.cheer * Math.sin(t * 11 + blinkSeed) * 0.18
       applyUpper(ang)
       if (trail) {

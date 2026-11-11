@@ -1,9 +1,11 @@
 import {
+  HalfFloatType,
   PerspectiveCamera,
   Scene,
   SRGBColorSpace,
   Vector2,
   WebGLRenderer,
+  WebGLRenderTarget,
   ACESFilmicToneMapping,
 } from 'three'
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
@@ -77,6 +79,17 @@ const PunchShader = {
     }`,
 }
 
+/** MSAA samples where it is on (WebGL2; tile-based phone GPUs resolve 4× cheaply). */
+const MSAA_SAMPLES = 4
+
+/**
+ * Hardware antialiasing below 2 device pixels per CSS pixel: there jagged edges are plain to see (desktops,
+ * budget phones). Sharper phone screens (DPR 2+) hide them and would pay the most for MSAA, so they skip it.
+ */
+export function wantsMsaa(deviceDpr: number): boolean {
+  return (deviceDpr || 1) < 2
+}
+
 /**
  * Whether a frame needs the composer (render target, punch, output passes). Without bloom and with
  * no glitch the punch pass only adds its vignette, which the static VIGNETTE layer draws instead:
@@ -105,9 +118,10 @@ export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): S
   root.style.cssText = 'position:absolute;inset:0 16px 16px;border-radius:14px;overflow:hidden'
   parent.appendChild(root)
 
-  // No MSAA: the scene renders into the composer's (non-MSAA) targets, so
-  // canvas antialiasing would only cost a full-screen resolve every frame.
-  const renderer = new WebGLRenderer({ antialias: false, powerPreference: 'high-performance' })
+  // MSAA where edges visibly stair-step (see wantsMsaa): on the canvas for frames drawn straight to it,
+  // and on the composer's scene target for frames with post effects.
+  const msaa = wantsMsaa(window.devicePixelRatio)
+  const renderer = new WebGLRenderer({ antialias: msaa, powerPreference: 'high-performance' })
   renderer.outputColorSpace = SRGBColorSpace
   renderer.toneMapping = ACESFilmicToneMapping
   renderer.domElement.style.cssText = 'display:block;width:100%;height:100%'
@@ -123,7 +137,10 @@ export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): S
   const maxDpr = opts.maxDpr ?? 2
   const quality = new QualityGovernor(opts.levels, opts.startLevel)
 
-  const composer = new EffectComposer(renderer)
+  const composer = new EffectComposer(
+    renderer,
+    msaa ? new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: MSAA_SAMPLES }) : undefined,
+  )
   composer.addPass(new RenderPass(scene, camera))
   const bloom =
     opts.bloom && !prefersReducedMotion()

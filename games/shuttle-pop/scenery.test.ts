@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { courtDims } from './courtsize'
 import { Net } from './net'
 import { COURT } from './physics'
-import { Park } from './scenery'
+import { Park, shadowMapSize } from './scenery'
 
 const propsOf = (park: Park) =>
   park.root.children.find(
@@ -111,5 +111,12 @@ describe('Net.dispose', () => {
     expect(texSpies.length).toBeGreaterThan(0)
     net.dispose()
     for (const s of [...geoSpies, ...matSpies, ...texSpies]) expect(s).toHaveBeenCalled()
+  })
+})
+
+describe('shadowMapSize', () => {
+  it('a quarter of the shadow pixels on touch devices', () => {
+    expect(shadowMapSize(true)).toBe(512)
+    expect(shadowMapSize(false)).toBe(1024)
   })
 })

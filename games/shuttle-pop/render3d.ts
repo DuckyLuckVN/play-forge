@@ -101,6 +101,7 @@ import { COURT, predictLanding, type CourtDims, type Vec3 } from './physics'
 import type { GuestView, PredictedHit } from './guestshuttle'
 import { HitEcho } from './hitecho'
 import type { GuestPredictor } from './predict'
+import { flashAt, hitJuice } from './hitfx'
 import { SpringPunch } from './punch'
 import type { Grade, ShotKind } from './shots'
 import { SHUTTLECOCK, shuttlecockGeometry, SHUTTLECOCK_COLORS } from './model/shuttlecock'
@@ -335,6 +336,9 @@ interface PlayerView {
   stage: number
   /** When this player's latest hit event was seen (s; see HIT_GRACE). */
   hitAt: number
+  /** Hit juice (hitfx.ts): the white flash's peak (fades from hitAt) and the hit-stop's end (s). */
+  flashPeak: number
+  stopUntil: number
   /** chargeAt in the last state seen (a change to TAPPED = the press swung as a tap). */
   chargeAt: number
   ring: ChargeRing
@@ -371,6 +375,8 @@ function makePlayer(preset: number): PlayerView {
     charge: -1,
     stage: 0,
     hitAt: -Infinity,
+    flashPeak: 0,
+    stopUntil: -Infinity,
     chargeAt: -1,
     ring: new ChargeRing(),
     cd: new ChargeRing(COOLDOWN_LOOK),
@@ -854,6 +860,9 @@ export class Court3D {
       p.charge = -1
       p.stage = 0
       p.hitAt = -Infinity
+      p.flashPeak = 0
+      p.stopUntil = -Infinity
+      p.chibi.setFlash(0)
       p.chargeAt = -1
       p.nextTrail = 0
       p.nextCheer = 0
@@ -1179,7 +1188,9 @@ export class Court3D {
         pose.look = STUN_WOBBLE * Math.sin(stun.spin * 2)
         pose.lean -= STUN_RECOIL * stun.flinch
       }
-      view.chibi.setPose(pose, this.time)
+      // Hit-stop: the hitter's pose holds a beat on the biggest hits (visual only; the shuttle flies on).
+      if (this.time >= view.stopUntil) view.chibi.setPose(pose, this.time)
+      view.chibi.setFlash(flashAt(view.flashPeak, this.time - view.hitAt))
       const ch = view.chibi
       view.stars.update(
         stun,
@@ -1520,6 +1531,9 @@ export class Court3D {
     // later this frame catches up too: hitAt).
     const view = this.players[j]
     view.hitAt = this.time
+    const juice = hitJuice(grade === 'perfect', smash, big)
+    view.flashPeak = juice.flash
+    if (juice.stop > 0) view.stopUntil = this.time + juice.stop
     view.swing.setDue(0)
     const p = this.shuttle.position
     // A hit with no pending contact seen first (same-tick) can still lunge.

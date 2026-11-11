@@ -334,8 +334,8 @@ createGameApp<SpState, SpInput>({
       touch: 'button',
       touchLabel: t('emoji button'),
     },
-    { action: t('Smash or drive'), note: t('as you swing'), hold: true, keys: [['W'], ['Up']] },
-    { action: t('Clear (high and deep)'), note: t('as you swing'), hold: true, keys: [['S'], ['Down']] },
+    { action: t('Smash or drive'), note: t('as you swing'), hold: true, keys: [['W']] },
+    { action: t('Clear (high and deep)'), note: t('as you swing'), hold: true, keys: [['S']] },
     {
       action: t('Aim left or right'),
       note: t('as you swing'),

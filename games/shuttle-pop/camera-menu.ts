@@ -11,7 +11,12 @@ import { NO_TWEAK } from './world'
 
 const RING_LABELS: Record<RingMode, string> = { hidden: 'Hidden', near: 'Near drop', always: 'Always' }
 const PATH_LABELS: Record<RingMode, string> = { hidden: 'Off', near: 'Near drop', always: 'Always' }
-const GRAPHICS_LABELS: Record<GraphicsPref, string> = { auto: 'Auto', low: 'Low', medium: 'Medium', high: 'High' }
+const GRAPHICS_LABELS: Record<GraphicsPref, string> = {
+  auto: 'Auto',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+}
 
 /**
  * A pref picked from a few values: the engine's segmented radiogroup markup (engine/ui/options.ts).
@@ -113,7 +118,18 @@ export function viewPanel(): { nodes: HTMLElement[] } {
     height.set(toStep(p.camera.height))
     tilt.set(toStep(p.camera.tilt))
   })
-  return { nodes: [height.row, tilt.row, reset, ringPicker(), pathPicker(), autoSwingPicker(), graphicsPicker(), note] }
+  return {
+    nodes: [
+      height.row,
+      tilt.row,
+      reset,
+      ringPicker(),
+      pathPicker(),
+      autoSwingPicker(),
+      graphicsPicker(),
+      note,
+    ],
+  }
 }
 
 /**

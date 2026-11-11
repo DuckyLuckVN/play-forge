@@ -384,17 +384,36 @@ describe('fade (local player covering the shuttle)', () => {
     const a = rig(0).chibi
     const b = rig(0).chibi
     const head = (c: typeof a) => (c.root.getObjectByName('head') as Mesh).material as Material
-    const original = head(a)
+    // Each chibi owns its opaque material too (its own hit flash), on the shared toy program.
+    const originalA = head(a)
+    const originalB = head(b)
+    expect(originalA).not.toBe(originalB)
+    expect((originalA as MeshPhysicalMaterial).customProgramCacheKey()).toBe('toy')
+    expect((originalB as MeshPhysicalMaterial).customProgramCacheKey()).toBe('toy')
     a.setOpacity(0.4)
     b.setOpacity(0.7)
     expect(head(a)).not.toBe(head(b))
     expect(head(a).opacity).toBe(0.4)
     expect(head(b).opacity).toBe(0.7)
     a.setOpacity(1)
-    expect(head(a)).toBe(original)
+    expect(head(a)).toBe(originalA)
     expect(head(b).opacity).toBe(0.7)
     b.setOpacity(1)
-    expect(head(b)).toBe(original)
+    expect(head(b)).toBe(originalB)
+  })
+
+  it('hit flash whitens only that chibi, survives a fade, and turns off', () => {
+    const a = rig(0).chibi
+    const b = rig(0).chibi
+    const body = (c: typeof a) => (c.root.getObjectByName('head') as Mesh).material as MeshPhysicalMaterial
+    a.setFlash(0.6)
+    expect(body(a).emissive.r).toBeCloseTo(0.6)
+    expect(body(b).emissive.r).toBe(0)
+    a.setOpacity(0.5)
+    expect(body(a).emissive.r).toBeCloseTo(0.6)
+    a.setOpacity(1)
+    a.setFlash(0)
+    expect(body(a).emissive.r).toBe(0)
   })
 
   it('fade variants reuse the toy program key (no new shader family) and keep the draw-call count', () => {

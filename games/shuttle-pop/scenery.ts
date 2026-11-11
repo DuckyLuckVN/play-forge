@@ -40,6 +40,12 @@ import { Crowd } from './crowd'
 import { buildProps, instanced, lambert, yawTo } from './kit'
 import type { CourtDims } from './physics'
 import { BENCHES, LANTERN, lanternHang, parkLayout } from './props'
+import { prefersTouch } from '@forge/core/device'
+
+/** The sun's shadow map edge (px): 512 on touch devices, 1024 elsewhere. */
+export function shadowMapSize(touch: boolean): number {
+  return touch ? 512 : 1024
+}
 
 const SKY = {
   top: '#a995d4',
@@ -182,7 +188,9 @@ export class Park {
     cam.bottom = -SHADOW_HALF
     cam.near = 1
     cam.far = 45
-    this.sun.shadow.mapSize.set(1024, 1024)
+    // Phones: a quarter of the shadow pixels (the chibis' soft shadows read the same at phone size).
+    const map = shadowMapSize(prefersTouch())
+    this.sun.shadow.mapSize.set(map, map)
     this.sun.shadow.bias = -0.0005
     this.sun.shadow.normalBias = 0.02
     this.sun.castShadow = true

@@ -144,6 +144,8 @@ export interface Chibi {
    * head size / pose; setPreset keeps the current opacity.
    */
   setOpacity(a: number): void
+  /** Hit flash: `k` 0..1 whitens the body (emissive on this chibi's own kit material; 0 = off). */
+  setFlash(k: number): void
   /** Rig-space y of the top of this look's head at rest (occlusion box, see visibility.ts). */
   readonly top: number
   /** Rig-space y the last setPose lifted the rig to (jump, hops, bob): the occlusion box rides on it. */
@@ -350,7 +352,8 @@ let toyEnv: { env: Texture | null; intensity: number } = { env: null, intensity:
  * Fade variants are per `owner` chibi (own opacity), sharing the one toy program.
  */
 function kitMat(alt: boolean, fade = false, owner = 0): MeshPhysicalMaterial {
-  return cached(`kit${alt ? 'Alt' : ''}${fade ? `Fade${owner}` : ''}`, () => {
+  // Per owner even when opaque: each chibi's own hit flash (emissive). Same program for all (no compile).
+  return cached(`kit${alt ? 'Alt' : ''}${fade ? 'Fade' : ''}${owner}`, () => {
     const color = new Color(0xffffff)
     if (alt) color.lerp(ALT_SHADE_COLOR, ALT_SHADE)
     const m = new MeshPhysicalMaterial({
@@ -533,6 +536,7 @@ export function createChibi(preset: number): Chibi {
   let isAlt = false
   let faceBlend = false
   let opacity = 1
+  let flash = 0
   /** Fade materials in use since the last applyMaterials (opacity-only updates while fading). */
   let fadeMats: { opacity: number }[] = []
   let top = 0
@@ -542,6 +546,7 @@ export function createChibi(preset: number): Chibi {
   function applyMaterials() {
     const fade = opacity < 1
     const mat = kitMat(isAlt, fade, owner)
+    mat.emissive.setScalar(flash)
     const glow = faceMat(isAlt, false, fade, owner)
     const faceM = faceMat(isAlt, faceBlend, fade, owner)
     if (fade) {
@@ -554,6 +559,13 @@ export function createChibi(preset: number): Chibi {
       v.mesh.material = mat
       v.glow.material = glow
     }
+  }
+
+  function setFlash(k: number) {
+    const next = Math.min(1, Math.max(0, k || 0))
+    if (next === flash) return
+    flash = next
+    ;(bones[0]?.material as MeshPhysicalMaterial | undefined)?.emissive.setScalar(flash)
   }
 
   function setOpacity(a: number) {
@@ -836,6 +848,7 @@ export function createChibi(preset: number): Chibi {
     setPose,
     setPreset,
     setOpacity,
+    setFlash,
     get top() {
       return top
     },

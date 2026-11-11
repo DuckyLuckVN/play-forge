@@ -28,6 +28,7 @@ export const VI: Dictionary = {
   'The host removed you from room {room}.': 'Chủ phòng đã mời bạn ra khỏi phòng {room}.',
   'Full screen': 'Toàn màn hình',
   'Exit full screen': 'Thoát toàn màn hình',
+  'Show menu': 'Hiện menu',
   // Landscape guard (engine/ui/landscape.ts)
   'Rotate your phone': 'Xoay ngang điện thoại',
   'This game plays sideways.': 'Trò chơi này cần màn hình ngang.',

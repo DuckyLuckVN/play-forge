@@ -82,6 +82,7 @@ const PunchShader = {
  */
 export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): Scene3D {
   const root = document.createElement('div')
+  root.className = 'pf-scene3d'
   root.style.cssText = 'position:absolute;inset:0 16px 16px;border-radius:14px;overflow:hidden'
   parent.appendChild(root)
 

@@ -1367,3 +1367,24 @@
     box-shadow: 0 0 6px color-mix(in srgb, var(--pf-mint) 70%, transparent);
   }
 }
+
+/* Phones in fullscreen (engine shell.css): the board's top-left holds the turn label, so the bar's
+   handle becomes a slim pull-down tab in the empty top centre, between the turn and the coins. */
+@media (pointer: coarse) {
+  .pf-fullscreen .pf-fs-handle.pf-btn {
+    left: 50%;
+    top: env(safe-area-inset-top);
+    transform: translateX(-50%);
+    width: 56px;
+    height: 22px;
+    padding: 0 12px;
+    border-radius: 0 0 var(--pf-radius) var(--pf-radius);
+  }
+  /* While the bar is out the tab hangs under it (to put it away) instead of over its buttons. */
+  .pf-fullscreen.pf-bar-shown .pf-fs-handle.pf-btn {
+    top: calc(env(safe-area-inset-top) + 55px);
+  }
+  .pf-fullscreen .pf-bar {
+    padding-left: 12px;
+  }
+}

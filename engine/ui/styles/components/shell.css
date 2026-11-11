@@ -88,4 +88,66 @@
     min-height: 0;
     padding-block: 4px;
   }
+
+  /* ---------- Phones in fullscreen: the game gets the whole screen ----------
+   The bar tucks away behind a small floating handle (engine/ui/fullscreen-chrome.ts toggles
+   html.pf-fullscreen / .pf-bar-shown); it slides back over the game when called. Hidden with
+   visibility, never transform: a transform would trap the bar's fixed bottom sheets. */
+  .pf-fs-handle.pf-btn {
+    display: none;
+  }
+  @media (pointer: coarse) {
+    .pf-fullscreen .pf-shell {
+      grid-template-rows: minmax(0, 1fr);
+    }
+    .pf-fullscreen .pf-stage {
+      padding: 0;
+    }
+    .pf-fullscreen .pf-bar {
+      position: absolute;
+      top: env(safe-area-inset-top);
+      left: env(safe-area-inset-left);
+      right: env(safe-area-inset-right);
+      min-height: 0;
+      padding: 6px 12px 6px 60px;
+      background: color-mix(in srgb, var(--pf-night) 94%, transparent);
+      box-shadow: var(--pf-drop);
+      visibility: hidden;
+      opacity: 0;
+      transition:
+        opacity 160ms ease-out,
+        visibility 0s 160ms;
+    }
+    /* Out when called, and while one of its menus is open (the timer may have run out meanwhile). */
+    .pf-fullscreen.pf-bar-shown .pf-bar,
+    .pf-fullscreen .pf-bar:has(.pf-popover:not([hidden])) {
+      visibility: visible;
+      opacity: 1;
+      transition: opacity 160ms ease-out;
+    }
+    .pf-fullscreen .pf-fs-handle.pf-btn {
+      display: inline-flex;
+      position: absolute;
+      top: calc(env(safe-area-inset-top) + 6px);
+      left: calc(env(safe-area-inset-left) + 8px);
+      z-index: calc(var(--pf-z-bar) + 1);
+      width: 40px;
+      height: 40px;
+      padding: 6px;
+      opacity: 0.6;
+    }
+    .pf-fullscreen.pf-bar-shown .pf-fs-handle.pf-btn {
+      opacity: 1;
+    }
+    /* The 3D view's inset frame (engine/render3d/scene.ts sets it inline) goes edge to edge. */
+    .pf-fullscreen .pf-scene3d {
+      inset: 0 !important;
+      border-radius: 0 !important;
+    }
+  }
+  @media (pointer: coarse) and (prefers-reduced-motion: reduce) {
+    .pf-fullscreen .pf-bar {
+      transition: none;
+    }
+  }
 }

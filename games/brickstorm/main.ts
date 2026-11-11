@@ -17,7 +17,7 @@ import { fullscreenButton } from '@forge/ui/fullscreen'
 import { icons } from '@forge/ui/icons'
 import { applyTheme } from '@forge/ui/theme'
 import { bossIntro } from './boss-ui'
-import { dangerHint } from './danger-hint'
+import { dangerHint, dangerTurnOpen } from './danger-hint'
 import { growCard } from './grow-ui'
 import { coinAmount } from './coin'
 import { BOSS, trackFor } from './music'
@@ -171,6 +171,8 @@ const dangerEl = h('div', { class: 'bs-danger', role: 'alert' })
 dangerEl.hidden = true
 let dangerShown = ''
 let dangerClosedTurn = -1
+/** The turn the danger notice showed this run (it shows on one turn per run). */
+let dangerTurn: number | null = null
 let noticeShown: object | null = null
 const leftSide = h('aside', { class: 'bs-side left' })
 const rightSide = h('aside', { class: 'bs-side right' })
@@ -728,14 +730,20 @@ function showEventCard() {
   )
 }
 
-/** Points at a helper (or the shop) when bricks are about to reach the line. */
+/** Points at a helper (or the shop) when bricks are about to reach the line: once per run. */
 function updateDanger() {
   const s = run
   // Not over a boss's entrance either: it shows once the boss has landed.
   const hint =
-    s && !paused && !panel && !juice.bossArriving && s.turn !== dangerClosedTurn
+    s &&
+    !paused &&
+    !panel &&
+    !juice.bossArriving &&
+    s.turn !== dangerClosedTurn &&
+    dangerTurnOpen(dangerTurn, s.turn)
       ? dangerHint(s, save.helpers)
       : null
+  if (hint && s) dangerTurn = s.turn
   const key = hint ? `${s!.turn}:${'use' in hint ? hint.use : 'shop'}` : ''
   if (key === dangerShown) return
   dangerShown = key
@@ -748,21 +756,25 @@ function updateDanger() {
   if ('use' in hint) {
     const name = t(ACTIVE_HELPERS.find((x) => x.id === hint.use)!.name)
     dangerEl.replaceChildren(
-      h('strong', { textContent: t('Danger!') }),
-      crashWarning(s) ?? '',
-      h('span', { textContent: t('{name} can save you.', { name }) }),
+      ...dangerHead(s),
       button(t('Use {name}', { name }), () => confirmHelper(hint.use), 'primary'),
       close,
+      h('span', { class: 'bs-danger-text', textContent: t('{name} can save you.', { name }) }),
     )
   } else {
     dangerEl.replaceChildren(
-      h('strong', { textContent: t('Danger!') }),
-      crashWarning(s) ?? '',
-      h('span', { textContent: t('Helpers like Push Back can save a run.') }),
+      ...dangerHead(s),
       button(t('Shop'), openShopFromBar, 'primary'),
       close,
+      h('span', { class: 'bs-danger-text', textContent: t('Helpers like Push Back can save a run.') }),
     )
   }
+}
+
+/** The danger toast's first row: ⚠ title and the hearts the next turn would cost. */
+function dangerHead(s: RunState): HTMLElement[] {
+  const hp = crashWarning(s)
+  return [h('strong', { class: 'bs-danger-title', textContent: `⚠ ${t('Danger!')}` }), ...(hp ? [hp] : [])]
 }
 
 /** Shows the current notice, ticking only while the game is in view. */
@@ -873,6 +885,7 @@ function beginRun(s: RunState) {
   pointToastShown = false
   pointsSeen = s.pendingPicks
   levelSeen = s.level
+  dangerTurn = null
   juice.turn = s.turn
   juice.setXp(s.level, s.xp / xpToNext(s.level), true)
   juice.setCoins(walletTotal(save, s, banked), true)

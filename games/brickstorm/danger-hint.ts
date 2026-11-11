@@ -25,3 +25,11 @@ export function dangerHint(
   const use = RESCUE_HELPERS.find((id) => helpers[id] > 0)
   return use ? { use } : { shop: true }
 }
+
+/**
+ * The danger notice shows once per run: on the turn it first appears (`shownTurn`),
+ * then never again that run. `shownTurn` is null until then.
+ */
+export function dangerTurnOpen(shownTurn: number | null, turn: number): boolean {
+  return shownTurn === null || shownTurn === turn
+}

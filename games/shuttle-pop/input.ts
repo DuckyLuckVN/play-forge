@@ -4,6 +4,7 @@
 // letting go sends the swing at once with the held direction and the tick the player is looking at
 // (a tap = a plain swing); losing the button any other way (blur, pointer cancel) cancels the charge.
 import { knobOffset, quantise, STICK_RADIUS, StickTracker } from './joystick'
+import type { Want } from './ability'
 import { TICK_RATE, type SpInput } from './sim'
 
 /** Least time between two `move` sends: one sim tick. */
@@ -34,9 +35,13 @@ const DIRS: Record<string, readonly [number, number]> = {
   KeyD: [1, 0],
   ArrowRight: [1, 0],
 }
-const SWING_KEYS = new Set(['Space', 'KeyJ'])
-/** The jump / lunge button (T = emoji and V = push-to-talk stay free). */
-export const ABILITY_KEYS = new Set(['KeyK', 'ShiftLeft', 'ShiftRight'])
+const SWING_KEYS = new Set(['KeyJ'])
+/** The Jump button (T = emoji and V = push-to-talk stay free). */
+export const JUMP_KEYS = new Set(['Space', 'KeyK'])
+/** The Dive button (a right click too). */
+export const DIVE_KEYS = new Set(['ShiftLeft', 'ShiftRight'])
+/** Every ability key (Jump + Dive). */
+export const ABILITY_KEYS = new Set([...JUMP_KEYS, ...DIVE_KEYS])
 
 /** Held direction from the pressed key codes: each axis −1/0/1, normalised to length ≤ 1. */
 export function heldDir(held: ReadonlySet<string>): { x: number; z: number } {
@@ -153,14 +158,16 @@ export class HeldKeys {
     )
   }
 
-  /** The ability button (jump / lunge / hop, picked by the sim): the held direction and the tick on screen. */
-  ability(): void {
+  /**
+   * An ability press with the held direction and the tick on screen. `k` = the Jump / Dive button's move
+   * (a dive goes the held way); none = the sim picks (jump / lunge / hop).
+   */
+  ability(k?: Want): void {
     const tick = this.nowTick()
-    this.send(
-      tick === undefined
-        ? { t: 'ability', x: this.dir.x, z: this.dir.z }
-        : { t: 'ability', x: this.dir.x, z: this.dir.z, tick },
-    )
+    const input: Extract<SpInput, { t: 'ability' }> = { t: 'ability', x: this.dir.x, z: this.dir.z }
+    if (tick !== undefined) input.tick = tick
+    if (k) input.k = k
+    this.send(input)
   }
 
   /** Send the held direction again now (stop when nothing is held). */
@@ -223,25 +230,30 @@ export interface InputBinding {
 /** Draws the touch controls (hud.ts `TouchPad`); coordinates are px in the target. */
 export interface TouchView {
   readonly swingEl: HTMLElement
-  /** Touch presses on this are the ability button. */
+  /** Touch presses on this are the Jump button. */
   readonly actEl: HTMLElement
+  /** Touch presses on this are the Dive button (optional: a pad without it only jumps). */
+  readonly diveEl?: HTMLElement
   enable(): void
   showStick(x: number, y: number): void
   moveKnob(dx: number, dy: number): void
   hideStick(): void
   setPressed(on: boolean): void
-  /** The ability button is held (squash). */
+  /** The Jump button is held (squash). */
   setAct(on: boolean): void
+  /** The Dive button is held (squash). */
+  setDive?(on: boolean): void
 }
 
 /** Touches starting in this share of the view's width (from the left) grab the stick. */
 const STICK_ZONE = 0.45
 
 /**
- * WASD / arrows move; Space, J or a left click on `target` is the swing button (hold to charge, let go
- * to swing); K, Shift or a right click is the ability button (jump / lunge, one press). With a `pad`, touches on the left of `target` drive a floating stick and the pad's swing
- * button is the swing button (both at once: each finger is tracked by pointer id). `nowTick` = the
- * swing's tick (world.ts swingTick; undefined before a state).
+ * WASD / arrows move; J or a left click on `target` is the swing button (hold to charge, let go to
+ * swing); Space or K jumps, Shift or a right click dives (one press each). With a `pad`, touches on the
+ * left of `target` drive a floating stick and the pad's buttons swing / jump / dive (all at once: each
+ * finger is tracked by pointer id). `nowTick` = the swing's tick (world.ts swingTick; undefined before a
+ * state).
  */
 export function bindInput(
   target: HTMLElement,
@@ -253,13 +265,16 @@ export function bindInput(
   const stick = new StickTracker(STICK_RADIUS)
   let swingPointer: number | null = null
   let actPointer: number | null = null
+  let divePointer: number | null = null
   const onDown = (e: KeyboardEvent) => {
     if (isUi(e.target)) return
     if (SWING_KEYS.has(e.code)) {
       e.preventDefault()
       if (!e.repeat) keys.swingDown(e.code)
     } else if (ABILITY_KEYS.has(e.code)) {
-      if (!e.repeat) keys.ability()
+      // Space would scroll the page.
+      e.preventDefault()
+      if (!e.repeat) keys.ability(JUMP_KEYS.has(e.code) ? 'jump' : 'lunge')
     } else if (keys.press(e.code)) e.preventDefault()
   }
   const onUp = (e: KeyboardEvent) => {
@@ -270,17 +285,19 @@ export function bindInput(
     stick.cancel()
     swingPointer = null
     actPointer = null
+    divePointer = null
     keys.clear()
     pad?.hideStick()
     pad?.setPressed(false)
     pad?.setAct(false)
+    pad?.setDive?.(false)
   }
   const onPointer = (e: PointerEvent) => {
     if (e.pointerType === 'mouse') {
       if (isUi(e.target)) return
       if (e.button === 2) {
         e.preventDefault()
-        keys.ability()
+        keys.ability('lunge')
         return
       }
       if (e.button !== 0) return
@@ -303,7 +320,21 @@ export function bindInput(
       } catch {
         // Haptics are a nicety.
       }
-      keys.ability()
+      keys.ability('jump')
+      return
+    }
+    if (pad.diveEl && e.target instanceof Node && pad.diveEl.contains(e.target)) {
+      e.preventDefault()
+      if (divePointer !== null) return // a second thumb on the button doesn't repeat it
+      divePointer = e.pointerId
+      target.setPointerCapture?.(e.pointerId)
+      pad.setDive?.(true)
+      try {
+        navigator.vibrate?.(10)
+      } catch {
+        // Haptics are a nicety.
+      }
+      keys.ability('lunge')
       return
     }
     if (e.target instanceof Node && pad.swingEl.contains(e.target)) {
@@ -351,6 +382,9 @@ export function bindInput(
     } else if (e.pointerId === actPointer) {
       actPointer = null
       pad?.setAct(false)
+    } else if (e.pointerId === divePointer) {
+      divePointer = null
+      pad?.setDive?.(false)
     } else if (e.pointerId === swingPointer) {
       swingPointer = null
       pad?.setPressed(false)

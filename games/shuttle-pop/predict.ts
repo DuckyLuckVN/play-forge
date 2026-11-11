@@ -9,7 +9,7 @@
 // (or, with nothing queued, the one the host has) is not queued, so value-equal echoes (a tap shorter
 // than the round trip, a resync of a stop) can't fake a zero lag.
 // The error found there is closed with `correct` (keep / blend / snap) and shifts the whole prediction.
-import { actMoveMul, type AbilityKind, type Act } from './ability'
+import { actMoveMul, slideStep, type AbilityKind, type Act } from './ability'
 import { CHARGE, chargeOf } from './charge'
 import { COURT, DT, type CourtDims } from './physics'
 import { POWER_SWING, recoveryAfter } from './power'
@@ -82,6 +82,9 @@ export class GuestPredictor {
     return this.stunFrom >= 0 && this.steps > this.stunFrom && this.steps < this.stunFrom + STUN.ticks
   }
 
+  /** Scratch for the dive's per-step slide. */
+  private slide = { x: 0, z: 0 }
+
   /** The local ability press as just sent, null = none since the last placement. */
   get act(): Act | null {
     return this.localAct
@@ -91,10 +94,11 @@ export class GuestPredictor {
    * The ability button was pressed (sent) and the move `k` picked. `at` = the next step, the twin of the
    * host's arrival tick. The host steps its players before it resolves the press (act.at = that tick), so
    * that step runs free and the lock holds from the one after (e ≥ 1): busy − 1 locked steps, here too.
-   * `dx, dz` = the picked contact's direction (the lunge slide; render only).
+   * `dx, dz` = the move's direction (a lunge slides along it, like the host); `empty` = a forced move
+   * with nothing to strike (the short cooldown).
    */
-  startAct(k: AbilityKind, dx = 0, dz = 0): void {
-    this.localAct = { k, at: this.steps, dx, dz }
+  startAct(k: AbilityKind, dx = 0, dz = 0, empty = false): void {
+    this.localAct = { k, at: this.steps, dx, dz, ...(empty ? { empty: true } : {}) }
   }
 
   /** Local step time now (steps run + the share of the next one): the clock `act.at` counts in. */
@@ -178,7 +182,9 @@ export class GuestPredictor {
       // The host's bonk tick itself ran free, like the press step: the lock holds from the next one.
       const mul = this.stunned ? 0 : Math.min(base, actMoveMul(act, this.steps))
       if (this.recover > 0) this.recover--
-      stepPlayer(p, DT, mul, this.court)
+      // A dive slides like the host's (sim step: e = steps − at, the press step itself free).
+      const push = act ? slideStep(act, this.steps - act.at, this.slide) : undefined
+      stepPlayer(p, DT, mul, this.court, push)
       this.steps++
       this.record()
       this.acc -= DT
@@ -220,10 +226,13 @@ export class GuestPredictor {
    */
   private adoptHostAct(host: Act | null | undefined, tick: number): void {
     const mine = this.localAct
-    if (!host || !mine || host.k === mine.k || this.sampleStep < 0) return
+    if (!host || !mine || this.sampleStep < 0) return
+    // Same move (and strike / empty): keep ours; a dive the host sent another way slides that way here too.
+    const sameDive = host.k !== 'lunge' || (host.dx === mine.dx && host.dz === mine.dz)
+    if (host.k === mine.k && !host.empty === !mine.empty && sameDive) return
     const at = this.sampleStep - (tick - host.at)
     if (Math.abs(at - mine.at) > ACT_MATCH) return
-    this.localAct = { k: host.k, at: mine.at, dx: host.dx, dz: host.dz }
+    this.localAct = { ...host, at: mine.at }
   }
 
   /**

@@ -149,7 +149,18 @@ function racketIcon(): SVGSVGElement {
   return svg
 }
 
-/** Up-chevron over two feet: the jump / dive button's glyph (drawn once). */
+/** A low swoosh forward over a floor line: the Dive button's glyph (drawn once). */
+function diveIcon(): SVGSVGElement {
+  const svg = document.createElementNS(SVG_NS, 'svg')
+  svg.setAttribute('viewBox', '0 0 48 48')
+  svg.setAttribute('aria-hidden', 'true')
+  svg.innerHTML =
+    '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="4">' +
+    '<path d="M8 32c10 0 18-4 26-14"/><path d="M24 16h11v11"/><path d="M8 40h30" opacity=".6"/></g>'
+  return svg
+}
+
+/** Up-chevron over two feet: the Jump button's glyph (drawn once). */
 function actIcon(): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg')
   svg.setAttribute('viewBox', '0 0 48 48')
@@ -163,15 +174,18 @@ function actIcon(): SVGSVGElement {
 
 /**
  * Touch controls' visuals: a floating stick (rests dim in the bottom-left corner, jumps under the
- * thumb while held) and the swing button bottom-right. Hidden until the device has a coarse pointer
+ * thumb while held), the swing button bottom-right, Jump to its left and Dive above it (one shared
+ * cooldown dims both). Hidden until the device has a coarse pointer
  * or the first touch lands. Input logic lives in input.ts; this only draws.
  */
 export class TouchPad {
   readonly root: HTMLElement
   /** Touch presses on this swing. */
   readonly swingEl: HTMLElement
-  /** Touch presses on this are the ability button (jump / lunge). */
+  /** Touch presses on this are the Jump button. */
   readonly actEl: HTMLElement
+  /** Touch presses on this are the Dive button. */
+  readonly diveEl: HTMLElement
   private stickEl: HTMLElement
   private knobEl: HTMLElement
   /** The cooldown step last drawn (setAbility; −1 = none yet). */
@@ -183,7 +197,8 @@ export class TouchPad {
     this.stickEl.style.setProperty('--sp-stick-r', `${STICK_RADIUS}px`)
     this.swingEl = h('div', { class: 'sp-swing' }, racketIcon())
     this.actEl = h('div', { class: 'sp-act' }, actIcon())
-    this.root = h('div', { class: 'sp-touch' }, this.stickEl, this.actEl, this.swingEl)
+    this.diveEl = h('div', { class: 'sp-act sp-dive' }, diveIcon())
+    this.root = h('div', { class: 'sp-touch' }, this.stickEl, this.actEl, this.diveEl, this.swingEl)
     this.root.setAttribute('aria-hidden', 'true')
     this.root.hidden = !globalThis.matchMedia?.('(pointer: coarse)').matches
   }
@@ -217,9 +232,14 @@ export class TouchPad {
     this.swingEl.classList.toggle('down', on)
   }
 
-  /** The ability button is held. */
+  /** The Jump button is held. */
   setAct(on: boolean) {
     this.actEl.classList.toggle('down', on)
+  }
+
+  /** The Dive button is held. */
+  setDive(on: boolean) {
+    this.diveEl.classList.toggle('down', on)
   }
 
   /**
@@ -230,7 +250,9 @@ export class TouchPad {
     const step = Math.round(Math.min(1, Math.max(0, cooldown || 0)) * 100)
     if (step === this.cdStep) return
     this.cdStep = step
-    this.actEl.style.setProperty('--sp-cd', (step / 100).toFixed(2))
-    this.actEl.classList.toggle('cooling', step > 0)
+    for (const el of [this.actEl, this.diveEl]) {
+      el.style.setProperty('--sp-cd', (step / 100).toFixed(2))
+      el.classList.toggle('cooling', step > 0)
+    }
   }
 }

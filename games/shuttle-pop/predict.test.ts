@@ -320,7 +320,8 @@ describe('guest prediction of the ability lock', () => {
         game.tick(s, inputs)
         if (i === sc.press) {
           expect(s.events.find((e) => e.k === 'act' && e.tick === s.tick)).toMatchObject({ act: k })
-          pred.startAct(k) // the same tick the host takes it
+          // The same tick and direction the host takes it (a lunge slides along it on both).
+          pred.startAct(k, host.act!.dx, host.act!.dz)
         }
         // Local step i (steps = i − 1 before it) is locked past the press step, at actMoveMul(act, i − 1).
         if (pred.act && i - 1 > pred.act.at && actMoveMul(pred.act, i - 1) < 1) predLocked++

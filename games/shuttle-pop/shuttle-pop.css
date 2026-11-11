@@ -626,6 +626,20 @@
     0 1px 0 #0a5f55,
     0 0 20px rgb(123 227 212 / 0.75);
 }
+/* Dive: same size, orange, stacked above the racket button. */
+.sp-dive {
+  right: calc(20px + 14px + env(safe-area-inset-right, 0px));
+  bottom: calc(20px + 92px + 16px + env(safe-area-inset-bottom, 0px));
+  background: radial-gradient(circle at 35% 28%, var(--sp-cream), var(--sp-gold) 45%, var(--sp-amber));
+  box-shadow:
+    0 5px 0 #a8620f,
+    0 9px 16px rgb(0 0 0 / 0.25);
+}
+.sp-dive.down {
+  box-shadow:
+    0 1px 0 #a8620f,
+    0 0 20px rgb(255 209 102 / 0.75);
+}
 @media (prefers-reduced-motion: reduce) {
   .sp-stick,
   .sp-swing,

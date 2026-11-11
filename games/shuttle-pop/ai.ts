@@ -4,7 +4,7 @@
 import { random } from '@forge/core/rng'
 import { COURT, isIn, predictLanding, stepShuttle, type CourtDims, type Flight } from './physics'
 import { findContact, REACH, WINDOW, type Grade } from './shots'
-import { ABILITY, acting, actReady, leadOf, pickAbility, reachOf, type Strike } from './ability'
+import { ABILITY, acting, actReady, leadOf, pickAbility, pickReachOf, reachOf, type Strike } from './ability'
 import { CHARGE } from './charge'
 import { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld } from './court'
 import { COVER, coverSpot, mateOf, takerOf } from './doubles'
@@ -325,7 +325,7 @@ function plan(
   }
   // A lunge save: the plain meet is out of time, but the dive reaches it from the spot I'm heading to.
   if (meet?.late) {
-    const lc = findContact(s.shuttle, target, 0, land.ticks, reachOf('lunge'))
+    const lc = findContact(s.shuttle, target, 0, land.ticks, pickReachOf('lunge'))
     if (lc) planAct(s, idx, mem, 'lunge', target, lc.dt, grade, actRng)
   }
 }

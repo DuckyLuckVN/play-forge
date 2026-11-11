@@ -13,7 +13,12 @@ import {
   landTick,
   leadOf,
   pickAbility,
+  pickReachOf,
   reachOf,
+  slideEnd,
+  slideOf,
+  slideStep,
+  strikeFrom,
   type Act,
   type AbilityKind,
 } from './ability'
@@ -27,10 +32,12 @@ const lob = (): Flight => ({ pos: { x: 0, y: 2.9, z: -1.5 }, vel: { x: 0, y: 3.5
 const drive = (): Flight => ({ pos: { x: 1.8, y: 0.8, z: -7 }, vel: { x: 0, y: 1.2, z: 9 } })
 
 describe('ability', () => {
-  it('reach boxes: jump +0.8 m up, lunge +1.2 m out, none = REACH', () => {
-    expect(reachOf('jump').maxY).toBeCloseTo(REACH.maxY + 0.8)
+  it('reach boxes: jump +0.95 m up, lunge 1.6 m from its slide end (+1.5 m out from the press), none = REACH', () => {
+    expect(reachOf('jump').maxY).toBeCloseTo(REACH.maxY + 0.95)
     expect(reachOf('jump').minY).toBeCloseTo(2.2)
-    expect(reachOf('lunge').radius).toBeCloseTo(REACH.radius + 1.2)
+    expect(reachOf('lunge').radius).toBeCloseTo(1.6)
+    expect(pickReachOf('lunge').radius).toBeCloseTo(REACH.radius + 1.5)
+    expect(pickReachOf('jump')).toBe(reachOf('jump'))
     expect(reachOf()).toBe(REACH)
     expect(leadOf('jump')).toBe(ABILITY.jump.lead)
     expect(leadOf('lunge')).toBe(ABILITY.lunge.lead)
@@ -74,7 +81,7 @@ describe('ability', () => {
     expect(horizonOf('jump')).toBe(30)
     expect(horizonOf('lunge')).toBe(26)
     // The jump box is first entered 31 ticks out: a press now would whiff for sure (lock + cooldown) = hop.
-    const early = (): Flight => ({ pos: { x: 0, y: 4.1, z: -0.95 }, vel: { x: 0, y: 1.9, z: -6.4 } })
+    const early = (): Flight => ({ pos: { x: 0, y: 4.28, z: -0.95 }, vel: { x: 0, y: 1.9, z: -6.4 } })
     const at = { x: 0, z: -4 }
     expect(pickAbility(early(), at, 0, 1, true).k).toBe('hop')
     // Two ticks on (29 out): it grades (Late at worst), so the button jumps.
@@ -143,7 +150,7 @@ describe('ability', () => {
 
   it('arc: jump peaks mid-air at height, hop is small, lunge dives then recovers', () => {
     const j = act('jump', 0)
-    expect(actArc(j, 15).lift).toBeCloseTo(0.75)
+    expect(actArc(j, 15).lift).toBeCloseTo(1.1)
     expect(actArc(j, 0).lift).toBe(0)
     expect(actArc(j, 30).lift).toBe(0)
     expect(actArc(j, 40).lift).toBe(0)
@@ -190,5 +197,91 @@ describe('ability', () => {
     // No exact match (state moved on): the first player on that side.
     expect(actorIndex(players, { k: 'act', side: 1, act: 'jump', tick: 99 })).toBe(1)
     expect(actorIndex([], { k: 'act', side: 1, act: 'jump', tick: 99 })).toBe(-1)
+  })
+
+  describe('Jump / Dive buttons (forced moves)', () => {
+    it('jump: strikes a high shuttle; nothing in the box (or not mine) = an empty jump, never a hop', () => {
+      const j = pickAbility(lob(), { x: 0.4, z: -2.2 }, 0, 1, true, 'jump')
+      expect(j).toMatchObject({ k: 'jump' })
+      expect(j.empty).toBeUndefined()
+      expect(pickAbility(drive(), { x: 0, z: -5.4 }, 0, 1, true, 'jump')).toEqual({
+        k: 'jump',
+        dx: 0,
+        dz: 0,
+        empty: true,
+      })
+      expect(pickAbility(lob(), { x: 0.4, z: -2.2 }, 0, 1, false, 'jump').empty).toBe(true)
+    })
+
+    it('dive: goes the held way; strikes from the slide end, else empty', () => {
+      // The wide drive passes 1.8 m to +x: diving +x reaches it.
+      const toward = pickAbility(drive(), { x: 0, z: -5.4 }, 0, 1, true, 'lunge', { x: 1, z: 0 })
+      expect(toward).toEqual({ k: 'lunge', dx: 1, dz: 0 })
+      // Diving the other way: still a dive (the player's call), nothing to strike.
+      const away = pickAbility(drive(), { x: 0, z: -5.4 }, 0, 1, true, 'lunge', { x: -1, z: 0 })
+      expect(away).toEqual({ k: 'lunge', dx: -1, dz: 0, empty: true })
+      // No direction held: toward the shuttle it would reach.
+      const auto = pickAbility(drive(), { x: 0, z: -5.4 }, 0, 1, true, 'lunge')
+      expect(auto.k).toBe('lunge')
+      expect(auto.dx).toBeGreaterThan(0.5)
+      expect(auto.empty).toBeUndefined()
+      // Nothing to reach and nothing held: toward the net (side 0 = +z, side 1 = −z), empty.
+      expect(pickAbility(lob(), { x: 2.5, z: -6 }, 0, 1, true, 'lunge')).toEqual({
+        k: 'lunge',
+        dx: 0,
+        dz: 1,
+        empty: true,
+      })
+      expect(pickAbility(lob(), { x: 2.5, z: 6 }, 1, 0, false, 'lunge')).toMatchObject({
+        dz: -1,
+        empty: true,
+      })
+      // An easy shuttle a plain swing reaches: the button still dives (no hop rule for a forced move).
+      expect(pickAbility(drive(), { x: 1.0, z: -5.4 }, 0, 1, true, 'lunge', { x: 1, z: 0 }).k).toBe('lunge')
+    })
+
+    it('an empty forced move cools down like a hop; a striking one the full 3 s', () => {
+      const empty: Act = { k: 'lunge', at: 0, dx: 1, dz: 0, empty: true }
+      expect(actReady(empty, ABILITY.hop.cooldown - 1)).toBe(false)
+      expect(actReady(empty, ABILITY.hop.cooldown)).toBe(true)
+      expect(cooldownLeft(empty, ABILITY.hop.cooldown / 2)).toBeCloseTo(0.5)
+      expect(actReady(act('lunge', 0), ABILITY.hop.cooldown)).toBe(false)
+    })
+  })
+
+  describe('dive slide', () => {
+    it('slides `slide` m over the dive, eased out, the press tick itself free', () => {
+      const { dive, slide } = ABILITY.lunge
+      expect(slideOf(0)).toBe(0)
+      expect(slideOf(dive)).toBe(slide)
+      expect(slideOf(dive + 5)).toBe(slide)
+      expect(slideOf(dive / 2)).toBeGreaterThan(slide / 2) // a burst that settles
+      const a: Act = { k: 'lunge', at: 10, dx: 0.6, dz: -0.8 }
+      const o = { x: 0, z: 0 }
+      let x = 0
+      let z = 0
+      for (let e = 0; e <= dive + 3; e++) {
+        slideStep(a, e, o)
+        if (e === 0 || e > dive) expect(o).toEqual({ x: 0, z: 0 })
+        x += o.x
+        z += o.z
+      }
+      expect(x).toBeCloseTo(0.6 * slide)
+      expect(z).toBeCloseTo(-0.8 * slide)
+      expect(slideStep(act('jump', 0), 3, o)).toEqual({ x: 0, z: 0 })
+      expect(slideStep(null, 3, o)).toEqual({ x: 0, z: 0 })
+    })
+
+    it('a lunge reaches from its slide end, also mid-dive (strikeFrom)', () => {
+      const a: Act = { k: 'lunge', at: 0, dx: 1, dz: 0 }
+      const { slide, dive } = ABILITY.lunge
+      expect(slideEnd({ x: 1, z: 2 }, 1, 0)).toEqual({ x: 1 + slide, z: 2 })
+      expect(strikeFrom({ x: 0, z: 0 }, a, 0)).toEqual({ x: slide, z: 0 })
+      // Halfway through the dive the body has slid slideOf(e): the rest is added on.
+      const mid = strikeFrom({ x: slideOf(4), z: 0 }, a, 4)
+      expect(mid.x).toBeCloseTo(slide)
+      expect(strikeFrom({ x: 3, z: 0 }, a, dive)).toEqual({ x: 3, z: 0 })
+      expect(strikeFrom({ x: 3, z: 0 }, act('jump', 0), 2)).toEqual({ x: 3, z: 0 })
+    })
   })
 })

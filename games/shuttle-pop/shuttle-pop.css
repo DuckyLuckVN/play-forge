@@ -20,6 +20,64 @@
   --sp-rose: #ffb3c1;
 }
 
+/* Brief court stamp before the engine's results panel takes over. */
+.sp-outcome-stamp {
+  position: absolute;
+  z-index: var(--pf-z-popover);
+  top: 45%;
+  left: 50%;
+  width: max-content;
+  max-width: 90%;
+  pointer-events: none;
+  opacity: 0;
+  color: var(--sp-cream);
+  font-size: clamp(32px, 7vw, 76px);
+  font-weight: 900;
+  line-height: 1.1;
+  text-align: center;
+  -webkit-text-stroke: 2px var(--sp-rust);
+  filter: drop-shadow(0 5px 0 var(--sp-pink-dark));
+}
+.sp-outcome-stamp.show {
+  animation: sp-outcome-stamp 1.8s both;
+}
+@keyframes sp-outcome-stamp {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(-9deg) scale(2);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(3deg) scale(0.94);
+  }
+  30%,
+  72% {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(-2deg) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(-2deg) scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sp-outcome-stamp.show {
+    animation-name: sp-outcome-stamp-calm;
+  }
+}
+@keyframes sp-outcome-stamp-calm {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%);
+  }
+  15%,
+  72% {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+
 /* Shuttle Pop: the no-WebGL note (the court itself is a three.js canvas). */
 .sp-nogl {
   max-width: 32ch;

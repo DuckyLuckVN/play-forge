@@ -38,8 +38,8 @@ export const VI: Dictionary = {
     'Vung vợt trúng người chơi khác là họ choáng, thấy sao một lúc. Sau đó 2 giây họ không bị cốc nữa.',
   'Reach high shuttles: a jump smash. Then a short cooldown.':
     'Với tới cầu cao: bật nhảy đập cầu. Sau đó chờ hồi chiêu một chút.',
-  'Slide the way you are moving to save a far, low shuttle. You stay down a moment.':
-    'Trượt theo hướng đang chạy để cứu cầu thấp và xa. Bạn sẽ nằm sân một chút.',
+  'Slide far the way you are moving, then swing to save a far, low shuttle. Works while charging too. You stay down a moment.':
+    'Trượt xa theo hướng đang chạy, rồi vung vợt để cứu cầu thấp và xa. Đang tích lực cũng trượt được. Bạn sẽ nằm sân một chút.',
   'jump button': 'nút nhảy',
   'dive button': 'nút bổ nhào',
   'Doubles (2 vs 2)': 'Đánh đôi (2 đấu 2)',

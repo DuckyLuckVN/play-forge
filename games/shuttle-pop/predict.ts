@@ -95,10 +95,17 @@ export class GuestPredictor {
    * host's arrival tick. The host steps its players before it resolves the press (act.at = that tick), so
    * that step runs free and the lock holds from the one after (e ≥ 1): busy − 1 locked steps, here too.
    * `dx, dz` = the move's direction (a lunge slides along it, like the host); `empty` = a forced move
-   * with nothing to strike (the short cooldown).
+   * with nothing to strike (the short cooldown); `free` = the Dive button's dive (ability.ts ABILITY.dive).
    */
-  startAct(k: AbilityKind, dx = 0, dz = 0, empty = false): void {
-    this.localAct = { k, at: this.steps, dx, dz, ...(empty ? { empty: true } : {}) }
+  startAct(k: AbilityKind, dx = 0, dz = 0, empty = false, free = false): void {
+    this.localAct = {
+      k,
+      at: this.steps,
+      dx,
+      dz,
+      ...(empty ? { empty: true } : {}),
+      ...(free ? { free: true } : {}),
+    }
   }
 
   /** Local step time now (steps run + the share of the next one): the clock `act.at` counts in. */
@@ -229,7 +236,7 @@ export class GuestPredictor {
     if (!host || !mine || this.sampleStep < 0) return
     // Same move (and strike / empty): keep ours; a dive the host sent another way slides that way here too.
     const sameDive = host.k !== 'lunge' || (host.dx === mine.dx && host.dz === mine.dz)
-    if (host.k === mine.k && !host.empty === !mine.empty && sameDive) return
+    if (host.k === mine.k && !host.empty === !mine.empty && !host.free === !mine.free && sameDive) return
     const at = this.sampleStep - (tick - host.at)
     if (Math.abs(at - mine.at) > ACT_MATCH) return
     this.localAct = { ...host, at: mine.at }

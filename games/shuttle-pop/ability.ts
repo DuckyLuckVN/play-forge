@@ -11,7 +11,8 @@ export type Strike = Exclude<AbilityKind, 'hop'>
 /**
  * A press in progress: `at` = host tick of its arrival; `dx, dz` = unit world direction (a jump: to the
  * picked contact; a lunge: the dive's direction, the way it slides; 0/0 for a hop). `empty` = a forced
- * jump / dive with nothing to strike: the body moves, no swing, the short (hop) cooldown.
+ * jump with nothing to strike: the body moves, no swing, the short (hop) cooldown. `free` = the Dive
+ * button's dive (ABILITY.dive): it only slides, the player swings by hand (J) with the dive's reach.
  */
 export interface Act {
   k: AbilityKind
@@ -19,6 +20,7 @@ export interface Act {
   dx: number
   dz: number
   empty?: boolean
+  free?: boolean
 }
 
 /** A forced move (the Jump / Dive buttons); undefined = the shuttle picks (one-button press). */
@@ -55,7 +57,28 @@ export const ABILITY = {
     reach: { radius: 1.6, minY: 0.05, maxY: 1.6 } as Readonly<Reach>,
   },
   hop: { air: 18, cooldown: 60, height: 0.25 },
+  /**
+   * The Dive button (a `free` lunge): slides `slide` m over `glide` ticks (0.27 s), never swings by itself.
+   * A swing (J) from the press until `grace` ticks after the glide reaches like a lunge (reach box at the
+   * slide end, its capped clear). `floor` = ticks down after the glide (no running; swinging allowed).
+   * One cooldown, hit or not (1.5 s: between an empty move's 1 s and a striking one's 3 s).
+   */
+  dive: { glide: 16, slide: 1.8, grace: 15, floor: 30, cooldown: 90 },
 } as const
+
+/** A dive's shape: ticks sliding (`dive`), metres, ticks down after. */
+interface Glide {
+  dive: number
+  slide: number
+  floor: number
+}
+const LUNGE_GLIDE: Glide = ABILITY.lunge
+const FREE_GLIDE: Glide = { dive: ABILITY.dive.glide, slide: ABILITY.dive.slide, floor: ABILITY.dive.floor }
+
+/** The shape of a lunge `act`: the Dive button's (free) or the auto-pick's. */
+export function glideOf(act: Act | null | undefined): Glide {
+  return act?.free ? FREE_GLIDE : LUNGE_GLIDE
+}
 
 /** Ticks a lunge's dive eases back up at the end of its floor time. */
 const RECOVER = 12
@@ -75,9 +98,15 @@ export function pickReachOf(k?: Strike): Reach {
   return k === 'lunge' ? LUNGE_PICK : reachOf(k)
 }
 
+/** The Dive button's box seen from the press spot (grows by its longer slide). */
+const DIVE_PICK: Readonly<Reach> = {
+  ...ABILITY.lunge.reach,
+  radius: ABILITY.lunge.reach.radius + ABILITY.dive.slide,
+}
+
 /** Metres a lunge has slid `e` ticks after its press (0 at the press, `slide` once the dive is done). */
-export function slideOf(e: number): number {
-  const { dive, slide } = ABILITY.lunge
+export function slideOf(e: number, g: Glide = LUNGE_GLIDE): number {
+  const { dive, slide } = g
   if (!(e > 0)) return 0
   if (e >= dive) return slide
   const u = e / dive
@@ -95,8 +124,9 @@ export function slideStep(
 ): { x: number; z: number } {
   out.x = 0
   out.z = 0
-  if (!act || act.k !== 'lunge' || e < 1 || e > ABILITY.lunge.dive) return out
-  const d = slideOf(e) - slideOf(e - 1)
+  const g = glideOf(act)
+  if (!act || act.k !== 'lunge' || e < 1 || e > g.dive) return out
+  const d = slideOf(e, g) - slideOf(e - 1, g)
   out.x = act.dx * d
   out.z = act.dz * d
   return out
@@ -112,7 +142,8 @@ export function strikeFrom(
   tick: number,
 ): { x: number; z: number } {
   if (!act || act.k !== 'lunge') return p
-  const left = ABILITY.lunge.slide - slideOf(tick - act.at)
+  const g = glideOf(act)
+  const left = g.slide - slideOf(tick - act.at, g)
   return left > 0 ? { x: p.x + act.dx * left, z: p.z + act.dz * left } : p
 }
 
@@ -149,7 +180,7 @@ export function pickAbility(
   canHit: boolean,
   want?: Want,
   dir?: { x: number; z: number },
-): { k: AbilityKind; dx: number; dz: number; empty?: boolean } {
+): { k: AbilityKind; dx: number; dz: number; empty?: boolean; free?: boolean } {
   if (want) return forcedPick(f, at, side, lastHitter, canHit, want, dir)
   if (canHit && lastHitter !== side) {
     const mine = (c: { pos: { z: number } } | null): boolean => !!c && onHalf(c.pos.z, side, lastHitter)
@@ -174,11 +205,11 @@ const unit = (x: number, z: number): { x: number; z: number } | null => {
 }
 
 /**
- * The Jump / Dive buttons: the move is the player's, never a hop. It strikes when the shuttle passes in
- * its box on my half within its horizon (no "a plain swing reaches it" rule: a lunge's shot is a capped
- * clear, so diving for an easy one only costs). A dive goes along `dir` (unit world, the held stick;
- * none = toward the contact it would reach, else toward the net) and its box sits at the slide end.
- * Nothing to strike (or `canHit` false): `empty` (moves, no swing).
+ * The Jump / Dive buttons: the move is the player's, never a hop. A jump strikes when the shuttle passes
+ * in its box on my half within its horizon (no "a plain swing reaches it" rule); nothing to strike (or
+ * `canHit` false): `empty` (moves, no swing). A dive is always `free` (ABILITY.dive: slides, never swings
+ * by itself) along `dir` (unit world, the held stick; none = toward the contact it could reach, else
+ * toward the net).
  */
 function forcedPick(
   f: Flight,
@@ -188,7 +219,7 @@ function forcedPick(
   canHit: boolean,
   want: Want,
   dir?: { x: number; z: number },
-): { k: AbilityKind; dx: number; dz: number; empty?: boolean } {
+): { k: AbilityKind; dx: number; dz: number; empty?: boolean; free?: boolean } {
   const hit = canHit && lastHitter !== side
   const mine = (c: { pos: { z: number } } | null): c is { dt: number; pos: Flight['pos'] } =>
     !!c && onHalf(c.pos.z, side, lastHitter)
@@ -200,13 +231,21 @@ function forcedPick(
   }
   let d = dir ? unit(dir.x, dir.z) : null
   if (!d && hit) {
-    const c = findContact(f, at, 0, horizonOf('lunge'), pickReachOf('lunge'))
+    const c = findContact(f, at, 0, diveWindow(), DIVE_PICK)
     if (mine(c)) d = unit(c.pos.x - at.x, c.pos.z - at.z)
   }
   d ??= { x: 0, z: side === 0 ? 1 : -1 }
-  const end = slideEnd(at, d.x, d.z)
-  const c = hit ? findContact(f, end, 0, horizonOf('lunge'), reachOf('lunge')) : null
-  return mine(c) ? { k: 'lunge', dx: d.x, dz: d.z } : { k: 'lunge', dx: d.x, dz: d.z, empty: true }
+  return { k: 'lunge', dx: d.x, dz: d.z, free: true }
+}
+
+/** Ticks from a Dive press its swings still reach like a lunge (the glide + its grace). */
+const diveWindow = (): number => ABILITY.dive.glide + ABILITY.dive.grace
+
+/** True when a swing at `tick` gets the dive's reach: within a free dive's window (diveWindow). */
+export function diveSwing(act: Act | null | undefined, tick: number): boolean {
+  if (!act?.free) return false
+  const e = tick - act.at
+  return e >= 0 && e <= diveWindow()
 }
 
 /**
@@ -225,21 +264,26 @@ export function abilityShot(
 
 /** Tick the feet are back on the floor (jump / hop: end of air; lunge: end of the dive). */
 export function landTick(act: Act): number {
-  return act.at + (act.k === 'lunge' ? ABILITY.lunge.dive : ABILITY[act.k].air)
+  return act.at + (act.k === 'lunge' ? glideOf(act).dive : ABILITY[act.k].air)
 }
 
 /** Ticks from `at` the move holds the player (jump: air + lock; lunge: dive + floor; hop: 0). */
-function busyTicks(k: AbilityKind): number {
-  if (k === 'jump') return ABILITY.jump.air + ABILITY.jump.lock
-  if (k === 'lunge') return ABILITY.lunge.dive + ABILITY.lunge.floor
+function busyTicks(act: Act): number {
+  if (act.k === 'jump') return ABILITY.jump.air + ABILITY.jump.lock
+  if (act.k === 'lunge') return glideOf(act).dive + glideOf(act).floor
   return 0
 }
 
-/** True while the move commits the player (no swing; see actMoveMul for movement). A hop never does. */
+/** True while the move commits the player (no new move; see actMoveMul for movement). A hop never does. */
 export function acting(act: Act | null, tick: number): boolean {
   if (!act) return false
   const e = tick - act.at
-  return e >= 0 && e < busyTicks(act.k)
+  return e >= 0 && e < busyTicks(act)
+}
+
+/** True while the move also locks the racket (no charge / swing): any acting move but a free dive. */
+export function holdsRacket(act: Act | null, tick: number): boolean {
+  return acting(act, tick) && !act?.free
 }
 
 /** Movement speed multiplier: jump air ABILITY.jump.airMul, jump landing lock 0, lunge 0, else 1. */
@@ -249,8 +293,9 @@ export function actMoveMul(act: Act | null, tick: number): number {
   return 0
 }
 
-/** A press's cooldown (ticks from `at`): its kind's, or the short hop one for an empty forced move. */
+/** A press's cooldown (ticks from `at`): its kind's, the short hop one for an empty forced move, the Dive button's own. */
 export function cooldownOf(act: Act): number {
+  if (act.free) return ABILITY.dive.cooldown
   return act.empty ? ABILITY.hop.cooldown : ABILITY[act.k].cooldown
 }
 
@@ -288,7 +333,7 @@ export function actArcInto(act: Act | null, tick: number, out: ActArc): ActArc {
   if (!act) return out
   const e = tick - act.at
   if (act.k === 'lunge') {
-    const { dive, floor } = ABILITY.lunge
+    const { dive, floor } = glideOf(act)
     const end = dive + floor
     if (e <= 0 || e >= end) return out
     if (e < dive) out.dive = e / dive

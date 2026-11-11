@@ -2,7 +2,7 @@ import { createGameApp, h, landscapeGuard, smoothState, type MountContext, type 
 import { ARCADE } from '@forge/audio/tracks'
 import { webglAvailable } from '@forge/render3d'
 import './shuttle-pop.css'
-import { slideEnd, type Strike } from './ability'
+import { diveSwing, slideEnd, type Strike } from './ability'
 import { toWorld } from './court'
 import { chargeOf } from './charge'
 import { mountEmotes } from './emotes'
@@ -90,6 +90,9 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement, ctx: Moun
   ) => {
     const me = smooth.curr?.players.find((p) => p.id === session.selfId)
     if (!guest || !predictor || !me) return
+    // A swing in our Dive's window strikes from the slide end with the dive's shot (sim contactFor): the
+    // host's hit is shown when it comes instead of a plain-reach guess.
+    if (!act && diveSwing(predictor.act, predictor.stepNow)) return
     const player = from ?? { x: predictor.x, z: predictor.z }
     // Heard at once; the host's answering hit is then skipped (Court3D's echo).
     if (
@@ -142,7 +145,7 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement, ctx: Moun
       press = null
     } else if (input.t === 'ability') {
       // The host would ignore a press that can't act (locked, cooling, charging): don't send it.
-      if (!live() || !seatCan(canAct)) return
+      if (!live() || !seatCan((s, me) => canAct(s, me, input.k))) return
       const me = smooth.curr?.players.find((p) => p.id === session.selfId)
       if (guest && predictor && me) {
         // Same pick as the host (ability.ts) on the flight shown: the body leaps / dives now, a strike also
@@ -151,10 +154,10 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement, ctx: Moun
         const want = smooth.curr?.phase === 'rally' ? input.k : undefined
         const dir = input.x || input.z ? toWorld(me.side, input.x, input.z) : undefined
         const pick = guest.shuttle.pickAbility(at, me.side, seatCan(canSwing), want, dir)
-        predictor.startAct(pick.k, pick.dx, pick.dz, !!pick.empty)
+        predictor.startAct(pick.k, pick.dx, pick.dz, !!pick.empty, !!pick.free)
         // Heard and seen at once; the host's answering `act` event then stays silent (Court3D).
         court?.ownActPredicted(pick.k)
-        if (pick.k !== 'hop' && !pick.empty) {
+        if (pick.k !== 'hop' && !pick.empty && !pick.free) {
           // A lunge reaches from its slide end (sim contactFor).
           const from = pick.k === 'lunge' ? slideEnd(at, pick.dx, pick.dz) : undefined
           predictHit({ x: input.x, z: input.z }, false, 0, input.tick, pick.k, from)
@@ -307,7 +310,9 @@ createGameApp<SpState, SpInput>({
     },
     {
       action: t('Dive'),
-      note: t('Slide the way you are moving to save a far, low shuttle. You stay down a moment.'),
+      note: t(
+        'Slide far the way you are moving, then swing to save a far, low shuttle. Works while charging too. You stay down a moment.',
+      ),
       keys: [['Shift']],
       mouse: 'right',
       touch: 'button',

@@ -248,7 +248,7 @@ export class GuestShuttle {
     canSwingNow: boolean,
     want?: Want,
     dir?: { x: number; z: number },
-  ): { k: AbilityKind; dx: number; dz: number; empty?: boolean } {
+  ): { k: AbilityKind; dx: number; dz: number; empty?: boolean; free?: boolean } {
     const newest = this.ring[this.ring.length - 1]
     if (!newest) return { k: 'hop', dx: 0, dz: 0 }
     const awaiting = !!this.pred && this.pred.until === Infinity

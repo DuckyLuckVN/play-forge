@@ -91,9 +91,10 @@ export class Crowd {
   constructor() {
     const n = FANS.length
     const skin = lambert()
-    this.body = instanced(new CapsuleGeometry(0.17, 0.14, 3, 8), lambert(), n)
-    this.head = instanced(new SphereGeometry(0.36, 14, 10), skin, n)
-    this.hair = instanced(new SphereGeometry(0.375, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.42), lambert(), n)
+    // Body, head and hair cast / receive the sun's soft shadow (looks with real shadows); eyes and limbs skip it.
+    this.body = instanced(new CapsuleGeometry(0.17, 0.14, 3, 8), lambert(), n, true)
+    this.head = instanced(new SphereGeometry(0.36, 14, 10), skin, n, true)
+    this.hair = instanced(new SphereGeometry(0.375, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.42), lambert(), n, true)
     this.eyes = instanced(new SphereGeometry(0.055, 6, 4), new MeshBasicMaterial({ color: CROWD.eye }), n * 2)
     this.limbs = instanced(new CapsuleGeometry(0.065, 0.16, 2, 6), skin, n * LIMBS)
     this.meshes = [this.body, this.head, this.hair, this.eyes, this.limbs]

@@ -3,8 +3,9 @@
 //
 // Built once per page: `warm()` (menu preload) compiles every shader, each match `attach`es it to the
 // stage and gets a cleanup that parks it offscreen again. The render loop allocates nothing.
-// The park around the court (sky, lights, crowd) is scenery.ts. Real shadows come from the players
-// only and stop (between rallies) once the engine's quality ladder (quality.ts) drops them.
+// The park around the court (sky, lights, crowd) is scenery.ts. The look (look.ts: soft sun shadows from
+// players + park, lamp bloom, AO, colour grade) follows the graphics tier the engine's quality ladder
+// (quality.ts) is on, or the one the player pinned; a tier change is applied between rallies.
 // Net: net.ts (mesh, tapes, posts; a ripple when the shuttle hits it). Scoreboard: scoreboard.ts (DOM, top
 // centre) + the live score on the flip board by the net (boardprop.ts).
 // Juice: timing pops + badges (hud.ts), Perfect sparkles, a trail ribbon behind the shuttle styled by the
@@ -32,8 +33,8 @@ import {
   Mesh,
   PMREMGenerator,
   MeshBasicMaterial,
+  MeshLambertMaterial,
   PlaneGeometry,
-  ShadowMaterial,
   Quaternion,
   Sprite,
   SpriteMaterial,
@@ -120,7 +121,9 @@ import {
   type ShuttleMode,
 } from './orient'
 import { BOARD, surroundOf } from './props'
-import { SP_QUALITY, spStartLevel } from './quality'
+import { SAND, sandTexture } from './sand'
+import { spLadder, spStartLevel, spTier } from './quality'
+import { LOOK, type GraphicsPref, type LookTier } from './look'
 import { Park } from './scenery'
 import { isOwnEvent, shownName, TAPPED, type SpEvent, type SpState } from './sim'
 import { MAX_SEATS } from './doubles'
@@ -165,10 +168,10 @@ import {
 } from './world'
 
 const PALETTE = {
-  /** Warm clay border around the court (the park grass is scenery.ts). */
-  surround: '#c9a487',
-  court: '#3f9a86',
-  line: '#ffffff',
+  /** Lit by sun + sky (≈ 1× albedo in full sun, look.ts). The border around the court is sand (sand.ts); the park grass is scenery.ts. */
+  court: '#3dc3a7',
+  /** White once lit; the shade still reads on it. */
+  line: '#e6ebe8',
   /** Dark outline so the white shuttlecock reads against the pale sky (same idea as the twin outline). */
   shuttleRim: SHUTTLECOCK_COLORS.outline,
   ringMine: '#ffd166',
@@ -242,7 +245,6 @@ const STUN_STAR_GAP = 0.15
 const COURT_RUNOFF = { x: 0.35, z: 0.45 }
 /** Environment-map strength on the chibis in the park (the studio room is brighter than golden hour). */
 const TOY_ENV = 0.55
-const SHADOW_OPACITY = 0.26
 
 /**
  * Trail path: TRAIL_SAMPLES positions one every TRAIL_STEP s (enough path for the longest ribbon), and the
@@ -485,15 +487,16 @@ export class Court3D {
   private camTweak: CameraTweak = NO_TWEAK
   private tmp: Vec3 = { x: 0, y: 0, z: 0 }
   private park: Park
-  /** Takes the players' real shadows (the ground is unlit, so it can't). */
-  private catcher!: Mesh
-  /** The clay surround and the court surface (geometry follows the court, see shapeCourt). */
+  /** The sand surround and the court surface, lit and shadow-receiving (geometry follows the court, see shapeCourt). */
   private surround!: Mesh
   private floor!: Mesh
   /** Every court line, one merged mesh. */
   private lines!: Mesh
-  private shadows = true
-  private wantShadows = true
+  /** The graphics look drawn now, and the one the quality ladder wants (applied between rallies). */
+  private tier: LookTier = 'high'
+  private wantTier: LookTier = 'high'
+  /** The graphics pref the ladder was built for. */
+  private graphics: GraphicsPref
   /** Crowd: hits in the current rally, length of the last point's rally, when that point was. */
   private rally = 0
   private pointHits = 0
@@ -568,14 +571,21 @@ export class Court3D {
     this.parking.style.cssText =
       'position:fixed;left:-10000px;top:0;width:100vw;height:85vh;pointer-events:none;opacity:0'
     document.body.appendChild(this.parking)
+    this.graphics = prefs.get().graphics
     this.view = createScene3D(this.parking, {
       fov: CAMERA.fov,
       far: 120,
       maxDpr: 2,
-      levels: SP_QUALITY,
-      startLevel: spStartLevel(prefersTouch()),
+      levels: spLadder(this.graphics),
+      startLevel: spStartLevel(prefersTouch(), this.graphics),
+      toneMapping: LOOK.toneMapping,
+      exposure: LOOK.exposure,
+      bloom: LOOK.bloom,
+      ao: LOOK.ao,
+      grade: LOOK.grade,
     })
     const { scene, renderer } = this.view
+    // PCF with a blur radius per look (scenery.ts setLook): soft edges.
     renderer.shadowMap.enabled = true
     this.park = new Park(scene)
     // The chibis' soft reflections: a procedural studio room baked into a PMREM map (no asset files).
@@ -588,17 +598,23 @@ export class Court3D {
     this.buildCourt()
     // Fires on every size or quality-level change (the engine's one governor decides both).
     this.view.onResize((w, h) => {
-      this.wantShadows = this.view.quality.shadows !== false
+      this.wantTier = spTier(this.view.quality)
       // Snaps on purpose: a resize/rotate already redraws everything at a new size, so easing the
       // framing would only add a second, slower jump.
       this.tight = framingTightness(w, h)
       this.refitCamera()
     })
+    // The starting look (e.g. Low on phones): drawn from the first frame, not after the first rally.
+    this.setLook(this.wantTier)
     // Lives as long as the page: no unsubscribe.
     prefs.onChange((p) => {
       this.camWant = p.camera
       this.ringMode = p.ring
       this.pathMode = p.path
+      if (p.graphics !== this.graphics) {
+        this.graphics = p.graphics
+        this.view.setLevels(spLadder(p.graphics), spStartLevel(prefersTouch(), p.graphics))
+      }
       this.refitCamera()
     })
 
@@ -617,7 +633,15 @@ export class Court3D {
     const cock = shuttlecockGeometry()
     // Transparent at opacity 1 (looks opaque) only to draw in the transparent pass after the wind streaks, so
     // streaks in front of it (flying away) never veil it; it still writes depth.
-    this.shuttle = new Mesh(cock.body, new MeshBasicMaterial({ vertexColors: true, transparent: true }))
+    // Drawn brighter than white (LOOK.shuttleBoost): full white after tone mapping, over the lit court.
+    this.shuttle = new Mesh(
+      cock.body,
+      new MeshBasicMaterial({
+        vertexColors: true,
+        transparent: true,
+        color: new Color().setScalar(LOOK.shuttleBoost),
+      }),
+    )
     const rim = new Mesh(
       cock.outline,
       new MeshBasicMaterial({ color: PALETTE.shuttleRim, side: BackSide, transparent: true }),
@@ -646,7 +670,7 @@ export class Court3D {
     this.shuttle.add(halo)
     this.shadow = new Mesh(
       new CircleGeometry(0.12 * SHUTTLE_LOOK_SCALE, 16),
-      new MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.22, depthWrite: false }),
+      new MeshBasicMaterial({ color: '#000000', transparent: true, opacity: LOOK.shuttleShadow, depthWrite: false }),
     )
     this.shadow.rotation.x = -Math.PI / 2
     this.shadow.position.y = 0.012
@@ -692,24 +716,25 @@ export class Court3D {
   /** The court's meshes (shapes from shapeCourt), the net and the score cards. Once. */
   private buildCourt() {
     const { scene } = this.view
-    const flat = (mat: MeshBasicMaterial | ShadowMaterial, y: number) => {
+    const flat = (mat: MeshLambertMaterial, y: number) => {
       const m = new Mesh(new BufferGeometry(), mat)
       m.rotation.x = -Math.PI / 2
       m.position.y = y
+      m.receiveShadow = true
       scene.add(m)
       return m
     }
-    this.surround = flat(new MeshBasicMaterial({ color: PALETTE.surround }), 0.002)
-    this.floor = flat(new MeshBasicMaterial({ color: PALETTE.court }), 0.004)
-    this.catcher = flat(new ShadowMaterial({ opacity: SHADOW_OPACITY, depthWrite: false }), 0.008)
-    this.catcher.receiveShadow = true
-    this.lines = new Mesh(new BufferGeometry(), new MeshBasicMaterial({ color: PALETTE.line }))
+    const sand = sandTexture(this.view.renderer.capabilities.getMaxAnisotropy())
+    this.surround = flat(new MeshLambertMaterial({ color: SAND.color, map: sand }), 0.002)
+    this.floor = flat(new MeshLambertMaterial({ color: PALETTE.court }), 0.004)
+    this.lines = new Mesh(new BufferGeometry(), new MeshLambertMaterial({ color: PALETTE.line }))
+    this.lines.receiveShadow = true
     scene.add(this.lines, this.cards.mesh)
     this.shapeCourt(this.court)
   }
 
   /**
-   * (Re)shapes everything sized by the court: surround, surface + run-off, shadow catcher, lines, net (a new
+   * (Re)shapes everything sized by the court: surround, surface + run-off, lines, net (a new
    * one, the old disposed), the scoreboard cards and the park. Rare (a court change): allocates.
    */
   private shapeCourt(court: CourtDims) {
@@ -722,11 +747,12 @@ export class Court3D {
     const outerW = (court.halfWidth + sur.x) * 2
     const outerL = (court.halfLen + sur.z) * 2
     reshape(this.surround, new PlaneGeometry(outerW, outerL))
+    // One sand tile per SAND.tile metres, whatever the court size.
+    ;(this.surround.material as MeshLambertMaterial).map!.repeat.set(outerW / SAND.tile, outerL / SAND.tile)
     reshape(
       this.floor,
       new PlaneGeometry((court.halfWidth + COURT_RUNOFF.x) * 2, (court.halfLen + COURT_RUNOFF.z) * 2),
     )
-    reshape(this.catcher, new PlaneGeometry(outerW, outerL))
 
     // Lines are centred on the boundary (a shuttle on the line is in). One merged mesh.
     const lines: BufferGeometry[] = []
@@ -776,9 +802,16 @@ export class Court3D {
       p.cd.shown = true
     }
     this.placeCamera(0, 1)
-    // Scenery, crowd and the shadow variants of every lit material are all in the scene by now (the
-    // chibis' slow-device shading is uniforms only: the same programs).
+    // Scenery, crowd and every lit material are all in the scene by now: compile both their no-shadow (Low)
+    // and shadow (Medium / High) variants, and the post passes (bloom, AO, grade). The chibis' slow-device
+    // shading is uniforms only: the same programs.
+    const look = this.tier
+    this.park.setLook('low')
     await this.view.renderer.compileAsync(this.view.scene, this.view.camera)
+    this.park.setLook('high')
+    await this.view.renderer.compileAsync(this.view.scene, this.view.camera)
+    this.view.warmPasses()
+    this.setLook(look)
     this.view.render(0)
     this.players[0].chibi.setPreset(0)
     this.view.render(0)
@@ -973,9 +1006,9 @@ export class Court3D {
     }
     this.lastTick = curr.tick
     this.setCourt(curr.court ?? COURT)
-    // Quality ladder dropped the players' real shadows: apply between rallies so they don't vanish
+    // The quality ladder (or the player) changed the look: apply between rallies so shadows don't pop
     // mid-shot. Blob shadows stay either way.
-    if (this.wantShadows !== this.shadows && curr.phase !== 'rally') this.setShadows(this.wantShadows)
+    if (this.wantTier !== this.tier && curr.phase !== 'rally') this.setLook(this.wantTier)
     // Never the old match's last state (rematch countdown) or another seat layout: see sameMatchPrev.
     const prev = sameMatchPrev(this.smooth!.prev ?? curr, curr)
     const a = this.smooth!.alpha()
@@ -1330,16 +1363,16 @@ export class Court3D {
   }
 
   /**
-   * Shadows off = the shadow pass stops rendering (no draw calls, no depth fill) and the catcher, its
-   * only receiver, hides. The shadow map and light stay configured, so no material's program changes:
-   * nothing recompiles, and warm() already compiled the only variant ever used. The chibis' toy rim,
-   * clear coat and sheen go with them (strength uniforms only, the programs stay: no recompile either).
+   * Draw `tier`'s look. Low = the sun casts nothing (no shadow pass at all) and the chibis' toy rim, clear
+   * coat and sheen go (strength uniforms only); Medium / High = soft real shadows of their map size. The lit
+   * materials then use their shadow / no-shadow program variant: both were compiled in warm(), so nothing
+   * compiles mid-match. Bloom / AO follow the ladder level in the engine.
    */
-  private setShadows(on: boolean) {
-    this.shadows = on
-    setToyShading(on)
-    this.view.renderer.shadowMap.autoUpdate = on
-    this.catcher.visible = on
+  private setLook(tier: LookTier) {
+    this.tier = tier
+    const shadows = tier !== 'low'
+    setToyShading(shadows)
+    this.park.setLook(tier)
   }
 
   /** The charge ring, the rising charge sounds and the flash at full (`near` = ours: full volume). */
@@ -1412,7 +1445,7 @@ export class Court3D {
     this.view.render(dt)
     // eslint-disable-next-line no-console
     console.info(
-      `[shuttle-pop] draw calls per frame: ${info.render.calls} (shadows ${this.shadows ? 'on' : 'off'})`,
+      `[shuttle-pop] draw calls per frame: ${info.render.calls} (look ${this.tier})`,
     )
     info.autoReset = true
     this.callsLogged = true

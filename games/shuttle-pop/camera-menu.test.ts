@@ -174,6 +174,18 @@ describe('ring picker', () => {
     prefs.set({ autoSwing: false })
   })
 
+  it('graphics: Auto / Low / Medium / High, Auto by default, click saves', () => {
+    prefs.set({ graphics: 'auto' })
+    button().click()
+    const segs = [...panel().querySelectorAll<HTMLButtonElement>('.sp-graphics-row [role=radio]')]
+    expect(segs.map((b) => b.textContent)).toEqual(['Auto', 'Low', 'Medium', 'High'])
+    expect(segs.map((b) => b.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false', 'false'])
+    segs[3].click()
+    expect(prefs.get().graphics).toBe('high')
+    expect(segs[3].getAttribute('aria-checked')).toBe('true')
+    prefs.set({ graphics: 'auto' })
+  })
+
   it('the ring group is labelled', () => {
     expect(panel().querySelector('[role=radiogroup]')!.getAttribute('aria-label')).toBe('Landing ring')
   })

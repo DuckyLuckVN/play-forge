@@ -22,7 +22,8 @@ export const VIS = {
   fadeOut: 5,
   /** Metres, for the render projection of the player's body box (the top is the look's head, Chibi.top). */
   body: { bottom: 0.15, halfW: 0.32 },
-  halo: { size: 0.38, color: '#fff1a8', opacity: 0.55, px: 32 },
+  /** Stronger than before the lit court / sand (look.ts): the shuttle flies over brighter ground now. */
+  halo: { size: 0.44, color: '#fff1a8', opacity: 0.7, px: 32 },
 } as const
 
 /** World-y extent of a player's body box. */

@@ -3,5 +3,6 @@
 export { Chunks3D, glowTexture, Particles3D, type Burst3D, type Chunks3DBurst } from './fx'
 export { createOverlay2D, type Overlay2D } from './overlay'
 export { KeyedPool, type PoolOptions } from './pool'
-export { createScene3D, webglAvailable, type Scene3D, type Scene3DOptions } from './scene'
+export { createScene3D, webglAvailable, type ColorGrade, type Scene3D, type Scene3DOptions } from './scene'
+export { aoSkips, SceneAoPass, type AoOptions } from './ao'
 export { QUALITY_LEVELS, QualityGovernor, type QualityLevel } from './quality'

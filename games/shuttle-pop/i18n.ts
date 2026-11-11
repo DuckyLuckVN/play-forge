@@ -121,6 +121,11 @@ export const VI: Dictionary = {
   'Auto swing (Jump / Dive)': 'Tự vung vợt (Nhảy / Bổ nhào)',
   Off: 'Tắt',
   On: 'Bật',
+  Graphics: 'Đồ họa',
+  Auto: 'Tự động',
+  Low: 'Thấp',
+  Medium: 'Vừa',
+  High: 'Cao',
 }
 
 export const t = translator(VI)

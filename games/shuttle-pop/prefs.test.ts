@@ -36,6 +36,15 @@ describe('shuttle-pop prefs', () => {
     expect(createPrefs(m).get().autoSwing).toBe(true)
   })
 
+  it('graphics: Auto by default (old saves too), garbage → Auto, a pinned look persists', () => {
+    expect(createPrefs(mem()).get().graphics).toBe('auto')
+    for (const graphics of ['ultra', 2, null, 'High']) expect(parsePrefs({ graphics }).graphics).toBe('auto')
+    const m = mem()
+    createPrefs(m).set({ graphics: 'low' })
+    expect(createPrefs(m).get().graphics).toBe('low')
+    expect(createPrefs(m).get().ring).toBe('always')
+  })
+
   it('clamps and sanitizes stored values', () => {
     expect(parsePrefs({ camera: { height: 5, tilt: 'x' } }).camera).toEqual({ height: 1, tilt: 0 })
     expect(parsePrefs({ camera: { height: NaN, tilt: -3 } }).camera).toEqual({ height: 0, tilt: -1 })
@@ -73,6 +82,7 @@ describe('shuttle-pop prefs', () => {
       ring: 'always',
       path: 'hidden',
       autoSwing: false,
+      graphics: 'auto',
     })
     for (const ring of ['x', 3, null, 'Near']) expect(parsePrefs({ ring }).ring).toBe('always')
     expect(parsePrefs({ ring: 'near' }).ring).toBe('near')
@@ -97,6 +107,7 @@ describe('shuttle-pop prefs', () => {
       ring: 'hidden',
       path: 'hidden',
       autoSwing: false,
+      graphics: 'auto',
     })
   })
 })

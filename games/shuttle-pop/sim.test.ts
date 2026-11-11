@@ -1,3 +1,4 @@
+import { tallyOf } from './tally'
 import { describe, expect, it } from 'vitest'
 import { resolveOptions, type InputEvent, type PlayerInfo } from '@forge/net/session'
 import { ABILITY, acting, actReady, type Act } from './ability'
@@ -913,7 +914,12 @@ describe('match stats (results screen)', () => {
       } else if (e.k === 'point') longest = Math.max(longest, shots)
     }
     expect(longest).toBeGreaterThan(1)
-    expect(s.stats).toEqual({ shots, longest, perfect })
+    expect(s.stats).toMatchObject({ shots, longest, perfect })
+    // Each side's players' tallies add up to that side's Perfect hits.
+    for (const side of [0, 1] as const)
+      expect(
+        s.players.filter((p) => p.side === side).reduce((n, p) => n + tallyOf(s.stats, p.id).perfect, 0),
+      ).toBe(perfect[side])
   })
 
   it('starts at zero', () => {

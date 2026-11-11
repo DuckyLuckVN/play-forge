@@ -16,7 +16,7 @@ import { GuestPredictor } from './predict'
 import { RemoteTracks } from './remotes'
 import { Court3D, type LocalSwing } from './render3d'
 import { RenderClock } from './renderclock'
-import { outcomeOf, scoreChips, summaryRows } from './results'
+import { leaderboardOf, outcomeOf, scoreChips } from './results'
 import {
   canAct,
   canCharge,
@@ -363,7 +363,7 @@ createGameApp<SpState, SpInput>({
   // `name` labels the computer's chip, translated at display time (lobby players keep their lobby name).
   scores: scoreChips,
   outcome: outcomeOf,
-  summary: summaryRows,
+  leaderboard: leaderboardOf,
   // Esc only: P (and J / K / arrows) are not bound in Shuttle Pop.
   pauseKeys: ['Escape'],
 })

@@ -45,6 +45,7 @@ import { button } from './ui/components'
 import { langMenu } from './ui/lang-menu'
 import { netStatusButton } from './ui/net-panel'
 import { h, icon, iconButton, toast } from './ui/dom'
+import { leaderboardTable, type Leaderboard } from './ui/leaderboard'
 import { fullscreenButton } from './ui/fullscreen'
 import {
   guideButton,
@@ -130,6 +131,11 @@ export interface GameAppOptions<S, I> {
   outcome?(state: S, selfId: string): Outcome
   /** Optional stat grid under the headline on the results screen (solo, and your own in a room). */
   summary?(state: S, selfId: string): SummaryRow[]
+  /**
+   * Optional end-of-match leaderboard under the headline (solo and rooms): every player ranked with the
+   * game's stat columns (engine/ui/leaderboard.ts). Shown above `summary` when both are given.
+   */
+  leaderboard?(state: S, selfId: string): Leaderboard | null
   /**
    * Show a ranked list (from `scores`, highest first) on a room's results
    * screen. Default false: games with their own winner rules keep the seats only.
@@ -1025,6 +1031,12 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     )
   }
 
+  /** The game's end-of-match leaderboard, if it has one. */
+  function boardOf(state: S, selfId: string): HTMLElement | null {
+    const lb = opts.leaderboard?.(state, selfId)
+    return lb ? leaderboardTable(lb) : null
+  }
+
   /** Results ranking: #1 first, each in their seat colour, you highlighted. */
   function rankList(s: Session<S, I>) {
     if (!s.state || !opts.scores) return null
@@ -1172,6 +1184,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
           ? h('p', { class: 'pf-headline', textContent: outcome.headline })
           : h('h2', { class: 'pf-heading', textContent: t('{game} room', { game: opts.title }) }),
         finished && opts.ranking && rankList(s),
+        finished && s.state && boardOf(s.state, s.selfId),
         finished && s.state && opts.summary && summaryGrid(opts.summary(s.state, s.selfId)),
         roomCodeBox(),
         roomSection(
@@ -1218,6 +1231,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         'div',
         { class: 'pf-panel' },
         h('p', { class: 'pf-headline', textContent: outcome ? outcome.headline : t('Game over') }),
+        s.state && boardOf(s.state, s.selfId),
         s.state && opts.summary && summaryGrid(opts.summary(s.state, s.selfId)),
         again,
         button(t('Back to menu'), leave, 'quiet'),

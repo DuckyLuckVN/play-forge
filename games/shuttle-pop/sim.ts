@@ -43,6 +43,7 @@ import {
   type Grade,
   type ShotKind,
 } from './shots'
+import { noteBonk, noteHit, notePoint, noteServe, type TallyStats } from './tally'
 
 export { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld }
 export const AI_ID = 'ai'
@@ -230,8 +231,11 @@ export interface SpState {
   /** Last EVENT_TICKS ticks of events; renderers dedupe by id. */
   events: SpEvent[]
   nextEventId: number
-  /** For the results screen: shots in this rally (serve + hits), the longest finished rally, Perfect hits per side. */
-  stats: { shots: number; longest: number; perfect: [number, number] }
+  /**
+   * For the results screen: shots in this rally (serve + hits), the longest finished rally, Perfect hits
+   * per side, and each player's tally (tally.ts; optional fields).
+   */
+  stats: { shots: number; longest: number; perfect: [number, number] } & TallyStats
   /** Seeded rng state (mulberry32 seed). Host-only. */
   rng: number
   /**
@@ -556,6 +560,7 @@ function serve(state: SpState, p: SpPlayer, held: { x: number; z: number }) {
   state.phase = 'rally'
   state.phaseT = 0
   state.stats.shots = 1
+  noteServe(state.stats, p.id)
   emit(state, { k: 'serve', side: p.side, shot: kind, by: p.id })
 }
 
@@ -797,6 +802,7 @@ function hit(state: SpState) {
   state.history.length = 0
   state.stats.shots++
   if (pend.grade === 'perfect') state.stats.perfect[pend.side]++
+  noteHit(state.stats, pend.id, pend.grade, pend.kind, pend.act)
   emit(state, {
     k: 'hit',
     side: pend.side,
@@ -836,6 +842,7 @@ function scorePoint(state: SpState, side: 0 | 1) {
   state.shuttle.pending = null
   state.stats.longest = Math.max(state.stats.longest, state.stats.shots)
   state.stats.shots = 0
+  notePoint(state.stats, state.players, side)
   emit(state, { k: 'point', side })
 }
 
@@ -989,6 +996,7 @@ function bonks(state: SpState, swung: readonly SpPlayer[]): void {
         q.pressAt = -1
       }
       emit(state, { k: 'bonk', side: q.side, who: q.id, by: p.id })
+      noteBonk(state.stats, p.id)
     }
 }
 

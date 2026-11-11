@@ -77,7 +77,7 @@ drift apart, so change a colour in both places. For a translucent tint of a toke
 | `overlay.css`   | `.pf-overlay`, `.pf-panel` (+ `.wide`, `.enter`; `--pf-panel-pad`)                                          | `panel()`                                                    |
 | `text.css`      | `.pf-heading` `.pf-lede` `.pf-headline` `.pf-note` (+ `.error`) `.pf-or`                                    | `note()`                                                     |
 | `forms.css`     | `.pf-field` `.pf-input` (+ `.code`) `.pf-row`                                                               |                                                              |
-| `results.css`   | `.pf-summary` `.pf-stat` (+ `.hi`), `.pf-ranking` `.pf-rank*`                                               |                                                              |
+| `results.css`   | `.pf-summary` `.pf-stat` (+ `.hi`), `.pf-ranking` `.pf-rank*`, `.pf-leaderboard` `.pf-lb-*`                 |                                                              |
 | `room.css`      | `.pf-room` `.pf-room-code`, `.pf-seats` `.pf-seat` `.pf-token` `.pf-badge` `.pf-seat-*`                     |                                                              |
 | `chip.css`      | `.pf-chip` (+ `.self` `.out` `.bump`; `.dot`)                                                               |                                                              |
 | `dots.css`      | `.pf-dots` (waiting)                                                                                        |                                                              |

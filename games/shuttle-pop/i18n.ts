@@ -74,6 +74,12 @@ export const VI: Dictionary = {
   // In-match overlay (hud.ts, scoreboard.ts): timing pops, badges, the board
   'Power!': 'Siêu mạnh!',
   'Perfect!': 'Hoàn hảo!',
+  Perfect: 'Hoàn hảo',
+  Points: 'Điểm',
+  Smashes: 'Đập cầu',
+  'Dive saves': 'Cứu cầu',
+  Bonks: 'Cốc vợt',
+  MVP: 'MVP',
   Good: 'Tốt',
   Late: 'Trễ',
   Miss: 'Hụt',
@@ -94,13 +100,9 @@ export const VI: Dictionary = {
   'Your team wins {score}!': 'Đội bạn thắng {score}!',
   '{names} win {score}.': '{names} thắng {score}.',
   '{names} win!': '{names} thắng!',
-  'Final score': 'Tỉ số chung cuộc',
   'Longest rally': 'Pha cầu dài nhất',
   '{n} shot': '{n} cú đánh',
   '{n} shots': '{n} cú đánh',
-  'Your Perfect hits': 'Cú Hoàn hảo của bạn',
-  "Your team's Perfect hits": 'Cú Hoàn hảo của đội bạn',
-  'Perfect hits': 'Cú Hoàn hảo',
 
   // View settings button and panel (camera-menu.ts, prefs.ts)
   Default: 'Mặc định',

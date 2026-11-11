@@ -95,4 +95,71 @@
     font-weight: 700;
     font-variant-numeric: tabular-nums;
   }
+
+  /* ---------- Results leaderboard (engine/ui/leaderboard.ts) ---------- */
+  .pf-leaderboard {
+    overflow-x: auto;
+  }
+  .pf-leaderboard table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  .pf-leaderboard th {
+    padding: 0 8px;
+    color: var(--pf-haze);
+    font-size: var(--pf-fs-xs);
+    font-weight: var(--pf-fw-semi);
+    text-align: center;
+    white-space: nowrap;
+  }
+  .pf-leaderboard td {
+    padding: 8px;
+    background: var(--pf-pit);
+    text-align: center;
+    font-weight: 700;
+  }
+  .pf-leaderboard td:first-child {
+    border-left: 4px solid var(--c, var(--pf-rim));
+    border-radius: var(--pf-radius) 0 0 var(--pf-radius);
+  }
+  .pf-leaderboard td:last-child {
+    border-radius: 0 var(--pf-radius) var(--pf-radius) 0;
+  }
+  .pf-leaderboard .pf-lb-name {
+    max-width: 14ch;
+    overflow: hidden;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pf-leaderboard tr.self td {
+    background: color-mix(in srgb, var(--pf-yolk) 18%, var(--pf-pit));
+  }
+  .pf-leaderboard tbody tr:first-child .pf-rank {
+    color: var(--pf-yolk);
+  }
+  .pf-lb-badge {
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 99px;
+    color: var(--pf-ink, #241a30);
+    background: var(--pf-yolk);
+    font-size: var(--pf-fs-xs);
+    font-weight: 800;
+  }
+  .pf-lb-note {
+    margin: 4px 0 0;
+    color: var(--pf-haze);
+    font-size: var(--pf-fs-sm);
+    text-align: center;
+  }
+  @media (max-width: 520px) {
+    .pf-leaderboard th,
+    .pf-leaderboard td {
+      padding: 6px 4px;
+      font-size: 12px;
+    }
+  }
 }

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { InputEvent, PlayerInfo } from '@forge/net/session'
 import { ABILITY, actMoveMul, actReady, pickAbility, reachOf } from './ability'
 import { findContact } from './shots'
+import { tallyOf } from './tally'
 import { shuttlePopGame as game, type SpEvent, type SpInput, type SpState } from './sim'
 
 const players = (n: number): PlayerInfo[] =>
@@ -70,6 +71,14 @@ describe('Jump / Dive buttons', () => {
     run(s, 4, [press(-1, 0, 'lunge')])
     const seen = run(s, 40, [{ player: 'p0', input: { t: 'swing', x: 0, z: 0 } }])
     expect(seen.find((e) => e.k === 'hit')).toMatchObject({ side: 0, act: 'lunge', shot: 'clear' })
+  })
+
+  it("a dive save counts in the diver's tally (results leaderboard)", () => {
+    const s = wide()
+    run(s, diveChance())
+    run(s, 4, [press(-1, 0, 'lunge')])
+    run(s, 40, [{ player: 'p0', input: { t: 'swing', x: 0, z: 0 } }])
+    expect(tallyOf(s.stats, 'p0').saves).toBe(1)
   })
 
   it('Shift while charging (holding J) still dives; the charge is kept for the swing', () => {

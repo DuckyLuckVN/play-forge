@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { InputEvent, PlayerInfo } from '@forge/net/session'
-import { outcomeOf, scoreChips, summaryRows } from './results'
+import { leaderboardOf, outcomeOf, scoreChips } from './results'
 import { shuttlePopGame as game, type SpInput, type SpState } from './sim'
 
 const players: PlayerInfo[] = [0, 1].map((i) => ({
@@ -29,31 +29,6 @@ function perfectBySide1(): SpState {
   return s
 }
 
-describe('summaryRows', () => {
-  it('a human on side 1 sees their own Perfect count and the score from their side', () => {
-    const s = perfectBySide1()
-    expect(s.events.some((e) => e.k === 'hit' && e.side === 1 && e.grade === 'perfect')).toBe(true)
-    s.score = [4, 11]
-    s.stats.longest = 9
-    expect(summaryRows(s, 'p1')).toEqual([
-      { label: 'Final score', value: '11–4' },
-      { label: 'Longest rally', value: '9 shots' },
-      { label: 'Your Perfect hits', value: '1' },
-    ])
-    expect(summaryRows(s, 'p0')[2]).toEqual({ label: 'Your Perfect hits', value: '0' })
-  })
-
-  it('one shot is singular; spectators see both Perfect counts', () => {
-    const s = perfectBySide1()
-    s.stats.longest = 1
-    expect(summaryRows(s, 'watcher')).toEqual([
-      { label: 'Final score', value: '0–0' },
-      { label: 'Longest rally', value: '1 shot' },
-      { label: 'Perfect hits', value: '0–1' },
-    ])
-  })
-})
-
 const doubles = (names: string[], winner: 0 | 1, score: [number, number]): SpState => {
   const infos: PlayerInfo[] = names.map((name, i) => ({
     id: `p${i}`,
@@ -70,13 +45,6 @@ const doubles = (names: string[], winner: 0 | 1, score: [number, number]): SpSta
 }
 
 describe('doubles results', () => {
-  it('doubles labels team Perfect hits', () => {
-    const s = doubles(['Ann'], 0, [11, 5])
-    s.stats.perfect = [3, 1]
-    expect(summaryRows(s, 'p0')[2]).toEqual({ label: "Your team's Perfect hits", value: '3' })
-    expect(summaryRows(s, 'watcher')[2]).toEqual({ label: 'Perfect hits', value: '3–1' })
-  })
-
   it('outcome: your team wins, the other team wins, a spectator sees the winners', () => {
     // Seats A,B,A,B: Ann + Cid on side 0, Bo + Dee on side 1.
     const s = doubles(['Ann', 'Bo', 'Cid', 'Dee'], 0, [11, 7])
@@ -127,5 +95,60 @@ describe('doubles results', () => {
     ])
     const full = doubles(['Ann', 'Bo', 'Cid', 'Dee'], 0, [1, 0])
     expect(scoreChips(full).map((c) => c.id)).toEqual(['p0', 'p2', 'p1', 'p3'])
+  })
+})
+
+describe('leaderboardOf (results)', () => {
+  const tally = (winners: number, perfect = 0, smashes = 0, saves = 0, bonks = 0) => ({
+    winners,
+    perfect,
+    smashes,
+    saves,
+    bonks,
+  })
+
+  it('winners first, each team by its tally, MVP on the best, you marked, longest rally as the note', () => {
+    const s = doubles(['Ann', 'Bo'], 1, [8, 11])
+    s.stats.longest = 7
+    const [a, b, c, d] = s.players
+    s.stats.by = { [a.id]: tally(4, 2), [b.id]: tally(1), [c.id]: tally(2, 1, 1), [d.id]: tally(5, 0, 2, 1) }
+    const lb = leaderboardOf(s, a.id)
+    expect(lb.columns).toEqual(['Points', 'Perfect', 'Smashes', 'Dive saves', 'Bonks'])
+    const winners = s.players.filter((p) => p.side === 1)
+    expect(
+      lb.rows
+        .slice(0, 2)
+        .map((r) => r.id)
+        .sort(),
+    ).toEqual(winners.map((p) => p.id).sort())
+    const score = (id: string) => {
+      const t = s.stats.by![id]
+      return t.winners * 3 + t.saves * 2 + t.perfect + t.smashes
+    }
+    expect(score(lb.rows[0].id)).toBeGreaterThanOrEqual(score(lb.rows[1].id))
+    expect(score(lb.rows[2].id)).toBeGreaterThanOrEqual(score(lb.rows[3].id))
+    expect(lb.rows.filter((r) => r.badge === 'MVP').map((r) => r.id)).toEqual([d.id])
+    expect(lb.rows.find((r) => r.id === a.id)).toMatchObject({
+      self: true,
+      values: ['4', '2', '0', '0', '0'],
+    })
+    expect(lb.note).toBe('Longest rally: 7 shots')
+  })
+
+  it("1v1 from the sim: p1's Perfect hit is in p1's row", () => {
+    const s = perfectBySide1()
+    s.score = [4, 11]
+    s.winner = 1
+    const lb = leaderboardOf(s, 'p1')
+    expect(lb.rows.map((r) => r.id)).toEqual(['p1', 'p0'])
+    expect(lb.rows[0]).toMatchObject({ self: true, badge: 'MVP' })
+    expect(lb.rows[0].values[1]).toBe('1')
+  })
+
+  it('no stats yet (an older state): everyone at zero, no MVP', () => {
+    const s = doubles(['Ann'], 0, [11, 5])
+    const lb = leaderboardOf(s, 'p0')
+    expect(lb.rows).toHaveLength(4)
+    expect(lb.rows.every((r) => !r.badge && r.values.every((v) => v === '0'))).toBe(true)
   })
 })

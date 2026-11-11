@@ -1,7 +1,7 @@
 // The Jump / Dive buttons (SpInput ability `k`): forced moves on top of the one-button auto pick.
 import { describe, expect, it } from 'vitest'
 import type { InputEvent, PlayerInfo } from '@forge/net/session'
-import { ABILITY, actReady, pickAbility, reachOf } from './ability'
+import { ABILITY, actMoveMul, actReady, pickAbility, reachOf } from './ability'
 import { findContact } from './shots'
 import { shuttlePopGame as game, type SpEvent, type SpInput, type SpState } from './sim'
 
@@ -98,6 +98,27 @@ describe('Jump / Dive buttons', () => {
     run(s, 2, [press(1, 0, 'lunge')])
     expect(actReady(s.players[0].act, at + ABILITY.dive.cooldown - 1)).toBe(false)
     expect(actReady(s.players[0].act, at + ABILITY.dive.cooldown)).toBe(true)
+  })
+
+  it('no dive while moving backward (away from the net): ignored, no cooldown spent', () => {
+    const s = wide()
+    run(s, 2, [press(0, -1, 'lunge')])
+    expect(s.players[0].act).toBeNull()
+    run(s, 2, [press(0.9, -0.3, 'lunge')]) // mostly sideways: still dives
+    expect(s.players[0].act).toMatchObject({ k: 'lunge', free: true })
+  })
+
+  it('after the slide the diver is slowed, easing back to full speed (never stuck)', () => {
+    const s = wide()
+    run(s, 1, [press(-1, 0, 'lunge')])
+    const at = s.players[0].act!.at
+    const { glide, floor, slow } = ABILITY.dive
+    const mul = (e: number) => actMoveMul(s.players[0].act, at + e)
+    expect(mul(glide - 1)).toBe(0) // the slide drives the body
+    expect(mul(glide)).toBeCloseTo(slow)
+    expect(mul(glide + floor / 2)).toBeGreaterThan(slow)
+    expect(mul(glide + floor / 2)).toBeLessThan(1)
+    expect(mul(glide + floor)).toBe(1)
   })
 
   it('a jump with nothing high is an empty jump (no whiff), not a hop', () => {

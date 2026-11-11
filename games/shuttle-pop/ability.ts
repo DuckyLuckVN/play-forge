@@ -60,10 +60,12 @@ export const ABILITY = {
   /**
    * The Dive button (a `free` lunge): slides `slide` m over `glide` ticks (0.27 s), never swings by itself.
    * A swing (J) from the press until `grace` ticks after the glide reaches like a lunge (reach box at the
-   * slide end, its capped clear). `floor` = ticks down after the glide (no running; swinging allowed).
-   * One cooldown, hit or not (1.5 s: between an empty move's 1 s and a striking one's 3 s).
+   * slide end, its capped clear). After the glide the run is slowed to `slow`, easing back to full over
+   * `floor` ticks (a get-up, never stuck; swinging allowed). `back` = the held view z below which the
+   * button does nothing (moving away from the net: no escape dives). One cooldown, hit or not (1.5 s:
+   * between an empty move's 1 s and a striking one's 3 s).
    */
-  dive: { glide: 16, slide: 1.8, grace: 15, floor: 30, cooldown: 90 },
+  dive: { glide: 16, slide: 1.8, grace: 15, floor: 30, slow: 0.3, back: -0.5, cooldown: 90 },
 } as const
 
 /** A dive's shape: ticks sliding (`dive`), metres, ticks down after. */
@@ -238,6 +240,11 @@ function forcedPick(
   return { k: 'lunge', dx: d.x, dz: d.z, free: true }
 }
 
+/** May the Dive button dive with view-relative `held` (z = toward the net): not while moving backward. */
+export function diveAllowed(held: { x: number; z: number }): boolean {
+  return !(held.z < ABILITY.dive.back)
+}
+
 /** Ticks from a Dive press its swings still reach like a lunge (the glide + its grace). */
 const diveWindow = (): number => ABILITY.dive.glide + ABILITY.dive.grace
 
@@ -286,10 +293,20 @@ export function holdsRacket(act: Act | null, tick: number): boolean {
   return acting(act, tick) && !act?.free
 }
 
-/** Movement speed multiplier: jump air ABILITY.jump.airMul, jump landing lock 0, lunge 0, else 1. */
+/**
+ * Movement speed multiplier: jump air ABILITY.jump.airMul, jump landing lock 0, lunge 0, a free dive 0
+ * while sliding then ABILITY.dive.slow easing (smoothstep) back to 1 over its floor, else 1.
+ */
 export function actMoveMul(act: Act | null, tick: number): number {
   if (!act || !acting(act, tick)) return 1
-  if (act.k === 'jump' && tick - act.at < ABILITY.jump.air) return ABILITY.jump.airMul
+  const e = tick - act.at
+  if (act.free) {
+    const { glide, floor, slow } = ABILITY.dive
+    if (e < glide) return 0
+    const u = (e - glide) / floor
+    return slow + (1 - slow) * u * u * (3 - 2 * u)
+  }
+  if (act.k === 'jump' && e < ABILITY.jump.air) return ABILITY.jump.airMul
   return 0
 }
 
@@ -337,7 +354,11 @@ export function actArcInto(act: Act | null, tick: number, out: ActArc): ActArc {
     const end = dive + floor
     if (e <= 0 || e >= end) return out
     if (e < dive) out.dive = e / dive
-    else if (e < end - RECOVER) out.dive = 1
+    else if (act.free) {
+      // A free dive gets up over its whole floor (the run is coming back: ABILITY.dive.slow).
+      const u = (end - e) / floor
+      out.dive = u * u * (3 - 2 * u)
+    } else if (e < end - RECOVER) out.dive = 1
     else {
       const u = (end - e) / RECOVER
       out.dive = u * u * (3 - 2 * u)

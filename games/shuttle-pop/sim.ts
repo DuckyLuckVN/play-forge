@@ -5,6 +5,7 @@ import type { GameDefinition, GameOptions, InputEvent, PlayerInfo } from '@forge
 import {
   abilityShot,
   acting,
+  diveAllowed,
   diveSwing,
   holdsRacket,
   actMoveMul,
@@ -1063,7 +1064,10 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
       // One per player per tick; while charging / held / on cooldown / between points: ignored.
       const want = input.k === 'jump' || input.k === 'lunge' ? input.k : undefined
       if (acts.some((a) => a.p === p) || !canAct(state, p, want)) continue
-      acts.push({ p, held: clampDir(input.x, input.z), rewind: humanRewind(state, p, input.tick), want })
+      const held = clampDir(input.x, input.z)
+      // The Dive button while moving backward: nothing (no escape dives; no cooldown spent).
+      if (want === 'lunge' && state.phase === 'rally' && !diveAllowed(held)) continue
+      acts.push({ p, held, rewind: humanRewind(state, p, input.tick), want })
     }
   }
   const srv = serverPlayer(state)

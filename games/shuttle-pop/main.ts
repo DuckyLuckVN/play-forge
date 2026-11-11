@@ -2,7 +2,7 @@ import { createGameApp, h, landscapeGuard, smoothState, type MountContext, type 
 import { ARCADE } from '@forge/audio/tracks'
 import { webglAvailable } from '@forge/render3d'
 import './shuttle-pop.css'
-import { diveSwing, slideEnd, type Strike } from './ability'
+import { diveAllowed, diveSwing, slideEnd, type Strike } from './ability'
 import { toWorld } from './court'
 import { chargeOf } from './charge'
 import { mountEmotes } from './emotes'
@@ -146,6 +146,8 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement, ctx: Moun
     } else if (input.t === 'ability') {
       // The host would ignore a press that can't act (locked, cooling, charging): don't send it.
       if (!live() || !seatCan((s, me) => canAct(s, me, input.k))) return
+      // A Dive while moving backward: the host ignores it (sim step).
+      if (input.k === 'lunge' && smooth.curr?.phase === 'rally' && !diveAllowed(input)) return
       const me = smooth.curr?.players.find((p) => p.id === session.selfId)
       if (guest && predictor && me) {
         // Same pick as the host (ability.ts) on the flight shown: the body leaps / dives now, a strike also

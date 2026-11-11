@@ -76,7 +76,7 @@ import { teamName } from './doubles'
 import { StunStars } from './stars'
 import { stunLook, type StunLook } from './stun'
 import { canSplit, Footwork, lungeWanted, splitHop, splitsOn } from './footwork'
-import { Hud, newEvents, newestShotId, trackerAction, type PopKind } from './hud'
+import { Hud, newEvents, newestShotId, sameMatchPrev, trackerAction, type PopKind } from './hud'
 import { ScoreCards } from './boardprop'
 import { Net } from './net'
 import { prefs } from './prefs'
@@ -797,6 +797,8 @@ export class Court3D {
     this.guest?.clock.reset()
     this.guest?.shuttle.reset()
     this.guest?.remotes.reset()
+    // A charge held through the last match's end must not slow the new match's first steps.
+    this.predictor?.setCharging(false)
     this.echo.reset()
     this.lastShotId = 0
     this.lastShot = null
@@ -918,7 +920,8 @@ export class Court3D {
     // Quality ladder dropped the players' real shadows: apply between rallies so they don't vanish
     // mid-shot. Blob shadows stay either way.
     if (this.wantShadows !== this.shadows && curr.phase !== 'rally') this.setShadows(this.wantShadows)
-    const prev = this.smooth!.prev ?? curr
+    // Never the old match's last state (rematch countdown) or another seat layout: see sameMatchPrev.
+    const prev = sameMatchPrev(this.smooth!.prev ?? curr, curr)
     const a = this.smooth!.alpha()
 
     // The local player's side is drawn near; spectators see side 0's view.

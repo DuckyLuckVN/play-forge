@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  applyBackdropChoice,
+  BACKDROP_CHOICES,
   BACKDROP_CSS,
+  BACKDROP_PICK_JS,
+  DEFAULT_BACKDROP,
+  getBackdropChoice,
+  saveBackdropChoice,
   THEMES,
   backdropCss,
   backdropMarkup,
@@ -81,16 +87,106 @@ describe('discRects', () => {
 })
 
 describe('themes', () => {
-  it('default is the sunset', () => {
-    expect(BACKDROP_CSS).toBe(backdropCss(THEMES.sunset))
+  it('paints canyon with no choice, every other theme behind data-bd', () => {
+    expect(BACKDROP_CSS).toBe(backdropCss(THEMES, 'canyon'))
+    const base = BACKDROP_CSS.slice(0, BACKDROP_CSS.indexOf('\n'))
+    expect(base).toContain(THEMES.canyon.sky[0][0])
+    for (const key of Object.keys(THEMES).filter((k) => k !== 'canyon'))
+      expect(BACKDROP_CSS).toContain(`.pf-bd[data-bd="${key}"]`)
+    expect(BACKDROP_CSS).not.toContain('data-bd="canyon"')
   })
 
   it.each(Object.entries(THEMES))('%s: sky bands climb to 100%% and the CSS builds', (_, theme) => {
     const ends = theme.sky.map(([, to]) => to)
     expect(ends.at(-1)).toBe(100)
     expect([...ends].sort((a, b) => a - b)).toEqual(ends)
-    const css = backdropCss(theme)
-    expect(css).toContain(theme.sky[0][0])
+    expect(BACKDROP_CSS).toContain(theme.sky[0][0])
+    const css = backdropCss({ only: theme }, 'only')
     expect(css).not.toContain('undefined')
+  })
+})
+
+/** A minimal Storage double (vitest runs these in node, without a DOM). */
+function memoryStorage(): Storage {
+  const data = new Map<string, string>()
+  return {
+    get length() {
+      return data.size
+    },
+    clear: () => data.clear(),
+    getItem: (k) => data.get(k) ?? null,
+    key: (i) => [...data.keys()][i] ?? null,
+    removeItem: (k) => void data.delete(k),
+    setItem: (k, v) => void data.set(k, String(v)),
+  }
+}
+
+describe("the player's choice", () => {
+  const keys = Object.keys(THEMES)
+  const el = () => {
+    const attrs: Record<string, string> = {}
+    return { attrs, setAttribute: (k: string, v: string) => (attrs[k] = v) } as unknown as Element & {
+      attrs: Record<string, string>
+    }
+  }
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', memoryStorage())
+    vi.stubGlobal('sessionStorage', memoryStorage())
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('shows canyon until the player picks', () => {
+    expect(DEFAULT_BACKDROP).toBe('canyon')
+    expect(getBackdropChoice()).toBe('canyon')
+    const e = el()
+    expect(applyBackdropChoice(e, keys, DEFAULT_BACKDROP)).toBe('canyon')
+    expect((e as unknown as { attrs: Record<string, string> }).attrs['data-bd']).toBe('canyon')
+  })
+
+  it('keeps a picked theme', () => {
+    saveBackdropChoice('candy')
+    expect(getBackdropChoice()).toBe('candy')
+    expect(applyBackdropChoice(null, keys, DEFAULT_BACKDROP)).toBe('candy')
+  })
+
+  it('falls back to canyon for an unknown saved theme', () => {
+    localStorage.setItem('play-forge:backdrop', 'gone')
+    expect(getBackdropChoice()).toBe('canyon')
+    expect(applyBackdropChoice(null, keys, DEFAULT_BACKDROP)).toBe('canyon')
+  })
+
+  it('random: one theme per visit, re-rolled when Random is picked again', () => {
+    saveBackdropChoice('random')
+    const first = applyBackdropChoice(null, keys, DEFAULT_BACKDROP, () => 0.99)
+    expect(first).toBe(keys[keys.length - 1])
+    // Same visit (e.g. the game's loading screen): the same theme.
+    expect(applyBackdropChoice(null, keys, DEFAULT_BACKDROP, () => 0)).toBe(first)
+    saveBackdropChoice('random')
+    expect(applyBackdropChoice(null, keys, DEFAULT_BACKDROP, () => 0)).toBe(keys[0])
+  })
+
+  it('still paints when storage is blocked', () => {
+    const blocked = {
+      getItem: () => {
+        throw new Error('blocked')
+      },
+      setItem: () => {
+        throw new Error('blocked')
+      },
+    }
+    vi.stubGlobal('localStorage', blocked)
+    vi.stubGlobal('sessionStorage', blocked)
+    expect(applyBackdropChoice(null, keys, DEFAULT_BACKDROP)).toBe('canyon')
+    expect(() => saveBackdropChoice('day')).not.toThrow()
+  })
+
+  it('the picker offers Random and every theme', () => {
+    expect(BACKDROP_CHOICES).toEqual(['random', ...keys])
+  })
+
+  it('the splash script is self-contained and passes the default', () => {
+    expect(BACKDROP_PICK_JS).toContain('"canyon"')
+    expect(BACKDROP_PICK_JS).toContain('previousElementSibling')
+    expect(() => new Function(BACKDROP_PICK_JS)).not.toThrow()
   })
 })

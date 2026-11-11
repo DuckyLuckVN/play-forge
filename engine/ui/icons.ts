@@ -3,6 +3,8 @@ const svg = (body: string) =>
   `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`
 
 export const icons = {
+  /** A landscape: mountains under a sun (background picker). */
+  scene: svg('<circle cx="16.5" cy="7.5" r="2.5"/><path d="M3 19.5 9 11l4 5.5 2.5-3 5.5 6z"/>'),
   home: svg('<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/>'),
   soundOn: svg(
     '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6"/><path d="M18 6.5a7.5 7.5 0 0 1 0 11"/>',

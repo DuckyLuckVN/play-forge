@@ -194,3 +194,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Background picker (launcher/backdrop-menu.ts): each option shows a little sky swatch. */
+.lc-bd-option {
+  display: flex;
+  align-items: center;
+  gap: var(--pf-space-4);
+  justify-content: flex-start;
+}
+.lc-bd-swatch {
+  flex: none;
+  width: 28px;
+  height: 20px;
+  border-radius: var(--pf-radius-sm, 6px);
+  box-shadow: inset 0 0 0 2px rgb(0 0 0 / 0.25);
+  image-rendering: pixelated;
+}

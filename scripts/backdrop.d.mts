@@ -31,10 +31,32 @@ export interface BackdropTheme {
   near: Pair
   ground: { grass: string; grassDark: string; dirt: string; mortar: string }
 }
-export const THEMES: Record<'sunset' | 'autumn' | 'canyon' | 'candy' | 'day' | 'night', BackdropTheme>
-/** Standalone CSS for the backdrop in a theme's colours (raw colours, no tokens; default sunset). */
-export function backdropCss(theme?: BackdropTheme): string
-/** The default (sunset) backdrop CSS. */
+export type BackdropThemeKey = 'sunset' | 'autumn' | 'canyon' | 'candy' | 'day' | 'night'
+export const THEMES: Record<BackdropThemeKey, BackdropTheme>
+/** CSS for the backdrop with every theme given: `fallback` (or the first) is the default, the rest apply with data-bd="<key>". */
+export function backdropCss(themes?: Record<string, BackdropTheme>, fallback?: string): string
+/** The backdrop CSS with every theme (canyon when nothing is chosen). */
 export const BACKDROP_CSS: string
+/** A theme key, or "random" (one theme per visit). */
+export type BackdropChoice = 'random' | BackdropThemeKey
+/** localStorage key for the choice (sessionStorage holds this visit's random pick). */
+export const BACKDROP_KEY: string
+/** The theme shown until the player picks one. */
+export const DEFAULT_BACKDROP: BackdropThemeKey
+/** Random first, then every theme. */
+export const BACKDROP_CHOICES: BackdropChoice[]
+/** Sets data-bd on the element from the saved choice; returns the theme shown. */
+export function applyBackdropChoice(
+  el: Element | null,
+  keys: string[],
+  fallback: string,
+  random?: () => number,
+): BackdropThemeKey
+/** The saved choice (canyon if nothing is saved). */
+export function getBackdropChoice(): BackdropChoice
+/** Saves the choice; "random" rolls a new theme for this visit. */
+export function saveBackdropChoice(choice: BackdropChoice): void
+/** Inline splash script that applies the choice before first paint (goes right after the backdrop markup). */
+export const BACKDROP_PICK_JS: string
 /** The decorative backdrop element's markup (aria-hidden, static). */
 export function backdropMarkup(): string

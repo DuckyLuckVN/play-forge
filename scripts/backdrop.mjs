@@ -248,6 +248,9 @@ export const THEMES = {
   },
 }
 
+/** The theme shown until the player picks one. */
+export const DEFAULT_BACKDROP = 'canyon'
+
 // ---- The art ----
 
 const COIN = { K: '#c98f00', Y: '#ffc83d', W: '#fff3c4' }
@@ -366,22 +369,43 @@ const CLOUDS = [
   [6, 120, -95, 1.25],
 ]
 
-/** Standalone CSS for the backdrop in a theme's colours (default: the sunset). */
-export function backdropCss(theme = THEMES.sunset) {
+/** The custom properties that paint one theme (the shared rules below read them). */
+function themeVars(theme) {
   const ART = art(theme)
   const sky = theme.sky.map(([c, to], i) => `${c} ${i ? theme.sky[i - 1][1] : 0}% ${to}%`).join(',')
-  const sunAt = theme.sun.high ? 'top:7%' : 'bottom:calc(52*var(--px))'
+  return [
+    `--bd-sky:linear-gradient(${sky})`,
+    `--bd-stars:${theme.stars ? 'visible' : 'hidden'}`,
+    `--bd-sun:${ART.sun}`,
+    `--bd-sun-top:${theme.sun.high ? '7%' : 'auto'}`,
+    `--bd-sun-bottom:${theme.sun.high ? 'auto' : 'calc(52*var(--px))'}`,
+    `--bd-far:${ART.far}`,
+    `--bd-near:${ART.near}`,
+    `--bd-ground:${ART.ground}`,
+    `--bd-cloud:${ART.cloud}`,
+  ].join(';')
+}
+
+/**
+ * Standalone CSS for the backdrop with every theme in `themes`: `fallback` (or
+ * the first) paints with no data-bd, the others apply with `data-bd="<key>"`.
+ */
+export function backdropCss(themes = THEMES, fallback = DEFAULT_BACKDROP) {
+  const first = [fallback, themes[fallback] ?? Object.values(themes)[0]]
+  const rest = Object.entries(themes).filter(([key]) => key !== fallback)
+  const ART = art(first[1]) // theme-independent art: stars, coin, heart, star
   return `
-.pf-bd{--px:4px;position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;image-rendering:pixelated;background:linear-gradient(${sky})}
+.pf-bd{--px:4px;${themeVars(first[1])};position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;image-rendering:pixelated;background:var(--bd-sky)}
+${rest.map(([key, theme]) => `.pf-bd[data-bd="${key}"]{${themeVars(theme)}}`).join('\n')}
 .pf-bd>*{position:absolute}
-.pf-bd-stars{inset:0 0 58%;${theme.stars ? '' : 'display:none;'}background:${ART.stars} 0 0/calc(64*var(--px)) calc(48*var(--px))}
+.pf-bd-stars{inset:0 0 58%;visibility:var(--bd-stars);background:${ART.stars} 0 0/calc(64*var(--px)) calc(48*var(--px))}
 .pf-bd-stars+.pf-bd-stars{background:${ART.stars2} 0 0/calc(80*var(--px)) calc(56*var(--px));animation:pf-bd-blink 1.6s steps(1) infinite}
-.pf-bd-sun{${sunAt};right:12%;width:calc(40*var(--px));height:calc(40*var(--px));background:${ART.sun} 0 0/100% 100%}
+.pf-bd-sun{top:var(--bd-sun-top);bottom:var(--bd-sun-bottom);right:12%;width:calc(40*var(--px));height:calc(40*var(--px));background:var(--bd-sun) 0 0/100% 100%}
 .pf-bd-pan{left:0;width:calc(100% + var(--tw));height:var(--th);background:var(--art) 0 0/var(--tw) var(--th) repeat-x;animation:pf-bd-pan var(--d) linear infinite}
-.pf-bd-far{--tw:calc(160*var(--px));--th:calc(56*var(--px));--art:${ART.far};--d:90s;bottom:calc(30*var(--px))}
-.pf-bd-near{--tw:calc(160*var(--px));--th:calc(32*var(--px));--art:${ART.near};--d:45s;bottom:calc(14*var(--px))}
-.pf-bd-ground{--tw:calc(32*var(--px));--th:calc(16*var(--px));--art:${ART.ground};--d:6s;bottom:0}
-.pf-bd-cloud{left:0;top:var(--y);width:calc(16*var(--px));height:calc(5*var(--px));background:${ART.cloud} 0 0/100% 100%;scale:var(--k);animation:pf-bd-drift var(--d) var(--w) linear infinite}
+.pf-bd-far{--tw:calc(160*var(--px));--th:calc(56*var(--px));--art:var(--bd-far);--d:90s;bottom:calc(30*var(--px))}
+.pf-bd-near{--tw:calc(160*var(--px));--th:calc(32*var(--px));--art:var(--bd-near);--d:45s;bottom:calc(14*var(--px))}
+.pf-bd-ground{--tw:calc(32*var(--px));--th:calc(16*var(--px));--art:var(--bd-ground);--d:6s;bottom:0}
+.pf-bd-cloud{left:0;top:var(--y);width:calc(16*var(--px));height:calc(5*var(--px));background:var(--bd-cloud) 0 0/100% 100%;scale:var(--k);animation:pf-bd-drift var(--d) var(--w) linear infinite}
 .pf-bd-pick{left:var(--x);top:var(--y);width:calc(var(--s)*var(--px));height:calc(var(--s)*var(--px));animation:pf-bd-bob var(--d) var(--w) steps(1) infinite}
 .pf-bd-pick i{display:block;width:100%;height:100%;background:var(--art) 0 0/100% 100%}
 .pf-bd-coin i{--art:${ART.coin};animation:pf-bd-spin 1.2s var(--w) steps(1) infinite}
@@ -397,10 +421,78 @@ export function backdropCss(theme = THEMES.sunset) {
 `.trim()
 }
 
-/** The default (sunset) backdrop CSS. */
+/** The backdrop CSS with every theme (canyon when nothing is chosen). */
 export const BACKDROP_CSS = backdropCss()
 
-/** The backdrop element (no <style>: pair it with BACKDROP_CSS). Static, trusted markup. */
+// ---- The player's choice: a theme or "random"; canyon until they pick ----
+
+/** localStorage key for the chosen theme; sessionStorage key for this visit's random pick. */
+export const BACKDROP_KEY = 'play-forge:backdrop'
+/** What the picker offers: random first, then every theme. */
+export const BACKDROP_CHOICES = ['random', ...Object.keys(THEMES)]
+
+/**
+ * Sets the theme on a .pf-bd element from the saved choice (`fallback` when
+ * nothing or an unknown theme is saved) and returns it.
+ * "Random" picks one theme per visit (kept in sessionStorage), so the
+ * launcher and the game's loading splash match. Self-contained (no outside
+ * references): the splash inlines its source as a script that runs before
+ * first paint (BACKDROP_PICK_JS). Storage may throw (private mode, blocked).
+ */
+export function applyBackdropChoice(el, keys, fallback, random = Math.random) {
+  const KEY = 'play-forge:backdrop'
+  let choice = fallback
+  try {
+    choice = localStorage.getItem(KEY) || fallback
+  } catch {
+    // storage blocked: fall through
+  }
+  let key = choice
+  if (choice !== 'random' && keys.indexOf(key) < 0) key = fallback
+  if (keys.indexOf(key) < 0) {
+    try {
+      key = sessionStorage.getItem(KEY) || ''
+    } catch {
+      // storage blocked: fall through
+    }
+    if (keys.indexOf(key) < 0) {
+      key = keys[Math.floor(random() * keys.length)]
+      try {
+        sessionStorage.setItem(KEY, key)
+      } catch {
+        // storage blocked: fall through
+      }
+    }
+  }
+  if (el) el.setAttribute('data-bd', key)
+  return key
+}
+
+/** The saved choice: a theme key or "random" (canyon if nothing is saved). */
+export function getBackdropChoice() {
+  try {
+    const saved = localStorage.getItem(BACKDROP_KEY)
+    if (saved && BACKDROP_CHOICES.includes(saved)) return saved
+  } catch {
+    // storage blocked: the default
+  }
+  return DEFAULT_BACKDROP
+}
+
+/** Saves the choice; picking "random" again rolls a new theme for this visit. */
+export function saveBackdropChoice(choice) {
+  try {
+    localStorage.setItem(BACKDROP_KEY, choice)
+    if (choice === 'random') sessionStorage.removeItem(BACKDROP_KEY)
+  } catch {
+    // storage blocked: the choice lasts until the page closes
+  }
+}
+
+/** Inline script for the splash: put it right after backdropMarkup(). */
+export const BACKDROP_PICK_JS = `(${applyBackdropChoice})(document.currentScript.previousElementSibling,${JSON.stringify(Object.keys(THEMES))},${JSON.stringify(DEFAULT_BACKDROP)})`
+
+/** The backdrop element (no <style>: pair it with BACKDROP_CSS; theme via data-bd). Static, trusted markup. */
 export function backdropMarkup() {
   const clouds = CLOUDS.map(
     ([y, d, w, k]) => `<span class="pf-bd-cloud" style="--y:${y}%;--d:${d}s;--w:${w}s;--k:${k}"></span>`,

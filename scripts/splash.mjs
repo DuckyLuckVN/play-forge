@@ -6,9 +6,10 @@
 // until all of it had arrived. withSplash puts the splash first in <body> and
 // moves the bundle after it. Plain HTML + CSS and system fonts only: no text to
 // translate, nothing that waits on the bundle. Behind it, the same pixel-arcade
-// backdrop as the launcher (scripts/backdrop.mjs).
+// backdrop as the launcher (scripts/backdrop.mjs), in the player's chosen theme
+// (a tiny inline script picks it before first paint).
 
-import { BACKDROP_CSS, backdropMarkup } from './backdrop.mjs'
+import { BACKDROP_CSS, BACKDROP_PICK_JS, backdropMarkup } from './backdrop.mjs'
 
 const CSS =
   `
@@ -36,7 +37,7 @@ const escape = (s) =>
 /** The splash element (with its own <style>). `cover` is trusted SVG markup from the repo. */
 export function splashMarkup({ title, cover = '' }) {
   return (
-    `<div id="pf-splash" aria-busy="true"><style>${CSS}</style>${backdropMarkup()}` +
+    `<div id="pf-splash" aria-busy="true"><style>${CSS}</style>${backdropMarkup()}<script>${BACKDROP_PICK_JS}</script>` +
     (cover ? `<div class="pf-splash-cover" aria-hidden="true">${cover}</div>` : '') +
     `<div class="pf-splash-title">${escape(title)}</div>` +
     `<div class="pf-splash-bar" aria-hidden="true"><i></i></div></div>`

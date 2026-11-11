@@ -91,19 +91,8 @@ describe('camera button', () => {
     }
     expect(sent).not.toHaveBeenCalled()
     button().click() // closed: keys play again
-    key('keydown', { code: 'ArrowLeft', key: 'ArrowLeft' })
+    key('keydown', { code: 'KeyA', key: 'a' })
     expect(sent).toHaveBeenCalled()
-    input.stop()
-  })
-
-  it('a swing key held before opening is released while open (no stuck charge)', () => {
-    const sent = vi.fn()
-    const input = bindInput(view, sent, () => 0)
-    key('keydown', { code: 'KeyJ', key: 'j' })
-    expect(sent.mock.calls.map((c) => c[0].t)).toEqual(['charge'])
-    button().click()
-    key('keyup', { code: 'KeyJ', key: 'j' })
-    expect(sent.mock.calls.map((c) => c[0].t)).toEqual(['charge', 'swing'])
     input.stop()
   })
 
@@ -128,7 +117,7 @@ describe('camera button', () => {
     expect(panel().hidden).toBe(true)
     const sent = vi.fn()
     const input = bindInput(view, sent, () => 0)
-    key('keydown', { code: 'ArrowLeft', key: 'ArrowLeft' })
+    key('keydown', { code: 'KeyA', key: 'a' })
     expect(sent).toHaveBeenCalled()
     input.stop()
   })
@@ -144,7 +133,7 @@ describe('ring picker', () => {
   it('three choices, current one checked, click saves and re-checks', () => {
     prefs.set({ ring: 'always' })
     button().click()
-    const segs = [...panel().querySelectorAll<HTMLButtonElement>('[role=radio]')]
+    const segs = [...panel().querySelectorAll<HTMLButtonElement>('.sp-ring-row [role=radio]')]
     expect(segs.map((b) => b.textContent)).toEqual(['Hidden', 'Near drop', 'Always'])
     expect(segs.map((b) => b.getAttribute('aria-checked'))).toEqual(['false', 'false', 'true'])
     segs[1].click()
@@ -159,7 +148,19 @@ describe('ring picker', () => {
     prefs.set({ ring: 'hidden', camera: { height: 0.5, tilt: 0 } })
     button().click()
     panel().querySelector<HTMLButtonElement>('.wide')!.click()
-    expect(prefs.get()).toEqual({ camera: { height: 0, tilt: 0 }, ring: 'hidden' })
+    expect(prefs.get()).toMatchObject({ camera: { height: 0, tilt: 0 }, ring: 'hidden' })
+  })
+
+  it('auto swing: Off / On, Off by default, click saves', () => {
+    prefs.set({ autoSwing: false })
+    button().click()
+    const segs = [...panel().querySelectorAll<HTMLButtonElement>('.sp-auto-row [role=radio]')]
+    expect(segs.map((b) => b.textContent)).toEqual(['Off', 'On'])
+    expect(segs.map((b) => b.getAttribute('aria-checked'))).toEqual(['true', 'false'])
+    segs[1].click()
+    expect(prefs.get().autoSwing).toBe(true)
+    expect(segs[1].getAttribute('aria-checked')).toBe('true')
+    prefs.set({ autoSwing: false })
   })
 
   it('the ring group is labelled', () => {

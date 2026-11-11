@@ -32,12 +32,13 @@ function manualClock() {
 const dir = (...codes: string[]) => heldDir(new Set(codes))
 
 describe('keyboard direction', () => {
-  it('maps WASD and arrows view-relative (x = right, z = toward the net)', () => {
+  it('maps WASD view-relative (x = right, z = toward the net); arrows are not bound', () => {
     expect(dir('KeyW')).toEqual({ x: 0, z: 1 })
-    expect(dir('ArrowDown')).toEqual({ x: 0, z: -1 })
+    expect(dir('KeyS')).toEqual({ x: 0, z: -1 })
     expect(dir('KeyA')).toEqual({ x: -1, z: 0 })
-    expect(dir('ArrowRight')).toEqual({ x: 1, z: 0 })
+    expect(dir('KeyD')).toEqual({ x: 1, z: 0 })
     expect(dir()).toEqual({ x: 0, z: 0 })
+    expect(dir('ArrowUp', 'ArrowRight')).toEqual({ x: 0, z: 0 })
   })
 
   it('normalises diagonals to length 1 (no faster diagonals)', () => {
@@ -46,9 +47,8 @@ describe('keyboard direction', () => {
     expect(d.x).toBeCloseTo(Math.SQRT1_2)
   })
 
-  it('cancels opposite keys, and a key plus its arrow twin counts once', () => {
+  it('cancels opposite keys', () => {
     expect(dir('KeyA', 'KeyD')).toEqual({ x: 0, z: 0 })
-    expect(dir('KeyW', 'ArrowUp')).toEqual({ x: 0, z: 1 })
   })
 })
 

@@ -44,7 +44,16 @@ import type { Smoothed } from '@forge/net/smoothing'
 import { playSound } from '@forge/audio/sound'
 import { createScene3D, Particles3D, type Scene3D } from '@forge/render3d'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
-import { actArcInto, actorIndex, cooldownLeft, type AbilityKind, type ActArc } from './ability'
+import {
+  ABILITY,
+  actArcInto,
+  actorIndex,
+  cooldownLeft,
+  cooldownTicksLeft,
+  glideOf,
+  type AbilityKind,
+  type ActArc,
+} from './ability'
 import {
   createChibi,
   JUMP_H,
@@ -62,6 +71,8 @@ import { ChargeRing, COOLDOWN_LOOK } from './chargering'
 import { TICK_RATE } from './court'
 import { courtScale } from './courtsize'
 import { DustPuffs } from './dust'
+import { jumpMotionInto, type JumpMotion } from './animpose'
+import { teamName } from './doubles'
 import { StunStars } from './stars'
 import { stunLook, type StunLook } from './stun'
 import { canSplit, Footwork, lungeWanted, splitHop, splitsOn } from './footwork'
@@ -105,7 +116,7 @@ import {
 import { BOARD, surroundOf } from './props'
 import { SP_QUALITY } from './quality'
 import { Park } from './scenery'
-import { isOwnEvent, TAPPED, type SpEvent, type SpState } from './sim'
+import { isOwnEvent, shownName, TAPPED, type SpEvent, type SpState } from './sim'
 import { MAX_SEATS } from './doubles'
 import {
   abilitySound,
@@ -186,7 +197,7 @@ const MOTION = {
  * thrown (share of the run velocity, or m/s for the landing ring). Footsteps only above `stepFrom`.
  */
 const DUST = {
-  capacity: 14,
+  capacity: 32,
   color: '#f4ecd6',
   opacity: 0.6,
   stepFrom: 0.5,
@@ -198,6 +209,10 @@ const DUST = {
   /** Foot offset from the root (m, before CHIBI_SCALE). */
   foot: 0.1,
 }
+const WIN_SPARK = [
+  { count: 7, color: ['#ff6b8b', '#ffd166'], speed: 1.7, life: 0.55, size: 0.12, gravity: 0.8 },
+  { count: 7, color: ['#9ff0c8', '#ffffff'], speed: 1.7, life: 0.55, size: 0.12, gravity: 0.8 },
+]
 /** A local swing press already animated; ignore the matching swingAt change for this long. */
 const LOCAL_SWING_GRACE = 0.4
 /** A swing pressed this soon after its hit event (same frame, any order) still catches up to it (s). */
@@ -326,6 +341,8 @@ interface PlayerView {
   cd: ChargeRing
   /** This frame's jump / lunge body offsets (ability.ts actArcInto; reused). */
   arc: ActArc
+  nextTrail: number
+  nextCheer: number
   /** Stun stars over the head (hidden unless stunned). */
   stars: StunStars
   /** Reused each frame by stunLook. */
@@ -357,6 +374,8 @@ function makePlayer(preset: number): PlayerView {
     ring: new ChargeRing(),
     cd: new ChargeRing(COOLDOWN_LOOK),
     arc: { lift: 0, dive: 0 },
+    nextTrail: 0,
+    nextCheer: 0,
     stars: new StunStars(),
     stunLook: { on: false, spin: 0, flinch: 0 },
   }
@@ -501,14 +520,19 @@ export class Court3D {
   private lastPop: number[] = new Array<number>(MAX_SEATS).fill(-Infinity)
   private punch = new SpringPunch(PUNCH.k, PUNCH.zeta, PUNCH.step)
   private dust = new DustPuffs(DUST.capacity, DUST.color, DUST.opacity)
+  private jumpMotion: JumpMotion = { crouch: 0, cock: 0, stretch: 0 }
+  private banner = document.createElement('div')
+  private bannerPhase = false
   /** Smash leap sample (reused). */
   private leap: Hop = { height: 0, squash: 0 }
   /** Split-step sample (reused). */
   private splitO: Hop = { height: 0, squash: 0 }
   /** The local player's jump / lunge cooldown left 0..1 this frame (the phone button reads it). */
   private localCd = 0
+  /** The local cooldown left in seconds (the HUD's countdown). */
+  private localCdSec = 0
   /** Called every frame with the local ability cooldown (the phone button follows it; set by main.ts). */
-  onCooldown: ((cd: number) => void) | null = null
+  onCooldown: ((cd: number, seconds: number) => void) | null = null
   /** Online guest: when our own ability press was predicted and heard (s; its host `act` stays silent). */
   private lastOwnActAt = -Infinity
   /** Scratch body box for the occlusion pass. */
@@ -605,7 +629,10 @@ export class Court3D {
     scene.add(this.trail.mesh, this.fx.points, this.dust.mesh)
     this.view.onResize((_w, h) => this.fx.setScale(h * this.view.renderer.getPixelRatio()))
     this.view.root.appendChild(this.hud.root)
+    this.hud.root.appendChild(this.board.splash.root)
     this.view.root.appendChild(this.bubbles.root)
+    this.banner.className = 'sp-outcome-stamp'
+    this.banner.setAttribute('aria-live', 'polite')
     mountCameraButton(this.view.root)
   }
 
@@ -749,6 +776,7 @@ export class Court3D {
     this.reset()
     this.seeded = false
     stage.appendChild(this.view.root)
+    stage.appendChild(this.banner)
     onLocalSwing((what) => this.localSwing(what))
     const stop = startRenderLoop((dt) => this.frame(dt))
     return () => {
@@ -760,6 +788,7 @@ export class Court3D {
       this.guest?.remotes.reset()
       this.guest = null
       this.parking.appendChild(this.view.root)
+      this.banner.remove()
     }
   }
 
@@ -778,6 +807,7 @@ export class Court3D {
     this.localPressAt = -Infinity
     this.localChargeAt = -1
     this.localCd = 0
+    this.localCdSec = 0
     this.lastOwnActAt = -Infinity
     this.rally = 0
     this.pointHits = 0
@@ -794,6 +824,8 @@ export class Court3D {
     this.shVel.x = this.shVel.y = this.shVel.z = 0
     this.punch.reset()
     this.dust.reset()
+    this.bannerPhase = false
+    this.banner.classList.remove('show')
     this.lastPop.fill(-Infinity)
     this.drawnOk = false
     this.fades.fill(1)
@@ -814,6 +846,8 @@ export class Court3D {
       p.stage = 0
       p.hitAt = -Infinity
       p.chargeAt = -1
+      p.nextTrail = 0
+      p.nextCheer = 0
       p.ring.update(-1, 0, 0, 0)
       p.stars.group.visible = false
     }
@@ -867,7 +901,7 @@ export class Court3D {
 
   private frame(dt: number) {
     this.time += dt
-    this.onCooldown?.(this.localCd)
+    this.onCooldown?.(this.localCd, this.localCdSec)
     const curr = this.smooth?.curr
     if (!curr) return this.view.render(dt)
     const track = trackerAction(this.seeded, curr.nextEventId, this.lastEventId, curr.tick, this.lastTick)
@@ -899,6 +933,22 @@ export class Court3D {
         this.localIdx = i
         this.spectating = false
       }
+    if (curr.phase === 'over' && !this.bannerPhase) {
+      const winner = curr.winner === 1 ? 1 : 0
+      this.banner.textContent = this.spectating
+        ? t('{name} wins!', {
+            name: teamName(
+              curr.players.filter((p) => p.side === winner),
+              shownName,
+            ),
+          })
+        : t(curr.players[this.localIdx].side === winner ? 'Victory!' : 'Defeat')
+      this.banner.classList.remove('show')
+      // Restart the stamp only at the phase edge, never inside the frame loop.
+      void this.banner.offsetWidth
+      this.banner.classList.add('show')
+      this.bannerPhase = true
+    }
     // viewOf allocates: only when the side changes.
     if (side !== this.side) {
       this.side = side
@@ -920,6 +970,7 @@ export class Court3D {
 
     let localX = 0
     this.localCd = 0
+    this.localCdSec = 0
     // Host ticks on screen: a guest's render clock (remotes, the shuttle), else the interpolated tick.
     const renderTick = prev.tick + (curr.tick - prev.tick) * a
     const shownTick = g0 ? g0.clock.tick : renderTick
@@ -951,7 +1002,9 @@ export class Court3D {
       const act = pred?.act ?? cp.act ?? null
       const actTick = pred?.act ? pred.stepNow : shownTick
       const arc = actArcInto(act, actTick, view.arc)
-      const cd = cooldownLeft(act, actTick)
+      // Perfect cuts come from the host's act (the predicted press doesn't know them).
+      const cut = cp.act?.cut ?? 0
+      const cd = cooldownLeft(act, actTick, cut)
       // A dive's slide is real movement now (sim + prediction): the body just follows the player.
       const root = view.chibi.root
       root.position.set(x, 0, z)
@@ -998,7 +1051,10 @@ export class Court3D {
         this.time,
         local ? 1 : THEIR_CD_ALPHA,
       )
-      if (local) this.localCd = cd
+      if (local) {
+        this.localCd = cd
+        this.localCdSec = cooldownTicksLeft(act, actTick, cut) / TICK_RATE
+      }
       // A pending contact of mine (render time sits between the prev and curr ticks): the racket holds
       // its wind-up, or hurries, so the strike meets the shuttle on the contact tick (a hit that already
       // happened tells the driver in onHit). A smash also schedules the leap so its rise tops out there
@@ -1032,7 +1088,10 @@ export class Court3D {
       // Footwork: a far, low reach just before my contact lunges toward it (a smash leaps instead).
       const sh = curr.shuttle.pos
       this.footwork(view, sh.x * flip, sh.y, sh.z * flip, loading ? undefined : due, mood === 'idle', dt)
-      root.rotation.y = g.yaw + view.foot.turn()
+      const facing = g.yaw + view.foot.turn()
+      const dive = act?.k === 'lunge' && act.free ? arc.dive : 0
+      const slideYaw = act ? Math.atan2(act.dx * flip, act.dz * flip) : facing
+      root.rotation.y = facing + Math.atan2(Math.sin(slideYaw - facing), Math.cos(slideYaw - facing)) * dive
       this.onGait(view, flags, x, z, vx, vz)
       if (landed) this.landPuff(x, z)
 
@@ -1050,6 +1109,15 @@ export class Court3D {
       pose.smash = damp(pose.smash, loading || leaping ? 1 : 0, MOTION.smashRate, dt)
       smashJump(view.jumpAge, this.leap)
       pose.jump = Math.max(this.leap.height, arc.lift / JUMP_H)
+      const jumpAge =
+        act && (act.k === 'jump' || act.k === 'hop') ? actTick - act.at : view.jumpAge * TICK_RATE
+      const jumpAir =
+        act && (act.k === 'jump' || act.k === 'hop') ? ABILITY[act.k].air : SMASH.land * TICK_RATE
+      jumpMotionInto(jumpAge, jumpAir, this.jumpMotion)
+      pose.jumpCrouch = this.jumpMotion.crouch
+      pose.jumpCock = this.jumpMotion.cock
+      pose.jumpStretch = this.jumpMotion.stretch
+      pose.dive = dive
       splitHop(view.foot.splitAge, this.splitO)
       pose.split = this.splitO.height
       pose.squash = view.squash.update(dt) + this.leap.squash + this.splitO.squash
@@ -1065,6 +1133,32 @@ export class Court3D {
       pose.happy = damp(pose.happy, mood === 'happy' ? 1 : 0, MOTION.moodRate, dt)
       pose.sad = damp(pose.sad, mood === 'sad' ? 1 : 0, MOTION.moodRate, dt)
       pose.cheer = damp(pose.cheer, mood === 'happy' && curr.phase === 'over' ? 1 : 0, MOTION.moodRate, dt)
+      if (this.view.quality.dpr > 1) {
+        if (pose.jump > 0.12 && this.time >= view.nextTrail) {
+          view.nextTrail = this.time + 0.085
+          this.dust.spawn(x, z, -vx * 0.08, -vz * 0.08, 0.28, 0.11)
+        }
+        if (
+          act?.k === 'lunge' &&
+          actTick - act.at < glideOf(act).dive &&
+          arc.dive > 0 &&
+          this.time >= view.nextTrail
+        ) {
+          view.nextTrail = this.time + 0.045
+          this.dust.spawn(
+            x - act.dx * flip * 0.12,
+            z - act.dz * flip * 0.12,
+            -vx * 0.1,
+            -vz * 0.1,
+            0.34,
+            0.17,
+          )
+        }
+        if (curr.phase === 'over' && cp.side === curr.winner && this.time >= view.nextCheer) {
+          view.nextCheer = this.time + 0.55 + i * 0.12
+          this.fx.burst(x, 1.25 * CHIBI_SCALE, z, WIN_SPARK[cp.side])
+        }
+      }
       pose.look = lookAround(this.time, view.seed)
       // Bonked: dizzy and still, a recoil at the hit, stars over the head. Ours is known when the host's state
       // is (the predictor froze us then), a remote's on the render clock.

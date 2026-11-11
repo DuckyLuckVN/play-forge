@@ -61,19 +61,19 @@ afterEach(() => {
 })
 
 describe('ability bindings', () => {
-  it('Space / K jump, both Shifts dive; repeats do not; Space no longer swings', () => {
-    expect([...JUMP_KEYS].sort()).toEqual(['KeyK', 'Space'])
+  it('Space jumps, both Shifts dive; repeats do not; J / K / P / arrows do nothing', () => {
+    expect([...JUMP_KEYS].sort()).toEqual(['Space'])
     expect([...DIVE_KEYS].sort()).toEqual(['ShiftLeft', 'ShiftRight'])
-    expect([...ABILITY_KEYS].sort()).toEqual(['KeyK', 'ShiftLeft', 'ShiftRight', 'Space'])
+    expect([...ABILITY_KEYS].sort()).toEqual(['ShiftLeft', 'ShiftRight', 'Space'])
     const s = setup()
     cleanup = s.b.stop
     expect(key('Space')).toBe(false) // default prevented: no page scroll
-    key('KeyK')
     key('ShiftLeft')
     key('ShiftRight')
-    key('KeyK', { repeat: true })
-    expect(s.kinds()).toEqual(['ability', 'ability', 'ability', 'ability'])
-    expect(s.moves()).toEqual(['jump', 'jump', 'lunge', 'lunge'])
+    key('Space', { repeat: true })
+    for (const code of ['KeyJ', 'KeyK', 'KeyP', 'ArrowUp']) key(code)
+    expect(s.kinds()).toEqual(['ability', 'ability', 'ability'])
+    expect(s.moves()).toEqual(['jump', 'lunge', 'lunge'])
   })
 
   it('a dive carries the held direction (the way the player is moving)', () => {

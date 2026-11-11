@@ -27,6 +27,15 @@ describe('shuttle-pop prefs', () => {
     expect(p.get().camera.height).toBe(0.3)
   })
 
+  it('auto swing: off by default; only a stored true turns it on', () => {
+    expect(createPrefs(mem()).get().autoSwing).toBe(false)
+    expect(parsePrefs({ autoSwing: true }).autoSwing).toBe(true)
+    expect(parsePrefs({ autoSwing: 'yes' }).autoSwing).toBe(false)
+    const m = mem()
+    createPrefs(m).set({ autoSwing: true })
+    expect(createPrefs(m).get().autoSwing).toBe(true)
+  })
+
   it('clamps and sanitizes stored values', () => {
     expect(parsePrefs({ camera: { height: 5, tilt: 'x' } }).camera).toEqual({ height: 1, tilt: 0 })
     expect(parsePrefs({ camera: { height: NaN, tilt: -3 } }).camera).toEqual({ height: 0, tilt: -1 })
@@ -59,7 +68,11 @@ describe('shuttle-pop prefs', () => {
     expect(createPrefs(mem()).get().ring).toBe('always')
     const s = mem()
     s.setItem(PREFS_KEY, JSON.stringify({ camera: { height: 0.3, tilt: 0 } })) // slice-3 save
-    expect(createPrefs(s).get()).toEqual({ camera: { height: 0.3, tilt: 0 }, ring: 'always' })
+    expect(createPrefs(s).get()).toEqual({
+      camera: { height: 0.3, tilt: 0 },
+      ring: 'always',
+      autoSwing: false,
+    })
     for (const ring of ['x', 3, null, 'Near']) expect(parsePrefs({ ring }).ring).toBe('always')
     expect(parsePrefs({ ring: 'near' }).ring).toBe('near')
   })
@@ -69,6 +82,10 @@ describe('shuttle-pop prefs', () => {
     const a = createPrefs(s)
     a.set({ camera: { height: -0.2, tilt: 0.1 } })
     a.set({ ring: 'hidden' })
-    expect(createPrefs(s).get()).toEqual({ camera: { height: -0.2, tilt: 0.1 }, ring: 'hidden' })
+    expect(createPrefs(s).get()).toEqual({
+      camera: { height: -0.2, tilt: 0.1 },
+      ring: 'hidden',
+      autoSwing: false,
+    })
   })
 })

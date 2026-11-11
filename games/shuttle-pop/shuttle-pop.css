@@ -20,6 +20,64 @@
   --sp-rose: #ffb3c1;
 }
 
+/* Brief court stamp before the engine's results panel takes over. */
+.sp-outcome-stamp {
+  position: absolute;
+  z-index: var(--pf-z-popover);
+  top: 45%;
+  left: 50%;
+  width: max-content;
+  max-width: 90%;
+  pointer-events: none;
+  opacity: 0;
+  color: var(--sp-cream);
+  font-size: clamp(32px, 7vw, 76px);
+  font-weight: 900;
+  line-height: 1.1;
+  text-align: center;
+  -webkit-text-stroke: 2px var(--sp-rust);
+  filter: drop-shadow(0 5px 0 var(--sp-pink-dark));
+}
+.sp-outcome-stamp.show {
+  animation: sp-outcome-stamp 1.8s both;
+}
+@keyframes sp-outcome-stamp {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(-9deg) scale(2);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(3deg) scale(0.94);
+  }
+  30%,
+  72% {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(-2deg) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(-2deg) scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sp-outcome-stamp.show {
+    animation-name: sp-outcome-stamp-calm;
+  }
+}
+@keyframes sp-outcome-stamp-calm {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%);
+  }
+  15%,
+  72% {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+
 /* Shuttle Pop: the no-WebGL note (the court itself is a three.js canvas). */
 .sp-nogl {
   max-width: 32ch;
@@ -254,6 +312,103 @@
 }
 .sp-team.scored .sp-team-score {
   animation: sp-score-pop 560ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+/* The score splash after each point (scoresplash.ts): big mid-court, then up into the top board. */
+.sp-splash {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  display: none;
+  align-items: center;
+  gap: 0.35em;
+  transform: translate(-50%, -50%);
+  color: var(--sp-white);
+  font: 900 clamp(56px, 13vw, 132px) / 1 var(--pf-font, inherit);
+  -webkit-text-stroke: 3px rgb(36 26 48 / 0.85);
+  text-shadow: 0 6px 0 rgb(36 26 48 / 0.6);
+  pointer-events: none;
+}
+.sp-splash.show {
+  display: flex;
+  animation: sp-splash 1100ms cubic-bezier(0.3, 1.3, 0.5, 1) both;
+}
+.sp-splash-side {
+  display: flex;
+  align-items: center;
+  gap: 0.15em;
+}
+.sp-splash-dot {
+  width: 0.3em;
+  height: 0.3em;
+  border-radius: 50%;
+  background: var(--sp-team, var(--sp-white));
+  border: 3px solid var(--sp-white);
+}
+.sp-splash-side:last-child {
+  flex-direction: row-reverse;
+}
+.sp-splash-dash {
+  width: 0.35em;
+  height: 0.12em;
+  border-radius: 99px;
+  background: var(--sp-white);
+  opacity: 0.8;
+}
+.sp-splash-num.changed {
+  color: var(--sp-gold);
+  animation: sp-splash-bump 520ms cubic-bezier(0.34, 1.56, 0.64, 1) 120ms both;
+}
+@keyframes sp-splash {
+  0% {
+    opacity: 0;
+    top: 42%;
+    transform: translate(-50%, -50%) scale(0.4);
+  }
+  14% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+  24%,
+  68% {
+    opacity: 1;
+    top: 42%;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    top: 24px;
+    transform: translate(-50%, -50%) scale(0.25);
+  }
+}
+@keyframes sp-splash-bump {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.4) rotate(-6deg);
+    filter: drop-shadow(0 0 16px rgb(255 209 102 / 0.9));
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sp-splash.show {
+    animation-name: sp-splash-calm;
+  }
+  .sp-splash-num.changed {
+    animation: none;
+  }
+}
+@keyframes sp-splash-calm {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  15%,
+  70% {
+    opacity: 1;
+  }
 }
 @keyframes sp-score-pop {
   0% {
@@ -640,11 +795,116 @@
     0 1px 0 #a8620f,
     0 0 20px rgb(255 209 102 / 0.75);
 }
+/* Cooldown seconds over the touch buttons / chips (cooldown.ts), and the flash when it is ready again. */
+.sp-cd-num {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  font: 900 20px / 1 var(--pf-font);
+  color: var(--sp-white);
+  -webkit-text-stroke: 1px rgb(0 0 0 / 0.55);
+  text-shadow: 0 2px 0 rgb(0 0 0 / 0.45);
+  pointer-events: none;
+}
+.sp-cd-num:empty {
+  display: none;
+}
+.sp-act.cooling svg,
+.sp-chip.cooling .sp-chip-icon {
+  opacity: 0.35;
+}
+.sp-act.ready,
+.sp-chip.ready {
+  animation: sp-cd-ready 0.45s ease-out;
+}
+@keyframes sp-cd-ready {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  35% {
+    transform: scale(1.18);
+    filter: brightness(1.6) drop-shadow(0 0 10px rgb(255 240 180 / 0.95));
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+/* Desktop: Jump [Space] / Dive [Shift] chips at the bottom centre (hidden while the touch controls show). */
+.sp-abilities {
+  position: absolute;
+  left: 50%;
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  pointer-events: none;
+}
+.sp-touch:not([hidden]) ~ .sp-abilities,
+.pf-stage:not(.sp-playing) .sp-abilities {
+  display: none;
+}
+.sp-chip {
+  --sp-cd: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 6px 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  color: var(--sp-white);
+  background: rgb(36 26 48 / 0.78);
+  border: 2px solid rgb(255 255 255 / 0.85);
+  box-shadow: 0 4px 0 rgb(0 0 0 / 0.3);
+  font: 800 15px / 1 var(--pf-font);
+}
+.sp-chip-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 28%, #7be3d4, #1fb5a3 55%, #0e8576);
+}
+.sp-chip-dive .sp-chip-icon {
+  background: radial-gradient(circle at 35% 28%, var(--sp-cream), var(--sp-gold) 45%, var(--sp-amber));
+}
+.sp-chip-icon svg {
+  width: 22px;
+  height: 22px;
+}
+.sp-chip .pf-key {
+  height: 24px;
+  font-size: 13px;
+}
+/* The sweep: the cooling share darkens the chip from the left; the seconds sit over the icon. */
+.sp-chip.cooling::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: calc(var(--sp-cd) * 100%);
+  background: rgb(10 10 20 / 0.55);
+  pointer-events: none;
+}
+.sp-chip .sp-cd-num {
+  inset: 0 auto 0 6px;
+  width: 34px;
+  font-size: 15px;
+}
 @media (prefers-reduced-motion: reduce) {
   .sp-stick,
   .sp-swing,
   .sp-act {
     transition: none;
+  }
+  .sp-act.ready,
+  .sp-chip.ready {
+    animation: none;
   }
 }
 

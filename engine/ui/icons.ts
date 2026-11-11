@@ -53,15 +53,17 @@ const fine = (body: string) =>
   `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`
 const MOUSE = '<rect x="6.5" y="3" width="11" height="18" rx="5.5"/><path d="M12 3v6.5M6.5 9.5h11"/>'
 const FILL = 'fill="currentColor" stroke="none"'
+/** The pressed mouse button (the guide colours it: guide.css .pf-mouse-on). */
+const PRESSED = `class="pf-mouse-on" ${FILL}`
 const HAND =
   '<path d="M10 14V7a1.5 1.5 0 0 1 3 0v5"/><path d="M13 11.5a1.5 1.5 0 0 1 3 0V13"/><path d="M16 12.5a1.5 1.5 0 0 1 3 0V17a5 5 0 0 1-5 5h-1.5a5 5 0 0 1-3.9-1.9L5.2 16.6a1.5 1.5 0 0 1 2.3-1.9L10 17"/>'
 
 export const inputIcons = {
-  mouseClick: fine(`${MOUSE}<path d="M12 3a5.5 5.5 0 0 0-5.5 5.5v1H12z" ${FILL}/>`),
-  mouseRight: fine(`${MOUSE}<path d="M12 3a5.5 5.5 0 0 1 5.5 5.5v1H12z" ${FILL}/>`),
-  mouseScroll: fine(`${MOUSE}<path d="M12 5v3" stroke-width="3"/>`),
+  mouseClick: fine(`${MOUSE}<path d="M12 3a5.5 5.5 0 0 0-5.5 5.5v1H12z" ${PRESSED}/>`),
+  mouseRight: fine(`${MOUSE}<path d="M12 3a5.5 5.5 0 0 1 5.5 5.5v1H12z" ${PRESSED}/>`),
+  mouseScroll: fine(`${MOUSE}<path class="pf-mouse-on" d="M12 5v3" stroke-width="3"/>`),
   mouseDrag: fine(
-    `${MOUSE}<path d="M12 3a5.5 5.5 0 0 0-5.5 5.5v1H12z" ${FILL}/><path d="M2 12h2.5M19.5 12H22"/>`,
+    `${MOUSE}<path d="M12 3a5.5 5.5 0 0 0-5.5 5.5v1H12z" ${PRESSED}/><path d="M2 12h2.5M19.5 12H22"/>`,
   ),
   tap: fine(`${HAND}<path d="M7.5 7a4 4 0 0 1 8 0"/>`),
   doubleTap: fine(`${HAND}<path d="M8.2 7a3.3 3.3 0 0 1 6.6 0M5.7 7a5.8 5.8 0 0 1 11.6 0"/>`),

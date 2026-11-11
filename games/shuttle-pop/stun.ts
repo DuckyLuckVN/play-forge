@@ -9,7 +9,7 @@ export const STUN = {
   /**
    * Cross-net centre distance (m) a swing reaches: both players must hug the net (NET_MARGIN keeps them
    * ≥ 0.6 m apart). 0.85, not the plan's 1.0: at 1.0 a casual player rushing the net to bonk the computer
-   * won 65% vs 54% plain play (balance.test.ts 'racket stun balance').
+   * won 65% vs 54% plain play (balance-ability.simulation.test.ts 'racket stun balance').
    */
   netReach: 0.85,
   /** Render-only flinch length in ticks. */

@@ -8,6 +8,8 @@ import {
   acting,
   actMoveMul,
   actReady,
+  freeSwing,
+  holdsRacket,
   cooldownLeft,
   horizonOf,
   landTick,
@@ -200,44 +202,75 @@ describe('ability', () => {
   })
 
   describe('Jump / Dive buttons (forced moves)', () => {
-    it('jump: strikes a high shuttle; nothing in the box (or not mine) = an empty jump, never a hop', () => {
-      const j = pickAbility(lob(), { x: 0.4, z: -2.2 }, 0, 1, true, 'jump')
+    it('jump, auto swing off: always a free jump (the player swings), never a hop', () => {
+      expect(pickAbility(lob(), { x: 0.4, z: -2.2 }, 0, 1, true, 'jump')).toEqual({
+        k: 'jump',
+        dx: 0,
+        dz: 0,
+        free: true,
+      })
+    })
+
+    it('jump, auto swing on: strikes a high shuttle; nothing in the box (or not mine) = an empty jump', () => {
+      const j = pickAbility(lob(), { x: 0.4, z: -2.2 }, 0, 1, true, 'jump', undefined, true)
       expect(j).toMatchObject({ k: 'jump' })
       expect(j.empty).toBeUndefined()
-      expect(pickAbility(drive(), { x: 0, z: -5.4 }, 0, 1, true, 'jump')).toEqual({
+      expect(j.free).toBeUndefined()
+      expect(pickAbility(drive(), { x: 0, z: -5.4 }, 0, 1, true, 'jump', undefined, true)).toEqual({
         k: 'jump',
         dx: 0,
         dz: 0,
         empty: true,
       })
-      expect(pickAbility(lob(), { x: 0.4, z: -2.2 }, 0, 1, false, 'jump').empty).toBe(true)
+      expect(pickAbility(lob(), { x: 0.4, z: -2.2 }, 0, 1, false, 'jump', undefined, true).empty).toBe(true)
     })
 
-    it('dive: goes the held way; strikes from the slide end, else empty', () => {
-      // The wide drive passes 1.8 m to +x: diving +x reaches it.
+    it('dive: always a free dive (never strikes by itself) the held way, else toward the shuttle, else the net', () => {
       const toward = pickAbility(drive(), { x: 0, z: -5.4 }, 0, 1, true, 'lunge', { x: 1, z: 0 })
-      expect(toward).toEqual({ k: 'lunge', dx: 1, dz: 0 })
-      // Diving the other way: still a dive (the player's call), nothing to strike.
+      expect(toward).toEqual({ k: 'lunge', dx: 1, dz: 0, free: true })
       const away = pickAbility(drive(), { x: 0, z: -5.4 }, 0, 1, true, 'lunge', { x: -1, z: 0 })
-      expect(away).toEqual({ k: 'lunge', dx: -1, dz: 0, empty: true })
-      // No direction held: toward the shuttle it would reach.
+      expect(away).toEqual({ k: 'lunge', dx: -1, dz: 0, free: true })
+      // No direction held: toward the shuttle it could reach.
       const auto = pickAbility(drive(), { x: 0, z: -5.4 }, 0, 1, true, 'lunge')
-      expect(auto.k).toBe('lunge')
+      expect(auto).toMatchObject({ k: 'lunge', free: true })
       expect(auto.dx).toBeGreaterThan(0.5)
-      expect(auto.empty).toBeUndefined()
-      // Nothing to reach and nothing held: toward the net (side 0 = +z, side 1 = −z), empty.
+      // Nothing to reach and nothing held: toward the net (side 0 = +z, side 1 = −z).
       expect(pickAbility(lob(), { x: 2.5, z: -6 }, 0, 1, true, 'lunge')).toEqual({
         k: 'lunge',
         dx: 0,
         dz: 1,
-        empty: true,
+        free: true,
       })
-      expect(pickAbility(lob(), { x: 2.5, z: 6 }, 1, 0, false, 'lunge')).toMatchObject({
-        dz: -1,
-        empty: true,
-      })
-      // An easy shuttle a plain swing reaches: the button still dives (no hop rule for a forced move).
-      expect(pickAbility(drive(), { x: 1.0, z: -5.4 }, 0, 1, true, 'lunge', { x: 1, z: 0 }).k).toBe('lunge')
+      expect(pickAbility(lob(), { x: 2.5, z: 6 }, 1, 0, false, 'lunge')).toMatchObject({ dz: -1, free: true })
+    })
+
+    it('a free dive: slides ABILITY.dive.slide, swing window = glide + grace, racket never locked, own cooldown', () => {
+      const d: Act = { k: 'lunge', at: 0, dx: 0, dz: 1, free: true }
+      const { glide, slide, grace, floor, cooldown } = ABILITY.dive
+      const o = { x: 0, z: 0 }
+      let z = 0
+      for (let e = 0; e <= glide + 2; e++) z += slideStep(d, e, o).z
+      expect(z).toBeCloseTo(slide)
+      expect(strikeFrom({ x: 0, z: 0 }, d, 0)).toEqual({ x: 0, z: slide })
+      expect(landTick(d)).toBe(glide)
+      expect(freeSwing(d, -1)).toBeUndefined()
+      expect(freeSwing(d, 0)).toBe('lunge')
+      expect(freeSwing(d, glide + grace)).toBe('lunge')
+      expect(freeSwing(d, glide + grace + 1)).toBeUndefined()
+      expect(freeSwing({ ...d, free: undefined }, 3)).toBeUndefined()
+      const j: Act = { k: 'jump', at: 0, dx: 0, dz: 0, free: true }
+      expect(freeSwing(j, ABILITY.jump.air + ABILITY.jump.grace)).toBe('jump')
+      expect(freeSwing(j, ABILITY.jump.air + ABILITY.jump.grace + 1)).toBeUndefined()
+      expect(actReady(j, ABILITY.jump.freeCooldown)).toBe(true)
+      expect(actReady(j, ABILITY.jump.freeCooldown - 1)).toBe(false)
+      expect(acting(d, glide + floor - 1)).toBe(true)
+      expect(acting(d, glide + floor)).toBe(false)
+      expect(holdsRacket(d, 3)).toBe(false)
+      expect(holdsRacket(act('lunge', 0), 3)).toBe(true)
+      expect(actReady(d, cooldown - 1)).toBe(false)
+      expect(actReady(d, cooldown)).toBe(true)
+      // The auto-pick lunge (the computer, older clients) keeps its shape.
+      expect(landTick(act('lunge', 0))).toBe(ABILITY.lunge.dive)
     })
 
     it('an empty forced move cools down like a hop; a striking one the full 3 s', () => {

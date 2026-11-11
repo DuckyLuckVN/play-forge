@@ -5,6 +5,10 @@ import type { GameDefinition, GameOptions, InputEvent, PlayerInfo } from '@forge
 import {
   abilityShot,
   acting,
+  cutCooldown,
+  diveAllowed,
+  freeSwing,
+  holdsRacket,
   actMoveMul,
   actReady,
   landTick,
@@ -40,6 +44,7 @@ import {
   type Grade,
   type ShotKind,
 } from './shots'
+import { noteBonk, noteHit, notePoint, noteServe, type TallyStats } from './tally'
 
 export { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld }
 export const AI_ID = 'ai'
@@ -95,7 +100,7 @@ export type SpInput =
    * `x, z` = held direction (aims the strike, like a swing's; a dive also goes that way); `tick` = the
    * presser's screen tick (rewind-clamped like a swing's). Older hosts ignore `k` (auto pick).
    */
-  | { t: 'ability'; x: number; z: number; tick?: number; k?: Want }
+  | { t: 'ability'; x: number; z: number; tick?: number; k?: Want; auto?: boolean }
 
 export interface SpPlayer {
   id: string
@@ -227,8 +232,11 @@ export interface SpState {
   /** Last EVENT_TICKS ticks of events; renderers dedupe by id. */
   events: SpEvent[]
   nextEventId: number
-  /** For the results screen: shots in this rally (serve + hits), the longest finished rally, Perfect hits per side. */
-  stats: { shots: number; longest: number; perfect: [number, number] }
+  /**
+   * For the results screen: shots in this rally (serve + hits), the longest finished rally, Perfect hits
+   * per side, and each player's tally (tally.ts; optional fields).
+   */
+  stats: { shots: number; longest: number; perfect: [number, number] } & TallyStats
   /** Seeded rng state (mulberry32 seed). Host-only. */
   rng: number
   /**
@@ -553,6 +561,7 @@ function serve(state: SpState, p: SpPlayer, held: { x: number; z: number }) {
   state.phase = 'rally'
   state.phaseT = 0
   state.stats.shots = 1
+  noteServe(state.stats, p.id)
   emit(state, { k: 'serve', side: p.side, shot: kind, by: p.id })
 }
 
@@ -630,9 +639,11 @@ export function resolveSwing(
     emit(state, { k: 'whiff', side: p.side, by: p.id })
     return
   }
+  // A swing in a Dive's window strikes as a lunge (its box, its shot).
+  const k = act ?? freeStrike(state, p, rewind)
   // A jump / lunge plays its own shot (ability.ts abilityShot) instead of the held direction's.
-  const shot = act
-    ? abilityShot(act, held, c.grade)
+  const shot = k
+    ? abilityShot(k, held, c.grade)
     : { kind: chooseShot(held, c.y, c.grade), grade: c.grade, charge }
   s.pending = {
     atTick: Math.max(c.tick, state.tick),
@@ -643,14 +654,16 @@ export function resolveSwing(
     aimX: held.x,
     charge: shot.charge,
     fromTick: launchTick(c.tick, state.tick - Math.min(MAX_REWIND, Math.max(0, lag))),
-    ...(act ? { act } : {}),
+    ...(k ? { act: k } : {}),
   }
   if (s.pending.atTick === state.tick) hit(state)
 }
 
 /**
  * The contact a swing `rewind` ticks ago would make (resolveSwing's rules), or null = a whiff. A jump /
- * lunge (`act`) uses its reach box and is graded `leadOf(act)` ticks after the press (its wind-up).
+ * lunge (`act`) uses its reach box and is graded `leadOf(act)` ticks after the press (its wind-up). A
+ * plain swing in a free move's window (ability.ts freeSwing) uses that move's box (a dive's from its
+ * slide end), no lead.
  */
 function contactFor(
   state: SpState,
@@ -664,18 +677,30 @@ function contactFor(
   const off = act === 'lunge' && p.act ? slideEnd({ x: 0, z: 0 }, p.act.dx, p.act.dz) : null
   const past = contactCandidates(state, p, rewind)
   if (off) for (const c of past) c.at = { x: c.at.x + off.x, z: c.at.z + off.z }
+  const free = act ? undefined : freeStrike(state, p, rewind)
+  // A Dive's swing: judged from where the slide ends (now + the slide still ahead), like a lunge.
+  const dive = free === 'lunge' ? strikeFrom(p, p.act, state.tick) : null
+  if (dive) for (const c of past) c.at = dive
   return pickContact(
     past,
     s,
     state.tick,
-    off ? { x: p.x + off.x, z: p.z + off.z } : p,
+    dive ?? (off ? { x: p.x + off.x, z: p.z + off.z } : p),
     p.side,
     s.lastHitter,
     swingTick,
     state.tick,
     perfectWindowOf(s.pressured),
-    reachOf(act),
+    reachOf(act ?? free),
   )
+}
+
+/**
+ * The strike of a plain swing by `p` (`rewind` ticks old) in its free move's window (ability.ts
+ * freeSwing): graded then or arriving now (a short charge is graded at its press, maybe before the move).
+ */
+function freeStrike(state: SpState, p: SpPlayer, rewind: number): Strike | undefined {
+  return freeSwing(p.act, state.tick - rewind) ?? freeSwing(p.act, state.tick)
 }
 
 /**
@@ -778,6 +803,9 @@ function hit(state: SpState) {
   state.history.length = 0
   state.stats.shots++
   if (pend.grade === 'perfect') state.stats.perfect[pend.side]++
+  noteHit(state.stats, pend.id, pend.grade, pend.kind, pend.act)
+  // A Perfect hit shortens the hitter's running Jump / Dive cooldown.
+  if (pend.grade === 'perfect') cutCooldown(state.players.find((q) => q.id === pend.id)?.act ?? null)
   emit(state, {
     k: 'hit',
     side: pend.side,
@@ -817,6 +845,7 @@ function scorePoint(state: SpState, side: 0 | 1) {
   state.shuttle.pending = null
   state.stats.longest = Math.max(state.stats.longest, state.stats.shots)
   state.stats.shots = 0
+  notePoint(state.stats, state.players, side)
   emit(state, { k: 'point', side })
 }
 
@@ -848,19 +877,19 @@ function recordHistory(state: SpState) {
 export function canCharge(state: SpState, p: SpPlayer): boolean {
   return (
     (state.phase === 'rally' || (state.phase === 'serve' && p.id === serverPlayer(state).id)) &&
-    !acting(p.act, state.tick) &&
+    !holdsRacket(p.act, state.tick) &&
     !stunned(p.stunAt, state.tick)
   )
 }
 
 /**
- * May `p` press the ability now: in a rally or the serve, not charging, not held by a move or a stun,
- * off cooldown.
+ * May `p` press the ability now: in a rally or the serve, not charging (a rally Dive may start mid-charge:
+ * the held swing then hits from the dive), not held by a move or a stun, off cooldown.
  */
-export function canAct(state: SpState, p: SpPlayer): boolean {
+export function canAct(state: SpState, p: SpPlayer, want?: Want): boolean {
   return (
     (state.phase === 'rally' || state.phase === 'serve') &&
-    p.chargeAt === -1 &&
+    (p.chargeAt === -1 || (want === 'lunge' && state.phase === 'rally')) &&
     !acting(p.act, state.tick) &&
     !stunned(p.stunAt, state.tick) &&
     actReady(p.act, state.tick)
@@ -902,6 +931,7 @@ function resolveAct(
   rewind: number,
   hitter: -1 | 0 | 1,
   want?: Want,
+  auto = false,
 ): boolean {
   const s = state.shuttle
   const hist = state.history
@@ -912,13 +942,43 @@ function resolveAct(
   // The Jump / Dive buttons force their move in a rally (the serve set-up only hops); a dive goes the held way.
   const forced = state.phase === 'rally' ? want : undefined
   const dir = held.x || held.z ? toWorld(p.side, held.x, held.z) : undefined
-  const pick = pickAbility(flight, at, p.side, s.lastHitter, canHit, forced, dir)
-  p.act = { k: pick.k, at: state.tick, dx: pick.dx, dz: pick.dz, ...(pick.empty ? { empty: true } : {}) }
+  const pick = pickAbility(flight, at, p.side, s.lastHitter, canHit, forced, dir, auto)
+  p.act = {
+    k: pick.k,
+    at: state.tick,
+    dx: pick.dx,
+    dz: pick.dz,
+    ...(pick.empty ? { empty: true } : {}),
+    ...(pick.free ? { free: true } : {}),
+    ...(pick.free && pick.k === 'lunge' && auto ? { auto: true } : {}),
+  }
   emit(state, { k: 'act', side: p.side, act: pick.k, by: p.id })
-  if (pick.k === 'hop' || pick.empty) return false
+  // A hop, an empty jump and a Dive (it only slides: the player swings) strike nothing.
+  if (pick.k === 'hop' || pick.empty || pick.free) return false
   p.swingAt = state.tick
   resolveSwing(state, p, held, rewind, 0, rewind, pick.k)
   return true
+}
+
+/** Ticks before its contact an Auto swing dive swings (inside the Perfect band; a lunge caps it at Good). */
+const AUTO_DIVE_LEAD = 4
+
+/**
+ * Auto swing dives (Act.auto): once per dive, inside its swing window, the sim swings for the diver as
+ * soon as a contact (the dive's reach from the slide end) is AUTO_DIVE_LEAD ticks away or nearer.
+ * `hitter` = lastHitter before this tick's swings; swingers join `swung` (bonks).
+ */
+function autoDiveSwings(state: SpState, hitter: -1 | 0 | 1, swung: SpPlayer[]): void {
+  for (const p of state.players) {
+    const a = p.act
+    if (!a?.auto || p.swingAt >= a.at || !freeSwing(a, state.tick) || swung.includes(p)) continue
+    if (!canSwing(state, p) || !canStrike(state, p, hitter)) continue
+    const c = contactFor(state, p, 0)
+    if (!c || c.tick - state.tick > AUTO_DIVE_LEAD) continue
+    p.swingAt = state.tick
+    resolveSwing(state, p, p.move, 0, 0, 0)
+    swung.push(p)
+  }
 }
 
 /**
@@ -939,6 +999,7 @@ function bonks(state: SpState, swung: readonly SpPlayer[]): void {
         q.pressAt = -1
       }
       emit(state, { k: 'bonk', side: q.side, who: q.id, by: p.id })
+      noteBonk(state.stats, p.id)
     }
 }
 
@@ -1001,7 +1062,8 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
     lag: number
   }[] = []
   const presses: SpPlayer[] = []
-  const acts: { p: SpPlayer; held: { x: number; z: number }; rewind: number; want?: Want }[] = []
+  const acts: { p: SpPlayer; held: { x: number; z: number }; rewind: number; want?: Want; auto: boolean }[] =
+    []
   for (const { player, input } of [...inputs, ...botInputs(state)]) {
     const p = state.players.find((q) => q.id === player)
     if (!p || !input) continue
@@ -1037,9 +1099,12 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
       swings.push({ p, held: clampDir(input.x, input.z), rewind, charge, lag: released })
     } else if (input.t === 'ability') {
       // One per player per tick; while charging / held / on cooldown / between points: ignored.
-      if (acts.some((a) => a.p === p) || !canAct(state, p)) continue
       const want = input.k === 'jump' || input.k === 'lunge' ? input.k : undefined
-      acts.push({ p, held: clampDir(input.x, input.z), rewind: humanRewind(state, p, input.tick), want })
+      if (acts.some((a) => a.p === p) || !canAct(state, p, want)) continue
+      const held = clampDir(input.x, input.z)
+      // The Dive button while moving backward: nothing (no escape dives; no cooldown spent).
+      if (want === 'lunge' && state.phase === 'rally' && !diveAllowed(held)) continue
+      acts.push({ p, held, rewind: humanRewind(state, p, input.tick), want, auto: input.auto === true })
     }
   }
   const srv = serverPlayer(state)
@@ -1066,7 +1131,8 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
     // Nobody stalls the match: an idle server short-serves automatically.
     else if (state.phaseT >= SERVE_TIMEOUT) serve(state, srv, { x: 0, z: 0 })
     // Presses in the serve hop (nothing to strike yet; a serve this tick is the server's own hit).
-    for (const a of acts) if (canAct(state, a.p)) resolveAct(state, a.p, a.held, a.rewind, before, a.want)
+    for (const a of acts)
+      if (canAct(state, a.p, a.want)) resolveAct(state, a.p, a.held, a.rewind, before, a.want, a.auto)
   } else if (state.phase === 'rally') {
     // 3. Swings: who can hit is decided by lastHitter + the shuttle's half, so at most one schedules.
     // A shuttle hit this tick can't be hit back on the same tick (else input order would decide).
@@ -1082,7 +1148,9 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
       if (s.lastHitter === hitter && !swings.some((w) => w.p === p) && tapOnPress(state, p)) swung.push(p)
     // After swings and taps (a charge pressed this tick wins: canAct re-checked), before a scheduled hit fires.
     for (const a of acts)
-      if (canAct(state, a.p) && resolveAct(state, a.p, a.held, a.rewind, hitter, a.want)) swung.push(a.p)
+      if (canAct(state, a.p, a.want) && resolveAct(state, a.p, a.held, a.rewind, hitter, a.want, a.auto))
+        swung.push(a.p)
+    autoDiveSwings(state, hitter, swung)
     // A contact already made (pending) still fires below, even if its swinger was just bonked.
     if (swung.length > 0) bonks(state, swung)
     if (s.pending && s.pending.atTick <= state.tick) firePending(state)

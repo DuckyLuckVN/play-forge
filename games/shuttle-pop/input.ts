@@ -25,19 +25,15 @@ const realClock: InputClock = {
   },
 }
 
+/** WASD only (arrows, J, K are not bound: swing is the mouse / touch button). */
 const DIRS: Record<string, readonly [number, number]> = {
   KeyW: [0, 1],
-  ArrowUp: [0, 1],
   KeyS: [0, -1],
-  ArrowDown: [0, -1],
   KeyA: [-1, 0],
-  ArrowLeft: [-1, 0],
   KeyD: [1, 0],
-  ArrowRight: [1, 0],
 }
-const SWING_KEYS = new Set(['KeyJ'])
 /** The Jump button (T = emoji and V = push-to-talk stay free). */
-export const JUMP_KEYS = new Set(['Space', 'KeyK'])
+export const JUMP_KEYS = new Set(['Space'])
 /** The Dive button (a right click too). */
 export const DIVE_KEYS = new Set(['ShiftLeft', 'ShiftRight'])
 /** Every ability key (Jump + Dive). */
@@ -268,18 +264,14 @@ export function bindInput(
   let divePointer: number | null = null
   const onDown = (e: KeyboardEvent) => {
     if (isUi(e.target)) return
-    if (SWING_KEYS.has(e.code)) {
-      e.preventDefault()
-      if (!e.repeat) keys.swingDown(e.code)
-    } else if (ABILITY_KEYS.has(e.code)) {
+    if (ABILITY_KEYS.has(e.code)) {
       // Space would scroll the page.
       e.preventDefault()
       if (!e.repeat) keys.ability(JUMP_KEYS.has(e.code) ? 'jump' : 'lunge')
     } else if (keys.press(e.code)) e.preventDefault()
   }
   const onUp = (e: KeyboardEvent) => {
-    if (SWING_KEYS.has(e.code)) keys.swingUp(e.code)
-    else keys.release(e.code)
+    keys.release(e.code)
   }
   const letGo = () => {
     stick.cancel()

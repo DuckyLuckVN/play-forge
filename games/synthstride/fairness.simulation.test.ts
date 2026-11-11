@@ -87,7 +87,7 @@ describe('Synthstride fairness', () => {
         expect(s.tier).toBe(9)
         expect(s.boards[0].n).toBe(5)
       }
-    }, 30_000)
+    })
 
   for (const count of [2, 3, 4])
     it(`${count} careful players sharing a floor all survive 3 minutes`, () => {
@@ -95,14 +95,14 @@ describe('Synthstride fairness', () => {
         const { hits } = play(seed, 180, 'normal', count, 'shared')
         expect({ count, seed, hits }).toEqual({ count, seed, hits: 0 })
       }
-    }, 30_000)
+    })
 
   it('2 careful players on their own boards both survive 3 minutes', () => {
     for (let seed = 1; seed <= 8; seed++) {
       const { hits } = play(seed, 180, 'hyper', 2, 'race')
       expect({ seed, hits }).toEqual({ seed, hits: 0 })
     }
-  }, 30_000)
+  })
 
   it('keeps the board busy', () => {
     const s = createState(players(1), 5)

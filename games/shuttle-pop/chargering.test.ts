@@ -9,10 +9,10 @@ describe('rings at the feet', () => {
   it('the charge ring keeps its look; the cooldown ring sits just outside it, cool blue, no pulse', () => {
     expect(CHARGE_LOOK).toMatchObject({ inner: 0.44, outer: 0.56, pulse: true })
     expect(CHARGE_LOOK.low.getHexString()).toBe('7ef0c8')
-    expect(COOLDOWN_LOOK).toMatchObject({ inner: 0.6, outer: 0.66, pulse: false })
+    expect(COOLDOWN_LOOK).toMatchObject({ inner: 0.6, outer: 0.72, pulse: false })
     expect(COOLDOWN_LOOK.inner).toBeGreaterThan(CHARGE_LOOK.outer)
     for (const c of [COOLDOWN_LOOK.low, COOLDOWN_LOOK.high, COOLDOWN_LOOK.full])
-      expect(c.getHexString()).toBe('8fd3ff')
+      expect(c.getHexString()).toBe('5cc8ff')
   })
 
   it('a full cooldown ring never throbs; < 0 hides it; alpha fades fill and track together', () => {

@@ -1,8 +1,11 @@
-// Results text (pure): the final score, stat rows, the end-of-match headline and the top-bar chips.
-import type { Outcome, Scoreline, SummaryRow } from '@forge'
+// Results text (pure): the final score, the end-of-match headline, the top-bar chips and the leaderboard.
+import type { Leaderboard, Outcome, Scoreline } from '@forge'
 import { teamName } from './doubles'
 import { t } from './i18n'
+import { PRESETS } from './presets'
 import { winner } from './rules'
+import { tintCss } from './scoreboard'
+import { tallyOf, tallyScore } from './tally'
 import { shownName, type SpState } from './sim'
 
 /** The final score from `selfId`'s side (side 0 first for spectators), e.g. "11–7". */
@@ -10,26 +13,6 @@ export function scoreText(s: SpState, selfId: string): string {
   const me = s.players.find((p) => p.id === selfId)
   const [a, b] = me?.side === 1 ? [s.score[1], s.score[0]] : s.score
   return `${a}–${b}`
-}
-
-/** Final score, longest rally, Perfect hits (yours / your team's; both sides' for a spectator). */
-export function summaryRows(s: SpState, selfId: string): SummaryRow[] {
-  const me = s.players.find((p) => p.id === selfId)
-  const { longest, perfect } = s.stats
-  const doubles = s.players.length > 2
-  return [
-    { label: t('Final score'), value: scoreText(s, selfId) },
-    {
-      label: t('Longest rally'),
-      value: longest === 1 ? t('{n} shot', { n: longest }) : t('{n} shots', { n: longest }),
-    },
-    me
-      ? {
-          label: doubles ? t("Your team's Perfect hits") : t('Your Perfect hits'),
-          value: String(perfect[me.side]),
-        }
-      : { label: t('Perfect hits'), value: `${perfect[0]}–${perfect[1]}` },
-  ]
 }
 
 /** The results headline from `selfId`'s view (a spectator: the winner's name). */
@@ -86,4 +69,39 @@ export function scoreChips(s: SpState): Scoreline[] {
     })
   }
   return chips
+}
+
+/** "Longest rally: 9 shots" (singular for 1). */
+const longestText = (n: number): string =>
+  `${t('Longest rally')}: ${n === 1 ? t('{n} shot', { n }) : t('{n} shots', { n })}`
+
+/**
+ * The results leaderboard: the winning side first, each side by its players' tally (tally.ts tallyScore),
+ * stat columns, MVP on the best tally (none when nobody scored anything), you marked, the longest rally
+ * under it.
+ */
+export function leaderboardOf(s: SpState, selfId: string): Leaderboard {
+  const won = s.winner === 1 ? 1 : 0
+  const ranked = s.players
+    .map((p) => ({ p, tally: tallyOf(s.stats, p.id) }))
+    .sort(
+      (a, b) =>
+        Number(b.p.side === won) - Number(a.p.side === won) || tallyScore(b.tally) - tallyScore(a.tally),
+    )
+  const best = Math.max(0, ...ranked.map((r) => tallyScore(r.tally)))
+  const mvp = best > 0 ? ranked.find((r) => tallyScore(r.tally) === best)?.p.id : undefined
+  return {
+    columns: [t('Points'), t('Perfect'), t('Smashes'), t('Dive saves'), t('Bonks')],
+    rows: ranked.map(({ p, tally }) => ({
+      id: p.id,
+      name: shownName(p),
+      values: [tally.winners, tally.perfect, tally.smashes, tally.saves, tally.bonks].map(String),
+      color: tintCss(PRESETS[p.preset]?.tint ?? PRESETS[p.side].tint),
+      ...(p.id === mvp ? { badge: t('MVP') } : {}),
+      ...(p.id === selfId ? { self: true } : {}),
+      // The computer's own face; humans get their lobby avatar from the shell.
+      ...(p.kind === 'ai' ? { avatar: 'robot' } : {}),
+    })),
+    note: longestText(s.stats.longest),
+  }
 }

@@ -95,4 +95,98 @@
     font-weight: 700;
     font-variant-numeric: tabular-nums;
   }
+
+  /* ---------- Results leaderboard (engine/ui/leaderboard.ts): a real table ---------- */
+  .pf-leaderboard {
+    overflow-x: auto;
+    border: 2px solid var(--pf-rim);
+    border-radius: var(--pf-radius);
+    background: var(--pf-pit);
+  }
+  .pf-leaderboard table {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+  }
+  .pf-leaderboard th {
+    padding: 8px 5px;
+    color: var(--pf-haze);
+    background: color-mix(in srgb, var(--pf-rim) 45%, var(--pf-pit));
+    font-size: var(--pf-fs-xs);
+    font-weight: var(--pf-fw-semi);
+    letter-spacing: 0.04em;
+    text-align: center;
+    text-transform: uppercase;
+    line-height: 1.15;
+  }
+  .pf-leaderboard td {
+    padding: 6px 5px;
+    border-top: 1px solid var(--pf-rim);
+    text-align: center;
+    font-weight: 700;
+  }
+  .pf-leaderboard tbody tr:nth-child(even) td {
+    background: color-mix(in srgb, var(--pf-chalk) 4%, transparent);
+  }
+  /* The player's colour as a bar on the rank cell. */
+  .pf-leaderboard td.pf-rank {
+    box-shadow: inset 4px 0 0 var(--c, var(--pf-rim));
+    width: 2.5em;
+  }
+  .pf-leaderboard tbody tr:first-child .pf-rank {
+    color: var(--pf-yolk);
+  }
+  .pf-leaderboard .pf-lb-name {
+    text-align: left;
+  }
+  .pf-lb-who {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  /* Beats social.css's .pf-avatar (100% of its box), which loads later in the same layer. */
+  .pf-leaderboard .pf-lb-avatar {
+    flex: none;
+    width: 30px;
+    height: 30px;
+  }
+  .pf-lb-player {
+    max-width: 14ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pf-leaderboard tr.self td {
+    background: color-mix(in srgb, var(--pf-yolk) 16%, var(--pf-pit));
+  }
+  .pf-lb-badge {
+    flex: none;
+    white-space: nowrap;
+    padding: 1px 6px;
+    border-radius: 99px;
+    color: var(--pf-ink);
+    background: var(--pf-yolk);
+    font-size: var(--pf-fs-xs);
+    font-weight: 800;
+  }
+  .pf-lb-note {
+    margin: 0;
+    padding: 6px 8px;
+    border-top: 1px solid var(--pf-rim);
+    color: var(--pf-haze);
+    font-size: var(--pf-fs-sm);
+    text-align: center;
+  }
+  @media (max-width: 520px) {
+    .pf-leaderboard th,
+    .pf-leaderboard td {
+      padding: 5px 4px;
+      font-size: 12px;
+    }
+    .pf-leaderboard .pf-lb-avatar {
+      width: 24px;
+      height: 24px;
+    }
+  }
 }

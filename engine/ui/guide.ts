@@ -97,9 +97,15 @@ export function guideRows(steps: readonly GuideStep[], touch: boolean): GuideRow
   return rows
 }
 
-/** The game's steps plus the shell's own Pause row (Esc / P; keyboards only). */
-export function withPauseRow(steps: readonly GuideStep[]): GuideStep[] {
-  return [...steps, { action: t('Pause'), keys: [['Esc'], ['P']] }]
+/** The shell's default pause keys (KeyboardEvent.code). */
+export const PAUSE_KEYS: readonly string[] = ['Escape', 'KeyP']
+
+/** A key code's keycap label: Escape → Esc, KeyP → P. */
+const keyLabel = (code: string): string => (code === 'Escape' ? 'Esc' : code.replace(/^Key/, ''))
+
+/** The game's steps plus the shell's own Pause row (its pause keys, default Esc / P; keyboards only). */
+export function withPauseRow(steps: readonly GuideStep[], keys: readonly string[] = PAUSE_KEYS): GuideStep[] {
+  return [...steps, { action: t('Pause'), keys: keys.map((k) => [keyLabel(k)]) }]
 }
 
 /**
@@ -181,6 +187,21 @@ const touchSpoken = (a: TouchAction): string => {
   }
 }
 
+/** The visible name of the mouse button an action uses (none for the wheel). */
+const mouseLabel = (a: MouseAction): string | undefined => {
+  switch (a) {
+    case 'click':
+    case 'hold':
+      return t('Left click')
+    case 'right':
+      return t('Right click')
+    case 'drag':
+      return t('Left drag')
+    case 'scroll':
+      return undefined
+  }
+}
+
 const MOUSE_ICON: Record<MouseAction, string> = {
   click: inputIcons.mouseClick,
   hold: inputIcons.mouseClick,
@@ -242,21 +263,31 @@ function inputEl(input: GuideInput): HTMLElement {
     case 'or':
       return h('span', { class: 'pf-guide-or', textContent: t('or') })
     case 'mouse':
-      return iconEl(MOUSE_ICON[input.action], mouseSpoken(input.action), input.hold)
+      return iconEl(
+        MOUSE_ICON[input.action],
+        mouseSpoken(input.action),
+        input.hold,
+        mouseLabel(input.action),
+        'pf-guide-mouse',
+      )
     case 'touch':
       return iconEl(TOUCH_ICON[input.action], touchSpoken(input.action), input.hold, input.label)
   }
 }
 
 /** Mouse / touch input: icon plus its label or spoken name; held ones sit in a hold chip, read "hold …". */
-function iconEl(svg: string, said: string, hold: boolean, label?: string): HTMLElement {
+function iconEl(
+  svg: string,
+  said: string,
+  hold: boolean,
+  label?: string,
+  labelCls = 'pf-guide-touch',
+): HTMLElement {
   const el = h(
     'span',
     { class: 'pf-guide-icon' },
     icon(svg),
-    label
-      ? h('span', { class: 'pf-guide-touch', textContent: label })
-      : spoken(hold ? `${t('hold')} ${said}` : said),
+    label ? h('span', { class: labelCls, textContent: label }) : spoken(hold ? `${t('hold')} ${said}` : said),
   )
   if (!hold) return el
   // A visible label replaces the spoken name, so the hold cue is read out on its own.
@@ -327,7 +358,11 @@ export function openGuide(steps: readonly GuideStep[], opts: OpenGuideOptions = 
   card.setAttribute('role', 'dialog')
   card.setAttribute('aria-modal', 'true')
   card.setAttribute('aria-label', t('How to play'))
-  const layer = h('div', { class: 'pf-guide-layer', onclick: close }, card)
+  // Only a click on the backdrop itself closes (a click inside the card keeps it open).
+  const layer = h('div', { class: 'pf-guide-layer' }, card)
+  layer.onclick = (e) => {
+    if (e.target === layer) close()
+  }
   document.body.append(layer)
   window.addEventListener('keydown', onKey, true)
   ok.focus({ preventScroll: true })

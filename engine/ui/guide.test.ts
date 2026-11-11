@@ -110,6 +110,11 @@ describe('withPauseRow', () => {
     expect(pause.inputs.map((i) => (i.kind === 'keys' ? i.keys[0].text : i.kind))).toEqual(['Esc', 'or', 'P'])
     expect(guideRows(steps, true).map((r) => r.action)).toEqual(['Swing'])
   })
+
+  it("lists a game's own pause keys (e.g. Esc only)", () => {
+    const pause = guideRows(withPauseRow([STEPS[1]], ['Escape']), false).at(-1)!
+    expect(pause.inputs.map((i) => (i.kind === 'keys' ? i.keys[0].text : i.kind))).toEqual(['Esc'])
+  })
 })
 
 describe('howToPlayMode (backward compatible)', () => {
@@ -237,7 +242,9 @@ describe('guideList rendering', () => {
     expect(found).toHaveLength(2) // Space, mouse
     expect(found.every((c) => (c.children[0] as FakeEl).className === 'pf-guide-hold')).toBe(true)
     expect(spokenTexts(found[0])).toEqual(['hold Space'])
-    expect(spokenTexts(found[1])).toEqual(['hold Hold the mouse button'])
+    // The mouse shows its button ("Left click") as visible text; "hold" is read out on its own.
+    expect(spokenTexts(found[1])).toEqual(['hold'])
+    expect(all(found[1]).find((e) => e.className === 'pf-guide-mouse')!.textContent).toBe('Left click')
   })
 
   it('tap row has no hold chips', () => {

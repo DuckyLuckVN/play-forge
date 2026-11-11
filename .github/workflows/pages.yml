@@ -37,6 +37,19 @@ jobs:
         with:
           path: dist
 
+  # The long simulation tests (balance gauges, whole bot matches, fairness runs) beside the build, so
+  # they don't add to it; the deploy still waits for both.
+  simulation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:sim
+
   # Separate from `build` so a stale README is flagged without blocking the deploy.
   readme:
     runs-on: ubuntu-latest
@@ -47,9 +60,9 @@ jobs:
         run: git diff --exit-code README.md || (echo "::error::Run 'npm run readme' and commit README.md" && exit 1)
 
   deploy:
-    # Only from main, and only when the build passes.
+    # Only from main, and only when the build and the simulation tests pass.
     if: github.event_name != 'pull_request'
-    needs: [build]
+    needs: [build, simulation]
     runs-on: ubuntu-latest
     environment:
       name: github-pages

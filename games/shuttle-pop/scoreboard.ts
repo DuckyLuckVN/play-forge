@@ -9,6 +9,7 @@ import { h } from '@forge'
 import { teamName } from './doubles'
 import { t } from './i18n'
 import { PRESETS } from './presets'
+import { ScoreSplash } from './scoresplash'
 import { CAP, matchPoint, TARGET, winner } from './rules'
 import { shownName, type SpState } from './sim'
 
@@ -147,8 +148,10 @@ class Team {
     )
   }
 
-  update(v: BoardSide) {
+  /** Returns whether a point was won (the score went up). */
+  update(v: BoardSide): boolean {
     const was = this.last
+    let scored = false
     if (v.name !== was.name) {
       this.nameEl.textContent = v.name
       this.el.title = v.name
@@ -159,9 +162,13 @@ class Team {
     if (v.score !== was.score) {
       this.numEl.textContent = String(v.score)
       // A point won (not the first draw, not a rematch's 0): pop the number.
-      if (popsOn(was.score, v.score)) this.flash.trigger()
+      if (popsOn(was.score, v.score)) {
+        this.flash.trigger()
+        scored = true
+      }
     }
     this.last = v
+    return scored
   }
 
   reset() {
@@ -172,6 +179,8 @@ class Team {
 
 export class Scoreboard {
   readonly root: HTMLElement
+  /** The big mid-court score after each point (the view mounts its root over the court). */
+  readonly splash = new ScoreSplash()
   private left = new Team('left')
   private right = new Team('right')
   private tagEl: HTMLElement
@@ -198,8 +207,9 @@ export class Scoreboard {
       this.pairs = v.pairs
       this.root.classList.toggle('pairs', v.pairs)
     }
-    this.left.update(v.left)
-    this.right.update(v.right)
+    const l = this.left.update(v.left)
+    const r = this.right.update(v.right)
+    if (l || r) this.splash.show(v.left, v.right, l ? 'left' : 'right')
     if (v.match !== this.match) {
       this.match = v.match
       this.tagEl.dataset.who = v.match ?? ''
@@ -218,5 +228,6 @@ export class Scoreboard {
   reset() {
     this.left.reset()
     this.right.reset()
+    this.splash.hide()
   }
 }

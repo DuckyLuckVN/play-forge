@@ -1,6 +1,7 @@
+import { tallyOf } from './tally'
 import { describe, expect, it } from 'vitest'
 import { resolveOptions, type InputEvent, type PlayerInfo } from '@forge/net/session'
-import { ABILITY, acting, actReady, type Act } from './ability'
+import { ABILITY, acting, actReady, cooldownOf, type Act } from './ability'
 import { CHARGE, chargeOf } from './charge'
 import { COURT_SIZES, courtDims } from './courtsize'
 import { COURT, DT, predictLanding } from './physics'
@@ -913,7 +914,12 @@ describe('match stats (results screen)', () => {
       } else if (e.k === 'point') longest = Math.max(longest, shots)
     }
     expect(longest).toBeGreaterThan(1)
-    expect(s.stats).toEqual({ shots, longest, perfect })
+    expect(s.stats).toMatchObject({ shots, longest, perfect })
+    // Each side's players' tallies add up to that side's Perfect hits.
+    for (const side of [0, 1] as const)
+      expect(
+        s.players.filter((p) => p.side === side).reduce((n, p) => n + tallyOf(s.stats, p.id).perfect, 0),
+      ).toBe(perfect[side])
   })
 
   it('starts at zero', () => {
@@ -1431,6 +1437,52 @@ describe('jump / lunge ability', () => {
     }
     return seen
   }
+
+  const button = (k: 'jump' | 'lunge', x = 0, z = 0, auto?: true): InputEvent<SpInput> =>
+    ev('p0', { t: 'ability', x, z, k, ...(auto ? { auto } : {}) })
+  const handSwing = (): InputEvent<SpInput> => ev('p0', { t: 'swing', x: 0, z: 0 })
+
+  it('Jump button (auto swing off): leaps, never strikes; a swing in the air smashes with the jump reach', () => {
+    const { s, contact } = scene(LOB)
+    const seen = at(s, contact - ABILITY.jump.lead, [button('jump')])
+    expect(s.players[0].act).toMatchObject({ k: 'jump', free: true })
+    at(s, contact - 1, [], seen)
+    expect(seen.some((e) => e.k === 'hit' || e.k === 'whiff')).toBe(false)
+    at(s, contact, [handSwing()], seen)
+    untilStrike(s, seen)
+    expect(seen.find((e) => e.k === 'hit')).toMatchObject({ side: 0, act: 'jump', shot: 'smash' })
+  })
+
+  it('auto swing on: the Jump button strikes by itself (the old forced jump)', () => {
+    const { s, contact } = scene(LOB)
+    const seen = untilStrike(s, at(s, contact - ABILITY.jump.lead, [button('jump', 0, 0, true)]))
+    expect(s.players[0].act!.free).toBeUndefined()
+    expect(seen.find((e) => e.k === 'hit')).toMatchObject({ side: 0, act: 'jump', shot: 'smash' })
+  })
+
+  it('a Perfect hit cuts the running Jump / Dive cooldown by ABILITY.perfectCut', () => {
+    const { s, contact } = scene(LOB)
+    const seen = untilStrike(s, at(s, contact - ABILITY.jump.lead, [button('jump', 0, 0, true)]))
+    expect(seen.find((e) => e.k === 'hit')).toMatchObject({ side: 0, grade: 'perfect' })
+    const a = s.players[0].act!
+    expect(a.cut).toBe(ABILITY.perfectCut)
+    expect(actReady(a, a.at + cooldownOf(a) - ABILITY.perfectCut)).toBe(true)
+    expect(actReady(a, a.at + cooldownOf(a) - ABILITY.perfectCut - 1)).toBe(false)
+  })
+
+  it('auto swing on: the Dive button slides and strikes the wide drive by itself', () => {
+    const { s, contact } = scene(WIDE)
+    const seen = untilStrike(s, at(s, contact - ABILITY.dive.glide, [button('lunge', -1, 0, true)]))
+    expect(s.players[0].act).toMatchObject({ k: 'lunge', free: true })
+    expect(seen.find((e) => e.k === 'hit')).toMatchObject({ side: 0, act: 'lunge', shot: 'clear' })
+  })
+
+  it('auto swing on: a dive with nothing to reach only slides (no whiff)', () => {
+    const { s, contact } = scene(WIDE)
+    const seen = at(s, contact - ABILITY.dive.glide, [button('lunge', 1, 0, true)])
+    run(s, 30, () => [], seen)
+    expect(seen.some((e) => e.k === 'hit' || e.k === 'whiff')).toBe(false)
+  })
 
   it('a high lob + ability = jump-smash hit with act jump, stronger than a tap smash', () => {
     const { s, contact } = scene(LOB)

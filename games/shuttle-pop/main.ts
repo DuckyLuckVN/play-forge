@@ -2,12 +2,13 @@ import { createGameApp, h, landscapeGuard, smoothState, type MountContext, type 
 import { ARCADE } from '@forge/audio/tracks'
 import { webglAvailable } from '@forge/render3d'
 import './shuttle-pop.css'
-import { slideEnd, type Strike } from './ability'
+import { diveAllowed, freeSwing, slideEnd, type Strike } from './ability'
+import { prefs } from './prefs'
 import { toWorld } from './court'
 import { chargeOf } from './charge'
 import { mountEmotes } from './emotes'
 import { t } from './i18n'
-import { TouchPad } from './hud'
+import { AbilityChips, TouchPad } from './hud'
 import { bindInput } from './input'
 import { loadPreset, pickerStrip } from './picker'
 import { GuestShuttle, type GuestView } from './guestshuttle'
@@ -15,7 +16,7 @@ import { GuestPredictor } from './predict'
 import { RemoteTracks } from './remotes'
 import { Court3D, type LocalSwing } from './render3d'
 import { RenderClock } from './renderclock'
-import { outcomeOf, scoreChips, summaryRows } from './results'
+import { leaderboardOf, outcomeOf, scoreChips } from './results'
 import {
   canAct,
   canCharge,
@@ -90,6 +91,9 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement, ctx: Moun
   ) => {
     const me = smooth.curr?.players.find((p) => p.id === session.selfId)
     if (!guest || !predictor || !me) return
+    // A swing in our free Jump / Dive's window strikes with that move's box and shot (sim contactFor):
+    // the host's hit is shown when it comes instead of a plain-reach guess.
+    if (!act && freeSwing(predictor.act, predictor.stepNow)) return
     const player = from ?? { x: predictor.x, z: predictor.z }
     // Heard at once; the host's answering hit is then skipped (Court3D's echo).
     if (
@@ -108,7 +112,10 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement, ctx: Moun
     const hit = guest.shuttle.predicted()
     if (hit) court?.ownHitPredicted(hit)
   }
-  const send = (input: SpInput) => {
+  const send = (sent: SpInput) => {
+    // The Jump / Dive buttons also swing by themselves when the player turned Auto swing on (prefs.ts).
+    const input: SpInput =
+      sent.t === 'ability' && sent.k && prefs.get().autoSwing ? { ...sent, auto: true } : sent
     // Animate our own swing button this frame (not when the session or the sim would drop it); the
     // prediction slows with the charge and moves with exactly the moves the host gets.
     if (input.t === 'charge') {
@@ -142,7 +149,9 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement, ctx: Moun
       press = null
     } else if (input.t === 'ability') {
       // The host would ignore a press that can't act (locked, cooling, charging): don't send it.
-      if (!live() || !seatCan(canAct)) return
+      if (!live() || !seatCan((s, me) => canAct(s, me, input.k))) return
+      // A Dive while moving backward: the host ignores it (sim step).
+      if (input.k === 'lunge' && smooth.curr?.phase === 'rally' && !diveAllowed(input)) return
       const me = smooth.curr?.players.find((p) => p.id === session.selfId)
       if (guest && predictor && me) {
         // Same pick as the host (ability.ts) on the flight shown: the body leaps / dives now, a strike also
@@ -150,11 +159,11 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement, ctx: Moun
         const at = { x: predictor.x, z: predictor.z }
         const want = smooth.curr?.phase === 'rally' ? input.k : undefined
         const dir = input.x || input.z ? toWorld(me.side, input.x, input.z) : undefined
-        const pick = guest.shuttle.pickAbility(at, me.side, seatCan(canSwing), want, dir)
-        predictor.startAct(pick.k, pick.dx, pick.dz, !!pick.empty)
+        const pick = guest.shuttle.pickAbility(at, me.side, seatCan(canSwing), want, dir, input.auto === true)
+        predictor.startAct(pick.k, pick.dx, pick.dz, !!pick.empty, !!pick.free)
         // Heard and seen at once; the host's answering `act` event then stays silent (Court3D).
         court?.ownActPredicted(pick.k)
-        if (pick.k !== 'hop' && !pick.empty) {
+        if (pick.k !== 'hop' && !pick.empty && !pick.free) {
           // A lunge reaches from its slide end (sim contactFor).
           const from = pick.k === 'lunge' ? slideEnd(at, pick.dx, pick.dz) : undefined
           predictHit({ x: input.x, z: input.z }, false, 0, input.tick, pick.k, from)
@@ -169,9 +178,14 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement, ctx: Moun
   }
   // Touch: floating stick (left) + swing button (bottom-right), over the court.
   const pad = new TouchPad()
-  court.surface.append(pad.root)
-  // The phone button's cooldown follows the local player's (Court3D draws the same on its feet ring).
-  court.onCooldown = (cd) => pad.setAbility(cd)
+  // Desktop chips (Jump [Space] / Dive [Shift]) after the pad: CSS hides them while the touch controls show.
+  const chips = new AbilityChips()
+  court.surface.append(pad.root, chips.root)
+  // The buttons' cooldown follows the local player's (Court3D draws the same on its feet ring).
+  court.onCooldown = (cd, sec) => {
+    pad.setAbility(cd, sec)
+    chips.set(cd, sec)
+  }
   // Every human swing carries the tick on screen (the host rewinds up to MAX_REWIND): a guest's covers
   // its lag, the host's own its interpolation (0–1 ticks), so both sides get screen-aligned timing.
   // A guest's is the tick of the shuttle it sees (RenderClock), the same meaning as swingTick.
@@ -268,23 +282,19 @@ createGameApp<SpState, SpInput>({
   title: 'Shuttle Pop',
   // Same line as the launcher card.
   tagline: t(
-    'Chibi badminton. Time your swing for a Perfect, smash on high balls. Play the computer or a friend online.',
+    'Chibi badminton. Time your swing for a Perfect, smash on high balls. Play the computer or friends online, 1 vs 1 or 2 vs 2.',
   ),
   // Desktop rows (keys / mouse) and touch rows (stick / racket button); each device sees its own.
   guide: [
     {
       action: t('Move'),
-      keys: [
-        ['W', 'A', 'S', 'D'],
-        ['Up', 'Left', 'Down', 'Right'],
-      ],
+      keys: [['W', 'A', 'S', 'D']],
       touch: 'dragLeft',
       touchLabel: t('left side'),
     },
     {
       action: t('Swing'),
       note: t('Tap for a quick swing'),
-      keys: [['J']],
       mouse: 'click',
       touch: 'button',
     },
@@ -294,38 +304,27 @@ createGameApp<SpState, SpInput>({
         'Let go to hit. You move slower while charging, and much slower for a moment after a full-power swing.',
       ),
       hold: true,
-      keys: [['J']],
       mouse: 'hold',
       touch: 'button',
     },
     {
       action: t('Jump'),
-      note: t('Reach high shuttles: a jump smash. Then a short cooldown.'),
-      keys: [['Space'], ['K']],
+      note: t(
+        'Jump, then swing in the air to smash a high shuttle. Jump and Dive share a cooldown; each Perfect hit cuts it by 0.2 s. (Auto swing: view settings.)',
+      ),
+      keys: [['Space']],
       touch: 'button',
       touchLabel: t('jump button'),
     },
     {
       action: t('Dive'),
-      note: t('Slide the way you are moving to save a far, low shuttle. You stay down a moment.'),
+      note: t(
+        'Slide far the way you are moving (not backward), then swing to save a far, low shuttle. Works while charging too. You run slower for a moment after.',
+      ),
       keys: [['Shift']],
       mouse: 'right',
       touch: 'button',
       touchLabel: t('dive button'),
-    },
-    {
-      action: t('Doubles (2 vs 2)'),
-      note: t(
-        'The team that wins a point serves. When your team wins the serve back, your other teammate serves. Serve from the right on an even score, the left on odd. Bonks hit teammates too!',
-      ),
-      tip: true,
-    },
-    {
-      action: t('Racket bonk'),
-      note: t(
-        "Swing your racket into another player and they see stars for a moment. Then they can't be bonked for 2 s.",
-      ),
-      tip: true,
     },
     {
       action: t('Reactions'),
@@ -335,21 +334,17 @@ createGameApp<SpState, SpInput>({
       touch: 'button',
       touchLabel: t('emoji button'),
     },
-    { action: t('Smash or drive'), note: t('as you swing'), hold: true, keys: [['W'], ['Up']] },
-    { action: t('Clear (high and deep)'), note: t('as you swing'), hold: true, keys: [['S'], ['Down']] },
+    { action: t('Smash or drive'), note: t('as you swing'), hold: true, keys: [['W']] },
+    { action: t('Clear (high and deep)'), note: t('as you swing'), hold: true, keys: [['S']] },
     {
       action: t('Aim left or right'),
       note: t('as you swing'),
       hold: true,
-      keys: [
-        ['A', 'D'],
-        ['Left', 'Right'],
-      ],
+      keys: [['A', 'D']],
     },
     {
       action: t('Drop shot'),
       note: t('Swing with no direction held'),
-      keys: [['J']],
       mouse: 'click',
     },
     {
@@ -368,5 +363,7 @@ createGameApp<SpState, SpInput>({
   // `name` labels the computer's chip, translated at display time (lobby players keep their lobby name).
   scores: scoreChips,
   outcome: outcomeOf,
-  summary: summaryRows,
+  leaderboard: leaderboardOf,
+  // Esc only: P (and J / K / arrows) are not bound in Shuttle Pop.
+  pauseKeys: ['Escape'],
 })

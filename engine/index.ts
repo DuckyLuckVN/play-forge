@@ -8,6 +8,7 @@ export {
   type Scoreline,
   type SummaryRow,
 } from './app'
+export type { Leaderboard, LeaderboardRow } from './ui/leaderboard'
 export { playMusic, stopMusic, type Instrument, type Part, type Track } from './audio/music'
 export {
   getAudioSettings,

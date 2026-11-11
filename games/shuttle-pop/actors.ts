@@ -70,6 +70,12 @@ export interface ChibiPose {
   smash: number
   /** Jump height share 0..1. */
   jump: number
+  /** Take-off, ascent, and apex accents from animpose.ts. */
+  jumpCrouch: number
+  jumpCock: number
+  jumpStretch: number
+  /** Free dive only; auto lunges keep their standing reach. */
+  dive: number
   /** + squash / − stretch (start / turn springs, landings, the Perfect accent). */
   squash: number
   /** Extra forward lean (rad): the stop overshoot. */
@@ -107,6 +113,10 @@ export function restPose(): ChibiPose {
     power: 0,
     smash: 0,
     jump: 0,
+    jumpCrouch: 0,
+    jumpCock: 0,
+    jumpStretch: 0,
+    dive: 0,
     squash: 0,
     lean: 0,
     stance: 0,
@@ -167,6 +177,21 @@ const BEND_CROUCH = 0.38
  */
 const STANCE = { splay: 0.15, lean: 0.14, sideLean: 0.4, short: 0.4 }
 const LUNGE_LEAN = 0.18
+/**
+ * The Dive pose (pose.dive 0..1; the body already faces the dash): a deep crouch with a modest lean, not
+ * lying down, and the racket arm stretched far out along the dash (rPitch ≈ −1.45 = arm level forward,
+ * elbow almost straight), the free arm back for balance. A swing in the dive keeps most of its path.
+ */
+const DIVE = {
+  bend: 0.75,
+  lean: 0.38,
+  squash: 0.1,
+  rPitch: -1.45,
+  rElbow: 0.12,
+  rAcross: 0.05,
+  lPitch: 0.7,
+  swingKeep: 0.65,
+}
 const SPLIT_H = 0.07
 const SPLIT_SPLAY = 0.1
 /** Waiting bounce on the balls of the feet: rad/s, lift (m), extra knee bend at the bottom (rad). */
@@ -658,7 +683,7 @@ export function createChibi(preset: number): Chibi {
   function setPose(p: ChibiPose, t: number) {
     strideParams(p.run, stride)
     const cycle = Math.sin(Math.PI * 2 * p.stride)
-    hop(t, hopO)
+    hop(t + blinkSeed * 0.21 * p.cheer, hopO)
     const happy = p.happy
     const sad = p.sad
     const calm = (1 - p.run) * (1 - happy)
@@ -685,7 +710,13 @@ export function createChibi(preset: number): Chibi {
     legIn.tuck = Math.min(1, p.jump) * 0.7 + hopO.height * happy * 0.4 + p.split * 0.3
     legIn.splay = STANCE.splay * st + 0.2 * p.crouch + SPLIT_SPLAY * p.split
     legIn.bend =
-      BEND_STANCE * st + BEND_READY * ready + BEND_CROUCH * p.crouch + BOUNCE.bend * (1 - bounce) * bounceW
+      BEND_STANCE * st +
+      BEND_READY * ready +
+      BEND_CROUCH * p.crouch +
+      BOUNCE.bend * (1 - bounce) * bounceW +
+      p.jumpCrouch * 2 +
+      p.dive * DIVE.bend +
+      sad * 0.25
     legAngles(legIn, legO)
     for (let i = 0; i < 2; i++) {
       legs[i].hip.rotation.x = legO.hipX[i]
@@ -718,9 +749,11 @@ export function createChibi(preset: number): Chibi {
       0.04 * ready +
       0.1 * p.crouch +
       0.08 * sad +
-      LUNGE_LEAN * p.lunge
+      LUNGE_LEAN * p.lunge +
+      p.dive * DIVE.lean +
+      sad * 0.18
     rig.rotation.z = -LEAN_SIDE * p.side * (1 - STANCE.sideLean * st)
-    rig.rotation.y = celebrateSpin(t) * p.cheer
+    rig.rotation.y = celebrateSpin(t + blinkSeed * 0.21) * p.cheer
 
     // Squash / stretch about the feet (rig origin): springs, crouch, landings, breathing.
     let sq =
@@ -729,7 +762,10 @@ export function createChibi(preset: number): Chibi {
       hopO.squash * happy +
       SQUASH_CROUCH * p.crouch +
       SQUASH_READY * ready +
-      0.05 * sad
+      0.05 * sad +
+      p.jumpCrouch +
+      p.dive * DIVE.squash -
+      p.jumpStretch * 0.09
     sq -= Math.sin(t * (sad ? 1.6 : 3)) * BREATHE * calm
     rig.scale.set(1 + sq * 0.5, 1 - sq, 1 + sq * 0.5)
 
@@ -758,6 +794,16 @@ export function createChibi(preset: number): Chibi {
       swingIn.strike = k === 0 ? p.strike : p.strike - back
       swingIn.prev = k === 0 || p.prev < 0 ? p.prev : Math.max(0, p.prev - back)
       swingPose(base, swingIn, p.smash, ang)
+      // Add action accents after the swing so a mid-air hit still owns the racket path.
+      ang[CH.rPitch] -= p.jumpCock * 0.8
+      ang[CH.rElbow] -= p.jumpCock * 0.3
+      // The Dive reach: blend toward the stretched arm (less while a swing plays, so the hit still shows).
+      const reach = p.dive * (swingIn.strike >= 0 ? 1 - DIVE.swingKeep : 1)
+      ang[CH.rPitch] += (DIVE.rPitch - ang[CH.rPitch]) * reach
+      ang[CH.rElbow] += (DIVE.rElbow - ang[CH.rElbow]) * reach
+      ang[CH.rAcross] += (DIVE.rAcross - ang[CH.rAcross]) * reach
+      ang[CH.lPitch] += (DIVE.lPitch - ang[CH.lPitch]) * reach
+      ang[CH.lPitch] -= p.cheer * Math.sin(t * 11 + blinkSeed) * 0.18
       applyUpper(ang)
       if (trail) {
         const fade = Math.min(1, STREAK.opacity * boost * glow) * (1 - k / (N + 1))

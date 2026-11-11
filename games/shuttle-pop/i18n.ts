@@ -21,8 +21,8 @@ export const VI: Dictionary = {
   '{a} & {b}': '{a} & {b}',
 
   // Start screen
-  'Chibi badminton. Time your swing for a Perfect, smash on high balls. Play the computer or a friend online.':
-    'Cầu lông chibi. Vung vợt đúng lúc để được Perfect, đập mạnh khi cầu cao. Chơi với máy hoặc với bạn bè trực tuyến.',
+  'Chibi badminton. Time your swing for a Perfect, smash on high balls. Play the computer or friends online, 1 vs 1 or 2 vs 2.':
+    'Cầu lông chibi. Vung vợt đúng lúc để được Perfect, đập mạnh khi cầu cao. Chơi với máy hoặc với bạn bè trực tuyến, 1 đấu 1 hoặc 2 đấu 2.',
   // Control guide (main.ts)
   Move: 'Di chuyển',
   'left side': 'nửa trái',
@@ -33,18 +33,12 @@ export const VI: Dictionary = {
     'Thả ra để đánh. Khi tích lực bạn đi chậm hơn, và chậm hẳn trong giây lát sau cú đánh mạnh tối đa.',
   Jump: 'Nhảy',
   Dive: 'Bổ nhào',
-  'Racket bonk': 'Cốc vợt',
-  "Swing your racket into another player and they see stars for a moment. Then they can't be bonked for 2 s.":
-    'Vung vợt trúng người chơi khác là họ choáng, thấy sao một lúc. Sau đó 2 giây họ không bị cốc nữa.',
-  'Reach high shuttles: a jump smash. Then a short cooldown.':
-    'Với tới cầu cao: bật nhảy đập cầu. Sau đó chờ hồi chiêu một chút.',
-  'Slide the way you are moving to save a far, low shuttle. You stay down a moment.':
-    'Trượt theo hướng đang chạy để cứu cầu thấp và xa. Bạn sẽ nằm sân một chút.',
+  'Jump, then swing in the air to smash a high shuttle. Jump and Dive share a cooldown; each Perfect hit cuts it by 0.2 s. (Auto swing: view settings.)':
+    'Nhảy lên rồi vung vợt trên không để đập cầu cao. Nhảy và Bổ nhào dùng chung thời gian hồi; mỗi cú Hoàn hảo giảm 0,2 giây. (Tự vung vợt: cài đặt góc nhìn.)',
+  'Slide far the way you are moving (not backward), then swing to save a far, low shuttle. Works while charging too. You run slower for a moment after.':
+    'Trượt xa theo hướng đang chạy (không lùi), rồi vung vợt để cứu cầu thấp và xa. Đang tích lực cũng trượt được. Sau đó bạn chạy chậm lại một chút.',
   'jump button': 'nút nhảy',
   'dive button': 'nút bổ nhào',
-  'Doubles (2 vs 2)': 'Đánh đôi (2 đấu 2)',
-  'The team that wins a point serves. When your team wins the serve back, your other teammate serves. Serve from the right on an even score, the left on odd. Bonks hit teammates too!':
-    'Đội thắng điểm được giao cầu. Khi đội bạn giành lại quyền giao, đồng đội còn lại giao. Điểm chẵn giao bên phải, điểm lẻ bên trái. Cốc vợt trúng cả đồng đội đấy!',
   Reactions: 'Biểu cảm',
   'Online: move toward an emoji, let go to send': 'Chơi online: hướng về một biểu cảm, thả ra để gửi',
   'emoji button': 'nút biểu cảm',
@@ -80,6 +74,12 @@ export const VI: Dictionary = {
   // In-match overlay (hud.ts, scoreboard.ts): timing pops, badges, the board
   'Power!': 'Siêu mạnh!',
   'Perfect!': 'Hoàn hảo!',
+  Perfect: 'Hoàn hảo',
+  Points: 'Điểm',
+  Smashes: 'Đập cầu',
+  'Dive saves': 'Cứu cầu',
+  Bonks: 'Cốc vợt',
+  MVP: 'MVP',
   Good: 'Tốt',
   Late: 'Trễ',
   Miss: 'Hụt',
@@ -90,6 +90,8 @@ export const VI: Dictionary = {
   'Next point wins': 'Ai ghi điểm tiếp sẽ thắng',
 
   // Results
+  'Victory!': 'Chiến thắng!',
+  Defeat: 'Thất bại',
   '{name} wins!': '{name} thắng!',
   'Your opponent left. You win!': 'Đối thủ đã rời đi. Bạn thắng!',
   'You win {score}!': 'Bạn thắng {score}!',
@@ -98,13 +100,9 @@ export const VI: Dictionary = {
   'Your team wins {score}!': 'Đội bạn thắng {score}!',
   '{names} win {score}.': '{names} thắng {score}.',
   '{names} win!': '{names} thắng!',
-  'Final score': 'Tỉ số chung cuộc',
   'Longest rally': 'Pha cầu dài nhất',
   '{n} shot': '{n} cú đánh',
   '{n} shots': '{n} cú đánh',
-  'Your Perfect hits': 'Cú Hoàn hảo của bạn',
-  "Your team's Perfect hits": 'Cú Hoàn hảo của đội bạn',
-  'Perfect hits': 'Cú Hoàn hảo',
 
   // View settings button and panel (camera-menu.ts, prefs.ts)
   Default: 'Mặc định',
@@ -119,6 +117,9 @@ export const VI: Dictionary = {
   Hidden: 'Ẩn',
   'Near drop': 'Sắp rơi',
   Always: 'Luôn hiện',
+  'Auto swing (Jump / Dive)': 'Tự vung vợt (Nhảy / Bổ nhào)',
+  Off: 'Tắt',
+  On: 'Bật',
 }
 
 export const t = translator(VI)

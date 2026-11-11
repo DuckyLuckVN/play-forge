@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { cooldownTicksLeft, type Act } from './ability'
+import { ABILITY, cooldownTicksLeft, type Act } from './ability'
 import { CooldownBadge, cooldownText } from './cooldown'
 import { AbilityChips, TouchPad } from './hud'
 
@@ -18,8 +18,8 @@ describe('cooldownText', () => {
 describe('cooldownTicksLeft', () => {
   it('counts down from the press to its cooldown', () => {
     const a: Act = { k: 'lunge', at: 10, dx: 0, dz: 1, free: true }
-    expect(cooldownTicksLeft(a, 10)).toBe(90)
-    expect(cooldownTicksLeft(a, 70)).toBe(30)
+    expect(cooldownTicksLeft(a, 10)).toBe(ABILITY.dive.cooldown)
+    expect(cooldownTicksLeft(a, 70)).toBe(ABILITY.dive.cooldown - 60)
     expect(cooldownTicksLeft(a, 200)).toBe(0)
     expect(cooldownTicksLeft(null, 5)).toBe(0)
   })

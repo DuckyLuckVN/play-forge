@@ -52,7 +52,7 @@ export const ABILITY = {
     reach: { radius: 1.1, minY: 2.2, maxY: 3.85 } as Readonly<Reach>,
     /** A free jump (the Jump button, auto swing off): swings until `grace` ticks after landing reach high; one cooldown. */
     grace: 6,
-    freeCooldown: 120,
+    freeCooldown: 150,
   },
   lunge: {
     lead: 8,
@@ -68,10 +68,10 @@ export const ABILITY = {
    * A swing (J) from the press until `grace` ticks after the glide reaches like a lunge (reach box at the
    * slide end, its capped clear). After the glide the run is slowed to `slow`, easing back to full over
    * `floor` ticks (a get-up, never stuck; swinging allowed). `back` = the held view z below which the
-   * button does nothing (moving away from the net: no escape dives). One cooldown, hit or not (1.5 s:
+   * button does nothing (moving away from the net: no escape dives). One cooldown, hit or not (2 s:
    * between an empty move's 1 s and a striking one's 3 s).
    */
-  dive: { glide: 16, slide: 1.8, grace: 15, floor: 30, slow: 0.3, back: -0.5, cooldown: 90 },
+  dive: { glide: 16, slide: 1.8, grace: 15, floor: 30, slow: 0.3, back: -0.5, cooldown: 120 },
 } as const
 
 /** A dive's shape: ticks sliding (`dive`), metres, ticks down after. */

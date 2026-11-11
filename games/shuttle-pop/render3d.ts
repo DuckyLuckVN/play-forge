@@ -629,6 +629,7 @@ export class Court3D {
     scene.add(this.trail.mesh, this.fx.points, this.dust.mesh)
     this.view.onResize((_w, h) => this.fx.setScale(h * this.view.renderer.getPixelRatio()))
     this.view.root.appendChild(this.hud.root)
+    this.hud.root.appendChild(this.board.splash.root)
     this.view.root.appendChild(this.bubbles.root)
     this.banner.className = 'sp-outcome-stamp'
     this.banner.setAttribute('aria-live', 'polite')

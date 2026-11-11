@@ -58,6 +58,7 @@ Fun mini-games to play with friends: solo, on one device, or online. No accounts
 npm install
 npm run dev          # http://localhost:5173
 npm run check        # typecheck + lint + format + unit tests
+npm run test:sim     # long simulation tests (*.simulation.test.ts: balance, bot matches, fairness runs)
 npm run test:e2e     # browser tests (first time: npx playwright install chromium)
 npm run build        # dist/ (or: npm run build -- snake)
 ```

@@ -12,7 +12,7 @@ describe('balance harness', () => {
       expect(a.turns).toBeGreaterThan(1)
       expect(a).toEqual(simulateRun(3, bot, 12))
     }
-  }, 30_000) // the greedy bot plays every shot six times ahead
+  })
 
   // `npm run balance` writes the full report to BALANCE_OUT (default balance-report.txt).
   it.runIf(env.BALANCE)(

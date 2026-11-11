@@ -37,7 +37,7 @@ export type Want = Strike
  * really slides `slide` m along the dive over its 0.2 s dive (sim + prediction), reaching `reach.radius`
  * from where it lands (pickReachOf = the same box seen from the press spot), then 0.7 s on the floor.
  * Shared 3 s cooldown; a hop or an empty forced move 1 s. `lead` = ticks the strike may land before the
- * press (the move's wind-up). jump.charge 0.6 → 0.8 in the balance pass (balance.test.ts 'jump / lunge
+ * press (the move's wind-up). jump.charge 0.6 → 0.8 in the balance pass (balance-ability.simulation.test.ts 'jump / lunge
  * balance': a smart jumper must gain on a never-jumper).
  */
 export const ABILITY = {

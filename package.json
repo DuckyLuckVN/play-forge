@@ -9,13 +9,15 @@
     "readme": "node scripts/readme.mjs",
     "preview": "npx --yes serve dist",
     "typecheck": "tsc --noEmit && tsc --noEmit -p e2e && tsc --noEmit -p server/relay",
-    "test": "vitest run",
+    "test": "vitest run --project unit",
+    "test:sim": "vitest run --project simulation",
+    "test:all": "vitest run",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:e2e": "playwright test",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm test",
-    "balance": "BALANCE=1 vitest run games/brickstorm/sim/balance.test.ts",
+    "balance": "BALANCE=1 vitest run --project simulation games/brickstorm/sim/balance.simulation.test.ts",
     "relay": "ALLOW_LOCALHOST=1 node server/relay/main.ts"
   },
   "devDependencies": {

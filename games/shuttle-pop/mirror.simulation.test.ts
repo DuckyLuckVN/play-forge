@@ -88,53 +88,44 @@ function script(s: SpState): InputEvent<SpInput>[] {
 }
 
 /** Long sim runs; generous so a busy machine does not flake. */
-const SLOW = 30_000
 
 describe('mirror invariance', () => {
-  it(
-    'scripted players: the match from the other end is the exact mirror',
-    () => {
-      for (const seed of [1, 2, 3, 4]) {
-        const a = game.setup(players(2), seed, {})
-        const b = mirror(a)
-        for (let i = 0; i < 3000 && a.phase !== 'over'; i++) {
-          game.tick(a, script(a))
-          game.tick(b, script(b))
-          if (a.tick % 5 !== 0) continue
+  it('scripted players: the match from the other end is the exact mirror', () => {
+    for (const seed of [1, 2, 3, 4]) {
+      const a = game.setup(players(2), seed, {})
+      const b = mirror(a)
+      for (let i = 0; i < 3000 && a.phase !== 'over'; i++) {
+        game.tick(a, script(a))
+        game.tick(b, script(b))
+        if (a.tick % 5 !== 0) continue
+        const diff = close(canon(mirror(a)), canon(b))
+        if (diff) throw new Error(`seed ${seed} tick ${a.tick}: ${diff}`)
+      }
+      // Something happened (scripted players can rally for the whole run, so count shots, not recent events).
+      expect(a.stats.shots + a.score[0] + a.score[1]).toBeGreaterThan(0)
+    }
+  })
+
+  it('bot vs bot: the match from the other end is the exact mirror (no seat-order coupling)', () => {
+    for (const seed of [11, 12]) {
+      const a = setupBots('hard', 'normal', seed)
+      const b = mirror(a)
+      let charged = 0
+      let strikes = 0
+      while (a.phase !== 'over' && a.tick < 20000) {
+        game.tick(a, [])
+        game.tick(b, [])
+        if (a.players.some((p) => p.chargeAt === a.tick)) charged++
+        if (a.events.some((e) => e.k === 'act' && e.act !== 'hop' && e.tick === a.tick)) strikes++
+        if (a.tick % 10 === 0 || game.isFinished(a)) {
           const diff = close(canon(mirror(a)), canon(b))
           if (diff) throw new Error(`seed ${seed} tick ${a.tick}: ${diff}`)
         }
-        // Something happened (scripted players can rally for the whole run, so count shots, not recent events).
-        expect(a.stats.shots + a.score[0] + a.score[1]).toBeGreaterThan(0)
       }
-    },
-    SLOW,
-  )
-
-  it(
-    'bot vs bot: the match from the other end is the exact mirror (no seat-order coupling)',
-    () => {
-      for (const seed of [11, 12]) {
-        const a = setupBots('hard', 'normal', seed)
-        const b = mirror(a)
-        let charged = 0
-        let strikes = 0
-        while (a.phase !== 'over' && a.tick < 20000) {
-          game.tick(a, [])
-          game.tick(b, [])
-          if (a.players.some((p) => p.chargeAt === a.tick)) charged++
-          if (a.events.some((e) => e.k === 'act' && e.act !== 'hop' && e.tick === a.tick)) strikes++
-          if (a.tick % 10 === 0 || game.isFinished(a)) {
-            const diff = close(canon(mirror(a)), canon(b))
-            if (diff) throw new Error(`seed ${seed} tick ${a.tick}: ${diff}`)
-          }
-        }
-        expect(a.phase).toBe('over')
-        expect(b.winner).toBe(flip(a.winner as 0 | 1))
-        expect(charged, 'the bots charged (hold-to-charge is covered)').toBeGreaterThan(5)
-        expect(strikes, 'the bots jumped / lunged (the ability is covered)').toBeGreaterThan(0)
-      }
-    },
-    SLOW,
-  )
+      expect(a.phase).toBe('over')
+      expect(b.winner).toBe(flip(a.winner as 0 | 1))
+      expect(charged, 'the bots charged (hold-to-charge is covered)').toBeGreaterThan(5)
+      expect(strikes, 'the bots jumped / lunged (the ability is covered)').toBeGreaterThan(0)
+    }
+  })
 })

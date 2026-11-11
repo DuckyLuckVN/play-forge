@@ -1,8 +1,12 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 import { withSplash } from './scripts/splash.mjs'
 import { appUpdated, appVersion } from './scripts/version.mjs'
+
+/** Where tests live; `SIMULATION` files are the long-running ones (their own project). */
+const TEST_DIRS = ['engine', 'games', 'launcher', 'scripts', 'server']
+const SIMULATION = '**/*.simulation.test.ts'
 
 // Dev server config. Production builds go through scripts/build.mjs, which
 // produces one self-contained HTML file per game.
@@ -29,13 +33,28 @@ export default defineConfig({
   resolve: {
     alias: { '@forge': fileURLToPath(new URL('./engine', import.meta.url)) },
   },
+  // Two projects: `unit` (npm test: fast functional tests) and `simulation` (npm run test:sim: long
+  // runs of whole matches / balance gauges / big sweeps, named *.simulation.test.ts). CI runs both.
   test: {
-    include: [
-      'engine/**/*.test.ts',
-      'games/**/*.test.ts',
-      'launcher/**/*.test.ts',
-      'scripts/**/*.test.ts',
-      'server/**/*.test.ts',
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'unit',
+          include: TEST_DIRS.map((d) => `${d}/**/*.test.ts`),
+          exclude: [...configDefaults.exclude, SIMULATION],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'simulation',
+          include: TEST_DIRS.map((d) => `${d}/${SIMULATION}`),
+          // Whole matches / long runs, all files in parallel: no per-test clock (each run is bounded by
+          // its own match / tick caps), one generous ceiling for a hung run.
+          testTimeout: 600_000,
+        },
+      },
     ],
   },
 })

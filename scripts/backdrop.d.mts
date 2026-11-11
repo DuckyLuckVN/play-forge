@@ -17,7 +17,24 @@ export function ridgeRects(
 ): PixelRect[]
 /** Rects for a filled circle of radius r centred on a size×size grid. */
 export function discRects(size: number, r: number, color: string): PixelRect[]
-/** Standalone CSS for the pixel-arcade backdrop (raw colours, no tokens). */
+/** A [body, lit edge] colour pair. */
+type Pair = [body: string, edge: string]
+/** Every colour of the backdrop scene; shapes and motion are shared. */
+export interface BackdropTheme {
+  /** Sky bands top to bottom: [colour, ends at %]; the last ends at 100. */
+  sky: [color: string, to: number][]
+  stars: boolean
+  /** Sun (or moon): two halo rings, core, inner disc, shine; `high` = top of the sky instead of on the horizon. */
+  sun: { halo: [string, string]; core: string; inner: string; shine: string; high: boolean }
+  cloud: [light: string, shade: string]
+  far: Pair
+  near: Pair
+  ground: { grass: string; grassDark: string; dirt: string; mortar: string }
+}
+export const THEMES: Record<'sunset' | 'autumn' | 'canyon' | 'candy' | 'day' | 'night', BackdropTheme>
+/** Standalone CSS for the backdrop in a theme's colours (raw colours, no tokens; default sunset). */
+export function backdropCss(theme?: BackdropTheme): string
+/** The default (sunset) backdrop CSS. */
 export const BACKDROP_CSS: string
 /** The decorative backdrop element's markup (aria-hidden, static). */
 export function backdropMarkup(): string

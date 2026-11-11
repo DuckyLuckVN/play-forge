@@ -95,118 +95,258 @@ export function discRects(size, r, color) {
   return rects
 }
 
+// ---- Themes: every colour of the scene (the shapes and motion are shared) ----
+
+/**
+ * Sky bands [colour, ends at %] top to bottom (keep the top dark enough for
+ * light text), stars on/off, the sun (or moon) and its height, cloud, far
+ * mountains, near hills and ground colours.
+ */
+export const THEMES = {
+  sunset: {
+    sky: [
+      ['#2a1638', 14],
+      ['#43193f', 26],
+      ['#6b2346', 38],
+      ['#9c3346', 50],
+      ['#cc4d40', 61],
+      ['#ea7339', 72],
+      ['#f79d3c', 82],
+      ['#ffc65e', 100],
+    ],
+    stars: true,
+    sun: {
+      halo: ['rgb(255 170 80 / .2)', 'rgb(255 190 100 / .35)'],
+      core: '#ffd36b',
+      inner: '#ffe9a6',
+      shine: '#fff6d6',
+      high: false,
+    },
+    cloud: ['#ff9f7f', '#d9614f'],
+    far: ['#8c4a35', '#bd6a45'],
+    near: ['#5a2e22', '#80452e'],
+    ground: { grass: '#9bd84e', grassDark: '#5c9a2c', dirt: '#7a4128', mortar: '#4e2817' },
+  },
+  autumn: {
+    sky: [
+      ['#4a2016', 14],
+      ['#6e2e1a', 26],
+      ['#93401f', 38],
+      ['#b85a27', 50],
+      ['#d67a32', 61],
+      ['#eb9c42', 72],
+      ['#f6bb5c', 84],
+      ['#fbd788', 100],
+    ],
+    stars: false,
+    sun: {
+      halo: ['rgb(255 230 170 / .2)', 'rgb(255 230 170 / .35)'],
+      core: '#fff0c2',
+      inner: '#fff8e0',
+      shine: '#ffffff',
+      high: true,
+    },
+    cloud: ['#ffe2b8', '#e9b07a'],
+    far: ['#9a4b26', '#c26a34'],
+    near: ['#5c3519', '#7f4d24'],
+    ground: { grass: '#e8902c', grassDark: '#a8561a', dirt: '#5c3a22', mortar: '#3c2414' },
+  },
+  canyon: {
+    sky: [
+      ['#16344d', 14],
+      ['#1f4a66', 26],
+      ['#2f6582', 38],
+      ['#4f879c', 50],
+      ['#86adaa', 60],
+      ['#d9c08e', 72],
+      ['#f2a85e', 86],
+      ['#f78a4a', 100],
+    ],
+    stars: false,
+    sun: {
+      halo: ['rgb(255 250 220 / .2)', 'rgb(255 250 220 / .35)'],
+      core: '#fff6c8',
+      inner: '#ffffff',
+      shine: '#ffffff',
+      high: true,
+    },
+    cloud: ['#fff7ea', '#e6cdb0'],
+    far: ['#b4552a', '#d97642'],
+    near: ['#7c3a1e', '#a1512b'],
+    ground: { grass: '#f2c56b', grassDark: '#c8933c', dirt: '#a8683a', mortar: '#7c4826' },
+  },
+  candy: {
+    sky: [
+      ['#311852', 14],
+      ['#4c2275', 26],
+      ['#713398', 38],
+      ['#a24bb0', 50],
+      ['#cf67bc', 61],
+      ['#ef88c2', 72],
+      ['#ffaac8', 84],
+      ['#ffcfd2', 100],
+    ],
+    stars: true,
+    sun: {
+      halo: ['rgb(255 240 160 / .25)', 'rgb(255 240 160 / .4)'],
+      core: '#ffe37a',
+      inner: '#fff3b8',
+      shine: '#ffffff',
+      high: false,
+    },
+    cloud: ['#ffffff', '#f2bfe0'],
+    far: ['#8a4ab4', '#b06fd8'],
+    near: ['#5a2a86', '#7a40a8'],
+    ground: { grass: '#7ef0c0', grassDark: '#36b886', dirt: '#c0609e', mortar: '#8a3a72' },
+  },
+  day: {
+    sky: [
+      ['#1a4590', 14],
+      ['#2459aa', 26],
+      ['#3270c2', 38],
+      ['#4789d4', 50],
+      ['#64a3e2', 61],
+      ['#86bcec', 72],
+      ['#abd3f3', 84],
+      ['#d4eaf9', 100],
+    ],
+    stars: false,
+    sun: {
+      halo: ['rgb(255 245 170 / .2)', 'rgb(255 245 170 / .35)'],
+      core: '#ffe86b',
+      inner: '#fff6b8',
+      shine: '#ffffff',
+      high: true,
+    },
+    cloud: ['#ffffff', '#c6dbf0'],
+    far: ['#5b84b0', '#7ea5cc'],
+    near: ['#3b8a48', '#5aab5a'],
+    ground: { grass: '#7cd04a', grassDark: '#47992a', dirt: '#8a5a32', mortar: '#5e3a1e' },
+  },
+  night: {
+    sky: [
+      ['#10132c', 22],
+      ['#161a3a', 44],
+      ['#1b1c48', 58],
+      ['#232259', 70],
+      ['#2f2668', 80],
+      ['#40296f', 88],
+      ['#5a2d6e', 100],
+    ],
+    stars: true,
+    sun: {
+      halo: ['rgb(255 232 168 / .12)', 'rgb(255 232 168 / .18)'],
+      core: '#ffe8a8',
+      inner: '#f6e2a0',
+      shine: '#fff6d6',
+      high: true,
+    },
+    cloud: ['#3d4285', '#2f3470'],
+    far: ['#2a2a6a', '#3e3c8c'],
+    near: ['#1d2050', '#2c3478'],
+    ground: { grass: '#4be3a0', grassDark: '#1f9e68', dirt: '#2b2f6b', mortar: '#1b1f4a' },
+  },
+}
+
 // ---- The art ----
 
-const SUNSET = [
-  ['#2a1638', 14], // deep plum up top, so the title and text stay readable
-  ['#43193f', 26],
-  ['#6b2346', 38],
-  ['#9c3346', 50],
-  ['#cc4d40', 61],
-  ['#ea7339', 72],
-  ['#f79d3c', 82],
-  ['#ffc65e', 100], // gold at the horizon
-]
 const COIN = { K: '#c98f00', Y: '#ffc83d', W: '#fff3c4' }
 
-const ART = {
-  stars: svgUrl(64, 48, [
-    [5, 6, 1, 1, '#f4f1ff'],
-    [22, 14, 1, 1, '#a3a8d6'],
-    [41, 4, 1, 1, '#f4f1ff'],
-    [57, 19, 1, 1, '#a3a8d6'],
-    [12, 29, 1, 1, '#a3a8d6'],
-    [33, 36, 1, 1, '#f4f1ff'],
-    [50, 42, 1, 1, '#a3a8d6'],
-    // A plus-shaped sparkle.
-    [29, 23, 3, 1, '#ffc83d'],
-    [30, 22, 1, 3, '#ffc83d'],
-  ]),
-  stars2: svgUrl(80, 56, [
-    [9, 11, 1, 1, '#f4f1ff'],
-    [47, 8, 1, 1, '#f4f1ff'],
-    [70, 30, 1, 1, '#a3a8d6'],
-    [25, 44, 1, 1, '#f4f1ff'],
-    [60, 50, 1, 1, '#a3a8d6'],
-    [14, 33, 3, 1, '#ffe8a8'],
-    [15, 32, 1, 3, '#ffe8a8'],
-  ]),
-  sun: (() => {
-    const disc = (r, c) => discRects(40, r, c)
-    return svgUrl(40, 40, [
-      ...disc(20, 'rgb(255 170 80 / .2)'), // stepped halo
-      ...disc(17, 'rgb(255 190 100 / .35)'),
-      ...disc(14, '#ffd36b'),
-      ...disc(10, '#ffe9a6'),
-      [13, 10, 5, 2, '#fff6d6'], // shine
-      [12, 12, 2, 3, '#fff6d6'],
-    ])
-  })(),
-  far: svgUrl(
-    160,
-    56,
-    ridgeRects(
+/** The scene's pixel art in a theme's colours (CSS url()s). */
+function art(theme) {
+  const { sun, ground: g } = theme
+  const groundRects = [
+    [0, 0, 32, 16, g.dirt], // bricks
+    [0, 0, 32, 3, g.grass],
+    [0, 3, 32, 1, g.grassDark],
+  ]
+  for (const x of [2, 9, 15, 22, 28]) groundRects.push([x, 3, 2, 1, g.grass]) // grass tufts
+  for (const y of [7, 11, 15]) groundRects.push([0, y, 32, 1, g.mortar]) // mortar rows
+  for (const [x, y] of [
+    [7, 4],
+    [23, 4],
+    [15, 8],
+    [31, 8],
+    [7, 12],
+    [23, 12],
+  ])
+    groundRects.push([x, y, 1, 3, g.mortar])
+  return {
+    stars: svgUrl(64, 48, [
+      [5, 6, 1, 1, '#f4f1ff'],
+      [22, 14, 1, 1, '#a3a8d6'],
+      [41, 4, 1, 1, '#f4f1ff'],
+      [57, 19, 1, 1, '#a3a8d6'],
+      [12, 29, 1, 1, '#a3a8d6'],
+      [33, 36, 1, 1, '#f4f1ff'],
+      [50, 42, 1, 1, '#a3a8d6'],
+      // A plus-shaped sparkle.
+      [29, 23, 3, 1, '#ffc83d'],
+      [30, 22, 1, 3, '#ffc83d'],
+    ]),
+    stars2: svgUrl(80, 56, [
+      [9, 11, 1, 1, '#f4f1ff'],
+      [47, 8, 1, 1, '#f4f1ff'],
+      [70, 30, 1, 1, '#a3a8d6'],
+      [25, 44, 1, 1, '#f4f1ff'],
+      [60, 50, 1, 1, '#a3a8d6'],
+      [14, 33, 3, 1, '#ffe8a8'],
+      [15, 32, 1, 3, '#ffe8a8'],
+    ]),
+    sun: svgUrl(40, 40, [
+      ...discRects(40, 20, sun.halo[0]), // stepped halo
+      ...discRects(40, 17, sun.halo[1]),
+      ...discRects(40, 14, sun.core),
+      ...discRects(40, 10, sun.inner),
+      [13, 10, 5, 2, sun.shine],
+      [12, 12, 2, 3, sun.shine],
+    ]),
+    far: svgUrl(
       160,
       56,
-      30,
-      [
-        [12, 2, 0],
-        [7, 5, 1],
-        [3, 11, 2],
-      ],
-      '#8c4a35',
-      '#bd6a45',
+      ridgeRects(
+        160,
+        56,
+        30,
+        [
+          [12, 2, 0],
+          [7, 5, 1],
+          [3, 11, 2],
+        ],
+        ...theme.far,
+      ),
     ),
-  ),
-  near: svgUrl(
-    160,
-    32,
-    ridgeRects(
+    near: svgUrl(
       160,
       32,
-      16,
-      [
-        [6, 3, 1],
-        [4, 7, 2],
-      ],
-      '#5a2e22',
-      '#80452e',
+      ridgeRects(
+        160,
+        32,
+        16,
+        [
+          [6, 3, 1],
+          [4, 7, 2],
+        ],
+        ...theme.near,
+      ),
     ),
-  ),
-  ground: (() => {
-    const rects = [
-      [0, 0, 32, 16, '#7a4128'], // dirt bricks
-      [0, 0, 32, 3, '#9bd84e'], // grass
-      [0, 3, 32, 1, '#5c9a2c'],
-    ]
-    for (const x of [2, 9, 15, 22, 28]) rects.push([x, 3, 2, 1, '#9bd84e']) // grass tufts
-    for (const y of [7, 11, 15]) rects.push([0, y, 32, 1, '#4e2817']) // mortar rows
-    for (const [x, y] of [
-      [7, 4],
-      [23, 4],
-      [15, 8],
-      [31, 8],
-      [7, 12],
-      [23, 12],
-    ])
-      rects.push([x, y, 1, 3, '#4e2817'])
-    return svgUrl(32, 16, rects)
-  })(),
-  cloud: sprite(
-    ['.....WWWW.......', '...WWWWWWWW.WW..', '.WWWWWWWWWWWWWW.', 'WWWWWWWWWWWWWWWW', '.SSSSSSSSSSSSSS.'],
-    { W: '#ff9f7f', S: '#d9614f' },
-  ),
-  coin: sprite(
-    ['..KKKK..', '.KYYYYK.', 'KYYWYYYK', 'KYWYYYYK', 'KYWYYYYK', 'KYYYYYKK', '.KYYYKK.', '..KKKK..'],
-    COIN,
-  ),
-  heart: sprite(['.RR.RR.', 'RWRRRRR', 'RRRRRRR', '.RRRRR.', '..RRR..', '...R...'], {
-    R: '#ff6b6b',
-    W: '#ffd0d0',
-  }),
-  star: sprite(['...Y...', '...Y...', 'YYYYYYY', '.YYYYY.', '..YYY..', '.YY.YY.', 'YY...YY'], {
-    Y: '#ffc83d',
-  }),
+    ground: svgUrl(32, 16, groundRects),
+    cloud: sprite(
+      ['.....WWWW.......', '...WWWWWWWW.WW..', '.WWWWWWWWWWWWWW.', 'WWWWWWWWWWWWWWWW', '.SSSSSSSSSSSSSS.'],
+      { W: theme.cloud[0], S: theme.cloud[1] },
+    ),
+    coin: sprite(
+      ['..KKKK..', '.KYYYYK.', 'KYYWYYYK', 'KYWYYYYK', 'KYWYYYYK', 'KYYYYYKK', '.KYYYKK.', '..KKKK..'],
+      COIN,
+    ),
+    heart: sprite(['.RR.RR.', 'RWRRRRR', 'RRRRRRR', '.RRRRR.', '..RRR..', '...R...'], {
+      R: '#ff6b6b',
+      W: '#ffd0d0',
+    }),
+    star: sprite(['...Y...', '...Y...', 'YYYYYYY', '.YYYYY.', '..YYY..', '.YY.YY.', 'YY...YY'], {
+      Y: '#ffc83d',
+    }),
+  }
 }
 
 /** Pick-ups floating in the sky: sprite, position (% of the screen), art size (px), bob time (s), delay (s). */
@@ -226,12 +366,17 @@ const CLOUDS = [
   [6, 120, -95, 1.25],
 ]
 
-export const BACKDROP_CSS = `
-.pf-bd{--px:4px;position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;image-rendering:pixelated;background:linear-gradient(${SUNSET.map(([c, to], i) => `${c} ${i ? SUNSET[i - 1][1] : 0}% ${to}%`).join(',')})}
+/** Standalone CSS for the backdrop in a theme's colours (default: the sunset). */
+export function backdropCss(theme = THEMES.sunset) {
+  const ART = art(theme)
+  const sky = theme.sky.map(([c, to], i) => `${c} ${i ? theme.sky[i - 1][1] : 0}% ${to}%`).join(',')
+  const sunAt = theme.sun.high ? 'top:7%' : 'bottom:calc(52*var(--px))'
+  return `
+.pf-bd{--px:4px;position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;image-rendering:pixelated;background:linear-gradient(${sky})}
 .pf-bd>*{position:absolute}
-.pf-bd-stars{inset:0 0 58%;background:${ART.stars} 0 0/calc(64*var(--px)) calc(48*var(--px))}
+.pf-bd-stars{inset:0 0 58%;${theme.stars ? '' : 'display:none;'}background:${ART.stars} 0 0/calc(64*var(--px)) calc(48*var(--px))}
 .pf-bd-stars+.pf-bd-stars{background:${ART.stars2} 0 0/calc(80*var(--px)) calc(56*var(--px));animation:pf-bd-blink 1.6s steps(1) infinite}
-.pf-bd-sun{bottom:calc(52*var(--px));right:12%;width:calc(40*var(--px));height:calc(40*var(--px));background:${ART.sun} 0 0/100% 100%}
+.pf-bd-sun{${sunAt};right:12%;width:calc(40*var(--px));height:calc(40*var(--px));background:${ART.sun} 0 0/100% 100%}
 .pf-bd-pan{left:0;width:calc(100% + var(--tw));height:var(--th);background:var(--art) 0 0/var(--tw) var(--th) repeat-x;animation:pf-bd-pan var(--d) linear infinite}
 .pf-bd-far{--tw:calc(160*var(--px));--th:calc(56*var(--px));--art:${ART.far};--d:90s;bottom:calc(30*var(--px))}
 .pf-bd-near{--tw:calc(160*var(--px));--th:calc(32*var(--px));--art:${ART.near};--d:45s;bottom:calc(14*var(--px))}
@@ -250,6 +395,10 @@ export const BACKDROP_CSS = `
 @media (max-width:600px){.pf-bd{--px:3px}.pf-bd-pick{opacity:.7}}
 @media (prefers-reduced-motion:reduce){.pf-bd *{animation:none!important}}
 `.trim()
+}
+
+/** The default (sunset) backdrop CSS. */
+export const BACKDROP_CSS = backdropCss()
 
 /** The backdrop element (no <style>: pair it with BACKDROP_CSS). Static, trusted markup. */
 export function backdropMarkup() {

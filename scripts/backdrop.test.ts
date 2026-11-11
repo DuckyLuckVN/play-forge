@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { BACKDROP_CSS, backdropMarkup, discRects, ridgeRects, spriteRects, svgUrl } from './backdrop.mjs'
+import {
+  BACKDROP_CSS,
+  THEMES,
+  backdropCss,
+  backdropMarkup,
+  discRects,
+  ridgeRects,
+  spriteRects,
+  svgUrl,
+} from './backdrop.mjs'
 
 describe('spriteRects', () => {
   it('turns ASCII rows into merged runs, skipping empty pixels', () => {
@@ -68,5 +77,20 @@ describe('discRects', () => {
       expect(x + w).toBeLessThanOrEqual(10)
       expect(x).toBe(10 - (x + w)) // centred
     }
+  })
+})
+
+describe('themes', () => {
+  it('default is the sunset', () => {
+    expect(BACKDROP_CSS).toBe(backdropCss(THEMES.sunset))
+  })
+
+  it.each(Object.entries(THEMES))('%s: sky bands climb to 100%% and the CSS builds', (_, theme) => {
+    const ends = theme.sky.map(([, to]) => to)
+    expect(ends.at(-1)).toBe(100)
+    expect([...ends].sort((a, b) => a - b)).toEqual(ends)
+    const css = backdropCss(theme)
+    expect(css).toContain(theme.sky[0][0])
+    expect(css).not.toContain('undefined')
   })
 })

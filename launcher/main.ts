@@ -3,6 +3,7 @@ import './launcher.css'
 import { playMusic } from '@forge/audio/music'
 import { playSound, UI_SOUNDS } from '@forge/audio/sound'
 import { LOUNGE } from '@forge/audio/tracks'
+import { getLang } from '@forge/core/i18n'
 import { audioMenu } from '@forge/ui/audio-menu'
 import { langMenu } from '@forge/ui/lang-menu'
 import { h, icon } from '@forge/ui/dom'
@@ -10,6 +11,7 @@ import { icons } from '@forge/ui/icons'
 import { applyTheme } from '@forge/ui/theme'
 import games from '../games/games.json'
 import { t } from './i18n'
+import { formatUpdated, versionLabel } from './version'
 
 interface GameEntry {
   id: string
@@ -23,6 +25,17 @@ const covers = import.meta.glob<string>('../games/*/cover.svg', {
   query: '?raw',
   import: 'default',
 })
+
+/** Bottom-left tag: the version and when the site was last updated (viewer's language and timezone). */
+function versionTag(): HTMLElement {
+  const tag = h('footer', {
+    class: 'lc-version',
+    textContent: versionLabel(__APP_VERSION__, __APP_UPDATED__, getLang()),
+  })
+  const when = formatUpdated(__APP_UPDATED__, getLang())
+  if (when) tag.title = t('Updated {date}', { date: when })
+  return tag
+}
 
 applyTheme()
 // Music starts with the first click or key press (browsers block autoplay).
@@ -123,6 +136,6 @@ document.body.append(
         h('li', {}, h('strong', { textContent: title }), h('span', { textContent: text })),
       ),
     ),
-    h('footer', { class: 'lc-version', textContent: `v${__APP_VERSION__}` }),
+    versionTag(),
   ),
 )

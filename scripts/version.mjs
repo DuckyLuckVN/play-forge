@@ -1,6 +1,7 @@
 // The app version shown on the launcher: MAJOR.MINOR from package.json, and the
 // git commit count as the patch, so every commit merged (and deployed) bumps it.
-// Raise MAJOR/MINOR by hand in package.json for big releases.
+// Raise MAJOR/MINOR by hand in package.json for big releases. Beside it, when the
+// shown code was last updated: the HEAD commit's time (stable across rebuilds).
 import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -35,4 +36,15 @@ function commitCount() {
 export function appVersion(dev = false) {
   const pkg = JSON.parse(readFileSync(`${root}/package.json`, 'utf8'))
   return formatVersion(pkg.version ?? '0.0.0', commitCount(), dev)
+}
+
+/** HEAD's commit time as an ISO 8601 string, or '' outside a git checkout. */
+export function appUpdated() {
+  try {
+    return execSync('git log -1 --format=%cI', { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim()
+  } catch {
+    return ''
+  }
 }

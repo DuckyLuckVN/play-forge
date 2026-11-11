@@ -12,7 +12,7 @@ import { build } from 'vite'
 import { viteSingleFile } from 'vite-plugin-singlefile'
 import { updateReadme } from './readme.mjs'
 import { withSplash } from './splash.mjs'
-import { appVersion } from './version.mjs'
+import { appUpdated, appVersion } from './version.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const engine = fileURLToPath(new URL('../engine', import.meta.url))
@@ -34,7 +34,8 @@ const inlineIcon = (dir) => ({
 })
 
 const version = appVersion()
-console.log(`▸ version ${version}`)
+const updated = appUpdated()
+console.log(`▸ version ${version}${updated ? ` (updated ${updated})` : ''}`)
 
 const only = process.argv[2] // optional: `npm run build -- snake`
 const games = readdirSync(`${root}/games`, { withFileTypes: true })
@@ -55,7 +56,7 @@ for (const t of targets) {
     base: './',
     logLevel: 'warn',
     resolve: { alias: { '@forge': engine } },
-    define: { __APP_VERSION__: JSON.stringify(version) },
+    define: { __APP_VERSION__: JSON.stringify(version), __APP_UPDATED__: JSON.stringify(updated) },
     plugins: [inlineIcon(t.dir), viteSingleFile()],
     build: {
       outDir: `${root}/${t.out}`,

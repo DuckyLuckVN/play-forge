@@ -161,7 +161,7 @@
   font-size: 18px;
 }
 
-/* The app version: a small chunky tag pinned to the bottom-left corner, styled like the cards. */
+/* The app version and when it was last updated: a small chunky tag pinned to the bottom-left corner, styled like the cards. */
 .lc-version {
   position: fixed;
   left: calc(16px + env(safe-area-inset-left));
@@ -177,4 +177,9 @@
   letter-spacing: 0.04em;
   color: var(--pf-haze);
   pointer-events: none;
+  /* Version + update time on one line; never wider than the screen. */
+  white-space: nowrap;
+  max-width: calc(100vw - 32px - env(safe-area-inset-left) - env(safe-area-inset-right));
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

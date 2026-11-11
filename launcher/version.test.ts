@@ -4,23 +4,19 @@ import { formatUpdated, versionLabel } from './version'
 const ISO = '2026-11-11T06:48:26+00:00'
 
 describe('version tag', () => {
-  it('shows the version and when it was updated, in the viewer timezone', () => {
-    const utc = versionLabel('1.0.300', ISO, 'en', 'UTC')
-    expect(utc.startsWith('v1.0.300 · ')).toBe(true)
-    expect(utc).toContain('2026')
-    expect(utc).toContain('06:48')
-    // The same moment in Ho Chi Minh City (UTC+7).
-    expect(formatUpdated(ISO, 'en', 'Asia/Ho_Chi_Minh')).toContain('13:48')
+  it('shows the version and when it was updated as dd/MM/yyyy, HH:mm', () => {
+    expect(versionLabel('1.0.300', ISO, 'UTC')).toBe('v1.0.300 · 11/11/2026, 06:48')
   })
 
-  it('formats the date in the page language', () => {
-    expect(formatUpdated(ISO, 'en', 'UTC')).toContain('Nov')
-    expect(formatUpdated(ISO, 'vi', 'UTC')).not.toContain('Nov')
-    expect(formatUpdated(ISO, 'vi', 'UTC')).toContain('2026')
+  it('in the viewer timezone, 24-hour, zero-padded', () => {
+    // Ho Chi Minh City is UTC+7.
+    expect(formatUpdated(ISO, 'Asia/Ho_Chi_Minh')).toBe('11/11/2026, 13:48')
+    expect(formatUpdated('2026-03-05T21:07:00Z', 'Asia/Ho_Chi_Minh')).toBe('06/03/2026, 04:07')
+    expect(formatUpdated('2026-01-02T00:05:00Z', 'UTC')).toBe('02/01/2026, 00:05')
   })
 
   it('without a known update time, only the version', () => {
-    expect(versionLabel('1.0.300', '', 'en')).toBe('v1.0.300')
-    expect(versionLabel('1.0.300', 'not a date', 'vi')).toBe('v1.0.300')
+    expect(versionLabel('1.0.300', '')).toBe('v1.0.300')
+    expect(versionLabel('1.0.300', 'not a date')).toBe('v1.0.300')
   })
 })

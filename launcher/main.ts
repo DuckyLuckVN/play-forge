@@ -3,7 +3,6 @@ import './launcher.css'
 import { playMusic } from '@forge/audio/music'
 import { playSound, UI_SOUNDS } from '@forge/audio/sound'
 import { LOUNGE } from '@forge/audio/tracks'
-import { getLang } from '@forge/core/i18n'
 import { audioMenu } from '@forge/ui/audio-menu'
 import { langMenu } from '@forge/ui/lang-menu'
 import { h, icon } from '@forge/ui/dom'
@@ -26,13 +25,13 @@ const covers = import.meta.glob<string>('../games/*/cover.svg', {
   import: 'default',
 })
 
-/** Bottom-left tag: the version and when the site was last updated (viewer's language and timezone). */
+/** Bottom-left tag: the version and when the site was last updated (dd/MM/yyyy, HH:mm, viewer's timezone). */
 function versionTag(): HTMLElement {
   const tag = h('footer', {
     class: 'lc-version',
-    textContent: versionLabel(__APP_VERSION__, __APP_UPDATED__, getLang()),
+    textContent: versionLabel(__APP_VERSION__, __APP_UPDATED__),
   })
-  const when = formatUpdated(__APP_UPDATED__, getLang())
+  const when = formatUpdated(__APP_UPDATED__)
   if (when) tag.title = t('Updated {date}', { date: when })
   return tag
 }

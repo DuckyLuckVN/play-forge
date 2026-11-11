@@ -169,17 +169,30 @@ export class GuestShuttle {
     if (last && s.tick <= last.tick) return
     const known = !Number.isNaN(this.shown)
     const before = known ? this.flightAt(this.shown, this.old).pos : null
-    this.ring.push({
-      tick: s.tick,
-      phase: s.phase,
-      pos: { ...s.shuttle.pos },
-      vel: { ...s.shuttle.vel },
-      lastHitter: s.shuttle.lastHitter,
-      pressured: !!s.shuttle.pressured,
-      pending: !!s.shuttle.pending,
-      breaks: s.events.filter((e) => e.k === 'hit' || e.k === 'serve').map((e) => e.tick),
-    })
-    if (this.ring.length > RING) this.ring.shift()
+    // A full ring recycles its oldest sample (nothing keeps references to one: reads copy out).
+    const slot: Stored =
+      this.ring.length >= RING
+        ? this.ring.shift()!
+        : {
+            tick: 0,
+            phase: s.phase,
+            pos: { x: 0, y: 0, z: 0 },
+            vel: { x: 0, y: 0, z: 0 },
+            lastHitter: -1,
+            pressured: false,
+            pending: false,
+            breaks: [],
+          }
+    slot.tick = s.tick
+    slot.phase = s.phase
+    Object.assign(slot.pos, s.shuttle.pos)
+    Object.assign(slot.vel, s.shuttle.vel)
+    slot.lastHitter = s.shuttle.lastHitter
+    slot.pressured = !!s.shuttle.pressured
+    slot.pending = !!s.shuttle.pending
+    slot.breaks.length = 0
+    for (const e of s.events) if (e.k === 'hit' || e.k === 'serve') slot.breaks.push(e.tick)
+    this.ring.push(slot)
     this.court = s.court ?? COURT
     this.resolve(s)
     if (!known) return

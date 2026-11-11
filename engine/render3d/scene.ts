@@ -22,6 +22,8 @@ export interface Scene3DOptions {
   bloom?: { strength: number; radius: number; threshold: number }
   /** Quality ladder, best first (default `QUALITY_LEVELS`). Games add their own extras via `QualityLevel.shadows`. */
   levels?: readonly QualityLevel[]
+  /** Ladder index to start at (default 0, the best). Clean frames still probe back up. */
+  startLevel?: number
 }
 
 export interface Scene3D {
@@ -76,6 +78,23 @@ const PunchShader = {
 }
 
 /**
+ * Whether a frame needs the composer (render target, punch, output passes). Without bloom and with
+ * no glitch the punch pass only adds its vignette, which the static VIGNETTE layer draws instead:
+ * the scene then renders straight to the canvas (the renderer applies the same tone mapping and
+ * sRGB output as OutputPass), two full-screen passes fewer per frame. Phones are fill-bound.
+ */
+export function needsPost(glitch: number, bloomOn: boolean): boolean {
+  return bloomOn || glitch > 0
+}
+
+/**
+ * The punch shader's vignette at amount 0 (rgb × mix(1, smoothstep(0.85, 0.2, r), 0.25), r in uv
+ * units) as a CSS overlay: black at alpha 1 − m^(1/2.2) per stop, the ellipse following the canvas.
+ */
+const VIGNETTE =
+  'radial-gradient(ellipse 100% 100% at 50% 50%, transparent 20%, rgb(0 0 0 / 0.007) 30%, rgb(0 0 0 / 0.026) 40%, rgb(0 0 0 / 0.052) 50%, rgb(0 0 0 / 0.08) 60%, rgb(0 0 0 / 0.106) 70.7%)'
+
+/**
  * A full-size three.js view inside `parent`: renderer, camera, optional bloom
  * and a hit "punch" pass. Pixels are capped to a budget, and quality steps
  * down (fewer pixels, then no bloom) whenever frames miss the refresh rate.
@@ -92,11 +111,16 @@ export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): S
   renderer.toneMapping = ACESFilmicToneMapping
   renderer.domElement.style.cssText = 'display:block;width:100%;height:100%'
   root.appendChild(renderer.domElement)
+  // The punch pass's resting vignette (amount 0), as a static layer: frames without post effects
+  // draw straight to the canvas and skip two full-screen passes (see needsPost).
+  const vignette = document.createElement('div')
+  vignette.style.cssText = `position:absolute;inset:0;pointer-events:none;background:${VIGNETTE}`
+  root.appendChild(vignette)
 
   const scene = new Scene()
   const camera = new PerspectiveCamera(opts.fov ?? 60, 1, 0.1, opts.far ?? 400)
   const maxDpr = opts.maxDpr ?? 2
-  const quality = new QualityGovernor(opts.levels)
+  const quality = new QualityGovernor(opts.levels, opts.startLevel)
 
   const composer = new EffectComposer(renderer)
   composer.addPass(new RenderPass(scene, camera))
@@ -175,6 +199,9 @@ export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): S
 
   function render(dt: number) {
     if (quality.sample(dt)) fit()
+    const post = needsPost(view.glitch, !!bloom?.enabled)
+    vignette.hidden = post
+    if (!post) return renderer.render(scene, camera)
     punch.uniforms.amount.value = view.glitch
     composer.render(dt)
   }

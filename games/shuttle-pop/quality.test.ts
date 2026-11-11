@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { SP_QUALITY } from './quality'
+import { SP_QUALITY, spStartLevel } from './quality'
 
 describe('Shuttle Pop quality ladder', () => {
   it('drops real shadows before any resolution', () => {
@@ -19,5 +19,9 @@ describe('Shuttle Pop quality ladder', () => {
     expect(src).not.toMatch(/new QualityGovernor|QualityGovernor\(/)
     expect(src).toContain('levels: SP_QUALITY')
     expect(src).toContain('view.quality.shadows')
+  })
+  it('phones start one rung down (no real shadows, full resolution); desktops at the top', () => {
+    expect(SP_QUALITY[spStartLevel(true)]).toMatchObject({ dpr: Infinity, shadows: false })
+    expect(spStartLevel(false)).toBe(0)
   })
 })

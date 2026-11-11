@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 import { ABILITY, cooldownTicksLeft, type Act } from './ability'
-import { CooldownBadge, cooldownText } from './cooldown'
+import { CD_STEPS, CooldownBadge, cooldownText } from './cooldown'
 import { AbilityChips, TouchPad } from './hud'
 
 describe('cooldownText', () => {
@@ -26,6 +26,18 @@ describe('cooldownTicksLeft', () => {
 })
 
 describe('CooldownBadge', () => {
+  it('sweeps in coarse steps (no repaint every frame) and is never ready while time is left', () => {
+    const el = document.createElement('div')
+    const badge = new CooldownBadge(el)
+    badge.set(0.5, 1)
+    const before = el.style.getPropertyValue('--sp-cd')
+    badge.set(0.5 - 0.4 / CD_STEPS, 1) // well inside one step: same sweep
+    expect(el.style.getPropertyValue('--sp-cd')).toBe(before)
+    badge.set(0.001, 0.01)
+    expect(el.classList.contains('cooling')).toBe(true)
+    expect(el.classList.contains('ready')).toBe(false)
+  })
+
   it('sweep + seconds while cooling, a ready flash on the edge to ready', () => {
     const el = document.createElement('div')
     const b = new CooldownBadge(el)

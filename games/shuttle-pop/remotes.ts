@@ -21,6 +21,8 @@ const RING = 8
 export class RemoteTracks {
   private readonly rings = new Map<string, Sample[]>()
   private newest = -Infinity
+  /** Ids in the last push (reused: push runs on every host state). */
+  private readonly seen = new Set<string>()
 
   constructor(private readonly clock: RenderClock) {}
 
@@ -28,13 +30,20 @@ export class RemoteTracks {
   push(tick: number, players: readonly PlayerSample[]): void {
     if (tick <= this.newest) return
     this.newest = tick
-    const ids = new Set<string>()
+    const ids = this.seen
+    ids.clear()
     for (const p of players) {
       ids.add(p.id)
       let ring = this.rings.get(p.id)
       if (!ring) this.rings.set(p.id, (ring = []))
-      ring.push({ tick, x: p.x, z: p.z, vx: p.vx, vz: p.vz })
-      if (ring.length > RING) ring.shift()
+      // A full ring recycles its oldest sample (nothing keeps references: reads copy out).
+      const slot = ring.length >= RING ? ring.shift()! : ({} as Sample)
+      slot.tick = tick
+      slot.x = p.x
+      slot.z = p.z
+      slot.vx = p.vx
+      slot.vz = p.vz
+      ring.push(slot)
     }
     for (const id of this.rings.keys()) if (!ids.has(id)) this.rings.delete(id)
   }

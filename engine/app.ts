@@ -622,7 +622,9 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     const s = session
     const playing = s && (s.phase === 'playing' || s.phase === 'countdown')
     const lines = playing && s.state && opts.scores ? opts.scores(s.state) : []
-    const key = JSON.stringify(lines.map((l) => [l.id, !!l.out]))
+    // Runs on every state (60 Hz): a plain string key, no arrays or JSON.
+    let key = ''
+    for (const l of lines) key += `${l.id}${l.out ? '!' : ''}\u0000`
     const label = (line: Scoreline) => scoreLabel(line, s!.lobby.players)
     if (key === scoresKey) {
       for (const line of lines) {
@@ -637,7 +639,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
           chip.classList.add('bump')
         }
       }
-      lastScores = new Map(lines.map((l) => [l.id, l.score]))
+      lastScores.clear()
+      for (const l of lines) lastScores.set(l.id, l.score)
       return
     }
     scoresKey = key

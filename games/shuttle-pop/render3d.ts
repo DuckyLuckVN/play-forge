@@ -39,6 +39,7 @@ import {
   BufferGeometry,
 } from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
+import { prefersTouch } from '@forge/core/device'
 import { startRenderLoop } from '@forge/core/loop'
 import type { Smoothed } from '@forge/net/smoothing'
 import { playSound } from '@forge/audio/sound'
@@ -114,7 +115,7 @@ import {
   type ShuttleMode,
 } from './orient'
 import { BOARD, surroundOf } from './props'
-import { SP_QUALITY } from './quality'
+import { SP_QUALITY, spStartLevel } from './quality'
 import { Park } from './scenery'
 import { isOwnEvent, shownName, TAPPED, type SpEvent, type SpState } from './sim'
 import { MAX_SEATS } from './doubles'
@@ -544,7 +545,13 @@ export class Court3D {
     this.parking.style.cssText =
       'position:fixed;left:-10000px;top:0;width:100vw;height:85vh;pointer-events:none;opacity:0'
     document.body.appendChild(this.parking)
-    this.view = createScene3D(this.parking, { fov: CAMERA.fov, far: 120, maxDpr: 2, levels: SP_QUALITY })
+    this.view = createScene3D(this.parking, {
+      fov: CAMERA.fov,
+      far: 120,
+      maxDpr: 2,
+      levels: SP_QUALITY,
+      startLevel: spStartLevel(prefersTouch()),
+    })
     const { scene, renderer } = this.view
     renderer.shadowMap.enabled = true
     this.park = new Park(scene)

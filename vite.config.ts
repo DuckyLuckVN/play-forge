@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 import { withSplash } from './scripts/splash.mjs'
-import { appVersion } from './scripts/version.mjs'
+import { appUpdated, appVersion } from './scripts/version.mjs'
 
 // Dev server config. Production builds go through scripts/build.mjs, which
 // produces one self-contained HTML file per game.
@@ -22,7 +22,10 @@ export default defineConfig({
     },
   ],
   // Shown on the launcher; dev-server builds are marked "-dev".
-  define: { __APP_VERSION__: JSON.stringify(appVersion(true)) },
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion(true)),
+    __APP_UPDATED__: JSON.stringify(appUpdated()),
+  },
   resolve: {
     alias: { '@forge': fileURLToPath(new URL('./engine', import.meta.url)) },
   },

@@ -18,6 +18,7 @@ export const VI: Dictionary = {
   'Chibi badminton. Time your swing for a Perfect, smash on high balls. Play the computer or friends online, 1 vs 1 or 2 vs 2.':
     'Cầu lông chibi. Vung vợt đúng lúc để được Perfect, đập mạnh khi cầu cao. Chơi với máy hoặc với bạn bè trực tuyến, 1 đấu 1 hoặc 2 đấu 2.',
   '{n} player': '{n} người chơi',
+  'Updated {date}': 'Cập nhật {date}',
   '{n} players': '{n} người chơi',
   Play: 'Chơi',
   'Loading…': 'Đang tải…',

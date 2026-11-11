@@ -10,6 +10,7 @@ import { icons } from '@forge/ui/icons'
 import { applyTheme } from '@forge/ui/theme'
 import games from '../games/games.json'
 import { t } from './i18n'
+import { formatUpdated, versionLabel } from './version'
 
 interface GameEntry {
   id: string
@@ -23,6 +24,17 @@ const covers = import.meta.glob<string>('../games/*/cover.svg', {
   query: '?raw',
   import: 'default',
 })
+
+/** Bottom-left tag: the version and when the site was last updated (dd/MM/yyyy, HH:mm, viewer's timezone). */
+function versionTag(): HTMLElement {
+  const tag = h('footer', {
+    class: 'lc-version',
+    textContent: versionLabel(__APP_VERSION__, __APP_UPDATED__),
+  })
+  const when = formatUpdated(__APP_UPDATED__)
+  if (when) tag.title = t('Updated {date}', { date: when })
+  return tag
+}
 
 applyTheme()
 // Music starts with the first click or key press (browsers block autoplay).
@@ -123,6 +135,6 @@ document.body.append(
         h('li', {}, h('strong', { textContent: title }), h('span', { textContent: text })),
       ),
     ),
-    h('footer', { class: 'lc-version', textContent: `v${__APP_VERSION__}` }),
+    versionTag(),
   ),
 )

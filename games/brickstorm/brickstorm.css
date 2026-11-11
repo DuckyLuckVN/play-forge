@@ -837,36 +837,72 @@
 }
 
 /* Near-death hint at the top of the board, clear of the danger zone it warns about. */
+/* Danger toast: a compact strip at the bottom of the board, near the line. Flex + wrap so long
+   (e.g. Vietnamese) text never squeezes into one letter per line. Taps outside its buttons
+   fall through to the board so aiming still works under it. */
 .bs-danger {
   position: absolute;
   left: 50%;
-  top: 64px;
-  transform: translateX(-50%);
-  width: min(var(--bs-board-w, 360px) - 24px, 440px);
-  display: grid;
-  grid-template-columns: auto 1fr auto auto;
-  gap: 8px;
+  top: calc(var(--bs-board-h, 100%) - 8px);
+  transform: translate(-50%, -100%);
+  width: min(var(--bs-board-w, 360px) - 16px, 420px);
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  padding: 10px 12px;
-  border: 2px solid var(--pf-coral);
+  gap: 4px 8px;
+  padding: 6px 6px 6px 12px;
+  border: 1px solid color-mix(in srgb, var(--pf-coral) 55%, transparent);
+  border-left: 4px solid var(--pf-coral);
   border-radius: var(--pf-radius-md);
-  background: rgb(40 10 20 / 0.92);
+  background: rgb(40 10 20 / 0.88);
   color: var(--pf-chalk);
-  animation: bs-danger-pulse 1.2s ease-in-out infinite;
+  pointer-events: none;
+  animation: bs-danger-in 0.3s ease-out;
   z-index: var(--pf-z-raised);
 }
 .bs-danger[hidden] {
   display: none;
 }
-.bs-danger strong {
+.bs-danger > * {
+  min-width: 0;
+}
+.bs-danger button {
+  pointer-events: auto;
+}
+.bs-danger-title {
   color: var(--pf-coral);
-}
-.bs-danger span {
   font-size: 14px;
+  white-space: nowrap;
 }
-@keyframes bs-danger-pulse {
-  50% {
-    box-shadow: 0 0 18px color-mix(in srgb, var(--pf-coral) 60%, transparent);
+.bs-danger .bs-danger-hp {
+  font-size: 13px;
+}
+.bs-danger .pf-btn.primary {
+  margin-left: auto;
+  min-height: 0;
+  padding: 6px 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.bs-danger .bs-close.pf-btn {
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  padding: 5px;
+  align-self: center;
+}
+.bs-danger-text {
+  flex: 1 0 100%;
+  font-size: 12.5px;
+  line-height: 1.3;
+  color: var(--pf-haze);
+  overflow-wrap: break-word;
+}
+@keyframes bs-danger-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-100% + 10px));
   }
 }
 @media (prefers-reduced-motion: reduce) {

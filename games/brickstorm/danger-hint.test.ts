@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dangerHint } from './danger-hint'
+import { dangerHint, dangerTurnOpen } from './danger-hint'
 import { dims } from './sim/dims'
 import { brick, empty } from './sim/testing'
 
@@ -29,5 +29,17 @@ describe('dangerHint', () => {
     const s = near(1)
     s.phase = 'volley'
     expect(dangerHint(s, none)).toBeNull()
+  })
+})
+
+describe('dangerTurnOpen', () => {
+  it('lets the first danger turn of a run show the notice', () => {
+    expect(dangerTurnOpen(null, 12)).toBe(true)
+  })
+
+  it('keeps it up for the rest of that turn only, then never again this run', () => {
+    expect(dangerTurnOpen(12, 12)).toBe(true)
+    expect(dangerTurnOpen(12, 13)).toBe(false)
+    expect(dangerTurnOpen(12, 40)).toBe(false)
   })
 })

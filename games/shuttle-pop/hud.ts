@@ -35,6 +35,22 @@ export function trackerAction(
   return tick < lastTick ? 'reset' : 'keep'
 }
 
+/**
+ * The smoothing pair's `prev` if it belongs to the same match and seats as `curr`, else `curr`.
+ * A rematch restarts ticks at 0 while `prev` still holds the old match's last state (the host sends
+ * nothing during the countdown): fed to a guest's render clock it would lock it on the old ticks, and
+ * blending players by index across a seat change (1v1 → 2v2, team swap) mixes people up or reads past
+ * the end. No allocation: runs every frame.
+ */
+export function sameMatchPrev<S extends { tick: number; players: readonly { id: string }[] }>(
+  prev: S,
+  curr: S,
+): S {
+  if (prev.tick > curr.tick || prev.players.length !== curr.players.length) return curr
+  for (let i = 0; i < curr.players.length; i++) if (prev.players[i].id !== curr.players[i].id) return curr
+  return prev
+}
+
 /** The newest hit/serve event id in `events` (0 = none). */
 export function newestShotId(events: readonly SpEvent[]): number {
   let newest = 0

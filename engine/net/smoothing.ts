@@ -19,7 +19,9 @@ export interface Smoothed<S> {
  * Keeps the last two simulation states so renderers can interpolate between
  * ticks. Works identically on the host and on clients.
  */
-export function smoothState<S>(session: Session<S, any>): Smoothed<S> {
+export function smoothState<S>(
+  session: Pick<Session<S, any>, 'isHost' | 'state' | 'tickRate' | 'on'>,
+): Smoothed<S> {
   let receivedAt = 0
   const smoothed: Smoothed<S> = {
     prev: null,
@@ -29,9 +31,10 @@ export function smoothState<S>(session: Session<S, any>): Smoothed<S> {
     dispose: () => off(),
   }
   const take = (state: S) => {
-    // The host mutates its state in place, so keep our own copies.
+    // The host mutates its state in place, so it keeps its own copies. A guest's state is a fresh
+    // object per message (decoded by the transport) that nothing mutates: no copy, 60 times a second.
     smoothed.prev = smoothed.curr
-    smoothed.curr = structuredClone(state)
+    smoothed.curr = session.isHost ? structuredClone(state) : state
     receivedAt = performance.now()
   }
   if (session.state) take(session.state)

@@ -24,7 +24,7 @@ Fun mini-games to play with friends: solo, on one device, or online. No accounts
 ## Features
 
 - **Multiplayer, direct first:** browsers connect directly over WebRTC ([Trystero](https://github.com/dmotz/trystero)), with a small relay server as the fallback when networks block that. See [How multiplayer works](#how-multiplayer-works).
-- **In every online room:** avatars, emoji reactions, text chat (press **Enter**) and voice chat (open mic or hold **V** to talk). Shuttle Pop: hold **T** for a reaction wheel.
+- **In every online room:** avatars, emoji reactions, text chat (press **Enter**) and voice chat (open mic or hold **V** to talk). After a reload or reopening the room link, you rejoin voice with the mic muted or not as before (automatically once the mic is allowed, otherwise tap 🎤; remembered for 6 hours in `play-forge:voice-room:<game>:<room>`). Shuttle Pop: hold **T** for a reaction wheel.
 - **Host controls:** the host can remove a player with the ✕ on their seat (confirmed in the room). Their seat frees at once, also mid-match; they can join again with the code.
 - **English and Vietnamese**, generated music and sounds, and a phone-friendly layout.
 

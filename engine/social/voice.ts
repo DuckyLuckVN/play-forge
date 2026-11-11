@@ -21,6 +21,19 @@ const MUSIC_DUCK = 0.35
 
 export type JoinResult = 'ok' | 'denied' | 'no-mic' | 'error'
 
+/**
+ * Microphone permission without asking for it. 'unknown' where the browser
+ * can't tell (older Firefox / Safari throw on the 'microphone' name).
+ */
+export async function micPermission(): Promise<PermissionState | 'unknown'> {
+  try {
+    const status = await navigator.permissions.query({ name: 'microphone' as PermissionName })
+    return status.state
+  } catch {
+    return 'unknown'
+  }
+}
+
 interface Remote {
   stream: MediaStream
   /** Chrome only feeds remote WebRTC audio to Web Audio while an element plays it. */
@@ -66,6 +79,7 @@ export class VoiceChat {
   private holding = false
   private muted = false
   private joining = false
+  private disposed = false
   private offs: (() => void)[] = []
   private timer: ReturnType<typeof setInterval>
 
@@ -138,22 +152,30 @@ export class VoiceChat {
 
   // ---------- Actions ----------
 
-  /** Share our microphone. Asks the browser for permission the first time. */
-  async join(): Promise<JoinResult> {
+  /**
+   * Share our microphone. Asks the browser for permission the first time.
+   * `muted` starts with the mic off (rejoining after a reload).
+   */
+  async join(opts: { muted?: boolean } = {}): Promise<JoinResult> {
     if (this.local) return 'ok'
-    if (this.joining) return 'error'
+    if (this.joining || this.disposed) return 'error'
     this.joining = true
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
         video: false,
       })
+      if (this.disposed) {
+        // Left the room while the browser was asking: don't keep the mic on.
+        stream.getTracks().forEach((t) => t.stop())
+        return 'error'
+      }
       const ac = audioContext()
       const analyser = ac!.createAnalyser()
       analyser.fftSize = 512
       ac!.createMediaStreamSource(stream).connect(analyser)
       this.local = { stream, analyser, detector: new SpeakingDetector() }
-      this.muted = false
+      this.muted = opts.muted ?? false
       this.syncTrack()
       this.transport.media.addStream(stream)
       this.broadcast()
@@ -226,6 +248,7 @@ export class VoiceChat {
   }
 
   dispose(): void {
+    this.disposed = true
     this.leave()
     clearInterval(this.timer)
     this.offs.forEach((off) => off())

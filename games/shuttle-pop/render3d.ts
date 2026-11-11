@@ -39,6 +39,7 @@ import {
   BufferGeometry,
 } from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
+import { prefersTouch } from '@forge/core/device'
 import { startRenderLoop } from '@forge/core/loop'
 import type { Smoothed } from '@forge/net/smoothing'
 import { playSound } from '@forge/audio/sound'
@@ -76,7 +77,7 @@ import { teamName } from './doubles'
 import { StunStars } from './stars'
 import { stunLook, type StunLook } from './stun'
 import { canSplit, Footwork, lungeWanted, splitHop, splitsOn } from './footwork'
-import { Hud, newEvents, newestShotId, trackerAction, type PopKind } from './hud'
+import { Hud, newEvents, newestShotId, sameMatchPrev, trackerAction, type PopKind } from './hud'
 import { ScoreCards } from './boardprop'
 import { Net } from './net'
 import { prefs } from './prefs'
@@ -114,7 +115,7 @@ import {
   type ShuttleMode,
 } from './orient'
 import { BOARD, surroundOf } from './props'
-import { SP_QUALITY } from './quality'
+import { SP_QUALITY, spStartLevel } from './quality'
 import { Park } from './scenery'
 import { isOwnEvent, shownName, TAPPED, type SpEvent, type SpState } from './sim'
 import { MAX_SEATS } from './doubles'
@@ -544,7 +545,13 @@ export class Court3D {
     this.parking.style.cssText =
       'position:fixed;left:-10000px;top:0;width:100vw;height:85vh;pointer-events:none;opacity:0'
     document.body.appendChild(this.parking)
-    this.view = createScene3D(this.parking, { fov: CAMERA.fov, far: 120, maxDpr: 2, levels: SP_QUALITY })
+    this.view = createScene3D(this.parking, {
+      fov: CAMERA.fov,
+      far: 120,
+      maxDpr: 2,
+      levels: SP_QUALITY,
+      startLevel: spStartLevel(prefersTouch()),
+    })
     const { scene, renderer } = this.view
     renderer.shadowMap.enabled = true
     this.park = new Park(scene)
@@ -797,6 +804,8 @@ export class Court3D {
     this.guest?.clock.reset()
     this.guest?.shuttle.reset()
     this.guest?.remotes.reset()
+    // A charge held through the last match's end must not slow the new match's first steps.
+    this.predictor?.setCharging(false)
     this.echo.reset()
     this.lastShotId = 0
     this.lastShot = null
@@ -918,7 +927,8 @@ export class Court3D {
     // Quality ladder dropped the players' real shadows: apply between rallies so they don't vanish
     // mid-shot. Blob shadows stay either way.
     if (this.wantShadows !== this.shadows && curr.phase !== 'rally') this.setShadows(this.wantShadows)
-    const prev = this.smooth!.prev ?? curr
+    // Never the old match's last state (rematch countdown) or another seat layout: see sameMatchPrev.
+    const prev = sameMatchPrev(this.smooth!.prev ?? curr, curr)
     const a = this.smooth!.alpha()
 
     // The local player's side is drawn near; spectators see side 0's view.

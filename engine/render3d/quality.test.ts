@@ -180,6 +180,18 @@ describe('QualityGovernor', () => {
     expect(g.level).toBe(0)
   })
 
+  it('can start lower (clamped to the ladder) and still probes back up on a clean device', () => {
+    expect(new QualityGovernor(QUALITY_LEVELS, 99).level).toBe(QUALITY_LEVELS.length - 1)
+    expect(new QualityGovernor(QUALITY_LEVELS, -3).level).toBe(0)
+    const g = new QualityGovernor(QUALITY_LEVELS, 1)
+    expect(g.current).toBe(QUALITY_LEVELS[1])
+    feed(
+      g,
+      repeat(120 + 60 * RECOVER_WINDOWS, () => 1 / 60),
+    )
+    expect(g.level).toBe(0)
+  })
+
   it('a failed probe locks the ceiling: no flapping', () => {
     const g = new QualityGovernor()
     settled(g)

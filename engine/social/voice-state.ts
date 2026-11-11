@@ -126,3 +126,101 @@ export class SpeakingDetector {
     return now - this.lastLoud <= SpeakingDetector.HOLD_MS
   }
 }
+
+// ---------- Rejoin after reload / reopening the room link ----------
+
+/** Voice state remembered per room, so a reload or a reopened invite link rejoins voice. */
+export interface VoiceRejoin {
+  joined: true
+  muted: boolean
+  /** When it was saved (epoch ms). */
+  at: number
+}
+
+/** Older entries are ignored: the room is long gone. */
+export const VOICE_REJOIN_TTL_MS = 6 * 60 * 60 * 1000
+
+type RejoinStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
+const localStore = (): RejoinStorage | undefined => {
+  try {
+    return globalThis.localStorage
+  } catch {
+    return undefined
+  }
+}
+
+export const voiceRejoinKey = (gameId: string, room: string) => `play-forge:voice-room:${gameId}:${room}`
+
+export function parseVoiceRejoin(raw: unknown, now: number): VoiceRejoin | null {
+  const r = raw as Partial<VoiceRejoin> | null
+  if (!r || typeof r !== 'object' || r.joined !== true || typeof r.muted !== 'boolean') return null
+  if (typeof r.at !== 'number' || !Number.isFinite(r.at) || Math.abs(now - r.at) > VOICE_REJOIN_TTL_MS)
+    return null
+  return { joined: true, muted: r.muted, at: r.at }
+}
+
+/** The saved entry, or null. Bad or stale entries are removed. */
+export function loadVoiceRejoin(
+  gameId: string,
+  room: string,
+  now = Date.now(),
+  store: RejoinStorage | undefined = localStore(),
+): VoiceRejoin | null {
+  const key = voiceRejoinKey(gameId, room)
+  try {
+    const raw = store?.getItem(key)
+    if (raw === null || raw === undefined) return null
+    let parsed: unknown = null
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      // corrupt: dropped below
+    }
+    const value = parseVoiceRejoin(parsed, now)
+    if (!value) store!.removeItem(key)
+    return value
+  } catch {
+    return null
+  }
+}
+
+export function saveVoiceRejoin(
+  gameId: string,
+  room: string,
+  muted: boolean,
+  now = Date.now(),
+  store: RejoinStorage | undefined = localStore(),
+): void {
+  const value: VoiceRejoin = { joined: true, muted, at: now }
+  try {
+    store?.setItem(voiceRejoinKey(gameId, room), JSON.stringify(value))
+  } catch {
+    // storage unavailable: no automatic rejoin
+  }
+}
+
+export function clearVoiceRejoin(
+  gameId: string,
+  room: string,
+  store: RejoinStorage | undefined = localStore(),
+): void {
+  try {
+    store?.removeItem(voiceRejoinKey(gameId, room))
+  } catch {
+    // storage unavailable: nothing saved anyway
+  }
+}
+
+/**
+ * What to do with a saved voice state when entering a room: rejoin silently
+ * only when the microphone is already allowed (no prompt without a tap),
+ * otherwise hint at the mic button. A blocked mic or nothing saved: nothing.
+ */
+export function shouldAutoJoin(
+  saved: VoiceRejoin | null,
+  permission: PermissionState | 'unknown',
+  supported: boolean,
+): 'join' | 'ask' | 'none' {
+  if (!saved || !supported || permission === 'denied') return 'none'
+  return permission === 'granted' ? 'join' : 'ask'
+}

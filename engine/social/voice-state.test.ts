@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   clampPlayerVolume,
+  clearVoiceRejoin,
+  loadVoiceRejoin,
+  parseVoiceRejoin,
+  saveVoiceRejoin,
+  shouldAutoJoin,
+  VOICE_REJOIN_TTL_MS,
+  voiceRejoinKey,
   inVoiceCount,
   parseAnnounce,
   parseVoiceSettings,
@@ -9,6 +16,7 @@ import {
   transmitting,
   VOICE_DEFAULTS,
   VoiceRoster,
+  type VoiceRejoin,
 } from './voice-state'
 
 describe('voice settings', () => {
@@ -84,5 +92,102 @@ describe('inVoiceCount', () => {
     expect(inVoiceCount({ joined: false, peerState }, others)).toBe(1)
     expect(inVoiceCount({ joined: true, peerState }, others)).toBe(2)
     expect(inVoiceCount({ joined: false, peerState }, [])).toBe(0)
+  })
+})
+
+describe('voice rejoin memory', () => {
+  const memoryStore = () => {
+    const data = new Map<string, string>()
+    return {
+      getItem: (k: string) => data.get(k) ?? null,
+      setItem: (k: string, v: string) => void data.set(k, v),
+      removeItem: (k: string) => void data.delete(k),
+      data,
+    }
+  }
+  const broken = {
+    getItem: (): string | null => {
+      throw new Error('denied')
+    },
+    setItem: () => {
+      throw new Error('denied')
+    },
+    removeItem: () => {
+      throw new Error('denied')
+    },
+  }
+  const T0 = 1_800_000_000_000
+  const KEY = 'play-forge:voice-room:shuttle-pop:K7QXP'
+
+  it('saves per game and room under play-forge:voice-room:<game>:<room>', () => {
+    const store = memoryStore()
+    expect(voiceRejoinKey('shuttle-pop', 'K7QXP')).toBe(KEY)
+    saveVoiceRejoin('shuttle-pop', 'K7QXP', true, T0, store)
+    expect(JSON.parse(store.data.get(KEY)!)).toEqual({ joined: true, muted: true, at: T0 })
+    expect(loadVoiceRejoin('shuttle-pop', 'K7QXP', T0 + 1000, store)).toEqual({
+      joined: true,
+      muted: true,
+      at: T0,
+    })
+    expect(loadVoiceRejoin('shuttle-pop', 'AAAAA', T0, store)).toBeNull()
+    expect(loadVoiceRejoin('caro', 'K7QXP', T0, store)).toBeNull()
+    clearVoiceRejoin('shuttle-pop', 'K7QXP', store)
+    expect(store.data.has(KEY)).toBe(false)
+  })
+
+  it('drops stale, corrupt or wrongly shaped entries', () => {
+    const store = memoryStore()
+    saveVoiceRejoin('shuttle-pop', 'K7QXP', false, T0, store)
+    expect(loadVoiceRejoin('shuttle-pop', 'K7QXP', T0 + VOICE_REJOIN_TTL_MS + 1, store)).toBeNull()
+    expect(store.data.has(KEY)).toBe(false)
+    for (const raw of [
+      '{oops',
+      '"hi"',
+      'null',
+      '{"joined":false,"muted":false,"at":1}',
+      `{"joined":true,"muted":"no","at":${T0}}`,
+    ]) {
+      store.data.set(KEY, raw)
+      expect(loadVoiceRejoin('shuttle-pop', 'K7QXP', T0, store)).toBeNull()
+      expect(store.data.has(KEY)).toBe(false)
+    }
+  })
+
+  it('validates shape and age', () => {
+    expect(parseVoiceRejoin({ joined: true, muted: false, at: T0 }, T0)).toEqual({
+      joined: true,
+      muted: false,
+      at: T0,
+    })
+    expect(parseVoiceRejoin({ joined: true, muted: false, at: T0, extra: 1 }, T0)).toEqual({
+      joined: true,
+      muted: false,
+      at: T0,
+    })
+    expect(parseVoiceRejoin({ joined: true, muted: false }, T0)).toBeNull()
+    expect(parseVoiceRejoin({ joined: true, muted: false, at: Number.NaN }, T0)).toBeNull()
+    // A clock far in the future is as suspect as a stale entry.
+    expect(parseVoiceRejoin({ joined: true, muted: false, at: T0 + VOICE_REJOIN_TTL_MS + 1 }, T0)).toBeNull()
+  })
+
+  it('storage that throws or is missing: no crash, nothing remembered', () => {
+    expect(() => saveVoiceRejoin('g', 'R', false, T0, broken)).not.toThrow()
+    expect(loadVoiceRejoin('g', 'R', T0, broken)).toBeNull()
+    expect(() => clearVoiceRejoin('g', 'R', broken)).not.toThrow()
+    expect(loadVoiceRejoin('g', 'R', T0, undefined)).toBeNull()
+  })
+})
+
+describe('shouldAutoJoin', () => {
+  const saved: VoiceRejoin = { joined: true, muted: false, at: 0 }
+  it('rejoins silently only when the mic is already allowed', () => {
+    expect(shouldAutoJoin(saved, 'granted', true)).toBe('join')
+    expect(shouldAutoJoin(saved, 'prompt', true)).toBe('ask')
+    expect(shouldAutoJoin(saved, 'unknown', true)).toBe('ask')
+  })
+  it('does nothing when blocked, unsupported or nothing was saved', () => {
+    expect(shouldAutoJoin(saved, 'denied', true)).toBe('none')
+    expect(shouldAutoJoin(saved, 'granted', false)).toBe('none')
+    expect(shouldAutoJoin(null, 'granted', true)).toBe('none')
   })
 })

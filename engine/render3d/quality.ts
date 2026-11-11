@@ -79,8 +79,16 @@ export class QualityGovernor {
   /** Level the last probe climbed to; falling from it later still locks the ceiling (-1: none). */
   private probedTo = -1
 
-  constructor(private readonly levels: readonly QualityLevel[] = QUALITY_LEVELS) {
+  /**
+   * `start`: the level to begin at (e.g. a step down on phones). The ceiling stays at the top, so a
+   * device that runs clean probes back up as usual.
+   */
+  constructor(
+    private readonly levels: readonly QualityLevel[] = QUALITY_LEVELS,
+    start = 0,
+  ) {
     if (levels.length === 0) throw new Error('QualityGovernor needs at least one quality level')
+    this.level = Math.min(Math.max(0, Math.floor(start) || 0), levels.length - 1)
   }
 
   get current(): QualityLevel {

@@ -24,6 +24,8 @@ export interface VoiceControls {
   mic: HTMLElement
   /** Voice settings popover: belongs with the other settings menus. */
   settings: HTMLElement
+  /** Join voice like the mic button does (error toasts included). */
+  join(opts?: { muted?: boolean }): Promise<void>
   /** Call when the room's players change. */
   refresh(): void
   destroy(): void
@@ -42,10 +44,16 @@ const JOIN_ERRORS: Record<Exclude<JoinResult, 'ok'>, string> = {
  * settings popover (mode, volumes, per-player volume and mute).
  */
 export function voiceControls(chat: VoiceChat, players: () => VoicePlayer[]): VoiceControls {
-  const join = async () => {
-    const result = await chat.join()
-    if (result !== 'ok') toast(t(JOIN_ERRORS[result]))
-  }
+  let destroyed = false
+  let pending: Promise<void> | null = null
+  // One join at a time (a tap during an automatic rejoin waits for it).
+  const join = (opts?: { muted?: boolean }): Promise<void> =>
+    (pending ??= chat
+      .join(opts)
+      .then((result) => {
+        if (result !== 'ok' && !destroyed) toast(t(JOIN_ERRORS[result]))
+      })
+      .finally(() => (pending = null)))
 
   // ---------- Mic button ----------
   const mic = h('button', { class: 'pf-btn icon pf-voice-mic', type: 'button' })
@@ -238,8 +246,10 @@ export function voiceControls(chat: VoiceChat, players: () => VoicePlayer[]): Vo
   return {
     mic,
     settings: menu.root,
+    join,
     refresh,
     destroy() {
+      destroyed = true
       offs.forEach((off) => off())
       menu.destroy()
       window.removeEventListener('keydown', onKeyDown)

@@ -223,6 +223,8 @@ export function playSound(sound: Sound, volume = 1): void {
       osc.connect(gain)
       src = osc
     }
+    // Free the tone's nodes once it ends (old iOS Safari keeps finished graphs alive otherwise).
+    src.onended = () => gain.disconnect()
     try {
       src.start(start)
       src.stop(end + 0.02)

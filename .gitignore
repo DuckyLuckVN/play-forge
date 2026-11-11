@@ -11,3 +11,5 @@ CLAUDE.md
 .superpowers/
 docs/superpowers/
 balance-report.txt
+# Local browser-automation screenshots / logs
+.playwright-mcp/

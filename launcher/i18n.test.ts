@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { translatedKeys } from '@forge/core/i18n-scan'
 import games from '../games/games.json'
+import { BACKDROP_NAMES } from './backdrop-menu'
 import { VI } from './i18n'
 
 const main = import.meta.glob<string>('./main.ts', { eager: true, query: '?raw', import: 'default' })
+const menus = import.meta.glob<string>('./*-menu.ts', { eager: true, query: '?raw', import: 'default' })
 const covers = import.meta.glob<string>('../games/*/cover.svg', {
   eager: true,
   query: '?raw',
@@ -11,13 +13,14 @@ const covers = import.meta.glob<string>('../games/*/cover.svg', {
 })
 
 // `t('…')` in the launcher, plus the text it translates from data: the game
-// descriptions, the "how it works" steps and the cover art descriptions.
+// descriptions, the "how it works" steps, the background names and the cover art descriptions.
 const steps = [...Object.values(main)[0].matchAll(/\[\s*'([^']+)',\s*'([^']+)'\s*\]/g)].flatMap((m) => [
   m[1],
   m[2],
 ])
 const called = [
-  ...Object.values(main).flatMap((src) => translatedKeys(src)),
+  ...[...Object.values(main), ...Object.values(menus)].flatMap((src) => translatedKeys(src)),
+  ...Object.values(BACKDROP_NAMES),
   ...games.map((g) => g.description),
   ...steps,
   ...Object.values(covers).flatMap((svg) => [...svg.matchAll(/aria-label="([^"]+)"/g)].map((m) => m[1])),

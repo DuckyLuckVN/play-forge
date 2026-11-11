@@ -9,6 +9,14 @@ import { h, icon } from '@forge/ui/dom'
 import { icons } from '@forge/ui/icons'
 import { applyTheme } from '@forge/ui/theme'
 import games from '../games/games.json'
+import {
+  applyBackdropChoice,
+  BACKDROP_CSS,
+  backdropMarkup,
+  DEFAULT_BACKDROP,
+  THEMES,
+} from '../scripts/backdrop.mjs'
+import { backdropMenu } from './backdrop-menu'
 import { t } from './i18n'
 import { formatUpdated, versionLabel } from './version'
 
@@ -37,6 +45,12 @@ function versionTag(): HTMLElement {
 }
 
 applyTheme()
+// The arcade backdrop behind everything (the same one as the game loading splash).
+document.head.append(h('style', { textContent: BACKDROP_CSS }))
+document.body.insertAdjacentHTML('afterbegin', backdropMarkup())
+// In the player's chosen theme (canyon until they pick; Random = one per visit, the same on the loading screens).
+const backdrop = document.querySelector('.pf-bd')
+applyBackdropChoice(backdrop, Object.keys(THEMES), DEFAULT_BACKDROP)
 // Music starts with the first click or key press (browsers block autoplay).
 playMusic(LOUNGE)
 
@@ -117,7 +131,7 @@ const steps = [
 ].map(([title, text]) => [t(title), t(text)])
 
 document.body.append(
-  h('div', { class: 'lc-bar' }, langMenu(), audioMenu()),
+  h('div', { class: 'lc-bar' }, backdropMenu(backdrop), langMenu(), audioMenu()),
   h(
     'main',
     { class: 'lc' },

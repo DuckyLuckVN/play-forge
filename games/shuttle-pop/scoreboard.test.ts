@@ -42,6 +42,24 @@ describe('boardView', () => {
     expect(v.left.name).toBe('Player 0')
   })
 
+  it('doubles board names both teammates', () => {
+    const ann: PlayerInfo = { id: 'ann', name: 'Ann', slot: 0, ready: true, connected: true }
+    const s = createState([ann], 1, { mode: '2v2' })
+    s.score = [4, 6]
+    const v = boardView(s, 0)
+    expect(v.left.name).toBe('Ann & Computer')
+    expect(v.right.name).toBe('Computer')
+    expect(v.left.score).toBe(4)
+    expect(v.right.score).toBe(6)
+    // The team's colour is its first player's.
+    expect(v.left.tint).toBe(tintCss(PRESETS[s.players[0].preset].tint))
+    expect(v.right.tint).toBe(tintCss(PRESETS[s.players[1].preset].tint))
+    expect(v.pairs).toBe(true)
+    // 1v1 keeps a single name.
+    expect(boardView(match([0, 0], 0), 0).left.name).toBe('Player 0')
+    expect(boardView(match([0, 0], 0), 0).pairs).toBe(false)
+  })
+
   it('the shuttle icon goes on the server, on whichever side that is', () => {
     expect(boardView(match([0, 0], 0), 0).left.serving).toBe(true)
     expect(boardView(match([0, 0], 0), 0).right.serving).toBe(false)

@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import type { Sound } from '@forge/audio/sound'
-import { chargeSound, eventSound, SHUTTLE_SOUNDS, swingSound } from './sounds'
+import type { Sound, Tone } from '@forge/audio/sound'
+import {
+  actionSound,
+  type ActionSoundKind,
+  chargeSound,
+  eventSound,
+  hitSound,
+  SHUTTLE_SOUNDS,
+  SMASH_LAND,
+  SWING,
+  swingSound,
+} from './sounds'
 import type { SpEvent } from './sim'
 
 const at = { id: 1, tick: 1 }
@@ -38,16 +48,65 @@ describe('eventSound', () => {
     expect(eventSound({ ...at, k: 'serve', side: 0 }, 0)?.sound).toBe(SHUTTLE_SOUNDS.serve)
     expect(eventSound({ ...at, k: 'whiff', side: 0 }, 0)).toBeNull()
   })
+
+  it('ability events: jump/dive start and landing, hop softer, others quieter', () => {
+    const jump = eventSound({ ...at, k: 'act', side: 0, act: 'jump' }, 0)!
+    expect(jump.sound).toBe(SHUTTLE_SOUNDS.jump)
+    expect(jump.vol).toBe(1)
+    expect(eventSound({ ...at, k: 'act', side: 0, act: 'lunge' }, 0)?.sound).toBe(SHUTTLE_SOUNDS.dive)
+    expect(eventSound({ ...at, k: 'actLand', side: 0, act: 'lunge' }, 0)?.sound).toBe(SHUTTLE_SOUNDS.diveLand)
+    expect(eventSound({ ...at, k: 'actLand', side: 0, act: 'jump' }, 0)?.sound).toBe(SHUTTLE_SOUNDS.jumpLand)
+    const hop = eventSound({ ...at, k: 'act', side: 0, act: 'hop' }, 0)!
+    expect(hop.sound).toBe(SHUTTLE_SOUNDS.jump)
+    expect(hop.vol).toBe(0.5)
+    expect(eventSound({ ...at, k: 'actLand', side: 0, act: 'hop' }, 0)?.vol).toBe(0.5)
+    const theirs = eventSound({ ...at, k: 'act', side: 1, act: 'jump' }, 0)!
+    expect(theirs.vol).toBe(actionSound('jump', false).vol)
+    expect(theirs.vol).toBeLessThan(1)
+    expect(eventSound({ ...at, k: 'act', side: 1, act: 'hop' }, 0)?.vol).toBeCloseTo(
+      actionSound('jump', false).vol * 0.5,
+    )
+  })
+
+  it('bonk: full volume when I bonk or am bonked, quieter for others, silent id-less spectator gets THEIRS', () => {
+    const e: SpEvent = { ...at, k: 'bonk', side: 0, who: 'a', by: 'b' }
+    const theirs = actionSound('bonk', false).vol
+    expect(theirs).toBeLessThan(1)
+    expect(eventSound(e, 0, null, 'a')).toEqual({ sound: SHUTTLE_SOUNDS.bonk, vol: 1 })
+    expect(eventSound(e, 1, null, 'b')).toEqual({ sound: SHUTTLE_SOUNDS.bonk, vol: 1 })
+    expect(eventSound(e, 0, null, 'c')).toEqual({ sound: SHUTTLE_SOUNDS.bonk, vol: theirs })
+    expect(eventSound(e, 0)).toEqual({ sound: SHUTTLE_SOUNDS.bonk, vol: theirs })
+  })
+
+  it("a teammate's hit sounds like theirs; a point for my team sounds like a win", () => {
+    const mine = (e: SpEvent) => eventSound(e, 1, null, 'me')!
+    const hit: SpEvent = { ...at, k: 'hit', side: 1, grade: 'good', shot: 'drive' }
+    // Same side, a teammate's id: quieter, like the opponent's; mine (or id-less, old events) full.
+    expect(mine({ ...hit, by: 'mate' })).toEqual(eventSound(hit, 0))
+    expect(mine({ ...hit, by: 'me' })).toEqual(eventSound(hit, 1))
+    expect(mine(hit)).toEqual(eventSound(hit, 1))
+    for (const k of ['serve', 'act', 'actLand'] as const) {
+      const e = { ...at, k, side: 1, act: 'jump' } as SpEvent
+      expect(mine({ ...e, by: 'mate' } as SpEvent), k).toEqual(eventSound(e, 0))
+      expect(mine({ ...e, by: 'me' } as SpEvent), k).toEqual(eventSound(e, 1))
+    }
+    // A point is the team's: a win for every player of that side.
+    expect(mine({ ...at, k: 'point', side: 1 })?.sound).toBe(SHUTTLE_SOUNDS.pointWin)
+    expect(mine({ ...at, k: 'point', side: 0 })?.sound).toBe(SHUTTLE_SOUNDS.pointLose)
+    // Spectator (no id): side rule, as before.
+    expect(eventSound({ ...hit, by: 'mate' }, 1)).toEqual(eventSound(hit, 1))
+  })
 })
 
 describe('power sounds (hold-to-charge)', () => {
-  const hit = (grade: 'perfect' | 'good' | 'late', shot: 'smash' | 'drive', charge?: number): SpEvent => ({
+  const hit = (grade: 'perfect' | 'good' | 'late', shot: 'smash' | 'drive', power?: number): SpEvent => ({
     ...at,
     k: 'hit',
     side: 0,
     grade,
     shot,
-    ...(charge === undefined ? {} : { charge }),
+    charge: 1,
+    ...(power === undefined ? {} : { power }),
   })
 
   it('an uncharged hit sounds exactly as before (old events without charge too)', () => {
@@ -55,25 +114,77 @@ describe('power sounds (hold-to-charge)', () => {
     expect(eventSound(hit('good', 'drive', 0), 0)?.sound).toBe(SHUTTLE_SOUNDS.good)
   })
 
-  it('a charged hit adds a thwack and is louder the more it was charged', () => {
-    const tap = eventSound(hit('good', 'drive', 0), 0)!
-    const half = eventSound(hit('good', 'drive', 0.5), 0)!
-    const full = eventSound(hit('good', 'drive', 1), 0)!
-    expect(half.sound).not.toBe(tap.sound)
-    expect(half.vol).toBeGreaterThan(tap.vol)
-    expect(full.vol).toBeGreaterThan(half.vol)
+  it('power 0 / missing sounds exactly as before (same object)', () => {
+    expect(hitSound('drive', 'good', 0, true).sound).toBe(SHUTTLE_SOUNDS.good)
+    expect(hitSound('smash', 'good', undefined, true).sound).toBe(SHUTTLE_SOUNDS.smash)
   })
 
-  it('a full-charge Perfect smash booms (with the crowd); a lesser smash cracks as before', () => {
-    expect(eventSound(hit('perfect', 'smash', 1), 0)?.sound).toBe(SHUTTLE_SOUNDS.powerSmash)
-    expect(eventSound(hit('perfect', 'smash', 0.6), 0)?.sound).toBe(SHUTTLE_SOUNDS.smash)
+  it('more power = more layers and more volume, smash included', () => {
+    const n = (p: number) => (hitSound('smash', 'good', p, true).sound as Tone[]).length
+    expect(n(0.5)).toBeGreaterThan(n(0))
+    expect(hitSound('clear', 'good', 0.8, true).vol).toBeGreaterThan(hitSound('clear', 'good', 0.4, true).vol)
+  })
+
+  it('a power hit of any shot carries the sting, after the onset', () => {
+    for (const shot of ['smash', 'drive', 'clear', 'drop'] as const) {
+      const s = hitSound(shot, 'perfect', 1, true).sound as Tone[]
+      expect(s, shot).toEqual(expect.arrayContaining(SHUTTLE_SOUNDS.powerSting))
+    }
+    for (const t of SHUTTLE_SOUNDS.powerSting) expect(t.at ?? 0).toBeGreaterThan(0.05)
+    expect(hitSound('drive', 'good', 0.5, true).sound).not.toEqual(
+      expect.arrayContaining(SHUTTLE_SOUNDS.powerSting),
+    )
+  })
+
+  it('theirs stays quieter than ours, power smash included', () => {
+    expect(hitSound('smash', 'perfect', 1, false).vol).toBeLessThan(hitSound('smash', 'perfect', 1, true).vol)
+  })
+
+  it('a smash landing thumps, harder with power; other landings tick as before', () => {
+    const land: SpEvent = { ...at, k: 'land', x: 0, z: 1, in: true }
+    expect(eventSound(land, 0)?.sound).toBe(SHUTTLE_SOUNDS.land)
+    expect(eventSound(land, 0, { shot: 'clear', power: 1 })?.sound).toBe(SHUTTLE_SOUNDS.land)
+    const peak = (p: number) =>
+      (eventSound(land, 0, { shot: 'smash', power: p })!.sound as Tone[]).reduce(
+        (a, t) => a + (t.vol ?? 0),
+        0,
+      )
+    expect(peak(1)).toBeGreaterThan(peak(0))
+    expect(peak(0)).toBeGreaterThan(SHUTTLE_SOUNDS.land.vol!)
+    expect((eventSound(land, 0, { shot: 'smash', power: 0 })!.sound as Tone[])[0]).toBe(SHUTTLE_SOUNDS.land)
+  })
+
+  it('NaN / out-of-range power never yields a NaN or non-positive frequency', () => {
+    for (const p of [NaN, -1, 3])
+      for (const t of hitSound('smash', 'late', p, true).sound as Tone[]) {
+        expect(t.freq).toBeGreaterThan(0)
+        if (t.to !== undefined) expect(t.to).toBeGreaterThan(0)
+      }
+  })
+
+  it('a power smash (power >= popFrom) booms (with the crowd); a lesser smash cracks as before', () => {
+    expect(eventSound(hit('perfect', 'smash', 1), 0)?.sound).toEqual(
+      expect.arrayContaining(SHUTTLE_SOUNDS.powerSmash),
+    )
+    expect(eventSound(hit('perfect', 'smash', 0.5), 0)?.sound).not.toEqual(
+      expect.arrayContaining(SHUTTLE_SOUNDS.powerSmash),
+    )
     expect(eventSound(hit('perfect', 'smash'), 0)?.sound).toBe(SHUTTLE_SOUNDS.smash)
   })
 
-  it('the release whoosh gets bigger with the charge; a tap keeps the old whoosh', () => {
-    expect(swingSound(0)).toBe(SHUTTLE_SOUNDS.swing)
-    expect(swingSound(0.5)).toBe(SHUTTLE_SOUNDS.swingMid)
-    expect(swingSound(1)).toBe(SHUTTLE_SOUNDS.swingFull)
+  it('swing = whoosh + body at every charge; louder and lower the more it was charged', () => {
+    const layers = (c: number) => swingSound(c) as Tone[]
+    expect(layers(0).length).toBeGreaterThanOrEqual(2) // layered even for a tap
+    const vol = (c: number) => layers(c).reduce((a, t) => a + (t.vol ?? 0), 0)
+    expect(vol(0.5)).toBeGreaterThan(vol(0))
+    expect(vol(1)).toBeGreaterThan(vol(0.5))
+    expect(layers(1)[1].freq).toBeLessThan(layers(0)[1].freq) // heavier body
+    expect(layers(1)[0].dur).toBeGreaterThan(layers(0)[0].dur)
+  })
+
+  it('the same charge step returns the same precomputed sound (no allocation per swing)', () => {
+    expect(swingSound(0.98)).toBe(swingSound(1))
+    expect(swingSound(NaN)).toBe(swingSound(0))
   })
 
   it('charging rises in pitch stage by stage and tings at full; no sound before it starts', () => {
@@ -87,6 +198,19 @@ describe('power sounds (hold-to-charge)', () => {
   })
 })
 
+describe('actionSound', () => {
+  const KINDS: ActionSoundKind[] = ['jump', 'jumpLand', 'dive', 'diveLand', 'bonk']
+  it('every action has its own sound; theirs is quieter', () => {
+    const sounds = KINDS.map((k) => actionSound(k, true).sound)
+    expect(new Set(sounds).size).toBe(KINDS.length)
+    for (const k of KINDS) expect(actionSound(k, false).vol).toBeLessThan(actionSound(k, true).vol)
+  })
+  it('landings are heavy (a low body under 130 Hz)', () => {
+    for (const k of ['jumpLand', 'diveLand'] as const)
+      expect((actionSound(k, true).sound as Tone[]).some((t) => t.wave === 'sine' && t.freq < 130)).toBe(true)
+  })
+})
+
 describe('sound headroom', () => {
   /** engine/audio/sound.ts applyLevels: the sfx bus gain at sfx 1.0 is curve(1) × 0.5. */
   const SFX_BUS = 0.5
@@ -94,18 +218,39 @@ describe('sound headroom', () => {
   const onsetPeak = (s: Sound) =>
     (Array.isArray(s) ? s : [s]).filter((t) => (t.at ?? 0) <= 0.05).reduce((a, t) => a + (t.vol ?? 0.6), 0)
 
-  it('every hit, at any grade / shot / charge, peaks at most 1.0 at full effects volume', () => {
+  it('every hit, at any grade / shot / power / side, peaks at most 1.0 at full effects volume', () => {
     for (const grade of ['perfect', 'good', 'late'] as const)
       for (const shot of ['smash', 'drive', 'clear', 'drop'] as const)
-        for (const charge of [0, 0.5, 1]) {
-          const r = eventSound({ ...at, k: 'hit', side: 0, grade, shot, charge }, 0)!
-          expect(onsetPeak(r.sound) * r.vol * SFX_BUS, `${grade} ${shot} ${charge}`).toBeLessThanOrEqual(1)
-        }
+        for (const power of [0, 0.25, 0.5, 0.75, 0.9, 1])
+          for (const mine of [true, false]) {
+            const r = hitSound(shot, grade, power, mine)
+            expect(
+              onsetPeak(r.sound) * r.vol * SFX_BUS,
+              `${grade} ${shot} ${power} ${mine}`,
+            ).toBeLessThanOrEqual(1)
+          }
+  })
+
+  it('every action sound peaks at most 1.0 at full effects volume', () => {
+    for (const k of ['jump', 'jumpLand', 'dive', 'diveLand', 'bonk'] as const) {
+      const r = actionSound(k, true)
+      expect(onsetPeak(r.sound) * r.vol * SFX_BUS, k).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('every smash landing step peaks at most 1.0 at full effects volume', () => {
+    SMASH_LAND.forEach((s, i) => expect(onsetPeak(s) * SFX_BUS, `step ${i}`).toBeLessThanOrEqual(1))
+  })
+
+  it('every swing step peaks at most 1.0 at full effects volume', () => {
+    for (const c of [0, 0.25, 0.5, 0.75, 1])
+      expect(onsetPeak(swingSound(c)) * SFX_BUS, `charge ${c}`).toBeLessThanOrEqual(1)
+    SWING.forEach((s, i) => expect(onsetPeak(s) * SFX_BUS, `step ${i}`).toBeLessThanOrEqual(1))
   })
 
   it('the power smash is not boosted on top (its layers are the boost)', () => {
-    expect(eventSound({ ...at, k: 'hit', side: 0, grade: 'perfect', shot: 'smash', charge: 1 }, 0)!.vol).toBe(
-      1,
-    )
+    expect(
+      eventSound({ ...at, k: 'hit', side: 0, grade: 'perfect', shot: 'smash', charge: 1, power: 1 }, 0)!.vol,
+    ).toBe(1)
   })
 })

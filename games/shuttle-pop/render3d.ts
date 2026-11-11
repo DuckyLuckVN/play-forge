@@ -4,40 +4,50 @@
 // Built once per page: `warm()` (menu preload) compiles every shader, each match `attach`es it to the
 // stage and gets a cleanup that parks it offscreen again. The render loop allocates nothing.
 // The park around the court (sky, lights, crowd) is scenery.ts. Real shadows come from the players
-// only and stop (between rallies) once the quality governor sees slow frames.
+// only and stop (between rallies) once the engine's quality ladder (quality.ts) drops them.
 // Net: net.ts (mesh, tapes, posts; a ripple when the shuttle hits it). Scoreboard: scoreboard.ts (DOM, top
 // centre) + the live score on the flip board by the net (boardprop.ts).
-// Juice: timing pops + badges (hud.ts), Perfect sparkles, a shuttle trail (hot after a smash), a sprung
+// Juice: timing pops + badges (hud.ts), Perfect sparkles, a trail ribbon behind the shuttle styled by the
+// shot's kind, grade and power (trail.ts), a sprung
 // camera punch on smashes and the sounds (sounds.ts), all driven by new sim events. Hold-to-charge: a
 // charge ring at the feet (chargering.ts) with rising sounds, the racket held loaded until the release,
 // and punch / burst / trail / streak scaled by the charge (a full-charge Perfect is the biggest).
 // Motion: one Gait per player (locomotion.ts) fed by the interpolated sim velocity, so the remote / bot
 // player animates exactly like the local one; swing / leap curves are moves.ts; dust puffs are dust.ts.
 // Online guests: the own chibi comes from GuestPredictor (predict.ts: moves the frame the input does,
-// gait fed by the predicted velocity); the shuttle and the opponent stay pure interpolation.
+// gait fed by the predicted velocity); the shuttle comes from GuestShuttle (guestshuttle.ts: a smooth RenderClock + local deterministic flight
+// between host states, so jitter never rubber-bands it); remote players on guests are drawn from RemoteTracks (remotes.ts).
+// Findability (visibility.ts): a soft halo on the shuttle, and any player whose body covers it on screen fades
+// (Chibi.setOpacity, each chibi independently, in any phase: a server's own body too).
 
 import {
   BackSide,
   CircleGeometry,
   Color,
+  DataTexture,
+  LinearFilter,
   Mesh,
   PMREMGenerator,
   MeshBasicMaterial,
   PlaneGeometry,
   ShadowMaterial,
-  SphereGeometry,
+  Quaternion,
+  Sprite,
+  SpriteMaterial,
   TorusGeometry,
   Vector3,
-  type BufferGeometry,
+  BufferGeometry,
 } from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { startRenderLoop } from '@forge/core/loop'
 import type { Smoothed } from '@forge/net/smoothing'
 import { playSound } from '@forge/audio/sound'
-import { createScene3D, Particles3D, QualityGovernor, type Scene3D } from '@forge/render3d'
+import { createScene3D, Particles3D, type Scene3D } from '@forge/render3d'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
+import { actArcInto, actorIndex, cooldownLeft, ABILITY, type AbilityKind, type ActArc } from './ability'
 import {
   createChibi,
+  JUMP_H,
   PRESETS,
   restPose,
   setToyEnvironment,
@@ -46,14 +56,22 @@ import {
   type ChibiPose,
 } from './actors'
 import { AVAILABLE_IDS } from './presets'
-import { chargeOf, chargeStage, CHARGE, isFull } from './charge'
-import { ChargeRing } from './chargering'
+import { chargeOf, chargeStage, CHARGE } from './charge'
+import { isPowerHit } from './power'
+import { ChargeRing, COOLDOWN_LOOK } from './chargering'
 import { TICK_RATE } from './court'
+import { courtScale } from './courtsize'
 import { DustPuffs } from './dust'
+import { StunStars } from './stars'
+import { stunLook, type StunLook } from './stun'
 import { canSplit, Footwork, lungeWanted, splitHop, splitsOn } from './footwork'
 import { Hud, newEvents, newestShotId, trackerAction, type PopKind } from './hud'
 import { ScoreCards } from './boardprop'
 import { Net } from './net'
+import { prefs } from './prefs'
+import { ringShown, type RingMode } from './landing'
+import { mountCameraButton } from './camera-menu'
+import { headAnchorY, ReactionBubbles, toScreen } from './bubbles'
 import { boardView, Scoreboard } from './scoreboard'
 import { t } from './i18n'
 import { damp, Gait, GaitEvent } from './locomotion'
@@ -67,27 +85,66 @@ import {
   SwingDriver,
   type Hop,
 } from './moves'
-import { COURT, predictLanding, type Vec3 } from './physics'
+import { COURT, predictLanding, type CourtDims, type Vec3 } from './physics'
+import type { GuestView, PredictedHit } from './guestshuttle'
+import { HitEcho } from './hitecho'
 import type { GuestPredictor } from './predict'
 import { SpringPunch } from './punch'
-import { SURROUND } from './props'
+import type { Grade, ShotKind } from './shots'
+import { SHUTTLECOCK, shuttlecockGeometry, SHUTTLECOCK_COLORS } from './model/shuttlecock'
+import {
+  corkAxis,
+  floorClearance,
+  ORIENT,
+  restingDir,
+  shuttleMode,
+  shuttleOrientation,
+  turnToward,
+  type ShuttleMode,
+} from './orient'
+import { BOARD, surroundOf } from './props'
+import { SP_QUALITY } from './quality'
 import { Park } from './scenery'
-import { TAPPED, type SpEvent, type SpState } from './sim'
-import { chargeSound, eventSound, SHUTTLE_SOUNDS, swingSound } from './sounds'
-import { ShuttleTrail, type TrailLook } from './trail'
+import { isOwnEvent, TAPPED, type SpEvent, type SpState } from './sim'
+import { MAX_SEATS } from './doubles'
+import {
+  abilitySound,
+  chargeSound,
+  eventSound,
+  hitSound,
+  type LastShot,
+  SHUTTLE_SOUNDS,
+  swingSound,
+} from './sounds'
+import { newTrailStyle, RibbonTrail, trailStyle } from './trail'
+import {
+  bodyBox,
+  haloOpacity,
+  haloPixels,
+  occlusion,
+  stepFades,
+  VIS,
+  type BodyBox,
+  type ScreenRect,
+} from './visibility'
 import {
   CAMERA,
   CHEER,
   cameraPose,
+  clampCameraTweak,
   cheerLevel,
   dampFocus,
   framingTightness,
-  isTwinAlt,
-  lerpV,
+  hitterIndex,
+  interpShuttle,
   moodOf,
+  NO_TWEAK,
+  PLAYER_SNAP,
   rallyHits,
+  twinAlt,
   viewOf,
   type CameraPose,
+  type CameraTweak,
 } from './world'
 
 const PALETTE = {
@@ -95,22 +152,16 @@ const PALETTE = {
   surround: '#c9a487',
   court: '#3f9a86',
   line: '#ffffff',
-  shuttle: '#ffffff',
-  /** Dark rim so the white shuttle reads against the pale sky (same idea as the twin outline). */
-  shuttleRim: '#3b2f4a',
+  /** Dark outline so the white shuttlecock reads against the pale sky (same idea as the twin outline). */
+  shuttleRim: SHUTTLECOCK_COLORS.outline,
   ringMine: '#ffd166',
   ringTheirs: '#ffffff',
 }
 
 const LINE_W = 0.05
 const POST_OUT = 0.25
-const SHUTTLE_R = 0.08
-/** Rim shell radius over the shuttle's. */
-const SHUTTLE_RIM = 1.35
-/** A player jumping further than this between two ticks was placed (new serve): snap, don't glide. */
-const PLAYER_SNAP = 1.5
-/** Shuttle moves ≤ 0.75 m a tick in flight; more is a reset into the server's hand. */
-const SHUTTLE_SNAP = 2
+/** Cork-down in the server's hand (model +Y = cork, model/shuttlecock.ts). */
+const CORK_DOWN = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), Math.PI)
 /**
  * Motion feel. Weight damping rates (1/s) for the ready stance, the smash crouch and moods; squash and
  * lean springs (stiffness, damping ratio, sub-step) and their kicks (velocity): + squash / − stretch,
@@ -142,6 +193,8 @@ const DUST = {
   step: { size: 0.16, life: 0.32, throw: -0.12 },
   burst: { size: 0.26, life: 0.42, throw: -0.35 },
   land: { size: 0.3, life: 0.45, speed: 1.6, count: 4 },
+  /** A dive's landing puffs: this far apart along the dive (m, before CHIBI_SCALE). */
+  dive: 0.3,
   /** Foot offset from the root (m, before CHIBI_SCALE). */
   foot: 0.1,
 }
@@ -149,32 +202,50 @@ const DUST = {
 const LOCAL_SWING_GRACE = 0.4
 /** A swing pressed this soon after its hit event (same frame, any order) still catches up to it (s). */
 const HIT_GRACE = 0.25
+/** A guest's own predicted ability press: the host's matching `act` event this soon after stays silent (s). */
+const OWN_ACT_ECHO = 1
+/** Others' cooldown rings at this opacity (ours full). */
+const THEIR_CD_ALPHA = 0.5
+/** Jump-smash camera punch over a plain smash. */
+const JUMP_PUNCH = 1.2
 /** What the local player's swing button just did (main.ts → attach's callback). */
 export type LocalSwing = 'charge' | 'swing' | 'cancel'
 /** Chibis are ~1.3 m in model space; drawn a bit larger so they read from the far camera. */
 const CHIBI_SCALE = 1.15
+/** Bonked look: sad mood floor, head wobble (rad amplitude), recoil lean, star gap above the head (m). */
+const STUN_SAD = 0.7
+const STUN_WOBBLE = 0.35
+const STUN_RECOIL = 0.25
+const STUN_STAR_GAP = 0.15
 /** Court surface beyond the lines (m); the warm border (SURROUND) is props.ts. */
 const COURT_RUNOFF = { x: 0.35, z: 0.45 }
 /** Environment-map strength on the chibis in the park (the studio room is brighter than golden hour). */
 const TOY_ENV = 0.55
-/** Quality level (QualityGovernor) from which players stop casting real shadows. */
-const SHADOWS_OFF_LEVEL = 1
-/** Seconds after attach the shadow governor ignores (first frames hitch: buffers, textures, GC). */
-const QUALITY_SETTLE = 2
 const SHADOW_OPACITY = 0.26
 
-/** Shuttle trail: TRAIL_DOTS spheres spread along the last TRAIL_SAMPLES positions, one every TRAIL_STEP s. */
-const TRAIL_DOTS = 18
-const TRAIL_SAMPLES = 7
+/**
+ * Trail path: TRAIL_SAMPLES positions one every TRAIL_STEP s (enough path for the longest ribbon), and the
+ * empty gap (m) behind the shuttle's origin: its skirt plus a little, so the ribbon never touches it.
+ */
+const TRAIL_SAMPLES = 40
 const TRAIL_STEP = 1 / 60
-/** Trail look per shot: colour, opacity, head dot radius (m). Smash = hot and thick. */
-const TRAIL: Record<'plain' | 'perfect' | 'smash' | 'power', TrailLook> = {
-  plain: { color: new Color('#e4dcff'), opacity: 0.4, size: 0.06 },
-  perfect: { color: new Color('#ffd166'), opacity: 0.7, size: 0.075 },
-  smash: { color: new Color('#ff4d6d'), opacity: 0.85, size: 0.1 },
-  /** A full-charge hit: hot orange and thickest. */
-  power: { color: new Color('#ff7a45'), opacity: 0.95, size: 0.12 },
+const TRAIL_GAP = SHUTTLECOCK.length + 0.05
+/** Perfect-trail sparkles (trail.ts): a tiny gold twinkle at the ribbon's tip every `every` s. */
+const TRAIL_SPARK = {
+  every: 0.07,
+  burst: { count: 2, color: ['#ffd166', '#fff3b0'], speed: 0.6, life: 0.32, size: 0.12 },
 }
+/** Draw order (transparent pass): net 1 → trail / sparkles 2 → halo 2.5 → shuttlecock 3 → chibis (CHIBI_ORDER). */
+const SHUTTLE_ORDER = 3
+const HALO_ORDER = 2.5
+/** Longest frame step (s) fed to the trail: a hitch draws one normal frame, not a huge one. */
+const TRAIL_MAX_DT = 0.05
+/**
+ * Every chibi object (meshes and their nested Groups: a Group's renderOrder becomes its subtree's group order)
+ * draws after the shuttlecock, so a faded (covering) chibi blends over it instead of hiding it. The rig is
+ * built once (setPreset only re-parents), so setting it at construction covers every look.
+ */
+const CHIBI_ORDER = 5
 
 /**
  * Camera punch on a smash: a damped spring (stiffness, damping ratio) kicked with a velocity (m/s);
@@ -221,7 +292,7 @@ const FULL_SPARK_Y = 0.9
 interface PlayerView {
   chibi: Chibi
   preset: number
-  /** Drawn as the tinted far twin (both sides on the same preset). */
+  /** Drawn as the tinted twin (an earlier player wears the same look: world.ts twinAlt). */
   alt: boolean
   /** Racket swing timeline (wind-up / hold / strike). */
   swing: SwingDriver
@@ -251,6 +322,14 @@ interface PlayerView {
   /** chargeAt in the last state seen (a change to TAPPED = the press swung as a tap). */
   chargeAt: number
   ring: ChargeRing
+  /** Jump / lunge cooldown ring (just outside the charge ring). */
+  cd: ChargeRing
+  /** This frame's jump / lunge body offsets (ability.ts actArcInto; reused). */
+  arc: ActArc
+  /** Stun stars over the head (hidden unless stunned). */
+  stars: StunStars
+  /** Reused each frame by stunLook. */
+  stunLook: StunLook
 }
 
 function makePlayer(preset: number): PlayerView {
@@ -276,6 +355,10 @@ function makePlayer(preset: number): PlayerView {
     hitAt: -Infinity,
     chargeAt: -1,
     ring: new ChargeRing(),
+    cd: new ChargeRing(COOLDOWN_LOOK),
+    arc: { lift: 0, dive: 0 },
+    stars: new StunStars(),
+    stunLook: { on: false, spin: 0, flinch: 0 },
   }
 }
 
@@ -285,14 +368,54 @@ export class Court3D {
   private parking: HTMLElement
   private smooth: Smoothed<SpState> | null = null
   private selfId = ''
-  private players: [PlayerView, PlayerView]
+  /** One view per seat (MAX_SEATS, built once); views past the match's players are hidden. */
+  private players: PlayerView[]
+  /** How many views the last frame showed (−1 = not yet): hiding / showing runs on a change only. */
+  private shownViews = -1
+  /** This frame's looks, one per player (twinAlt; reused). */
+  private presets: number[] = []
+  /** The shuttlecock (model/shuttlecock.ts), its quaternion posed by orient.ts. */
   private shuttle: Mesh
+  /** Last drawn (render-space, unclamped) shuttle position: the per-frame delta is the velocity it turns to. */
+  private drawn = new Vector3()
+  private drawnOk = false
+  /** Scratch velocity, cork axis and resting direction (no allocation in the loop). */
+  private shVel: Vec3 = { x: 0, y: 0, z: 0 }
+  private shAxis = new Vector3()
+  private restDir: Vec3 = { x: 0, y: 0, z: 0 }
+  /** Last horizontal heading in flight: a landed shuttle lies cork-forward along it. */
+  private headX = 0
+  private headZ = 1
+  /** The shuttle's glow (visibility.ts haloOpacity) and how the shuttle is posed this frame (orient.ts). */
+  private halo!: Sprite
+  private shMode: ShuttleMode = 'hand'
+  /** Each player's opacity while covering the shuttle (visibility.ts stepFades), and this frame's cover. */
+  private fades: number[] = []
+  private occ: number[] = []
+  /** Reaction bubbles over the chibis (bubbles.ts), and the shuttle's NDC point from updateVisibility (shOn: in front, drawn). */
+  private bubbles = new ReactionBubbles()
+  private shNdcX = 0
+  private shNdcY = 0
+  private shOn = false
+  private bubSh = { x: 0, y: 0 }
+  /** Per-frame scratch for updateVisibility (no allocation in the loop). */
+  private visP = new Vector3()
+  private visRect: ScreenRect = { x0: 0, y0: 0, x1: 0, y1: 0, depth: 0 }
   private shadow: Mesh
   private ring: Mesh
   private ringMat: MeshBasicMaterial
   private ringColor = { mine: new Color(PALETTE.ringMine), theirs: new Color(PALETTE.ringTheirs) }
+  /** Personal landing-ring setting (Hidden / Near drop / Always). */
+  private ringMode: RingMode = prefs.get().ring
+  /** The ring's prediction is valid (rally, a hitter, ball not stopped by the net). */
+  private ringOn = false
+  /** Sim tick the shuttle lands at; compared with the tick being shown (render clock online) so Near drop matches the visible flight. */
+  private ringLandTick = Infinity
   /** Newest hit/serve event id already turned into a landing ring. */
   private lastShotId = 0
+  /** The last hit's shot + power (a smash's landing thumps); null from a serve / reset. One reused object. */
+  private lastShot: LastShot | null = null
+  private readonly lastShotBuf: LastShot = { shot: 'drive', power: 0 }
   private lastHitter = -2
   private lastTick = -1
   /** Newest event id already turned into a pose (smash leap, point mood). */
@@ -314,15 +437,20 @@ export class Court3D {
   private pose: CameraPose = { x: 0, y: 0, z: 0, lookX: 0, lookY: 0, lookZ: 0, fov: CAMERA.fov }
   /** Framing for the canvas shape (world.ts framingTightness): tight on phone landscape. */
   private tight = 0
+  /** The player's saved camera preference, and what actually applies at this canvas shape. */
+  private camWant: CameraTweak = prefs.get().camera
+  private camTweak: CameraTweak = NO_TWEAK
   private tmp: Vec3 = { x: 0, y: 0, z: 0 }
   private park: Park
   /** Takes the players' real shadows (the ground is unlit, so it can't). */
   private catcher!: Mesh
-  private quality = new QualityGovernor()
+  /** The clay surround and the court surface (geometry follows the court, see shapeCourt). */
+  private surround!: Mesh
+  private floor!: Mesh
+  /** Every court line, one merged mesh. */
+  private lines!: Mesh
   private shadows = true
   private wantShadows = true
-  /** Seconds left before the shadow governor starts judging frames. */
-  private settle = QUALITY_SETTLE
   /** Crowd: hits in the current rally, length of the last point's rally, when that point was. */
   private rally = 0
   private pointHits = 0
@@ -334,6 +462,14 @@ export class Court3D {
   private spectating = false
   /** Online guest only: our own player's prediction (null = draw it from the interpolated state). */
   private predictor: GuestPredictor | null = null
+  /** The match's court (state.court; old hosts send none → Normal). The camera frames this one. */
+  private court: CourtDims = COURT
+  /** Online guests only: the shuttle's smooth clock + flight (null = host / vs-AI: plain interpolation). */
+  private guest: GuestView | null = null
+  /** Online guest: the predicted own hit already heard, so the host's answering hit stays silent. */
+  private readonly echo = new HitEcho()
+  /** Scratch for GuestView.remotes.sample (no per-frame allocation). */
+  private readonly remote = { x: 0, z: 0, vx: 0, vz: 0 }
   /** Whether our inputs reach the sim now (no prediction while they'd be dropped). */
   private live: () => boolean = () => false
   private board = new Scoreboard()
@@ -346,19 +482,37 @@ export class Court3D {
   private hudS0 = -1
   private hudS1 = -1
   private hudSide = -1
-  /** Both seats' looks (preset0 * 64 + preset1): the board's colour dots. */
+  /** Every player's look, packed (1, then × 64 + preset per player): the board's colour dots. */
   private hudLooks = -1
   private fx = new Particles3D(160)
-  private trail = new ShuttleTrail(TRAIL_DOTS, TRAIL_SAMPLES, TRAIL_STEP, TRAIL.plain)
+  /** The trail ribbon, styled by the last hit's kind / grade / power (null = a serve) (trail.ts). */
+  private trail = new RibbonTrail(TRAIL_SAMPLES, TRAIL_STEP, TRAIL_GAP)
+  private trailShot: { kind: ShotKind | null; grade: Grade | null; power: number } = {
+    kind: null,
+    grade: null,
+    power: 0,
+  }
+  /** This frame's trail look (reused). */
+  private trailLook = newTrailStyle()
+  /** Next time (s) a Perfect trail twinkles. */
+  private sparkAt = 0
   private proj = new Vector3()
   /** When each player's latest pop showed (for stacking). */
-  private lastPop: [number, number] = [-Infinity, -Infinity]
+  private lastPop: number[] = new Array<number>(MAX_SEATS).fill(-Infinity)
   private punch = new SpringPunch(PUNCH.k, PUNCH.zeta, PUNCH.step)
   private dust = new DustPuffs(DUST.capacity, DUST.color, DUST.opacity)
   /** Smash leap sample (reused). */
   private leap: Hop = { height: 0, squash: 0 }
   /** Split-step sample (reused). */
   private splitO: Hop = { height: 0, squash: 0 }
+  /** The local player's jump / lunge cooldown left 0..1 this frame (the phone button reads it). */
+  private localCd = 0
+  /** Called every frame with the local ability cooldown (the phone button follows it; set by main.ts). */
+  onCooldown: ((cd: number) => void) | null = null
+  /** Online guest: when our own ability press was predicted and heard (s; its host `act` stays silent). */
+  private lastOwnActAt = -Infinity
+  /** Scratch body box for the occlusion pass. */
+  private body: BodyBox = { y0: 0, y1: 0, mid: 0 }
 
   constructor() {
     this.parking = document.createElement('div')
@@ -366,7 +520,7 @@ export class Court3D {
     this.parking.style.cssText =
       'position:fixed;left:-10000px;top:0;width:100vw;height:85vh;pointer-events:none;opacity:0'
     document.body.appendChild(this.parking)
-    this.view = createScene3D(this.parking, { fov: CAMERA.fov, far: 120, maxDpr: 2 })
+    this.view = createScene3D(this.parking, { fov: CAMERA.fov, far: 120, maxDpr: 2, levels: SP_QUALITY })
     const { scene, renderer } = this.view
     renderer.shadowMap.enabled = true
     this.park = new Park(scene)
@@ -378,26 +532,61 @@ export class Court3D {
     pmrem.dispose()
 
     this.buildCourt()
-    // The engine's own governor restarts its window on every resize (buffers realloc); so does ours.
+    // Fires on every size or quality-level change (the engine's one governor decides both).
     this.view.onResize((w, h) => {
-      this.quality.restart()
+      this.wantShadows = this.view.quality.shadows !== false
       // Snaps on purpose: a resize/rotate already redraws everything at a new size, so easing the
       // framing would only add a second, slower jump.
       this.tight = framingTightness(w, h)
+      this.refitCamera()
+    })
+    // Lives as long as the page: no unsubscribe.
+    prefs.onChange((p) => {
+      this.camWant = p.camera
+      this.ringMode = p.ring
+      this.refitCamera()
     })
 
-    this.players = [makePlayer(0), makePlayer(1)]
-    for (const p of this.players) scene.add(p.chibi.root, p.ring.root)
+    this.players = Array.from({ length: MAX_SEATS }, (_, i) => makePlayer(i))
+    this.fades = this.players.map(() => 1)
+    this.occ = this.players.map(() => 0)
+    for (const p of this.players) {
+      p.chibi.root.traverse((o) => {
+        // The swing streak and blob shadow keep their own order (the streak must not draw over the shuttle).
+        if (o.name !== 'streak' && o.name !== 'shadow') o.renderOrder = CHIBI_ORDER
+      })
+      scene.add(p.chibi.root, p.ring.root, p.cd.root, p.stars.group)
+    }
 
-    this.shuttle = new Mesh(
-      new SphereGeometry(SHUTTLE_R, 14, 10),
-      new MeshBasicMaterial({ color: PALETTE.shuttle }),
-    )
+    // Shuttlecock: vertex-coloured unlit body + dark back-side outline (2 draw calls, as the old ball + rim).
+    const cock = shuttlecockGeometry()
+    // Transparent at opacity 1 (looks opaque) only to draw in the transparent pass after the wind streaks, so
+    // streaks in front of it (flying away) never veil it; it still writes depth.
+    this.shuttle = new Mesh(cock.body, new MeshBasicMaterial({ vertexColors: true, transparent: true }))
     const rim = new Mesh(
-      new SphereGeometry(SHUTTLE_R * SHUTTLE_RIM, 12, 8),
-      new MeshBasicMaterial({ color: PALETTE.shuttleRim, side: BackSide }),
+      cock.outline,
+      new MeshBasicMaterial({ color: PALETTE.shuttleRim, side: BackSide, transparent: true }),
     )
+    this.shuttle.renderOrder = rim.renderOrder = SHUTTLE_ORDER
     this.shuttle.add(rim)
+    // Soft glow around the shuttle: depth-tested (never through posts / court), after the net, the wind and
+    // the shuttlecock (HALO_ORDER) so none of them blends over it. Never on a player: hidden while the
+    // shuttle is held and faded out wherever it overlaps any player on screen (updateVisibility).
+    const haloTex = new DataTexture(haloPixels(), VIS.halo.px, VIS.halo.px)
+    haloTex.magFilter = haloTex.minFilter = LinearFilter
+    haloTex.needsUpdate = true
+    const halo = (this.halo = new Sprite(
+      new SpriteMaterial({
+        map: haloTex,
+        color: VIS.halo.color,
+        opacity: VIS.halo.opacity,
+        transparent: true,
+        depthWrite: false,
+      }),
+    ))
+    halo.scale.setScalar(VIS.halo.size)
+    halo.renderOrder = HALO_ORDER
+    this.shuttle.add(halo)
     this.shadow = new Mesh(
       new CircleGeometry(0.12, 16),
       new MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.22, depthWrite: false }),
@@ -416,6 +605,8 @@ export class Court3D {
     scene.add(this.trail.mesh, this.fx.points, this.dust.mesh)
     this.view.onResize((_w, h) => this.fx.setScale(h * this.view.renderer.getPixelRatio()))
     this.view.root.appendChild(this.hud.root)
+    this.view.root.appendChild(this.bubbles.root)
+    mountCameraButton(this.view.root)
   }
 
   /** The element under the view (for pointer input). */
@@ -423,47 +614,72 @@ export class Court3D {
     return this.view.root
   }
 
+  /** The court's meshes (shapes from shapeCourt), the net and the score cards. Once. */
   private buildCourt() {
     const { scene } = this.view
-    const flat = (w: number, d: number, color: string, y: number) => {
-      const m = new Mesh(new PlaneGeometry(w, d), new MeshBasicMaterial({ color }))
+    const flat = (mat: MeshBasicMaterial | ShadowMaterial, y: number) => {
+      const m = new Mesh(new BufferGeometry(), mat)
       m.rotation.x = -Math.PI / 2
       m.position.y = y
       scene.add(m)
       return m
     }
-    const outerW = (COURT.halfWidth + SURROUND.x) * 2
-    const outerL = (COURT.halfLen + SURROUND.z) * 2
-    flat(outerW, outerL, PALETTE.surround, 0.002)
-    flat((COURT.halfWidth + COURT_RUNOFF.x) * 2, (COURT.halfLen + COURT_RUNOFF.z) * 2, PALETTE.court, 0.004)
-    this.catcher = new Mesh(
-      new PlaneGeometry(outerW, outerL),
-      new ShadowMaterial({ opacity: SHADOW_OPACITY, depthWrite: false }),
-    )
-    this.catcher.rotation.x = -Math.PI / 2
-    this.catcher.position.y = 0.008
+    this.surround = flat(new MeshBasicMaterial({ color: PALETTE.surround }), 0.002)
+    this.floor = flat(new MeshBasicMaterial({ color: PALETTE.court }), 0.004)
+    this.catcher = flat(new ShadowMaterial({ opacity: SHADOW_OPACITY, depthWrite: false }), 0.008)
     this.catcher.receiveShadow = true
-    scene.add(this.catcher)
+    this.lines = new Mesh(new BufferGeometry(), new MeshBasicMaterial({ color: PALETTE.line }))
+    scene.add(this.lines, this.cards.mesh)
+    this.shapeCourt(this.court)
+  }
+
+  /**
+   * (Re)shapes everything sized by the court: surround, surface + run-off, shadow catcher, lines, net (a new
+   * one, the old disposed), the scoreboard cards and the park. Rare (a court change): allocates.
+   */
+  private shapeCourt(court: CourtDims) {
+    const { scene } = this.view
+    const reshape = (m: Mesh, geo: BufferGeometry) => {
+      m.geometry.dispose()
+      m.geometry = geo
+    }
+    const sur = surroundOf(court)
+    const outerW = (court.halfWidth + sur.x) * 2
+    const outerL = (court.halfLen + sur.z) * 2
+    reshape(this.surround, new PlaneGeometry(outerW, outerL))
+    reshape(
+      this.floor,
+      new PlaneGeometry((court.halfWidth + COURT_RUNOFF.x) * 2, (court.halfLen + COURT_RUNOFF.z) * 2),
+    )
+    reshape(this.catcher, new PlaneGeometry(outerW, outerL))
 
     // Lines are centred on the boundary (a shuttle on the line is in). One merged mesh.
     const lines: BufferGeometry[] = []
     const line = (x: number, z: number, w: number, d: number) =>
       lines.push(new PlaneGeometry(w, d).rotateX(-Math.PI / 2).translate(x, 0.006, z))
-    const W = COURT.halfWidth * 2 + LINE_W
-    const L = COURT.halfLen * 2 + LINE_W
+    const W = court.halfWidth * 2 + LINE_W
+    const L = court.halfLen * 2 + LINE_W
     for (const s of [-1, 1]) {
-      line(s * COURT.halfWidth, 0, LINE_W, L) // side lines
-      line(0, s * COURT.halfLen, W, LINE_W) // base lines
-      line(0, s * COURT.shortLine, W, LINE_W) // short service lines
-      const centreLen = COURT.halfLen - COURT.shortLine
-      line(0, s * (COURT.shortLine + centreLen / 2), LINE_W, centreLen) // centre lines
+      line(s * court.halfWidth, 0, LINE_W, L) // side lines
+      line(0, s * court.halfLen, W, LINE_W) // base lines
+      line(0, s * court.shortLine, W, LINE_W) // short service lines
+      const centreLen = court.halfLen - court.shortLine
+      line(0, s * (court.shortLine + centreLen / 2), LINE_W, centreLen) // centre lines
     }
-    scene.add(new Mesh(mergeGeometries(lines), new MeshBasicMaterial({ color: PALETTE.line })))
+    reshape(this.lines, mergeGeometries(lines))
+    for (const g of lines) g.dispose()
 
     // Net: posts, the see-through mesh and the tapes (net.ts).
+    if (this.net) {
+      scene.remove(this.net.group)
+      this.net.dispose()
+    }
     const aniso = this.view.renderer.capabilities.getMaxAnisotropy()
-    this.net = new Net(COURT.halfWidth + POST_OUT, COURT.netH, aniso)
-    scene.add(this.net.group, this.cards.mesh)
+    this.net = new Net(court.halfWidth + POST_OUT, court.netH, aniso)
+    scene.add(this.net.group)
+
+    this.cards.mesh.position.x = BOARD.x * courtScale(court).x
+    this.park.setCourt(court)
   }
 
   /** Compile every shader up front, so the first match starts without a hitch. */
@@ -471,18 +687,27 @@ export class Court3D {
     this.ring.visible = true
     this.trail.mesh.visible = true
     this.dust.mesh.visible = true
-    // The twin outline + kit materials (both shades), so no material compiles mid-match.
-    this.players[1].chibi.setPreset(1, true)
-    for (const p of this.players) {
+    // Every view's fade materials (per chibi, one toy program) and its twin outline + kit materials (both
+    // shades), so no material is made mid-match, 1v1 or 2v2. View 0 starts on its twin shade (a spectator
+    // or a later seat can tint it) and its normal fade is drawn just after the compile.
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i]
+      p.chibi.setOpacity(0.5)
+      p.chibi.setPreset(i, true)
       p.chibi.root.traverse((o) => (o.visible = true))
       p.ring.shown = true
+      p.cd.shown = true
     }
     this.placeCamera(0, 1)
     // Scenery, crowd and the shadow variants of every lit material are all in the scene by now (the
     // chibis' slow-device shading is uniforms only: the same programs).
     await this.view.renderer.compileAsync(this.view.scene, this.view.camera)
     this.view.render(0)
+    this.players[0].chibi.setPreset(0)
+    this.view.render(0)
+    for (const p of this.players) p.chibi.setOpacity(1)
     // Upload every look's merged geometries now (a first-time preset would otherwise upload mid-match).
+    // Per look, not per view: geometries are shared, two views cover both shades.
     for (const k of AVAILABLE_IDS) {
       this.players[0].chibi.setPreset(k)
       this.players[1].chibi.setPreset(k, true)
@@ -491,10 +716,14 @@ export class Court3D {
     this.ring.visible = false
     this.trail.mesh.visible = false
     this.dust.mesh.visible = false
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < this.players.length; i++) {
       this.players[i].chibi.setPreset(i)
       this.players[i].ring.shown = false
+      this.players[i].cd.shown = false
+      // Seats 3–4 stay hidden until a 2v2 match shows them (showViews).
+      this.players[i].chibi.root.visible = i < 2
     }
+    this.shownViews = -1
   }
 
   /**
@@ -510,49 +739,68 @@ export class Court3D {
     onLocalSwing: (cb: (what: LocalSwing) => void) => void,
     predictor: GuestPredictor | null = null,
     live: () => boolean = () => false,
+    guest: GuestView | null = null,
   ): () => void {
     this.smooth = smooth
     this.selfId = selfId
     this.predictor = predictor
     this.live = live
+    this.guest = guest
     this.reset()
     this.seeded = false
     stage.appendChild(this.view.root)
-    this.settle = QUALITY_SETTLE
-    this.quality.restart()
     onLocalSwing((what) => this.localSwing(what))
     const stop = startRenderLoop((dt) => this.frame(dt))
     return () => {
       stop()
       this.smooth = null
       this.predictor = null
+      this.guest?.clock.reset()
+      this.guest?.shuttle.reset()
+      this.guest?.remotes.reset()
+      this.guest = null
       this.parking.appendChild(this.view.root)
     }
   }
 
   /** Forget the last match (a rematch restarts ticks and event ids). */
   private reset() {
+    this.guest?.clock.reset()
+    this.guest?.shuttle.reset()
+    this.guest?.remotes.reset()
+    this.echo.reset()
     this.lastShotId = 0
+    this.lastShot = null
     this.lastHitter = -2
     this.lastTick = -1
     this.lastEventId = 0
     this.pointSide = -1
     this.localPressAt = -Infinity
     this.localChargeAt = -1
+    this.localCd = 0
+    this.lastOwnActAt = -Infinity
     this.rally = 0
     this.pointHits = 0
     this.pointAt = -Infinity
     this.ring.visible = false
+    this.ringOn = false
     this.hud.reset()
+    this.bubbles.reset()
     this.board.reset()
     this.net.reset()
     this.hudPhase = ''
     this.trail.reset()
-    this.trail.setLook(TRAIL.plain)
+    this.setTrailShot(null, null, 0)
+    this.shVel.x = this.shVel.y = this.shVel.z = 0
     this.punch.reset()
     this.dust.reset()
-    this.lastPop[0] = this.lastPop[1] = -Infinity
+    this.lastPop.fill(-Infinity)
+    this.drawnOk = false
+    this.fades.fill(1)
+    this.occ.fill(0)
+    this.shownViews = -1
     for (const p of this.players) {
+      p.chibi.setOpacity(1)
       p.swing.reset()
       p.swingAt = NaN
       p.jumpAge = Infinity
@@ -567,6 +815,7 @@ export class Court3D {
       p.hitAt = -Infinity
       p.chargeAt = -1
       p.ring.update(-1, 0, 0, 0)
+      p.stars.group.visible = false
     }
   }
 
@@ -589,6 +838,25 @@ export class Court3D {
     playSound(swingSound(charge))
   }
 
+  /**
+   * Views 0..n−1 shown, the rest hidden with their rings and stars (a 1v1 ↔ 2v2 rematch reuses the
+   * pool: nothing is built or disposed). Runs on a change of `n` only.
+   */
+  private showViews(n: number) {
+    if (n === this.shownViews) return
+    this.shownViews = n
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i]
+      const on = i < n
+      p.chibi.root.visible = on
+      if (on) continue
+      p.ring.update(-1, 0, 0, 0)
+      p.cd.update(-1, 0, 0, 0)
+      p.stars.group.visible = false
+      p.fresh = true
+    }
+  }
+
   /** Swing `view` now: let a hold go (or press), remember its power for the streak, catch up a hit already seen. */
   private strikeOut(view: PlayerView, charge: number) {
     if (view.swing.holding) view.swing.release()
@@ -599,6 +867,7 @@ export class Court3D {
 
   private frame(dt: number) {
     this.time += dt
+    this.onCooldown?.(this.localCd)
     const curr = this.smooth?.curr
     if (!curr) return this.view.render(dt)
     const track = trackerAction(this.seeded, curr.nextEventId, this.lastEventId, curr.tick, this.lastTick)
@@ -611,10 +880,9 @@ export class Court3D {
       this.lastShotId = newestShotId(curr.events)
     }
     this.lastTick = curr.tick
-    // Slow frames: drop the players' real shadows, between rallies so they don't vanish mid-shot.
-    // Blob shadows stay either way.
-    if (this.settle > 0) this.settle -= dt
-    else if (this.quality.sample(dt)) this.wantShadows = this.quality.level < SHADOWS_OFF_LEVEL
+    this.setCourt(curr.court ?? COURT)
+    // Quality ladder dropped the players' real shadows: apply between rallies so they don't vanish
+    // mid-shot. Blob shadows stay either way.
     if (this.wantShadows !== this.shadows && curr.phase !== 'rally') this.setShadows(this.wantShadows)
     const prev = this.smooth!.prev ?? curr
     const a = this.smooth!.alpha()
@@ -623,7 +891,9 @@ export class Court3D {
     let side: 0 | 1 = 0
     this.localIdx = 0
     this.spectating = true
-    for (let i = 0; i < 2; i++)
+    // One view per seat: never more players than views (MAX_SEATS), so every index below is bounded.
+    const n = Math.min(curr.players.length, this.players.length)
+    for (let i = 0; i < n; i++)
       if (curr.players[i].id === this.selfId) {
         side = curr.players[i].side
         this.localIdx = i
@@ -636,8 +906,28 @@ export class Court3D {
     }
     const flip = this.flip
 
+    // Online guest: feed the states first (the clock samples its error at frame start), then advance it.
+    const g0 = this.guest
+    if (g0) {
+      g0.clock.onState(prev.tick)
+      g0.clock.onState(curr.tick)
+      g0.shuttle.push(prev)
+      g0.shuttle.push(curr)
+      g0.remotes.push(prev.tick, prev.players)
+      g0.remotes.push(curr.tick, curr.players)
+      g0.clock.update(dt)
+    }
+
     let localX = 0
-    for (let i = 0; i < 2; i++) {
+    this.localCd = 0
+    // Host ticks on screen: a guest's render clock (remotes, the shuttle), else the interpolated tick.
+    const renderTick = prev.tick + (curr.tick - prev.tick) * a
+    const shownTick = g0 ? g0.clock.tick : renderTick
+    this.showViews(n)
+    const presets = this.presets
+    presets.length = n
+    for (let i = 0; i < n; i++) presets[i] = curr.players[i].preset
+    for (let i = 0; i < n; i++) {
       const cp = curr.players[i]
       const pp = prev.players[i]
       const view = this.players[i]
@@ -651,12 +941,23 @@ export class Court3D {
         // A jump mid-rally is a packet gap, not a placement: correct()'s ≥ 1 m snap handles it.
         pred.update(dt, cp, curr.tick, (placed && curr.phase !== 'rally') || held)
       }
-      const x = (pred ? pred.x : pp.x + (cp.x - pp.x) * t) * flip
-      const z = (pred ? pred.z : pp.z + (cp.z - pp.z) * t) * flip
+      // The predicted local player, else a guest's remote on the render clock, else the plain lerp.
+      const rem = !pred && g0 !== null && g0.remotes.sample(cp.id, this.remote)
+      const px = pred ? pred.x : rem ? this.remote.x : pp.x + (cp.x - pp.x) * t
+      const pz = pred ? pred.z : rem ? this.remote.z : pp.z + (cp.z - pp.z) * t
+      const x = px * flip
+      const z = pz * flip
+      // Jump / lunge: our predicted press on the predictor's step clock, else the state's on the shown tick.
+      const act = pred?.act ?? cp.act ?? null
+      const actTick = pred?.act ? pred.stepNow : shownTick
+      const arc = actArcInto(act, actTick, view.arc)
+      const cd = cooldownLeft(act, actTick)
+      // The dive slides the body toward the contact (render only; the sim's player stays put).
+      const slide = act ? ABILITY.lunge.slide * arc.dive * flip : 0
       const root = view.chibi.root
-      root.position.set(x, 0, z)
+      root.position.set(x + (act ? act.dx * slide : 0), 0, z + (act ? act.dz * slide : 0))
       if (i === this.localIdx) localX = x
-      const alt = isTwinAlt(curr.players[0].preset, curr.players[1].preset, i, this.localIdx)
+      const alt = twinAlt(presets, i, this.spectating ? -1 : this.localIdx)
       if (cp.preset !== view.preset || alt !== view.alt) {
         view.preset = cp.preset
         view.alt = alt
@@ -670,7 +971,6 @@ export class Court3D {
         this.predictor?.setCharging(false)
       }
       view.chargeAt = cp.chargeAt
-      const renderTick = prev.tick + (curr.tick - prev.tick) * a
       const charge = local
         ? this.localChargeAt >= 0
           ? chargeOf((this.time - this.localChargeAt) * TICK_RATE)
@@ -692,11 +992,20 @@ export class Court3D {
       // The opponent let go without a swing that counted (cancel / cooldown): drop the hold.
       if (!local && cp.chargeAt < 0 && view.swing.holding) view.swing.cancel()
       this.chargeFx(view, charge, x, z, local || this.spectating)
+      view.cd.update(
+        cd > 0 ? cd : -1,
+        root.position.x,
+        root.position.z,
+        this.time,
+        local ? 1 : THEIR_CD_ALPHA,
+      )
+      if (local) this.localCd = cd
       // A pending contact of mine (render time sits between the prev and curr ticks): the racket holds
       // its wind-up, or hurries, so the strike meets the shuttle on the contact tick (a hit that already
       // happened tells the driver in onHit). A smash also schedules the leap so its rise tops out there
       // (once per pending shot).
-      const pend = curr.shuttle.pending
+      // The swinger's own contact (by id: a teammate on the same side doesn't wind up for it).
+      const pend = curr.shuttle.pending?.id === cp.id ? curr.shuttle.pending : null
       const due = pendingDue(pend, cp.side, prev.tick + (curr.tick - prev.tick) * a, TICK_RATE)
       view.swing.update(dt, due)
       const loading = due !== undefined && pend!.kind === 'smash'
@@ -717,8 +1026,8 @@ export class Court3D {
         view.gait.reset(netYaw)
         view.fresh = false
       }
-      const vx = (pred ? pred.vx : pp.vx + (cp.vx - pp.vx) * t) * flip
-      const vz = (pred ? pred.vz : pp.vz + (cp.vz - pp.vz) * t) * flip
+      const vx = (pred ? pred.vx : rem ? this.remote.vx : pp.vx + (cp.vx - pp.vx) * t) * flip
+      const vz = (pred ? pred.vz : rem ? this.remote.vz : pp.vz + (cp.vz - pp.vz) * t) * flip
       const g = view.gait
       const flags = g.update(vx, vz, netYaw, swinging || mood !== 'idle', dt)
       // Footwork: a far, low reach just before my contact lunges toward it (a smash leaps instead).
@@ -741,12 +1050,12 @@ export class Court3D {
       const leaping = view.jumpAge >= 0 && view.jumpAge < SMASH.land
       pose.smash = damp(pose.smash, loading || leaping ? 1 : 0, MOTION.smashRate, dt)
       smashJump(view.jumpAge, this.leap)
-      pose.jump = this.leap.height
+      pose.jump = Math.max(this.leap.height, arc.lift / JUMP_H)
       splitHop(view.foot.splitAge, this.splitO)
       pose.split = this.splitO.height
       pose.squash = view.squash.update(dt) + this.leap.squash + this.splitO.squash
       pose.lean = view.lean.update(dt)
-      pose.lunge = view.foot.lunge
+      pose.lunge = Math.max(view.foot.lunge, arc.dive)
       // Badminton ready stance whenever not celebrating / slumping.
       pose.stance = damp(pose.stance, mood === 'idle' ? 1 : 0, MOTION.readyRate, dt)
       // Ready stance while the shuttle comes my way; crouch while my smash is about to connect.
@@ -758,35 +1067,107 @@ export class Court3D {
       pose.sad = damp(pose.sad, mood === 'sad' ? 1 : 0, MOTION.moodRate, dt)
       pose.cheer = damp(pose.cheer, mood === 'happy' && curr.phase === 'over' ? 1 : 0, MOTION.moodRate, dt)
       pose.look = lookAround(this.time, view.seed)
+      // Bonked: dizzy and still, a recoil at the hit, stars over the head. Ours is known when the host's state
+      // is (the predictor froze us then), a remote's on the render clock.
+      const stun = stunLook(cp.stunAt ?? -1, pred ? renderTick : shownTick, view.stunLook)
+      if (stun.on) {
+        pose.stance = 0
+        pose.sad = Math.max(pose.sad, STUN_SAD)
+        pose.look = STUN_WOBBLE * Math.sin(stun.spin * 2)
+        pose.lean -= STUN_RECOIL * stun.flinch
+      }
       view.chibi.setPose(pose, this.time)
+      const ch = view.chibi
+      view.stars.update(
+        stun,
+        root.position.x,
+        root.position.y + (ch.lift + ch.top) * root.scale.y + STUN_STAR_GAP,
+        root.position.z,
+        this.fades[i],
+      )
     }
     this.dust.update(dt)
 
     // Shuttle (+ its shadow for depth).
     const ps = prev.shuttle.pos
     const cs = curr.shuttle.pos
-    const snap = Math.abs(cs.x - ps.x) + Math.abs(cs.y - ps.y) + Math.abs(cs.z - ps.z) > SHUTTLE_SNAP
-    const pos = lerpV(ps, cs, snap ? 1 : a, this.tmp)
-    this.shuttle.position.set(pos.x * flip, Math.max(SHUTTLE_R, pos.y), pos.z * flip)
+    let pos: Vec3 = this.tmp
+    let snap: boolean
+    if (g0) {
+      g0.shuttle.update(dt)
+      pos = g0.shuttle.pos
+      snap = g0.shuttle.snapped
+    } else {
+      snap = interpShuttle(ps, cs, a, this.tmp).snap
+    }
+    this.poseShuttle(curr.phase, pos.x * flip, pos.y, pos.z * flip, snap, dt)
     this.shadow.position.x = pos.x * flip
     this.shadow.position.z = pos.z * flip
     // After players + shuttle are placed: pops and bursts anchor on this frame's positions.
     this.scanEvents(curr)
     const flying = curr.phase === 'rally' && curr.shuttle.lastHitter !== -1 && !snap
     const sp = this.shuttle.position
-    this.trail.update(flying, sp.x, sp.y, sp.z, dt)
+    const cp = this.view.camera.position
+    const v = this.shVel
+    const ts = this.trailShot
+    const look = trailStyle(ts.kind, ts.grade, ts.power, Math.hypot(v.x, v.y, v.z), this.trailLook)
+    const tr = this.trail
+    const cam = this.view.camera
+    const pxScale = (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, this.view.height)
+    tr.update(flying, sp.x, sp.y, sp.z, Math.min(dt, TRAIL_MAX_DT), look, cp.x, cp.y, cp.z, pxScale)
+    // Perfect trails twinkle at the ribbon's tip (the lowest quality rung skips it).
+    if (tr.shown && look.sparkle && this.view.quality.dpr > 1 && this.time >= this.sparkAt) {
+      this.sparkAt = this.time + TRAIL_SPARK.every
+      this.fx.burst(tr.tip[0], tr.tip[1], tr.tip[2], TRAIL_SPARK.burst)
+    }
     this.fx.update(dt)
     this.net.update(dt)
     this.updateHud(curr)
 
     this.updateRing(curr, flip)
-    this.ring.visible = this.ring.visible && curr.phase === 'rally'
+    this.ring.visible =
+      this.ringOn &&
+      curr.phase === 'rally' &&
+      ringShown(this.ringMode, (this.ringLandTick - shownTick) / TICK_RATE)
 
     this.park.update(cheerLevel(this.rally, this.time - this.pointAt, this.pointHits), this.time, dt)
 
     this.placeCamera(localX * CAMERA.followX, pos.y, dt)
+    this.updateVisibility(curr, dt)
+    this.placeBubbles(curr)
     if (import.meta.env.DEV && !this.callsLogged && curr.phase === 'rally') this.logDrawCalls(dt)
     else this.view.render(dt)
+  }
+
+  /**
+   * Place and orient the shuttlecock (orient.ts) at render-space (x, y, z): cork-down in the server's hand,
+   * cork-first along the drawn per-frame movement in flight (what is shown, host or guest alike), tipping
+   * onto its side once a point's shuttle is on the floor. A teleport (snap) keeps the last orientation.
+   * Lifted just enough that neither cork nor rim goes through the floor. Allocates nothing.
+   */
+  private poseShuttle(phase: SpState['phase'], x: number, y: number, z: number, snap: boolean, dt: number) {
+    const q = this.shuttle.quaternion
+    const mode = (this.shMode = shuttleMode(phase, y))
+    const moved = this.drawnOk && !snap && dt > 1e-4
+    if (mode === 'hand') q.copy(CORK_DOWN)
+    else if (mode === 'rest') {
+      const d = restingDir(this.headX, this.headZ, this.restDir)
+      // Already on the floor when first drawn (joined mid-point): lie down at once.
+      turnToward(q, d.x, d.y, d.z, ORIENT.restRate, moved ? dt : this.drawnOk ? 0 : 1, q)
+    } else if (moved) {
+      const v = this.shVel
+      v.x = (x - this.drawn.x) / dt
+      v.y = (y - this.drawn.y) / dt
+      v.z = (z - this.drawn.z) / dt
+      if (Math.hypot(v.x, v.z) >= ORIENT.minSpeed) {
+        this.headX = v.x
+        this.headZ = v.z
+      }
+      shuttleOrientation(v, q, dt, q)
+    }
+    this.drawn.set(x, y, z)
+    this.drawnOk = true
+    this.shuttle.position.set(x, Math.max(y, floorClearance(corkAxis(q, this.shAxis).y)), z)
   }
 
   /**
@@ -915,40 +1296,123 @@ export class Court3D {
       this.rally = rallyHits(this.rally, e.k)
       // The opponent hits / serves: split step, landing ready.
       if (e.k === 'hit' || e.k === 'serve')
-        for (let n = 0; n < 2; n++) {
+        for (let n = 0; n < Math.min(s.players.length, this.players.length); n++) {
           const v = this.players[n]
-          const airborne = v.jumpAge >= 0 && v.jumpAge < SMASH.end
+          const airborne = (v.jumpAge >= 0 && v.jumpAge < SMASH.end) || v.arc.lift > 0 || v.arc.dive > 0
           if (splitsOn(e.k, e.side, s.players[n].side) && canSplit(v.gait.speed, v.foot.lunge, airborne))
             v.foot.splitStep()
         }
-      const sound = eventSound(e, this.side)
-      if (sound) playSound(sound.sound, sound.vol)
+      // Every event feeds the echo (a serve / whiff / expiry forgets it); only the predicted hit is muted,
+      // and our own predicted ability press (ownActPredicted).
+      const heard = this.echo.heard(e)
+      if (!heard && !(e.k === 'act' && this.ownActEcho(s, e))) {
+        const sound = eventSound(e, this.side, this.lastShot, this.spectating ? undefined : this.selfId)
+        if (sound) playSound(sound.sound, sound.vol)
+      }
+      if (e.k === 'hit') {
+        this.lastShotBuf.shot = e.shot
+        this.lastShotBuf.power = e.power ?? 0
+        this.lastShot = this.lastShotBuf
+      } else if (e.k === 'serve') this.lastShot = null
       // Into the net: it ripples out from the shuttle, pushed away from whoever hit it (near = +z).
       if (e.k === 'net') this.net.hit(this.shuttle.position.x, s.shuttle.lastHitter === this.side ? 1 : -1)
       if (e.k === 'point') {
         this.pointSide = e.side
         if (this.pointHits >= CHEER.rally) playSound(SHUTTLE_SOUNDS.cheer)
-      } else if (e.k === 'hit') this.onHit(s, e.side, e.grade, e.shot === 'smash', e.charge ?? 0)
-      else if (e.k === 'serve') this.trail.setLook(TRAIL.plain)
-      else if (e.k === 'whiff' && !this.spectating && e.side === this.side)
+      } else if (e.k === 'hit') {
+        this.onHit(s, e, e.grade, e.shot === 'smash', e.power ?? 0, e.act === 'jump')
+        this.setTrailShot(e.shot, e.grade, e.power ?? 0)
+      } else if (e.k === 'serve') this.setTrailShot(e.shot ?? null, null, 0)
+      else if (e.k === 'whiff' && !this.spectating && isOwnEvent(e, this.side, this.selfId))
         this.popAt(this.localIdx, 'miss', false)
+      else if (e.k === 'actLand') this.onActLand(s, e.side, e.act, e.tick)
+      else if (e.k === 'bonk') this.onBonk(s, e.who)
     }
+  }
+
+  /** A racket bonk: the victim squashes; ours also drops the swing and charge visuals (the host did). */
+  private onBonk(s: SpState, who: string) {
+    const i = s.players.findIndex((p) => p.id === who)
+    if (i < 0 || i >= this.players.length) return
+    this.players[i].squash.kick(MOTION.kickPerfect)
+    if (i === this.localIdx && !this.spectating) this.localSwing('cancel')
+  }
+
+  /** True (once) when this `act` event is our own press already heard by ownActPredicted. */
+  private ownActEcho(s: SpState, e: { side: 0 | 1; act: AbilityKind; tick: number }): boolean {
+    if (this.spectating || this.time - this.lastOwnActAt >= OWN_ACT_ECHO) return false
+    if (actorIndex(s.players, { k: 'act', ...e }) !== this.localIdx) return false
+    this.lastOwnActAt = -Infinity
+    return true
+  }
+
+  /** Feet back on the floor: a dust ring (a dive: two puffs along it) and a landing squash. */
+  private onActLand(s: SpState, side: 0 | 1, k: AbilityKind, tick: number) {
+    const j = actorIndex(s.players, { k: 'actLand', side, act: k, tick })
+    if (j < 0 || j >= this.players.length) return
+    const view = this.players[j]
+    const { x, z } = view.chibi.root.position
+    const act = s.players[j].act
+    if (k === 'lunge' && act) {
+      const L = DUST.land
+      const dx = act.dx * this.flip
+      const dz = act.dz * this.flip
+      for (let n = 1; n <= 2; n++) {
+        const d = n * DUST.dive * CHIBI_SCALE
+        this.dust.spawn(x + dx * d, z + dz * d, dx * L.speed, dz * L.speed, L.life, L.size)
+      }
+    } else this.landPuff(x, z)
+    view.squash.kick(MOTION.kickPerfect * (k === 'hop' ? 0.5 : 1))
+  }
+
+  /**
+   * Online guest: our own ability press was just predicted (main.ts, the host's pick on the shown flight),
+   * so its jump / dive is heard now; the host's answering `act` event is then skipped (its landing is not).
+   */
+  ownActPredicted(k: AbilityKind): void {
+    const { sound, vol } = abilitySound('act', k, true)
+    playSound(sound, vol)
+    this.lastOwnActAt = this.time
+  }
+
+  /** The local player's jump / lunge cooldown left this frame, 0..1 (0 = ready; spectators 0). */
+  abilityCooldown(): number {
+    return this.localCd
+  }
+
+  /**
+   * Online guest: our own hit was just predicted (GuestShuttle.predictHit), so it is heard now, not
+   * ~1 RTT later; the host's answering hit event is then skipped (its pops / punch still play).
+   */
+  ownHitPredicted(h: PredictedHit): void {
+    const { sound, vol } = hitSound(h.shot, h.grade, h.power, true)
+    playSound(sound, vol)
+    this.echo.note(h)
+  }
+
+  /** A new shot: the trail regrows from the contact in that shot's look (kind null = a serve). */
+  private setTrailShot(kind: ShotKind | null, grade: Grade | null, power: number) {
+    const t = this.trailShot
+    t.kind = kind
+    t.grade = grade
+    t.power = power
+    this.trail.restart()
   }
 
   private onHit(
     s: SpState,
-    side: 0 | 1,
+    e: { side: 0 | 1; by?: string },
     grade: Exclude<PopKind, 'power' | 'miss'>,
     smash: boolean,
-    charge: number,
+    power: number,
+    jump = false,
   ) {
-    const j = s.players[0].side === side ? 0 : 1
-    const mine = this.spectating || side === this.side
-    const power = isFull(charge) && grade === 'perfect'
-    this.popAt(j, power ? 'power' : grade, smash)
-    this.trail.setLook(
-      isFull(charge) ? TRAIL.power : smash ? TRAIL.smash : grade === 'perfect' ? TRAIL.perfect : TRAIL.plain,
-    )
+    const j = hitterIndex(s.players, e)
+    if (j < 0 || j >= this.players.length) return
+    const own = !this.spectating && isOwnEvent(e, this.side, this.selfId)
+    const mine = this.spectating || own
+    const big = isPowerHit(power)
+    this.popAt(j, big ? 'power' : grade, smash)
     // The hit is happening now: a racket still on its way to contact hurries to meet it (a press seen
     // later this frame catches up too: hitAt).
     const view = this.players[j]
@@ -962,15 +1426,19 @@ export class Court3D {
       // A snappy stretch-then-squash on the hitter.
       view.squash.kick(MOTION.kickPerfect)
     }
-    const boost = 1 + POWER_FX.punch * charge
+    const boost = 1 + POWER_FX.punch * power
     if (smash) {
       // Keep a leap scheduled from the pending smash; a same-tick hit leaps now.
       view.jumpAge = leapAtHit(view.jumpAge)
       this.fx.burst(p.x, p.y, p.z, SMASH_BURST)
-      if (power) this.fx.burst(p.x, p.y, p.z, POWER_BURST)
-      this.punch.kick((mine ? PUNCH.kickMine : PUNCH.kickTheirs) * (power ? POWER_FX.powerSmash : boost))
-    } else if (charge > 0) this.punch.kick(POWER_FX.hitKick * charge * (mine ? 1 : 0.5))
-    if (power && !this.spectating && side === this.side) {
+      if (big) this.fx.burst(p.x, p.y, p.z, POWER_BURST)
+      this.punch.kick(
+        (mine ? PUNCH.kickMine : PUNCH.kickTheirs) *
+          (big ? POWER_FX.powerSmash : boost) *
+          (jump ? JUMP_PUNCH : 1),
+      )
+    } else if (power > 0) this.punch.kick(POWER_FX.hitKick * power * (mine ? 1 : 0.5))
+    if (big && own) {
       try {
         navigator.vibrate?.(POWER_FX.buzz)
       } catch {
@@ -999,7 +1467,8 @@ export class Court3D {
    * server, score, our side or the looks change. The opponent's serve shows as the board's shuttle icon.
    */
   private updateHud(s: SpState) {
-    const looks = s.players[0].preset * 64 + s.players[1].preset
+    let looks = 1
+    for (let i = 0; i < s.players.length; i++) looks = looks * 64 + s.players[i].preset
     if (
       s.phase === this.hudPhase &&
       s.server === this.hudServer &&
@@ -1034,7 +1503,7 @@ export class Court3D {
     this.lastShotId = newest
     this.lastHitter = hitter
     if (s.phase !== 'rally' || hitter === -1) {
-      this.ring.visible = false
+      this.ringOn = false
       return
     }
     const land = predictLanding(s.shuttle)
@@ -1042,18 +1511,141 @@ export class Court3D {
     const z = land.pos.z * flip
     this.ring.position.x = x
     this.ring.position.z = z
-    this.ring.visible = !land.netHit
+    this.ringOn = !land.netHit
+    this.ringLandTick = s.tick + land.ticks
     // Coming to my half: bright yellow; going away: faint white.
     const mine = z < 0
     this.ringMat.color.copy(mine ? this.ringColor.mine : this.ringColor.theirs)
     this.ringMat.opacity = mine ? 0.95 : 0.45
   }
 
+  /**
+   * Keep the shuttle findable (after placeCamera): every player whose body box covers it on screen fades
+   * toward see-through, each by its own cover, in any phase (a server's own body hides the serve), local,
+   * opponent or spectated alike (visibility.ts). Works for any number of players; allocates nothing.
+   */
+  private updateVisibility(curr: SpState, dt: number) {
+    const cam = this.view.camera
+    cam.updateMatrixWorld()
+    const v = this.visP
+    const occ = this.occ
+    occ.fill(0)
+    /** Most any player's screen box overlaps the shuttle, in front or behind (the halo's no-go zone). */
+    let overlap = 0
+    // Shuttle: camera-space depth, then NDC.
+    v.copy(this.shuttle.position).applyMatrix4(cam.matrixWorldInverse)
+    const sDepth = -v.z
+    v.applyMatrix4(cam.projectionMatrix)
+    const sx = v.x
+    const sy = v.y
+    this.shNdcX = sx
+    this.shNdcY = sy
+    this.shOn = sDepth > 0 && this.shuttle.visible
+    if (sDepth > 0 && this.shuttle.visible) {
+      const r = this.visRect
+      const tanY = Math.tan((cam.fov * Math.PI) / 360)
+      for (let i = 0; i < Math.min(curr.players.length, this.players.length); i++) {
+        const chibi = this.players[i].chibi
+        const root = chibi.root
+        const k = root.scale.y
+        const { x, y, z } = root.position
+        // The box rides on the rig (a jump lifts it): Chibi.lift is in the root's scaled space.
+        const b = bodyBox(y, chibi.lift * k, chibi.top, k, this.body)
+        // Body centre: depth + NDC x; bottom / top: NDC y.
+        v.set(x, b.mid, z).applyMatrix4(cam.matrixWorldInverse)
+        r.depth = -v.z
+        if (r.depth <= 0) continue
+        v.applyMatrix4(cam.projectionMatrix)
+        const hw = (VIS.body.halfW * k) / (r.depth * tanY * cam.aspect)
+        r.x0 = v.x - hw
+        r.x1 = v.x + hw
+        v.set(x, b.y0, z).project(cam)
+        r.y0 = v.y
+        v.set(x, b.y1, z).project(cam)
+        r.y1 = v.y
+        if (r.y1 < r.y0) {
+          const t = r.y0
+          r.y0 = r.y1
+          r.y1 = t
+        }
+        occ[i] = occlusion(sx, sy, sDepth, r)
+        overlap = Math.max(overlap, occlusion(sx, sy, Infinity, r))
+      }
+    }
+    const haloMat = this.halo.material
+    haloMat.opacity = haloOpacity(overlap, this.shMode === 'hand')
+    this.halo.visible = haloMat.opacity > 0.01
+    stepFades(occ, this.fades, dt)
+    for (let i = 0; i < this.players.length; i++) {
+      const f = this.fades[i]
+      this.players[i].chibi.setOpacity(f > 0.995 ? 1 : f)
+    }
+  }
+
+  /** Shows a reaction bubble over `playerId`'s chibi. False when there is no match state, no such player or an unknown id. */
+  react(playerId: string, reactionId: string): boolean {
+    const players = this.smooth?.curr?.players
+    if (!players) return false
+    const i = players.findIndex((p) => p.id === playerId)
+    if (i < 0 || i >= this.players.length) return false
+    return this.bubbles.show(i, reactionId, this.time)
+  }
+
+  /** Per frame, after updateVisibility: each live bubble hangs above its chibi's head (follows the jump). Allocates only for live bubbles. */
+  private placeBubbles(curr: SpState) {
+    const cam = this.view.camera
+    const w = this.view.width
+    const h = this.view.height
+    const sh = this.shOn ? this.bubSh : null
+    if (sh) {
+      sh.x = ((this.shNdcX + 1) / 2) * w
+      sh.y = ((1 - this.shNdcY) / 2) * h
+    }
+    for (let i = 0; i < Math.min(curr.players.length, this.players.length); i++) {
+      if (!this.bubbles.live(i)) continue
+      const chibi = this.players[i].chibi
+      const root = chibi.root
+      const v = this.visP
+      v.set(
+        root.position.x,
+        headAnchorY(root.position.y, chibi.lift, chibi.top, root.scale.y),
+        root.position.z,
+      )
+      v.applyMatrix4(cam.matrixWorldInverse)
+      const depth = -v.z
+      v.applyMatrix4(cam.projectionMatrix)
+      this.bubbles.place(i, this.time, toScreen(v, depth, w, h), this.fades[i], sh)
+    }
+  }
+
+  /** Clamps the wanted tweak to what keeps the court framed. Allocates: call on change only, never per frame. */
+  private refitCamera() {
+    this.camTweak = clampCameraTweak(this.camWant, {
+      aspect: this.view.width / Math.max(1, this.view.height),
+      tight: this.tight,
+      court: this.court,
+    })
+  }
+
+  /**
+   * Every frame: tells the guest predictor the match's court. On a different court size (only then) it
+   * reshapes the court, net and park and refits the camera's tweak clamp.
+   */
+  private setCourt(court: CourtDims) {
+    if (this.predictor) this.predictor.court = court
+    const c = this.court
+    if (court.halfLen === c.halfLen && court.halfWidth === c.halfWidth && court.shortLine === c.shortLine)
+      return
+    this.court = court
+    this.shapeCourt(court)
+    this.refitCamera()
+  }
+
   /** Damped: x slides with the local player, the look-at rises with the shuttle (see world.ts). */
   private placeCamera(targetX: number, shuttleY: number, dt = 1) {
     this.camX += (targetX - this.camX) * (1 - Math.exp(-6 * dt))
     this.focus = dampFocus(this.focus, shuttleY, dt)
-    const p = cameraPose(this.camX, this.focus, this.pose, this.tight)
+    const p = cameraPose(this.camX, this.focus, this.pose, this.tight, this.camTweak, this.court)
     const cam = this.view.camera
     if (Math.abs(cam.fov - p.fov) > 1e-3) {
       cam.fov = p.fov

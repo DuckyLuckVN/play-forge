@@ -90,7 +90,10 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
     selfId,
     peers: () => Object.keys(room.getPeers()),
     send(channel, data, to) {
-      void action(channel).send(data as DataPayload, to ? { target: to } : undefined)
+      // A peer that just closed stays listed until ICE times out: its sends reject. Not fatal.
+      action(channel)
+        .send(data as DataPayload, to ? { target: to } : undefined)
+        .catch((e) => netLog('send failed', channel, e))
     },
     on(channel, handler) {
       action(channel)

@@ -1,13 +1,34 @@
 import { describe, expect, it } from 'vitest'
-import type { InputEvent, PlayerInfo } from '@forge/net/session'
+import { resolveOptions, type InputEvent, type PlayerInfo } from '@forge/net/session'
+import { ABILITY, acting, actReady, type Act } from './ability'
 import { CHARGE, chargeOf } from './charge'
-import { COURT, predictLanding } from './physics'
+import { COURT_SIZES, courtDims } from './courtsize'
+import { COURT, DT, predictLanding } from './physics'
+import { POWER_SWING } from './power'
 import { AVAILABLE_IDS, isAvailable } from './presets'
+import { launchShot, shotTarget } from './shots'
+import { readyDepth } from './ai'
+import { serveBox } from './rules'
+import { STUN } from './stun'
 import {
+  AI_ID,
+  canAct,
+  canCharge,
+  contactCandidates,
+  RECEIVE_BACK,
+  RECEIVE_X,
+  SERVE_BACK,
+  SERVE_X,
+  serverPlayer,
+  setupDoubles,
+  canStrike,
   canSwing,
   gradeRewind,
+  gradesAtPress,
+  launchTick,
   MAX_REWIND,
   MOVE_SPEED,
+  tapContact,
   NET_MARGIN,
   POINT_TICKS,
   PRESETS,
@@ -17,12 +38,14 @@ import {
   separateAi,
   shownName,
   setupBots,
+  stepPlayer,
   SWING_COOLDOWN,
   shuttlePopGame as game,
   TAPPED,
   toWorld,
   type SpEvent,
   type SpInput,
+  type SpPlayer,
   type SpState,
 } from './sim'
 
@@ -91,7 +114,11 @@ describe('setup', () => {
   })
   it('defaults to normal and has no local option', () => {
     expect(game.setup(players(1), 3, {}).players[1].level).toBe('normal')
-    expect(game.options![0].choices.map((c) => c.value)).toEqual(['easy', 'normal', 'hard'])
+    expect(game.options!.find((o) => o.id === 'solo')!.choices.map((c) => c.value)).toEqual([
+      'easy',
+      'normal',
+      'hard',
+    ])
   })
   it('two humans, server in right service box, receiver diagonal', () => {
     const s = duel()
@@ -150,7 +177,7 @@ describe('pick', () => {
   it('clamps the preset to 0..PRESETS−1, then a hidden one maps to an available look (host validation)', () => {
     const s = duel()
     game.tick(s, [ev('p0', { t: 'pick', preset: 99 }), ev('p1', { t: 'pick', preset: 1.7 })])
-    expect(s.players[0].preset).toBe(0)
+    expect(s.players[0].preset).toBe(3) // hidden → first free in picker order (Cloud taken → Mint)
     expect(s.players[1].preset).toBe(1)
     game.tick(s, [ev('p0', { t: 'pick', preset: -2 })])
     expect(s.players[0].preset).toBe(0)
@@ -171,7 +198,7 @@ describe('pick', () => {
     expect(s.players[0].preset).toBe(1)
     s.players[1].preset = 1
     seedPreset(s, 'p0', 5)
-    expect(s.players[0].preset).toBe(0)
+    expect(s.players[0].preset).toBe(3)
   })
 
   it('every available pick keeps exactly that look', () => {
@@ -199,7 +226,7 @@ describe('pick', () => {
     expect(s.players[1].preset).toBe(1)
     game.tick(s, [ev('p0', { t: 'pick', preset: 1 })])
     expect(s.players[0].preset).toBe(1)
-    expect(s.players[1].preset).toBe(2)
+    expect(s.players[1].preset).toBe(3) // next card in picker order after Cloud: Mint
     game.tick(s, [ev('p0', { t: 'pick', preset: 3 })])
     expect(s.players[1].preset).toBe(2)
   })
@@ -235,11 +262,11 @@ describe('pick', () => {
   it('seedPreset gives a fresh match the stored look, before any input', () => {
     const s = game.setup(players(1), 1, {})
     seedPreset(s, 'p0', 1)
-    expect(s.players.map((p) => p.preset)).toEqual([1, 2])
+    expect(s.players.map((p) => p.preset)).toEqual([1, 3])
     seedPreset(s, 'p0', 99)
-    expect(s.players[0].preset).toBe(0)
+    expect(s.players[0].preset).toBe(1)
     seedPreset(s, 'nobody', 3)
-    expect(s.players[0].preset).toBe(0)
+    expect(s.players[0].preset).toBe(1)
   })
 
   it('two humans may pick the same available preset', () => {
@@ -253,7 +280,7 @@ describe('serve', () => {
   it('no held dir → short serve lands in the diagonal short box, point to server', () => {
     const s = duel()
     game.tick(s, [swing('p0')])
-    expect(s.events.some((e) => e.k === 'serve' && e.side === 0)).toBe(true)
+    expect(s.events.some((e) => e.k === 'serve' && e.side === 0 && e.shot === 'serveShort')).toBe(true)
     expect(s.phase).toBe('rally')
     const seen = run(s, 300)
     const land = seen.find((e) => e.k === 'land')
@@ -468,8 +495,9 @@ describe('swing timing', () => {
     return s
   }
   /** Swing `after` ticks after the closest approach; returns the swing tick's events. */
-  function swingAfter(after: number) {
+  function swingAfter(after: number, pressured = false) {
     const s = passing()
+    s.shuttle.pressured = pressured
     run(s, after) // first tick records the closest approach
     game.tick(s, [swing('p1')])
     return s.events.filter((e) => e.tick === s.tick)
@@ -483,6 +511,23 @@ describe('swing timing', () => {
   it('a few ticks late is graded by |dt| (perfect band), hit at once', () => {
     expect(swingAfter(3).find((e) => e.k === 'hit')).toMatchObject({ side: 1, grade: 'perfect' })
     expect(swingAfter(6).find((e) => e.k === 'hit')).toMatchObject({ side: 1, grade: 'perfect' })
+  })
+  it('a pressured shuttle (power smash incoming) shrinks the Perfect window to 4', () => {
+    expect(swingAfter(4, true).find((e) => e.k === 'hit')).toMatchObject({ side: 1, grade: 'perfect' })
+    expect(swingAfter(5, true).find((e) => e.k === 'hit')).toMatchObject({ side: 1, grade: 'good' })
+    expect(swingAfter(5, false).find((e) => e.k === 'hit')).toMatchObject({ side: 1, grade: 'perfect' })
+  })
+  it('a tap return clears the pressure; so does the next serve set-up', () => {
+    const s = passing()
+    s.shuttle.pressured = true
+    run(s, 3)
+    game.tick(s, [swing('p1')])
+    expect(s.events.some((e) => e.k === 'hit' && e.tick === s.tick)).toBe(true)
+    expect(s.shuttle.pressured).toBe(false)
+    s.shuttle.pressured = true
+    run(s, 300 + POINT_TICKS)
+    expect(s.phase).toBe('serve')
+    expect(s.shuttle.pressured).toBe(false)
   })
   it('7-12 ticks late is good, not perfect', () => {
     for (const after of [7, 8, 12]) {
@@ -624,6 +669,133 @@ describe('lag fairness (swing rewind)', () => {
   })
 })
 
+describe('lag-compensated hits (launch from the rewound contact)', () => {
+  type V = { x: number; y: number; z: number }
+  /** The receiver stands at `at` (default: on the shuttle's path); the closest approach is the first tick (C). */
+  function onPath(pos: V, vel: V, at: { x: number; z: number } = pos) {
+    const s = duel()
+    const side = pos.z > 0 ? 1 : 0
+    s.players[side].x = at.x
+    s.players[side].z = at.z
+    rally(s, pos, vel, side === 0 ? 1 : 0)
+    return { s, id: `p${side}`, C: s.tick + 1 }
+  }
+  /** The swing seen at tick C, delivered `lag` ticks later; returns the state and every event. */
+  function swingSeenAt(pos: V, vel: V, lag: number, at?: { x: number; z: number }) {
+    const { s, id, C } = onPath(pos, vel, at)
+    const seen = run(s, lag)
+    game.tick(s, [ev(id, { t: 'swing', x: 0, z: 0, tick: C })])
+    allEvents(s, seen)
+    return { s, C, seen }
+  }
+
+  it('a rewound guest hit flies as if it had no lag', () => {
+    const pos = { x: 0, y: 1.5, z: 3 }
+    const vel = { x: 6, y: 1, z: 0 }
+    const a = swingSeenAt(pos, vel, 0)
+    const b = swingSeenAt(pos, vel, 5)
+    expect(a.seen.find((e) => e.k === 'hit')).toMatchObject({ tick: a.C, grade: 'perfect' })
+    expect(b.seen.find((e) => e.k === 'hit')).toMatchObject({ tick: b.C + 5, grade: 'perfect' })
+    run(a.s, a.C + 10 - a.s.tick)
+    run(b.s, b.C + 10 - b.s.tick)
+    expect(b.s.tick).toBe(a.s.tick)
+    for (const k of ['x', 'y', 'z'] as const) {
+      expect(b.s.shuttle.pos[k]).toBeCloseTo(a.s.shuttle.pos[k], 9)
+      expect(b.s.shuttle.vel[k]).toBeCloseTo(a.s.shuttle.vel[k], 9)
+    }
+  })
+
+  it('a fast-forward into the net scores like a lag-free hit', () => {
+    // A low drop right at the tape: no lift clears the net from there. The shuttle drifts back off the
+    // tape (and away from p0), so a hit from where it is 5 ticks later would clear: only a launch from
+    // the contact point nets.
+    const pos = { x: 0, y: 0.6, z: -0.02 }
+    const vel = { x: 1.5, y: -0.5, z: -1.2 }
+    const at = { x: -0.3, z: -0.3 }
+    const a = swingSeenAt(pos, vel, 0, at)
+    const b = swingSeenAt(pos, vel, 5, at)
+    const kinds = (r: typeof a, tick: number) => r.seen.filter((e) => e.tick === tick).map((e) => e.k)
+    expect(kinds(a, a.C)).toEqual(['hit', 'net', 'point'])
+    // The rewound hit resolves on the tick it arrives: hit, then the net it flew into during the fast-forward.
+    expect(kinds(b, b.C + 5)).toEqual(['hit', 'net', 'point'])
+    expect(b.seen.filter((e) => e.k === 'point')).toEqual([expect.objectContaining({ side: 1 })])
+    expect(b.s.score).toEqual(a.s.score)
+    expect(b.s.phase).toBe('point')
+  })
+
+  it('AI and on-time swings are unchanged', () => {
+    // Recorded before hits launched from the rewound contact (AI swings have rewind 0: a no-op for them);
+    // re-recorded when the power swing changed charged launches (the bots charge) and for the full-charge recovery (seed 11);
+    // re-recorded when the bots started to jump / lunge (ai.ts LEVELS.ability).
+    const fingerprint: number[][] = []
+    const finals: SpState[] = []
+    for (let seed = 1; seed <= 20; seed++) {
+      const s = setupBots('hard', 'hard', seed)
+      run(s, 600)
+      const { score, stats, rng } = s
+      fingerprint.push([...score, stats.shots, stats.longest, ...stats.perfect, rng])
+      finals.push(s)
+    }
+    expect(fingerprint).toEqual([
+      [1, 1, 1, 4, 2, 1, 1703683420],
+      [1, 0, 1, 8, 2, 1, 440012081],
+      [1, 0, 4, 4, 0, 1, 1071847752],
+      [1, 0, 6, 2, 1, 1, 1071847753],
+      [0, 0, 8, 0, 3, 3, 1071847754],
+      [0, 1, 0, 9, 3, 2, 440012085],
+      [1, 0, 5, 3, 2, 1, 1071847756],
+      [1, 1, 0, 5, 1, 2, 1703683427],
+      [0, 0, 12, 0, 3, 4, -1455494922],
+      [0, 0, 9, 0, 2, 3, 440012089],
+      [0, 1, 5, 3, 3, 1, 1071847760],
+      [1, 1, 2, 3, 1, 1, 1703683431],
+      [1, 0, 4, 4, 2, 1, 1071847762],
+      [1, 1, 3, 2, 1, 2, -1959448193],
+      [0, 0, 8, 0, 2, 3, 1071847764],
+      [0, 0, 8, 0, 2, 2, 1071847765],
+      [0, 0, 10, 0, 3, 3, -191823574],
+      [0, 0, 10, 0, 3, 4, -191823573],
+      [0, 0, 7, 0, 1, 3, 1703683438],
+      [0, 0, 11, 0, 3, 4, -823659241],
+    ])
+    const shuttle = (s: SpState) => ({
+      pos: s.shuttle.pos,
+      vel: s.shuttle.vel,
+      lastHitter: s.shuttle.lastHitter,
+    })
+    expect(shuttle(finals[0])).toEqual({
+      pos: { x: -0.35118484681342194, y: 1.293311339477553, z: 1.5552314125963136 },
+      vel: { x: 2.861929622214458, y: 3.046933112049844, z: -6.611121650518929 },
+      lastHitter: 1,
+    })
+    expect(shuttle(finals[1])).toEqual({
+      pos: { x: -0.8834445067109626, y: 1.213825241338133, z: 1.2779053234318756 },
+      vel: { x: -1.8834032822313338, y: -2.4038277895700775, z: 4.3267274526608315 },
+      lastHitter: 0,
+    })
+    expect(shuttle(finals[2])).toEqual({
+      pos: { x: 0.25382244258068576, y: 1.167678871796932, z: -2.5788653583391055 },
+      vel: { x: 0.8986949147934271, y: -3.063709567868111, z: -7.864988484471223 },
+      lastHitter: 1,
+    })
+  })
+
+  it('an unlagged late swing (contact in the past, lag 0) still launches from where the shuttle is now', () => {
+    for (const stamped of [false, true]) {
+      const { s, id } = onPath({ x: 0, y: 1.5, z: 3 }, { x: 1.2, y: 1, z: 0 })
+      run(s, 5)
+      const now = { ...s.shuttle.pos }
+      const input: SpInput = stamped
+        ? { t: 'swing', x: 0, z: 0, tick: s.tick + 1 }
+        : { t: 'swing', x: 0, z: 0 }
+      game.tick(s, [ev(id, input)])
+      expect(s.events.find((e) => e.k === 'hit' && e.tick === s.tick)).toMatchObject({ grade: 'perfect' })
+      expect(s.history.at(-1)!.pos).toEqual(now) // not the contact point 5 ticks back
+      expect(s.shuttle.lastHitter).toBe(1)
+    }
+  })
+})
+
 describe('serve timeout', () => {
   it('an idle server short-serves after SERVE_TIMEOUT ticks', () => {
     const s = game.setup(players(1), 5, {})
@@ -752,14 +924,14 @@ describe('hold-to-charge', () => {
   const charge = (player: string, cancel = false): InputEvent<SpInput> =>
     ev(player, cancel ? { t: 'charge', cancel: true } : { t: 'charge' })
   /** Shuttle passes right through p1 (as in 'swing timing'); p1 starts charging `hold` ticks before. */
-  function chargedHit(hold: number, rewindTick?: number, heldZ = 0) {
+  function chargedHit(hold: number, rewindTick?: number, heldZ = 0, contactY = 1.5) {
     const s = duel()
     s.players[1].x = 0
     s.players[1].z = 3
     rally(s, { x: 0, y: 3, z: -3 }, { x: 0, y: 5, z: 0 }, 1) // in the air on the far half meanwhile
     game.tick(s, [charge('p1')])
     run(s, hold - 1)
-    rally(s, { x: 0, y: 1.5, z: 3 }, { x: 1.2, y: 1, z: 0 }, 0)
+    rally(s, { x: 0, y: contactY, z: 3 }, { x: 1.2, y: 1, z: 0 }, 0)
     s.history.length = 0
     const sw: SpInput =
       rewindTick === undefined
@@ -780,6 +952,22 @@ describe('hold-to-charge', () => {
     expect(s.players[1].chargeAt).toBe(-1)
   })
 
+  it('a full-charge Perfect smash carries power > 0.9 into the event and s.shuttle.power; a tap 0; a serve resets', () => {
+    const { s, hit } = chargedHit(40, undefined, 1, 2.2)
+    expect(hit).toMatchObject({ shot: 'smash', grade: 'perfect' })
+    const power = (hit as { power: number }).power
+    expect(power).toBeGreaterThan(0.9)
+    expect(s.shuttle.power).toBe(power)
+    expect(s.shuttle.pressured).toBe(true)
+    const tap = chargedHit(1, undefined, 1, 2.2)
+    expect(tap.hit).toMatchObject({ shot: 'smash', power: 0 })
+    expect(tap.s.shuttle.power).toBe(0)
+    expect(tap.s.shuttle.pressured).toBe(false)
+    rally(s, { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }, 0)
+    run(s, 600)
+    expect(s.shuttle.power).toBe(0)
+  })
+
   it('a tap (no charge press) hits with charge 0, exactly like before', () => {
     const { hit } = chargedHit(1)
     expect(hit).toMatchObject({ grade: 'perfect', charge: 0 })
@@ -791,12 +979,15 @@ describe('hold-to-charge', () => {
     expect(half.charge).toBeCloseTo((20 - CHARGE.start) / (CHARGE.full - CHARGE.start), 9)
   })
 
-  it('a charged clear gets to the far end sooner than a tapped one from the same spot', () => {
+  it('a charged clear lands deeper and hangs longer than a tapped one from the same spot', () => {
     const full = chargedHit(40, undefined, -1)
     const tap = chargedHit(1, undefined, -1)
     expect(full.hit).toMatchObject({ shot: 'clear', charge: 1 })
     expect(tap.hit).toMatchObject({ shot: 'clear', charge: 0 })
-    expect(predictLanding(full.s.shuttle).ticks).toBeLessThan(predictLanding(tap.s.shuttle).ticks)
+    const a = predictLanding(tap.s.shuttle)
+    const b = predictLanding(full.s.shuttle)
+    expect(b.pos.z).toBeLessThan(a.pos.z) // side 1 hits toward z < 0
+    expect(b.ticks).toBeGreaterThan(a.ticks)
   })
 
   it('timing is graded at the release tick (rewound for a lagged guest), the charge from the hold', () => {
@@ -1009,6 +1200,61 @@ describe('hold-to-charge', () => {
     expect(Math.hypot(s.players[1].vx, s.players[1].vz)).toBeCloseTo(MOVE_SPEED * CHARGE.moveMul, 6)
   })
 
+  describe('recovery after a full-charge swing', () => {
+    const speed = (s: SpState) => Math.hypot(s.players[1].vx, s.players[1].vz)
+    /** Rally, p1 runs right, holds `hold` ticks, swings (whiff), then keeps running 20 ticks: speed per tick. */
+    function afterSwing(hold: number) {
+      const s = duel()
+      rally(s, { x: 0, y: 3, z: -3 }, { x: 0, y: 5, z: 0 }, 1)
+      s.players[1].z = 5
+      s.players[1].x = -2.5
+      run(s, 12, () => [ev('p1', { t: 'move', x: 1, z: 0 })])
+      game.tick(s, [charge('p1')])
+      run(s, hold - 1) // the swing tick closes the hold: `hold` ticks counted
+      game.tick(s, [swing('p1', 0, 0)])
+      const speeds: number[] = []
+      for (let i = 0; i < 20; i++) {
+        game.tick(s, [])
+        speeds.push(speed(s))
+      }
+      return { s, speeds }
+    }
+    it('a 30-tick hold slows to recoveryMoveMul for recoveryTicks, then full speed again', () => {
+      const { speeds } = afterSwing(30)
+      // speeds[i] is tick +i+1; the swing tick itself is the first slowed one (15 ticks: swing + 14).
+      for (let i = 5; i <= 13; i++) {
+        expect(speeds[i]).toBeGreaterThan(MOVE_SPEED * POWER_SWING.recoveryMoveMul * 0.95)
+        expect(speeds[i]).toBeLessThan(MOVE_SPEED * POWER_SWING.recoveryMoveMul * 1.05)
+      }
+      expect(speeds[14]).toBeGreaterThan(MOVE_SPEED * POWER_SWING.recoveryMoveMul * 1.05)
+      expect(speeds[19]).toBeCloseTo(MOVE_SPEED, 6)
+    })
+    it('a 29-tick hold or a tap does not lock', () => {
+      for (const hold of [29, 0]) {
+        const { s, speeds } = afterSwing(hold)
+        expect(speeds[10]).toBeGreaterThan(MOVE_SPEED * 0.65)
+        expect(s.players[1].recoverUntil).toBe(-1)
+      }
+    })
+    it('a full-charge serve does not lock', () => {
+      const s = duel()
+      game.tick(s, [charge('p0')])
+      run(s, 40)
+      game.tick(s, [swing('p0', 0, -1)])
+      expect(s.phase).toBe('rally')
+      expect(s.players[0].recoverUntil).toBe(-1)
+    })
+    it('the rally ending during the lock clears it', () => {
+      const { s } = afterSwing(30)
+      expect(s.players[1].recoverUntil).toBeGreaterThanOrEqual(0)
+      s.phase = 'point'
+      s.phaseT = POINT_TICKS - 1
+      game.tick(s, [])
+      expect(s.phase).toBe('serve')
+      expect(s.players[1].recoverUntil).toBe(-1)
+    })
+  })
+
   it('serves ignore the charge (same serve as a tap)', () => {
     const serveVel = (hold: number) => {
       const s = duel()
@@ -1043,5 +1289,967 @@ describe('hold-to-charge', () => {
     game.tick(s, [charge('p1')])
     const v = game.netView!(s) as SpState
     expect(v.players[1].chargeAt).toBe(s.tick)
+  })
+})
+
+describe('shared lag predicates', () => {
+  it('gradesAtPress: charge 0 and 0..MAX_REWIND ticks since the press', () => {
+    expect(gradesAtPress(0, 0)).toBe(true)
+    expect(gradesAtPress(MAX_REWIND, 0)).toBe(true)
+    expect(gradesAtPress(MAX_REWIND + 1, 0)).toBe(false)
+    expect(gradesAtPress(-1, 0)).toBe(false)
+    expect(gradesAtPress(3, 1)).toBe(false)
+  })
+  it('tapContact: contact within CHARGE.start ticks of the press', () => {
+    expect(tapContact(10 + CHARGE.start, 10)).toBe(true)
+    expect(tapContact(10 + CHARGE.start + 1, 10)).toBe(false)
+    expect(tapContact(5, 10)).toBe(true)
+  })
+  it('launchTick: the later of contact and screen tick', () => {
+    expect(launchTick(10, 12)).toBe(12)
+    expect(launchTick(14, 12)).toBe(14)
+  })
+})
+
+describe('court size', () => {
+  /** Online match on the given court, p0 on side 0 serving. */
+  function duelOn(court: string): SpState {
+    for (let seed = 1; ; seed++) {
+      const s = game.setup(players(2), seed, { court })
+      if (s.server === 0) return s
+    }
+  }
+
+  it('the court option: not aloneOnly, default normal, three sizes', () => {
+    const opt = game.options!.find((o) => o.id === 'court')!
+    expect(opt).toBeDefined()
+    expect(opt.aloneOnly).toBeFalsy()
+    expect(opt.default).toBe('normal')
+    expect(opt.choices.map((c) => c.value)).toEqual(COURT_SIZES)
+  })
+
+  it('createState builds state.court from the option; junk is normal', () => {
+    expect(game.setup(players(1), 1, { court: 'xl' }).court).toEqual(courtDims('xl'))
+    expect(game.setup(players(1), 1, { court: 'huge' }).court).toEqual(courtDims('normal'))
+    expect(game.setup(players(1), 1, {}).court).toEqual(courtDims('normal'))
+  })
+
+  it('netView sends the court', () => {
+    const s = game.setup(players(2), 1, { court: 'large' })
+    expect((game.netView!(s) as SpState).court).toEqual(courtDims('large'))
+  })
+
+  it('serve stance scales with the short line', () => {
+    const s = duelOn('xl')
+    const { shortLine } = courtDims('xl')
+    const [a, b] = s.players
+    expect(a.z).toBeLessThan(-shortLine)
+    expect(a.z).toBeGreaterThan(-shortLine - 1)
+    expect(b.z).toBeGreaterThan(shortLine)
+  })
+
+  it('players may run past the bigger lines, not past their margin', () => {
+    const xl = courtDims('xl')
+    const chase = (court?: typeof xl) => {
+      const p = { side: 0 as const, x: 0, z: -3, vx: 0, vz: 0, move: { x: -1, z: -1 } }
+      for (let i = 0; i < 600; i++) {
+        if (court) stepPlayer(p, DT, 1, court)
+        else stepPlayer(p, DT)
+      }
+      return p
+    }
+    const big = chase(xl)
+    expect(Math.abs(big.x)).toBeCloseTo(xl.halfWidth + 0.8, 9)
+    expect(Math.abs(big.z)).toBeCloseTo(xl.halfLen + 0.8, 9)
+    const normal = chase()
+    expect(Math.abs(normal.x)).toBeCloseTo(COURT.halfWidth + 0.8, 9)
+    expect(Math.abs(normal.z)).toBeCloseTo(COURT.halfLen + 0.8, 9)
+  })
+
+  it('a landing beyond the Normal back line is in on Large', () => {
+    for (const [court, inside, pointTo] of [
+      ['large', true, 0],
+      ['normal', false, 1],
+    ] as const) {
+      const s = game.setup(players(2), 1, { court })
+      rally(s, { x: 0, y: 0.05, z: 7.2 }, { x: 0, y: -3, z: 0 }, 0)
+      const seen: SpEvent[] = []
+      for (let i = 0; i < 60 && !seen.some((e) => e.k === 'land'); i++) run(s, 1, () => [], seen)
+      const land = seen.find((e) => e.k === 'land')
+      const point = seen.find((e) => e.k === 'point')
+      expect(land).toMatchObject({ in: inside })
+      expect(point).toMatchObject({ side: pointTo })
+    }
+  })
+})
+
+describe('jump / lunge ability', () => {
+  type V = { x: number; y: number; z: number }
+  const ability = (player: string, x = 0, z = 0, tick?: number): InputEvent<SpInput> =>
+    ev(player, tick === undefined ? { t: 'ability', x, z } : { t: 'ability', x, z, tick })
+  /** Flights from side 1 onto p0's half; `idx` = flight index of the jump / lunge box's closest approach. */
+  const LOB = { pos: { x: 0, y: 4.2, z: -2.6 }, vel: { x: 0, y: -1, z: -5 }, at: { x: 0, z: -4 }, idx: 19 } // over p0 at y ≈ 3.44
+  const FLAT = { pos: { x: 0, y: 3.2, z: -1.5 }, vel: { x: 0, y: 1.5, z: -13 }, at: { x: 0, z: -4 }, idx: 14 } // y ≈ 3.23, under-and-past
+  const WIDE = {
+    pos: { x: 1.8, y: 0.9, z: -1 },
+    vel: { x: 0, y: 0.6, z: -8 },
+    at: { x: 0, z: -2.83 },
+    idx: 16,
+  } // 1.8 m wide at y ≈ 0.7
+  /** The jump box is first entered at index 31: out of a press-at-index-0's window (horizonOf('jump') = 30). */
+  const EARLY = {
+    pos: { x: 0, y: 4.1, z: -0.95 },
+    vel: { x: 0, y: 1.9, z: -6.4 },
+    at: { x: 0, z: -4 },
+    idx: 37,
+  }
+  type Scene = { pos: V; vel: V; at: { x: number; z: number }; idx: number }
+
+  /** p0 (side 0) at the scene's spot, the shuttle at flight index 0 on the next tick (tick T0 + 1 + k sees index k). */
+  function scene(sc: Scene, side: 0 | 1 = 0) {
+    const s = duel()
+    const flip = side === 1 ? -1 : 1
+    const p = s.players[side]
+    p.x = sc.at.x
+    p.z = flip * sc.at.z
+    rally(s, { ...sc.pos, z: flip * sc.pos.z }, { ...sc.vel, z: flip * sc.vel.z }, side === 0 ? 1 : 0)
+    return { s, p, T0: s.tick, contact: s.tick + 1 + sc.idx }
+  }
+  /** Runs empty ticks up to `tick` − 1, then `tick` with `inputs`; returns every event seen. */
+  function at(s: SpState, tick: number, inputs: InputEvent<SpInput>[], seen: SpEvent[] = []) {
+    run(s, tick - 1 - s.tick, () => [], seen)
+    game.tick(s, inputs)
+    allEvents(s, seen)
+    return seen
+  }
+  /** Ticks until the first hit / whiff (or `max`), collecting events. */
+  function untilStrike(s: SpState, seen: SpEvent[], max = 60) {
+    for (let i = 0; i < max && !seen.some((e) => e.k === 'hit' || e.k === 'whiff'); i++) {
+      game.tick(s, [])
+      allEvents(s, seen)
+    }
+    return seen
+  }
+
+  it('a high lob + ability = jump-smash hit with act jump, stronger than a tap smash', () => {
+    const { s, contact } = scene(LOB)
+    const seen = at(s, contact - ABILITY.jump.lead, [ability('p0', 0, 1)])
+    expect(seen.find((e) => e.k === 'act')).toMatchObject({ side: 0, act: 'jump' })
+    untilStrike(s, seen)
+    expect(seen.find((e) => e.k === 'hit')).toMatchObject({
+      tick: contact,
+      side: 0,
+      act: 'jump',
+      shot: 'smash',
+      grade: 'perfect',
+    })
+    // history[0] = the launch (the hit clears history, then records the launched shuttle).
+    const launch = s.history.find((h) => h.tick === contact)!
+    const tap = launchShot(
+      'smash',
+      'perfect',
+      launch.pos,
+      shotTarget('smash', 0, 0, s.court),
+      () => 0.5,
+      0,
+      s.court,
+    )
+    expect(Math.hypot(launch.vel.x, launch.vel.y, launch.vel.z)).toBeGreaterThan(
+      Math.hypot(tap.vel.x, tap.vel.y, tap.vel.z),
+    )
+  })
+
+  it('a shuttle out of normal reach that passes high is unreachable by a plain swing', () => {
+    const plain = scene(FLAT)
+    const p = at(plain.s, plain.contact, [swing('p0', 0, 1)])
+    expect(untilStrike(plain.s, p).find((e) => e.k === 'hit' || e.k === 'whiff')?.k).toBe('whiff')
+    const jump = scene(FLAT)
+    const j = at(jump.s, jump.contact - ABILITY.jump.lead, [ability('p0', 0, 1)])
+    expect(untilStrike(jump.s, j).find((e) => e.k === 'hit')).toMatchObject({ act: 'jump', grade: 'perfect' })
+  })
+
+  it('a low wide drive + ability = lunge lift', () => {
+    const lunge = scene(WIDE)
+    const l = untilStrike(lunge.s, at(lunge.s, lunge.contact - ABILITY.lunge.lead, [ability('p0', 0, 1)]))
+    expect(l.find((e) => e.k === 'act')).toMatchObject({ act: 'lunge' })
+    const hit = l.find((e) => e.k === 'hit')
+    expect(hit).toMatchObject({ act: 'lunge', shot: 'clear', side: 0 })
+    expect(hit && hit.k === 'hit' && hit.grade).not.toBe('perfect')
+    expect(lunge.p.act).toMatchObject({ k: 'lunge' })
+    expect(lunge.p.act!.dx).toBeGreaterThan(0.99) // toward the shuttle (world +x)
+    const plain = scene(WIDE)
+    const p = untilStrike(plain.s, at(plain.s, plain.contact, [swing('p0', 0, 1)]))
+    expect(p.some((e) => e.k === 'whiff')).toBe(true)
+    expect(p.some((e) => e.k === 'hit')).toBe(false)
+  })
+
+  it('locks: no move or swing while airborne / on the floor, then free', () => {
+    const { air, lock, airMul } = ABILITY.jump
+    const { s, p, contact } = scene(LOB)
+    const press = contact - ABILITY.jump.lead
+    const right = ev('p0', { t: 'move', x: 1, z: 0 })
+    at(s, press, [right, ability('p0', 0, 1)])
+    let prev = { x: p.x, z: p.z }
+    for (let k = 1; k < air; k++) {
+      game.tick(s, [])
+      expect(Math.hypot(p.x - prev.x, p.z - prev.z)).toBeLessThanOrEqual(MOVE_SPEED * airMul * DT + 1e-9)
+      prev = { x: p.x, z: p.z }
+    }
+    for (let k = 0; k < lock; k++) {
+      const before = p.swingAt
+      const n = s.events.length
+      game.tick(s, [swing('p0'), ev('p0', { t: 'charge' })])
+      expect(p.swingAt).toBe(before)
+      expect(p.chargeAt).toBe(-1)
+      expect(s.events.slice(n).some((e) => e.k === 'whiff' || e.k === 'hit')).toBe(false)
+    }
+    expect(s.tick).toBe(press + air + lock - 1)
+    expect(Math.hypot(p.vx, p.vz)).toBe(0) // stopped well inside the lock
+    const still = p.x
+    game.tick(s, [])
+    expect(p.x).not.toBe(still) // at + air + lock: free
+
+    const { dive, floor } = ABILITY.lunge
+    const w = scene(WIDE)
+    const wPress = w.contact - ABILITY.lunge.lead
+    at(w.s, wPress, [ev('p0', { t: 'move', x: 1, z: 0 }), ability('p0', 0, 1)])
+    const from = { x: w.p.x, z: w.p.z }
+    run(w.s, dive + floor - 1)
+    expect(w.s.tick).toBe(wPress + dive + floor - 1)
+    expect({ x: w.p.x, z: w.p.z }).toEqual(from)
+    game.tick(w.s, [])
+    expect(w.p.x).not.toBe(from.x)
+  })
+
+  it('a press before the jump box is in range is a hop (no committed whiff)', () => {
+    const { s, p, T0 } = scene(EARLY)
+    const seen = at(s, T0 + 1, [ability('p0', 0, 1)]) // the box is 31 ticks on: out of the 30-tick window
+    expect(seen.find((e) => e.k === 'act')).toMatchObject({ act: 'hop' })
+    expect(seen.some((e) => e.k === 'whiff')).toBe(false)
+    expect(acting(p.act, T0 + 2)).toBe(false)
+  })
+
+  it('mistimed jump commits: a Late clear, full lock and 3 s cooldown', () => {
+    const { s, p, T0 } = scene(EARLY)
+    const press = T0 + 3 // the box is 29 ticks on: the edge of the window, graded Late at best
+    const seen = at(s, press, [ability('p0', 0, 1)])
+    expect(seen.find((e) => e.k === 'act')).toMatchObject({ act: 'jump' })
+    untilStrike(s, seen)
+    expect(seen.find((e) => e.k === 'hit')).toMatchObject({ side: 0, grade: 'late' })
+    for (let k = 0; k < ABILITY.jump.air + ABILITY.jump.lock; k++) expect(acting(p.act, press + k)).toBe(true)
+    expect(acting(p.act, press + ABILITY.jump.air + ABILITY.jump.lock)).toBe(false)
+    // Keep a rally going (a far-side high shuttle) so only the cooldown can refuse the press.
+    run(s, 99 - (s.tick - press), () => [], seen)
+    rally(s, { x: 0, y: 6, z: 3 }, { x: 0, y: 6, z: 0 }, 0)
+    const n = seen.length
+    at(s, press + 120, [ability('p0')], seen)
+    expect(seen.slice(n).some((e) => e.k === 'act')).toBe(false)
+    expect(canAct(s, p)).toBe(false)
+    at(s, press + ABILITY.jump.cooldown, [ability('p0')], seen)
+    expect(seen.slice(n).find((e) => e.k === 'act')).toMatchObject({ tick: press + ABILITY.jump.cooldown })
+  })
+
+  it('canStrike: the one rule for a strike (host press and AI): rally, not my own hit, swing cooldown, not mid-hit', () => {
+    const { s, p } = scene(LOB)
+    expect(canStrike(s, p)).toBe(true)
+    p.swingAt = s.tick - SWING_COOLDOWN + 1
+    expect(canStrike(s, p)).toBe(false)
+    p.swingAt = s.tick - SWING_COOLDOWN
+    expect(canStrike(s, p)).toBe(true)
+    expect(canStrike(s, p, -1)).toBe(false) // a shuttle hit this tick can't be struck back
+    s.shuttle.lastHitter = 0
+    expect(canStrike(s, p)).toBe(false) // my own last hit
+    s.shuttle.lastHitter = 1
+    s.shuttle.pending = {
+      atTick: s.tick + 1,
+      id: 'p0',
+      side: 0,
+      kind: 'clear',
+      grade: 'good',
+      aimX: 0,
+      charge: 0,
+      fromTick: s.tick,
+    }
+    expect(canStrike(s, p)).toBe(false)
+    s.shuttle.pending = null
+    s.phase = 'serve'
+    expect(canStrike(s, p)).toBe(false)
+  })
+
+  it('no target → hop: act event, no swing, 1 s cooldown, no lock', () => {
+    const run2 = (presses: number[]) => {
+      const s = duel() // serve phase: p1 is the receiver (free to move)
+      const p = s.players[1]
+      const seen: SpEvent[] = []
+      const start = s.tick
+      for (let k = 1; k <= 80; k++)
+        at(
+          s,
+          start + k,
+          [ev('p1', { t: 'move', x: 1, z: 0 }), ...(presses.includes(k) ? [ability('p1')] : [])],
+          seen,
+        )
+      return { s, p, seen, start }
+    }
+    const ref = run2([])
+    const hop = run2([1, 60, 61])
+    const acts = hop.seen.filter((e) => e.k === 'act')
+    expect(acts).toEqual([
+      expect.objectContaining({ side: 1, act: 'hop', tick: hop.start + 1 }),
+      expect.objectContaining({ side: 1, act: 'hop', tick: hop.start + 61 }), // +59 refused, +60 taken
+    ])
+    expect(hop.seen.some((e) => e.k === 'whiff' || e.k === 'hit')).toBe(false)
+    expect(hop.p.swingAt).toBe(ref.p.swingAt)
+    expect(hop.p.x).toBe(ref.p.x) // run speed untouched
+    expect(hop.p.z).toBe(ref.p.z)
+
+    // A rally press with the shuttle on the opponent's half hops too.
+    const { s, p } = scene(LOB)
+    rally(s, { x: 0, y: 3, z: 3 }, { x: 0, y: 4, z: 0 }, 0)
+    const seen = at(s, s.tick + 1, [ability('p0')])
+    expect(seen.find((e) => e.k === 'act')).toMatchObject({ act: 'hop' })
+    expect(p.swingAt).toBe(-SWING_COOLDOWN)
+  })
+
+  it('ignored while charging, in point / over, twice in a tick', () => {
+    const { s, p, contact } = scene(LOB)
+    const press = contact - ABILITY.jump.lead
+    at(s, press - 1, [ev('p0', { t: 'charge' })])
+    const n = s.events.length
+    game.tick(s, [ability('p0', 0, 1)])
+    expect(s.events.slice(n).some((e) => e.k === 'act')).toBe(false)
+    expect(p.act).toBeNull()
+    // A charge press in the same tick wins too, whatever the order.
+    const b = scene(LOB)
+    const seenB = at(b.s, press, [ability('p0', 0, 1), ev('p0', { t: 'charge' })])
+    expect(seenB.some((e) => e.k === 'act')).toBe(false)
+    expect(b.p.chargeAt).toBe(press)
+
+    const c = scene(LOB)
+    c.s.phase = 'point'
+    c.s.phaseT = 0
+    expect(at(c.s, press, [ability('p0', 0, 1)]).some((e) => e.k === 'act')).toBe(false)
+
+    const d = scene(LOB)
+    const seenD = at(d.s, press, [ability('p0', 0, 1), ability('p0', 0, 1)])
+    expect(seenD.filter((e) => e.k === 'act')).toHaveLength(1)
+  })
+
+  it('actLand fires once at the landing tick; resetForServe clears act', () => {
+    const lands = (sc: Scene, lead: number) => {
+      const { s, contact } = scene(sc)
+      const press = contact - lead
+      const seen = at(s, press, [ability('p0', 0, 1)])
+      run(s, 60, () => [], seen)
+      return { s, press, landed: seen.filter((e) => e.k === 'actLand') }
+    }
+    const j = lands(LOB, ABILITY.jump.lead)
+    expect(j.landed).toEqual([expect.objectContaining({ side: 0, act: 'jump', tick: j.press + 30 })])
+    const l = lands(WIDE, ABILITY.lunge.lead)
+    expect(l.landed).toEqual([expect.objectContaining({ side: 0, act: 'lunge', tick: l.press + 12 })])
+    // Play on to the next serve.
+    const s = l.s
+    run(s, 400, () => [], [])
+    expect(s.phase).toBe('serve')
+    expect(s.players[0].act).toBeNull()
+    expect(canAct(s, s.players[0])).toBe(true)
+  })
+
+  it('a lagged ability grades like an unlagged one', () => {
+    const play = (lag: number, stamp: (press: number) => number | undefined) => {
+      const { s, contact } = scene(LOB, 1)
+      const press = contact - ABILITY.jump.lead
+      const seen = at(s, press + lag, [ability('p1', 0, 1, stamp(press))])
+      untilStrike(s, seen)
+      const hit = seen.find((e) => e.k === 'hit')
+      return { s, hit, launch: s.history.find((h) => h.tick === hit?.tick) }
+    }
+    const a = play(0, () => undefined)
+    const b = play(5, (press) => press)
+    expect(a.hit).toMatchObject({ act: 'jump', grade: 'perfect', side: 1 })
+    expect(b.hit).toMatchObject({ act: 'jump', grade: (a.hit as { grade: string }).grade, tick: a.hit!.tick })
+    for (const k of ['x', 'y', 'z'] as const) expect(b.launch!.vel[k]).toBeCloseTo(a.launch!.vel[k], 9)
+    // At the full MAX_REWIND the rewind is what keeps it Perfect (unstamped, the same press is 7 ticks late).
+    expect(play(MAX_REWIND, (press) => press).hit).toMatchObject({ grade: 'perfect' })
+    expect(play(MAX_REWIND, () => undefined).hit).toMatchObject({ grade: 'good' })
+    // A stamp far in the past rewinds only MAX_REWIND (like a swing's): the same as a stamp 7 ticks back.
+    const far = play(9, (press) => press - 1000)
+    const capped = play(9, (press) => press + 9 - MAX_REWIND)
+    expect(far.hit).toEqual(capped.hit)
+  })
+
+  it('netView carries act', () => {
+    const { s, contact } = scene(LOB)
+    at(s, contact - ABILITY.jump.lead, [ability('p0', 0, 1)])
+    const act: Act = s.players[0].act!
+    expect(act).toMatchObject({ k: 'jump', at: s.tick })
+    expect((game.netView!(s) as SpState).players[0].act).toEqual(act)
+  })
+})
+
+describe('racket stun', () => {
+  const bonksOf = (seen: SpEvent[]) => seen.filter((e) => e.k === 'bonk')
+  const ability = (player: string, x = 0, z = 0): InputEvent<SpInput> => ev(player, { t: 'ability', x, z })
+  /** High over side 1's back court: nobody near the net can reach it. */
+  const HIGH = { x: 0, y: 4, z: 5.5 }
+  /** Keeps the shuttle hanging at HIGH (rally never ends). */
+  const pin = (s: SpState) => {
+    s.shuttle.pos = { ...HIGH }
+    s.shuttle.vel = { x: 0, y: 0, z: 0 }
+  }
+  /** A pinned rally (last hit by side 0), p0 / p1 face to face across the net (`x` apart from the centre). */
+  function face(x = 0): SpState {
+    const s = duel()
+    rally(s, HIGH, { x: 0, y: 0, z: 0 }, 0)
+    const [a, b] = s.players
+    a.x = x
+    a.z = -0.35
+    b.x = x
+    b.z = 0.35
+    return s
+  }
+  /** One tick with `inputs`, the shuttle pinned first. */
+  function tick(s: SpState, inputs: InputEvent<SpInput>[] = [], seen: SpEvent[] = []) {
+    pin(s)
+    game.tick(s, inputs)
+    allEvents(s, seen)
+    return seen
+  }
+  /** Pinned ticks until s.tick === `to` − 1. */
+  const idle = (s: SpState, to: number, seen: SpEvent[] = []) => {
+    while (s.tick < to - 1) tick(s, [], seen)
+    return seen
+  }
+
+  it('a swing at an opponent across the net stuns them: bonk event, no move, no swing, no ability for 48 ticks', () => {
+    expect(STUN.ticks).toBe(48)
+    const s = face()
+    const [a, b] = s.players
+    const seen = tick(s, [swing('p1')])
+    const T = s.tick
+    expect(bonksOf(seen)).toEqual([
+      expect.objectContaining({ k: 'bonk', side: 0, who: 'p0', by: 'p1', tick: T }),
+    ])
+    expect(a.stunAt).toBe(T)
+    expect(b.stunAt).toBe(-1)
+    const start = { x: a.x, z: a.z }
+    const swingAt = a.swingAt
+    const during: SpEvent[] = []
+    tick(s, [ev('p0', { t: 'move', x: 0, z: -1 })], during)
+    tick(s, [ev('p0', { t: 'charge' })], during)
+    expect(a.chargeAt).toBe(-1)
+    tick(s, [swing('p0')], during)
+    tick(s, [ability('p0')], during)
+    expect(a.act).toBeNull()
+    idle(s, T + 48, during)
+    expect(s.tick).toBe(T + 47)
+    expect(during.filter((e) => e.tick > T)).toEqual([])
+    expect(a.swingAt).toBe(swingAt)
+    expect({ x: a.x, z: a.z }).toEqual(start)
+    const after = tick(s, [swing('p0')])
+    expect(Math.hypot(a.x - start.x, a.z - start.z)).toBeGreaterThan(0)
+    expect(a.swingAt).toBe(T + 48)
+    expect(after.some((e) => e.k === 'whiff' && e.side === 0)).toBe(true)
+  })
+
+  it('out of reach or a serve: no bonk', () => {
+    const far = face(0.9)
+    far.players[1].x = -0.9 // 1.8 m apart across the net
+    expect(bonksOf(tick(far, [swing('p1')]))).toEqual([])
+    // The serve: p0 serves standing next to the receiver.
+    const sv = duel()
+    sv.players[0].x = 0
+    sv.players[0].z = -0.35
+    sv.players[1].x = 0
+    sv.players[1].z = 0.35
+    const seen = run(sv, 1, () => [swing('p0')])
+    expect(seen.some((e) => e.k === 'serve')).toBe(true)
+    expect(bonksOf(seen)).toEqual([])
+    expect(sv.players[1].stunAt).toBe(-1)
+    // A hop (nothing to strike) in reach never bonks.
+    const hop = face()
+    const h = tick(hop, [ability('p1')])
+    expect(hop.players[1].act).toMatchObject({ k: 'hop' })
+    expect(bonksOf(h)).toEqual([])
+  })
+
+  it('the swinger pays only the normal cooldown', () => {
+    const s = face()
+    const b = s.players[1]
+    tick(s, [swing('p1')])
+    const T = s.tick
+    expect(b.swingAt).toBe(T)
+    expect(b.recoverUntil).toBe(-1)
+    expect(b.stunAt).toBe(-1)
+    idle(s, T + SWING_COOLDOWN)
+    const seen = tick(s, [swing('p1')])
+    expect(b.swingAt).toBe(T + SWING_COOLDOWN)
+    expect(seen.some((e) => e.k === 'whiff' && e.side === 1)).toBe(true)
+  })
+
+  it('immunity: no second stun for 120 ticks after the stun ends', () => {
+    expect(STUN.immune).toBe(120)
+    const s = face()
+    tick(s, [swing('p1')])
+    const T = s.tick
+    const seen: SpEvent[] = []
+    // The swinger's own cooldown (SWING_COOLDOWN) spaces the tries; the last immune one is 20 ticks early.
+    for (const k of [20, 60, 120, 168 - SWING_COOLDOWN]) {
+      idle(s, T + k, seen)
+      tick(s, [swing('p1')], seen)
+    }
+    const later = (e: SpEvent) => e.tick > T
+    expect(bonksOf(seen).filter(later)).toEqual([])
+    idle(s, T + 168, seen)
+    tick(s, [swing('p1')], seen)
+    expect(bonksOf(seen).filter(later)).toEqual([
+      expect.objectContaining({ who: 'p0', by: 'p1', tick: T + 168 }),
+    ])
+  })
+
+  it('a contact already made still resolves', () => {
+    const s = duel()
+    rally(s, { x: 0, y: 1.2, z: -0.6 }, { x: 0, y: 0, z: 0 }, 1)
+    const [a, b] = s.players
+    a.x = 0
+    a.z = -0.35
+    b.x = 0
+    b.z = 0.35
+    const T = s.tick + 1
+    s.shuttle.pending = {
+      atTick: T + 3,
+      id: 'p0',
+      side: 0,
+      kind: 'clear',
+      grade: 'good',
+      aimX: 0,
+      charge: 0,
+      fromTick: T + 3,
+    }
+    const seen = run(s, 1, () => [swing('p1')])
+    expect(bonksOf(seen)).toEqual([expect.objectContaining({ who: 'p0', by: 'p1' })])
+    run(s, 3, () => [], seen)
+    expect(seen.find((e) => e.k === 'hit')).toMatchObject({ side: 0, tick: T + 3 })
+  })
+
+  it('a held charge is dropped: its button-up after the stun does not swing', () => {
+    const s = face()
+    const a = s.players[0]
+    tick(s, [ev('p0', { t: 'charge' })])
+    expect(a.chargeAt).toBe(s.tick)
+    tick(s, [swing('p1')])
+    const T = s.tick
+    expect(a.chargeAt).toBe(TAPPED)
+    expect(a.pressAt).toBe(-1)
+    const swingAt = a.swingAt
+    const seen = idle(s, T + 50)
+    tick(s, [swing('p0')], seen)
+    expect(seen.some((e) => (e.k === 'hit' || e.k === 'whiff') && e.side === 0)).toBe(false)
+    expect(a.swingAt).toBe(swingAt)
+    expect(a.chargeAt).toBe(-1)
+  })
+
+  it('same-tick swings: mutual bonk stuns both, two swingers stun a victim once', () => {
+    const s = face()
+    const seen = tick(s, [swing('p0'), swing('p1')])
+    const T = s.tick
+    expect(bonksOf(seen)).toEqual([
+      expect.objectContaining({ who: 'p1', by: 'p0' }),
+      expect.objectContaining({ who: 'p0', by: 'p1' }),
+    ])
+    expect(s.players.map((p) => p.stunAt)).toEqual([T, T])
+
+    // Three bodies (friendly fire, matched by id): p1 and p2 both reach p0 and each other.
+    const t3 = face()
+    const p2: SpPlayer = { ...t3.players[1], id: 'p2', name: 'P2', x: 0.3, move: { x: 0, z: 0 } }
+    t3.players[1].x = -0.3
+    ;(t3.players as SpPlayer[]).push(p2)
+    const three = tick(t3, [swing('p1'), swing('p2')])
+    expect(bonksOf(three).map((e) => e.k === 'bonk' && [e.who, e.by])).toEqual([
+      ['p0', 'p1'],
+      ['p2', 'p1'],
+      ['p1', 'p2'],
+    ])
+
+    // A bonk and a hit on the same tick: the hit still happens.
+    const h = duel()
+    rally(h, { x: 0, y: 1.0, z: -0.6 }, { x: 0, y: 0, z: 0 }, 1)
+    h.players[0].x = 0
+    h.players[0].z = -0.35
+    h.players[1].x = 0
+    h.players[1].z = 0.35
+    const hs = run(h, 1, () => [swing('p0'), swing('p1')])
+    expect(hs.some((e) => e.k === 'hit' && e.side === 0)).toBe(true)
+    expect(bonksOf(hs)).toHaveLength(2)
+  })
+
+  it('a stunned jump keeps its arc and cooldown but cannot move', () => {
+    const LOB = { pos: { x: 0, y: 4.2, z: -2.6 }, vel: { x: 0, y: -1, z: -5 }, at: { x: 0, z: -4 }, idx: 19 }
+    const s = duel()
+    const [a, b] = s.players
+    a.x = LOB.at.x
+    a.z = LOB.at.z
+    rally(s, LOB.pos, LOB.vel, 1)
+    const press = s.tick + 1 + LOB.idx - ABILITY.jump.lead
+    run(s, press - 1 - s.tick)
+    run(s, 1, () => [ev('p0', { t: 'move', x: 1, z: 0 }), ability('p0', 0, 1)])
+    const act = { ...a.act! }
+    expect(act).toMatchObject({ k: 'jump', at: press })
+    // Mid-air, at the net (teleported) and bonked by p1.
+    a.x = 0
+    a.z = -0.35
+    a.vx = a.vz = 0
+    b.x = 0
+    b.z = 0.35
+    run(s, 4, () => (pin(s), []))
+    const seen = run(s, 1, () => (pin(s), [swing('p1')]))
+    expect(s.tick).toBe(press + 5)
+    expect(bonksOf(seen)).toEqual([expect.objectContaining({ who: 'p0', by: 'p1' })])
+    const at = { x: a.x, z: a.z }
+    while (s.tick < press + 30) {
+      tick(s)
+      expect(a.act).toEqual(act)
+      expect({ x: a.x, z: a.z }).toEqual(at)
+    }
+    // Locked until the stun is over and the cooldown is ready (the cooldown runs on).
+    idle(s, press + 5 + STUN.ticks + 1)
+    expect(canAct(s, a)).toBe(false)
+    while (!actReady(a.act, s.tick)) {
+      expect(canAct(s, a)).toBe(false)
+      tick(s)
+    }
+    expect(canAct(s, a)).toBe(true)
+    expect(a.act).toEqual(act)
+  })
+
+  it('a lagged swing bonks from now: the victim who already walked away is safe', () => {
+    const s = face()
+    idle(s, s.tick + 10)
+    const near = tick(s, [ev('p1', { t: 'swing', x: 0, z: 0, tick: s.tick + 1 - 5 })])
+    expect(bonksOf(near)).toEqual([expect.objectContaining({ who: 'p0', by: 'p1' })])
+
+    const gone = face()
+    idle(gone, gone.tick + 10) // in reach for the last ticks (history has it there) …
+    gone.players[0].x = 1.5 // … now out of reach
+    const g = tick(gone, [ev('p1', { t: 'swing', x: 0, z: 0, tick: gone.tick + 1 - 5 })])
+    expect(bonksOf(g)).toEqual([])
+    expect(gone.players[0].stunAt).toBe(-1)
+  })
+
+  it('resetForServe clears stunAt; netView carries it', () => {
+    const s = face()
+    tick(s, [swing('p1')])
+    const v = game.netView!(s) as SpState
+    expect(v.players.map((p) => p.stunAt)).toEqual(s.players.map((p) => p.stunAt))
+    expect(v.players[0].stunAt).toBe(s.tick)
+    // Let the shuttle fall: point, then the next serve.
+    let guard = 0
+    while (s.phase !== 'serve' && guard++ < 2000) game.tick(s, [])
+    expect(s.phase).toBe('serve')
+    expect(s.players.map((p) => p.stunAt)).toEqual([-1, -1])
+  })
+
+  it('a computer swing bonks like any swing', () => {
+    const s = game.setup(players(1), 5, { solo: 'normal' })
+    rally(s, HIGH, { x: 0, y: 0, z: 0 }, 0)
+    const [h, ai] = s.players
+    h.x = 0
+    h.z = -0.35
+    ai.x = 0
+    ai.z = 0.35
+    const seen = tick(s, [ev(AI_ID, { t: 'swing', x: 0, z: 0 })])
+    expect(bonksOf(seen)).toEqual([expect.objectContaining({ who: 'p0', by: AI_ID })])
+  })
+})
+
+describe('doubles', () => {
+  const infos = (...seats: number[]): PlayerInfo[] =>
+    seats.map((seat) => ({ id: `p${seat}`, name: `P${seat}`, slot: seat, ready: true, connected: true }))
+  /** Humans at `seats` (2v2), side 0 serving with its slot-0 player (searches seeds). */
+  function doubles(...seats: number[]): SpState {
+    for (let seed = 1; ; seed++) {
+      const s = game.setup(infos(...seats), seed, { mode: '2v2' })
+      if (s.server === 0) return s
+    }
+  }
+  const byId = (s: SpState, id: string) => s.players.find((p) => p.id === id)!
+  /** Bots play on until a point is scored (rallies can be long; ≤ 6000 ticks). */
+  const scoreSoon = (s: SpState) => {
+    for (let i = 0; i < 6000 && s.score[0] + s.score[1] === 0; i++) game.tick(s, [])
+    return s.score[0] + s.score[1] > 0
+  }
+  const near = (a: { x: number; z: number }, b: { x: number; z: number }) => {
+    expect(a.x).toBeCloseTo(b.x, 9)
+    expect(a.z).toBeCloseTo(b.z, 9)
+  }
+  /** Every seat's serve stance: server in its box, receiver diagonal, partners split to the other half. */
+  function expectStances(s: SpState) {
+    const { shortLine, halfWidth } = s.court
+    const { xSign } = serveBox(s.server, s.score[s.server])
+    const rcvSide = s.server === 0 ? 1 : 0
+    const srv = serverPlayer(s)
+    const rcv = s.players.find((p) => p.side === rcvSide && p.slot === s.serveSlot[rcvSide])!
+    for (const p of s.players) {
+      const want =
+        p === srv
+          ? toWorld(p.side, xSign * SERVE_X, -(shortLine + SERVE_BACK))
+          : p === rcv
+            ? toWorld(p.side, xSign * RECEIVE_X, -(shortLine + RECEIVE_BACK))
+            : toWorld(p.side, -xSign * (halfWidth / 2), -readyDepth(s.court))
+      near(p, want)
+    }
+  }
+  /** `side` wins the rally: the shuttle drops into the other side's back corner; runs to the next serve set-up. */
+  function winPoint(s: SpState, side: 0 | 1) {
+    const spot = toWorld(side === 0 ? 1 : 0, s.court.halfWidth - 0.3, -(s.court.halfLen - 0.3))
+    rally(s, { x: spot.x, y: 0.05, z: spot.z }, { x: 0, y: -3, z: 0 }, side)
+    const seen = run(s, 1)
+    expect(seen.filter((e) => e.k === 'point')).toEqual([expect.objectContaining({ side })])
+    let guard = 0
+    while (s.phase !== 'serve' && guard++ < 1000) game.tick(s, [])
+    expect(s.phase).toBe('serve')
+  }
+
+  it('1v1 is the default; maxPlayers 4; seating opens 4 seats in 2 teams only in 2v2', () => {
+    expect(game.setup(players(2), 1, {}).players).toHaveLength(2)
+    expect(game.maxPlayers).toBe(4)
+    expect(game.seating!({})).toEqual({ seats: 2, teams: 1, botFill: false })
+    expect(game.seating!({ mode: '2v2' })).toEqual({ seats: 4, teams: 2, botFill: true })
+    const solo = game.options!.find((o) => o.id === 'solo')!
+    expect(solo.shownWhen!(1, {})).toBe(true)
+    expect(solo.shownWhen!(2, {})).toBe(false)
+    expect(solo.shownWhen!(3, { mode: '2v2' })).toBe(true)
+    expect(solo.shownWhen!(4, { mode: '2v2' })).toBe(false)
+  })
+  it('the mode option defaults to 1v1', () => {
+    expect(game.options![0].id).toBe('mode')
+    expect(game.options![0].choices.map((c) => c.value)).toEqual(['1v1', '2v2'])
+    expect(resolveOptions(game.options)).toMatchObject({ mode: '1v1', solo: 'normal', court: 'normal' })
+    expect(resolveOptions(game.options, { mode: '2v2' }).mode).toBe('2v2')
+    expect(resolveOptions(game.options, { mode: '3v3' }).mode).toBe('1v1')
+  })
+  it('seating opens 4 seats in 2v2', () => {
+    expect(game.seating!(resolveOptions(game.options)).seats).toBe(2)
+    expect(game.seating!(resolveOptions(game.options, { mode: '2v2' }))).toEqual({
+      seats: 4,
+      teams: 2,
+      botFill: true,
+    })
+  })
+  it('2v2 alone: 1 human + 3 computers, seats A,B,A,B', () => {
+    const s = game.setup(players(1), 7, { mode: '2v2', solo: 'hard' })
+    expect(s.players.map((p) => p.side)).toEqual([0, 1, 0, 1])
+    expect(s.players.map((p) => p.slot)).toEqual([0, 0, 1, 1])
+    expect(s.players.map((p) => p.id)).toEqual(['p0', `${AI_ID}1`, `${AI_ID}2`, `${AI_ID}3`])
+    expect(s.players.map((p) => p.kind)).toEqual(['human', 'ai', 'ai', 'ai'])
+    expect(s.players.slice(1).every((p) => p.level === 'hard' && p.bot)).toBe(true)
+    expect(s.aiLevel).toBe('hard')
+    expect(s.court.halfWidth).toBe(3.05)
+    expect(game.setup(players(1), 7, { mode: '2v2', court: 'large' }).court.halfWidth).toBeCloseTo(
+      3.05 * (courtDims('large').halfWidth / COURT.halfWidth),
+      9,
+    )
+    expect(s.server).toBe(0)
+    expect(serverPlayer(s).id).toBe('p0')
+    expectStances(s)
+  })
+  it('2v2 alone in a seat on team B: that team serves, the human first', () => {
+    const s = game.setup(infos(3), 7, { mode: '2v2' })
+    expect(s.players.map((p) => p.id)).toEqual([`${AI_ID}0`, `${AI_ID}1`, `${AI_ID}2`, 'p3'])
+    expect(s.server).toBe(1)
+    expect(s.serveSlot).toEqual([0, 1])
+    expect(serverPlayer(s).id).toBe('p3')
+  })
+  it('1v1 keeps one player per side, slot 0, serveSlot [0, 0]', () => {
+    const s = game.setup(players(1), 7, {})
+    expect(s.players.map((p) => p.slot)).toEqual([0, 0])
+    expect(s.serveSlot).toEqual([0, 0])
+    expect(s.court.halfWidth).toBe(COURT.halfWidth)
+  })
+  it('2v2 seats follow room seats', () => {
+    const mates = game.setup(infos(0, 2), 3, { mode: '2v2' })
+    expect(byId(mates, 'p0').side).toBe(0)
+    expect(byId(mates, 'p2').side).toBe(0)
+    expect(mates.players.map((p) => p.kind)).toEqual(['human', 'ai', 'human', 'ai'])
+    const rivals = game.setup(infos(0, 1), 3, { mode: '2v2' })
+    expect(byId(rivals, 'p0').side).toBe(0)
+    expect(byId(rivals, 'p1').side).toBe(1)
+  })
+  it('computer looks are all different and avoid humans', () => {
+    for (const preset of AVAILABLE_IDS) {
+      const s = game.setup(players(1), 7, { mode: '2v2' })
+      seedPreset(s, 'p0', preset)
+      const looks = s.players.map((p) => p.preset)
+      expect(new Set(looks).size).toBe(4)
+      expect(looks.every(isAvailable)).toBe(true)
+    }
+    const fresh = game.setup(players(1), 7, { mode: '2v2' }).players.map((p) => p.preset)
+    expect(new Set(fresh).size).toBe(4)
+  })
+  it('serve rotation: A0 → (B wins) B0 → (A wins) A1; boxes follow the score; receiver and partners', () => {
+    const s = game.setup(players(1), 7, { mode: '2v2' })
+    expect(serverPlayer(s).id).toBe('p0')
+    winPoint(s, 1)
+    expect(s.score).toEqual([0, 1])
+    expect(s.server).toBe(1)
+    expect(serverPlayer(s).id).toBe(`${AI_ID}1`)
+    expect(s.serveSlot).toEqual([1, 0])
+    expectStances(s)
+    // B serves from its left box (odd score): view x < 0.
+    expect(toWorld(1, serverPlayer(s).x, 0).x).toBeLessThan(0)
+    winPoint(s, 0)
+    expect(s.score).toEqual([1, 1])
+    expect(serverPlayer(s).id).toBe(`${AI_ID}2`)
+    expect(s.serveSlot).toEqual([1, 1])
+    expectStances(s)
+    winPoint(s, 0) // the serving team wins: same server, other box
+    expect(serverPlayer(s).id).toBe(`${AI_ID}2`)
+    expect(s.serveSlot).toEqual([1, 1])
+    expectStances(s)
+  })
+  it('only the server may charge / serve in the serve phase', () => {
+    const s = doubles(0, 2)
+    expect(serverPlayer(s).id).toBe('p0')
+    const mate = byId(s, 'p2')
+    expect(canCharge(s, mate)).toBe(false)
+    expect(canCharge(s, byId(s, 'p0'))).toBe(true)
+    const seen = run(s, 1, () => [ev('p2', { t: 'charge' })])
+    expect(mate.chargeAt).toBe(-1)
+    seen.push(...run(s, 1, () => [swing('p2')]))
+    expect(s.phase).toBe('serve')
+    expect(seen.some((e) => 'by' in e && e.by === 'p2')).toBe(false)
+    expect(seen.some((e) => e.k === 'serve')).toBe(false)
+    run(s, 1, () => [swing('p0')])
+    expect(s.phase).toBe('rally')
+    expect(s.events.find((e) => e.k === 'serve')).toMatchObject({ side: 0, by: 'p0' })
+  })
+  it("a teammate's pending hit fires for the swinger, not the side's first player", () => {
+    const s = doubles(0, 2)
+    const [a, , b] = [byId(s, 'p0'), null, byId(s, 'p2')]
+    a.x = 2.5
+    a.z = -6
+    b.x = 0
+    b.z = -3
+    rally(s, { x: 0, y: 1.6, z: -1.6 }, { x: 0, y: 1.5, z: -3 }, 1)
+    game.tick(s, [swing('p2')])
+    const pend = s.shuttle.pending
+    expect(pend).toMatchObject({ id: 'p2', side: 0 })
+    expect(pend!.atTick).toBeGreaterThan(s.tick)
+    const seen = run(s, 30, () => [ev('p0', { t: 'move', x: 0, z: 0 })])
+    expect(seen.filter((e) => e.k === 'hit')).toEqual([expect.objectContaining({ side: 0, by: 'p2' })])
+    expect(seen.some((e) => e.k === 'whiff')).toBe(false)
+  })
+  it('a rewound swing in 2v2 reads its own history spot', () => {
+    const s = doubles(0, 2)
+    rally(s, { x: 0, y: 3, z: -3 }, { x: 0, y: 2, z: 0 }, 1)
+    run(s, 10, () => [ev('p2', { t: 'move', x: 1, z: 0 }), ev('p0', { t: 'move', x: -1, z: 0 })])
+    const p2 = byId(s, 'p2')
+    expect(s.history.at(-1)!.who).toHaveLength(4)
+    expect(s.history.at(-1)!.who[2]).toEqual({ x: p2.x, z: p2.z })
+    const rewind = 3
+    const cands = contactCandidates(s, p2, rewind)
+    for (let i = 0; i + rewind < s.history.length; i++)
+      expect({ x: cands[i].at.x, z: cands[i].at.z }).toEqual(s.history[i + rewind].who[2])
+    expect(cands[0].at).not.toEqual(s.history[rewind].who[0])
+  })
+  it("teammates can't both hit: the second same-tick swing whiffs", () => {
+    const s = doubles(0, 2)
+    const a = byId(s, 'p0')
+    const b = byId(s, 'p2')
+    a.x = 0.3
+    a.z = -3
+    b.x = -0.3
+    b.z = -3
+    rally(s, { x: 0, y: 1.6, z: -1.6 }, { x: 0, y: 1.5, z: -3 }, 1)
+    game.tick(s, [swing('p0'), swing('p2')])
+    const now = s.events.filter((e) => e.tick === s.tick)
+    expect(now.filter((e) => e.k === 'whiff')).toEqual([expect.objectContaining({ side: 0, by: 'p2' })])
+    const seen = run(s, 30)
+    expect([...now, ...seen].filter((e) => e.k === 'hit')).toEqual([expect.objectContaining({ by: 'p0' })])
+  })
+  it('a human leaving 2v2 becomes a computer; the match goes on', () => {
+    const s = doubles(0, 2)
+    s.aiLevel = 'easy'
+    run(s, 2, () => [ev('p2', { t: 'move', x: 1, z: 0 })])
+    const seat = byId(s, 'p2')
+    seat.chargeAt = s.tick
+    seat.pressAt = s.tick
+    game.removePlayer!(s, 'p2')
+    expect(s.phase).not.toBe('over')
+    expect(s.winner).toBe(-1)
+    expect(s.players).toHaveLength(4)
+    expect(s.players[2]).toMatchObject({ id: `${AI_ID}2`, kind: 'ai', level: 'easy', side: 0, slot: 1 })
+    expect(s.players[2].bot).toBeDefined()
+    expect(s.players[2].chargeAt).toBe(-1)
+    expect(s.players[2].pressAt).toBe(-1)
+    // The leaver's id no longer drives the seat; the computer plays it.
+    const x = s.players[2].x
+    run(s, 30, () => [ev('p2', { t: 'move', x: -1, z: 0 })])
+    expect(s.players[2].move).not.toEqual({ x: -1, z: 0 })
+    expect(s.players[2].x).not.toBe(x)
+    expect(game.isFinished(s)).toBe(false)
+    expect(scoreSoon(s)).toBe(true)
+  })
+  it("the computer taking a leaver's seat doesn't wear a remaining human's look", () => {
+    const s = doubles(0, 2)
+    byId(s, 'p0').preset = byId(s, 'p2').preset // two humans may match
+    game.removePlayer!(s, 'p2')
+    const looks = s.players.map((p) => p.preset)
+    expect(looks[2]).not.toBe(byId(s, 'p0').preset)
+    expect(new Set(looks).size).toBe(4)
+  })
+  it('a human seat in its grace window is driven by the computer; on return the human resumes', () => {
+    const s = doubles(0, 2)
+    s.aiLevel = 'easy'
+    const seat = byId(s, 'p2')
+    // Connected: no bot input for a human seat, only its own input moves it.
+    run(s, 20)
+    expect(seat.bot).toBeUndefined()
+    game.setConnected!(s, 'p2', false)
+    expect(seat.away).toBe(true)
+    expect(seat.kind).toBe('human')
+    run(s, 60)
+    expect(seat.bot).toBeDefined() // botInputs stepped it
+    game.setConnected!(s, 'p2', true)
+    expect(seat.away).toBeUndefined()
+    expect(seat.move).toEqual({ x: 0, z: 0 })
+    delete seat.bot
+    run(s, 60)
+    expect(seat.bot).toBeUndefined() // no bot step runs for it any more
+    expect(seat.id).toBe('p2')
+  })
+  it('setConnected is a no-op in 1v1 and for the computer seats', () => {
+    const s = duel()
+    game.setConnected!(s, 'p1', false)
+    expect(s.players.some((p) => p.away)).toBe(false)
+    const d = doubles(0)
+    game.setConnected!(d, `${AI_ID}1`, false)
+    expect(d.players.some((p) => p.away)).toBe(false)
+  })
+  it("a computer taking a seat keeps the other computers' looks", () => {
+    const s = doubles(0, 2)
+    s.players[3].preset = byId(s, 'p0').preset // an old clash the takeover must not touch
+    const keep = [s.players[1].preset, s.players[3].preset]
+    game.removePlayer!(s, 'p2')
+    expect([s.players[1].preset, s.players[3].preset]).toEqual(keep)
+  })
+  it('a human leaving 1v1 still ends it (other side wins)', () => {
+    const s = duel()
+    game.removePlayer!(s, 'p1')
+    expect(s.phase).toBe('over')
+    expect(s.winner).toBe(0)
+  })
+  it('setupDoubles runs 600 ticks without throwing and scores', () => {
+    const s = setupDoubles(['normal', 'normal', 'normal', 'normal'], 11)
+    expect(s.players.map((p) => p.id)).toEqual([0, 1, 2, 3].map((i) => `${AI_ID}${i}`))
+    expect(s.players.every((p) => p.kind === 'ai' && p.level === 'normal')).toBe(true)
+    const seen = run(s, 600)
+    const shots = seen.filter((e) => e.k === 'hit' || e.k === 'serve')
+    expect(shots.length).toBeGreaterThan(2)
+    expect(shots.every((e) => 'by' in e && !!e.by)).toBe(true)
+    // Each seat plans from its own spot: both teammates of a side get to hit, and points come quickly.
+    const hitters = new Set(seen.filter((e) => e.k === 'hit').map((e) => ('by' in e ? e.by : '')))
+    expect(hitters.size).toBeGreaterThanOrEqual(3)
+    expect(s.score[0] + s.score[1]).toBeGreaterThan(0)
   })
 })

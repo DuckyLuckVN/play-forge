@@ -178,6 +178,27 @@
   .pf-room-sec .pf-seats {
     margin: 0;
   }
+  /* Games with teams: one column per team, each holding its seats. */
+  .pf-teams {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: var(--pf-space-5);
+  }
+  .pf-team {
+    display: grid;
+    gap: var(--pf-space-4);
+    align-content: start;
+  }
+  .pf-team .pf-seats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .pf-team-title {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+    color: var(--pf-haze);
+  }
   /* Host: a small remove button on each other player's seat, confirmed under the seats. */
   .pf-seat {
     position: relative;

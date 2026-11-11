@@ -18,7 +18,7 @@ import {
   BufferGeometry,
   Float32BufferAttribute,
 } from 'three'
-import { BOX_HEAD, HEAD_R } from './dims'
+import { BOX_HEAD, HEAD_R, type Rig } from './dims'
 import {
   bellyOf,
   limbOf,
@@ -73,6 +73,24 @@ function puffCheeks(parts: Part[]): Part[] {
 
 /** Rig scale of the head bone per head kind (the chibi head is a touch smaller than the animals' heads). */
 export const HEAD_SCALE: Record<HeadKind, number> = { round: 1, chibi: 0.95, box: 1 }
+
+/** Owner-tuned head size for every look (1 = the size before the smaller-heads change). One place to tune. */
+export const HEAD_SIZE = 0.7
+
+/**
+ * Head rest placement for a rig (head-bone y in rig space, uniform scale). The head shrinks toward its
+ * old bottom, so it stays seated on the shoulders (no neck gap). Hats, ears and antenna ride along.
+ */
+export function headRest(rig: Rig, kind: HeadKind, size: number = HEAD_SIZE): { y: number; scale: number } {
+  const half = kind === 'box' ? BOX_HEAD.b : HEAD_R
+  return { y: rig.headY - half * HEAD_SCALE[kind] * (1 - size), scale: HEAD_SCALE[kind] * size }
+}
+
+/** Rig-space y of the top of the (bare) head at rest: the single source for the shuttle occlusion box. */
+export function headTop(rig: Rig, kind: HeadKind, size: number = HEAD_SIZE): number {
+  const half = kind === 'box' ? BOX_HEAD.b : HEAD_R
+  return headRest(rig, kind, size).y + half * HEAD_SCALE[kind] * size
+}
 
 export const HEADS: Record<HeadKind, (l: Look) => Part[]> = {
   round: (l) => [part(new SphereGeometry(R, 32, 24), l.skin)],

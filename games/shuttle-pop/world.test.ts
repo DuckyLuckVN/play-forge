@@ -1,23 +1,32 @@
 import { Frustum, Matrix4, PerspectiveCamera, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
-import { COURT, stepShuttle, type Flight, type Vec3 } from './physics'
+import { COURT, stepShuttle, type CourtDims as FullCourt, type Flight, type Vec3 } from './physics'
+import { COURT_SIZES, courtDims } from './courtsize'
 import { launchFor, shotTarget } from './shots'
 import type { SpEvent } from './sim'
 import {
   CAMERA,
   CAMERA_TIGHT,
+  CAMERA_TWEAK,
   CHEER,
   cameraPose,
+  clampCameraTweak,
+  inView,
+  NO_TWEAK,
+  type CameraTweak,
+  type CourtDims,
   framingTightness,
   cheerLevel,
   CORRECT,
   correct,
   dampFocus,
-  isTwinAlt,
+  interpShuttle,
+  hitterIndex,
   lerpV,
   moodOf,
   rallyHits,
   swingTick,
+  twinAlt,
   viewOf,
 } from './world'
 
@@ -30,6 +39,19 @@ describe('view mapping', () => {
     const { flip } = viewOf(1)
     const p = { x: 1.2, z: 4.5 }
     expect([p.x * flip, p.z * flip]).toEqual([-1.2, -4.5])
+  })
+})
+
+describe('interpShuttle', () => {
+  it('lerps a flight step, snaps a placement', () => {
+    const out = { x: 0, y: 0, z: 0 }
+    const o = { x: 0, y: 0, z: 0 }
+    const a = interpShuttle(o, { x: 1, y: 0, z: 0 }, 0.25, out)
+    expect(a.pos.x).toBeCloseTo(0.25)
+    expect(a.snap).toBe(false)
+    const b = interpShuttle(o, { x: 2.5, y: 0, z: 0 }, 0.25, out)
+    expect(b.pos.x).toBe(2.5)
+    expect(b.snap).toBe(true)
   })
 })
 
@@ -52,10 +74,16 @@ describe('lerpV', () => {
 
 describe('camera framing', () => {
   // Perfect clears and long serves, both directions (render space, local player near at z < 0).
-  function flight(kind: 'clear' | 'serveLong', side: 0 | 1, back: number, y: number): Vec3[] {
+  function flight(
+    kind: 'clear' | 'serveLong',
+    side: 0 | 1,
+    back: number,
+    y: number,
+    court: FullCourt = COURT,
+  ): Vec3[] {
     const dir = side === 0 ? 1 : -1
     const from = { x: 0.5 * dir, y, z: -dir * back }
-    const v = launchFor(kind, 'perfect', from, shotTarget(kind, side, 0), () => 0)
+    const v = launchFor(kind, 'perfect', from, shotTarget(kind, side, 0, court), () => 0, 0, court)
     const f: Flight = { pos: { ...from }, vel: v }
     const out: Vec3[] = []
     while (f.pos.y > 0 && out.length < 600) {
@@ -64,24 +92,30 @@ describe('camera framing', () => {
     }
     return out
   }
-  const flights = {
-    'clear from my back court': flight('clear', 0, COURT.halfLen - 1.2, 2.2),
-    'clear from their back court': flight('clear', 1, COURT.halfLen - 1.2, 2.2),
-    'clear from my front court': flight('clear', 0, 2, 2.5),
-    'clear from their front court': flight('clear', 1, 2, 2.5),
-    'my long serve': flight('serveLong', 0, COURT.shortLine + 0.5, 1),
-    'their long serve': flight('serveLong', 1, COURT.shortLine + 0.5, 1),
-  }
-  const corners = [-1, 1].flatMap((sx) =>
-    [-1, 1].map((sz) => new Vector3(sx * COURT.halfWidth, 0, sz * COURT.halfLen)),
-  )
+  const flightsFor = (court: FullCourt) => ({
+    'clear from my back court': flight('clear', 0, court.halfLen - 1.2, 2.2, court),
+    'clear from their back court': flight('clear', 1, court.halfLen - 1.2, 2.2, court),
+    'clear from my front court': flight('clear', 0, 2, 2.5, court),
+    'clear from their front court': flight('clear', 1, 2, 2.5, court),
+    'my long serve': flight('serveLong', 0, court.shortLine + 0.5, 1, court),
+    'their long serve': flight('serveLong', 1, court.shortLine + 0.5, 1, court),
+  })
+  const flights = flightsFor(COURT)
+  const cornersOf = (court: CourtDims) =>
+    [-1, 1].flatMap((sx) => [-1, 1].map((sz) => new Vector3(sx * court.halfWidth, 0, sz * court.halfLen)))
   const frustum = new Frustum()
   const m = new Matrix4()
   const p = new Vector3()
   const pose = { x: 0, y: 0, z: 0, lookX: 0, lookY: 0, lookZ: 0, fov: 0 }
 
-  function view(cam: PerspectiveCamera, playerX: number, focus: number, tight: number) {
-    cameraPose(playerX, focus, pose, tight)
+  function view(
+    cam: PerspectiveCamera,
+    playerX: number,
+    focus: number,
+    tight: number,
+    court: CourtDims = COURT,
+  ) {
+    cameraPose(playerX, focus, pose, tight, NO_TWEAK, court)
     cam.fov = pose.fov
     cam.updateProjectionMatrix()
     cam.position.set(pose.x, pose.y, pose.z)
@@ -99,28 +133,33 @@ describe('camera framing', () => {
     // The real desktop canvas at 1280×720 (shell bar + gutters), at the blend it actually gets.
     ['desktop canvas 1248×639', 1248 / 639, [framingTightness(1248, 639)]],
   ]
-  for (const [label, aspect, tights] of cases)
-    for (const tight of tights)
-      for (const playerX of [0, -COURT.halfWidth, COURT.halfWidth].map((x) => x * CAMERA.followX))
-        it(`${label}, tightness ${tight.toFixed(2)}, camera x ${playerX.toFixed(2)}: shuttle on screen ≥ 95% of every high shot, all court corners always`, () => {
-          const cam = new PerspectiveCamera(CAMERA.fov, aspect, 0.1, 200)
-          for (const [name, pts] of Object.entries(flights)) {
-            let focus = 1
-            let seen = 0
-            for (const s of pts) {
-              focus = dampFocus(focus, s.y, 1 / 60)
-              view(cam, playerX, focus, tight)
-              if (frustum.containsPoint(p.set(s.x, s.y, s.z))) seen++
-              for (const c of corners)
-                expect(frustum.containsPoint(c), `${name}: corner ${c.x},${c.z}`).toBe(true)
+  for (const size of COURT_SIZES)
+    for (const [label, aspect, tights] of cases)
+      for (const tight of tights)
+        for (const playerX of [0, -courtDims(size).halfWidth, courtDims(size).halfWidth].map(
+          (x) => x * CAMERA.followX,
+        ))
+          it(`${size}: ${label}, tightness ${tight.toFixed(2)}, camera x ${playerX.toFixed(2)}: shuttle on screen ≥ 95% of every high shot, all court corners always`, () => {
+            const court = courtDims(size)
+            const cs = cornersOf(court)
+            const cam = new PerspectiveCamera(CAMERA.fov, aspect, 0.1, 200)
+            for (const [name, pts] of Object.entries(flightsFor(court))) {
+              let focus = 1
+              let seen = 0
+              for (const s of pts) {
+                focus = dampFocus(focus, s.y, 1 / 60)
+                view(cam, playerX, focus, tight, court)
+                if (frustum.containsPoint(p.set(s.x, s.y, s.z))) seen++
+                for (const c of cs)
+                  expect(frustum.containsPoint(c), `${name}: corner ${c.x},${c.z}`).toBe(true)
+              }
+              expect(seen / pts.length, name).toBeGreaterThanOrEqual(0.95)
             }
-            expect(seen / pts.length, name).toBeGreaterThanOrEqual(0.95)
-          }
-          // At rest, a player reaching up (2.6 m) at any corner is on screen too.
-          view(cam, playerX, 1, tight)
-          for (const c of corners)
-            expect(frustum.containsPoint(p.set(c.x, 2.6, c.z)), `overhead at ${c.x},${c.z}`).toBe(true)
-        })
+            // At rest, a player reaching up (2.6 m) at any corner is on screen too.
+            view(cam, playerX, 1, tight, court)
+            for (const c of cs)
+              expect(frustum.containsPoint(p.set(c.x, 2.6, c.z)), `overhead at ${c.x},${c.z}`).toBe(true)
+          })
 
   it('tight framing draws the players bigger at rest (the phone readability fix)', () => {
     const cam = new PerspectiveCamera(CAMERA.fov, 2.6, 0.1, 200)
@@ -165,6 +204,138 @@ describe('camera framing', () => {
     expect(cameraPose(0, 1, pose).lookY).toBe(0)
     expect(cameraPose(0, 1, pose, 1).fov).toBe(CAMERA_TIGHT.fov)
   })
+
+  describe('camera tweak', () => {
+    const keyPoints = (c: CourtDims) =>
+      [-1, 1].flatMap((s) => [
+        new Vector3(s * c.halfWidth, 0, -c.halfLen),
+        new Vector3(s * c.halfWidth, 0, c.halfLen),
+        new Vector3(s * c.halfWidth, c.netH, 0),
+      ])
+    const tweakView = (
+      cam: PerspectiveCamera,
+      camX: number,
+      focus: number,
+      tight: number,
+      tw: CameraTweak,
+      court: CourtDims = COURT,
+    ) => {
+      cameraPose(camX, focus, pose, tight, tw, court)
+      cam.fov = pose.fov
+      cam.updateProjectionMatrix()
+      cam.position.set(pose.x, pose.y, pose.z)
+      cam.lookAt(pose.lookX, pose.lookY, pose.lookZ)
+      cam.updateMatrixWorld()
+      frustum.setFromProjectionMatrix(m.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse))
+    }
+
+    it("no tweak is exactly today's pose", () => {
+      for (const tight of [0, 0.5, 1])
+        expect(cameraPose(0.3, 4, { ...pose }, tight, NO_TWEAK)).toEqual(
+          cameraPose(0.3, 4, { ...pose }, tight),
+        )
+    })
+
+    it('height raises the camera, tilt looks up', () => {
+      const a = { ...cameraPose(0, 1, { ...pose }) }
+      const b = cameraPose(0, 1, { ...pose }, 0, { height: 0.5, tilt: 0 })
+      expect(b.y - a.y).toBeCloseTo(0.5 * CAMERA_TWEAK.height)
+      expect(cameraPose(0, 1, { ...pose }, 0, { height: 0, tilt: 0.5 }).lookY).toBeGreaterThan(a.lookY)
+    })
+
+    it('court dims drive the camera distance', () => {
+      const grow = 1 + (8 / COURT.halfLen - 1) * CAMERA.courtFollow
+      const p8 = cameraPose(0, 1, { ...pose }, 0, NO_TWEAK, { ...COURT, halfLen: 8 })
+      expect(p8.z).toBeCloseTo(-(8 + CAMERA.back * grow))
+      expect(p8.y).toBeCloseTo(CAMERA.height * grow)
+      expect(cameraPose(0, 1, { ...pose }, 0, NO_TWEAK, COURT).z).toBe(-(COURT.halfLen + CAMERA.back))
+    })
+
+    it('inView agrees with three.js Frustum on the key points', () => {
+      const cam = new PerspectiveCamera(CAMERA.fov, 16 / 9, 0.1, 200)
+      tweakView(cam, 0, 1, 0, NO_TWEAK)
+      const off = [
+        new Vector3(30, 0, 0),
+        new Vector3(-30, 0, 0),
+        new Vector3(0, 40, 0),
+        new Vector3(0, 0, -60),
+      ]
+      for (const q of [...keyPoints(COURT), ...off])
+        expect(inView(pose, 16 / 9, { x: q.x, y: q.y, z: q.z })).toBe(frustum.containsPoint(q))
+    })
+
+    const wants: CameraTweak[] = [
+      { height: 1, tilt: 1 },
+      { height: 1, tilt: -1 },
+      { height: -1, tilt: 1 },
+      { height: -1, tilt: -1 },
+      { height: 1, tilt: 0 },
+      { height: -1, tilt: 0 },
+      { height: 0, tilt: 1 },
+      { height: 0, tilt: -1 },
+    ]
+    for (const size of COURT_SIZES)
+      for (const [label, aspect, tights] of cases)
+        for (const tight of tights)
+          for (const w of wants)
+            it(`${size}: ${label} t=${tight.toFixed(2)} want ${w.height},${w.tilt}: clamped tweak keeps key points in view at rest and corners through every high shot`, () => {
+              const court = courtDims(size)
+              const cs = cornersOf(court)
+              const c = clampCameraTweak(w, { aspect, tight, court })
+              for (const k of ['height', 'tilt'] as const) {
+                expect(Math.sign(c[k]) * Math.sign(w[k])).not.toBe(-1)
+                expect(Math.abs(c[k])).toBeLessThanOrEqual(1)
+              }
+              const cam = new PerspectiveCamera(CAMERA.fov, aspect, 0.1, 200)
+              for (const camX of [0, -court.halfWidth, court.halfWidth].map((x) => x * CAMERA.followX)) {
+                tweakView(cam, camX, 1, tight, c, court)
+                for (const q of keyPoints(court)) expect(frustum.containsPoint(q)).toBe(true)
+                for (const [name, pts] of Object.entries(flightsFor(court))) {
+                  let focus = 1
+                  for (const s of pts) {
+                    focus = dampFocus(focus, s.y, 1 / 60)
+                    tweakView(cam, camX, focus, tight, c, court)
+                    for (const q of cs)
+                      expect(frustum.containsPoint(q), `${name}: corner ${q.x},${q.z}`).toBe(true)
+                  }
+                }
+              }
+            })
+
+    for (const size of COURT_SIZES)
+      for (const [label, aspect, tights] of cases)
+        for (const tight of tights)
+          it(`${size}: ${label} t=${tight.toFixed(2)}: a mid tweak survives the clamp`, () => {
+            const c = clampCameraTweak({ height: 0.3, tilt: 0.3 }, { aspect, tight, court: courtDims(size) })
+            expect(c.height > 0 || c.tilt > 0).toBe(true)
+          })
+
+    it('a want that already fits is returned unchanged; usable range at 16:9 roomy', () => {
+      for (const w of [
+        { height: 0.5, tilt: 0 },
+        { height: -0.5, tilt: 0 },
+        { height: 0, tilt: 0.5 },
+        { height: 0, tilt: -0.5 },
+      ])
+        expect(clampCameraTweak(w, { aspect: 16 / 9, tight: 0 })).toEqual(w)
+    })
+
+    it('bad input: NaN → 0, out of range → ±1 before clamping', () => {
+      const c = clampCameraTweak({ height: NaN, tilt: 5 }, { aspect: 16 / 9, tight: 0 })
+      expect(c.height).toBe(0)
+      expect(c.tilt).toBeGreaterThan(0)
+      expect(c.tilt).toBeLessThanOrEqual(1)
+    })
+
+    it('a court the default view cannot frame gets no tweak (court-size slice owns base framing)', () => {
+      expect(
+        clampCameraTweak(
+          { height: 1, tilt: 1 },
+          { aspect: 16 / 9, tight: 0, court: { halfLen: 6.7, halfWidth: 40, netH: 1.55 } },
+        ),
+      ).toEqual(NO_TWEAK)
+    })
+  })
 })
 
 describe('poses', () => {
@@ -178,11 +349,46 @@ describe('poses', () => {
     expect(moodOf('over', 0, 1, 1)).toBe('sad')
   })
 
-  it('isTwinAlt: only the far player, only on the same preset', () => {
-    expect(isTwinAlt(2, 2, 1, 0)).toBe(true)
-    expect(isTwinAlt(2, 2, 0, 0)).toBe(false)
-    expect(isTwinAlt(2, 2, 0, 1)).toBe(true)
-    expect(isTwinAlt(1, 2, 1, 0)).toBe(false)
+  it('twinAlt: 1v1 — only the far player, only on the same preset', () => {
+    expect(twinAlt([2, 2], 1, 0)).toBe(true)
+    expect(twinAlt([2, 2], 0, 0)).toBe(false)
+    expect(twinAlt([2, 2], 0, 1)).toBe(true)
+    expect(twinAlt([1, 2], 1, 0)).toBe(false)
+  })
+
+  it('twinAlt: 4 distinct looks → nobody tinted', () => {
+    for (let local = 0; local < 4; local++)
+      for (let i = 0; i < 4; i++) expect(twinAlt([0, 1, 2, 3], i, local)).toBe(false)
+  })
+
+  it('twinAlt: the local player owns the look first, else the lowest index', () => {
+    const tinted = (presets: number[], local: number) => presets.map((_, i) => twinAlt(presets, i, local))
+    expect(tinted([1, 1, 3, 0], 0)).toEqual([false, true, false, false])
+    expect(tinted([1, 1, 3, 0], 1)).toEqual([true, false, false, false])
+    expect(tinted([2, 2, 2, 0], 3)).toEqual([false, true, true, false])
+    expect(tinted([2, 2, 2, 0], 2)).toEqual([true, true, false, false])
+    // spectator (localIdx −1): the lowest index owns it
+    expect(tinted([2, 2, 2, 0], -1)).toEqual([false, true, true, false])
+  })
+})
+
+describe('hitterIndex', () => {
+  const players = [
+    { id: 'a', side: 0 as const },
+    { id: 'b', side: 1 as const },
+    { id: 'c', side: 0 as const },
+    { id: 'd', side: 1 as const },
+  ]
+
+  it('finds the hitter by id', () => {
+    expect(hitterIndex(players, { side: 0, by: 'c' })).toBe(2)
+    expect(hitterIndex(players, { side: 1, by: 'd' })).toBe(3)
+  })
+
+  it("falls back to the side's first player on a missing or unknown id", () => {
+    expect(hitterIndex(players, { side: 1 })).toBe(1)
+    expect(hitterIndex(players, { side: 0, by: 'zz' })).toBe(0)
+    expect(hitterIndex(players.slice(0, 2), { side: 1, by: 'd' })).toBe(1)
   })
 })
 

@@ -2,18 +2,22 @@
  * Tiny Web Audio synthesiser. Sounds and music are generated, not loaded, so
  * games stay single-file and work offline.
  *
- * Signal path: sources → sfx / music bus → master → speakers.
+ * Signal path: sources → sfx bus → soft clip → master → speakers (music bus → master).
  * Volume settings are shared by every game and remembered in localStorage.
  */
 
 export interface Tone {
-  /** Start frequency in Hz (for 'noise', the low-pass cutoff). */
+  /** Start frequency in Hz (for 'noise', the filter cutoff / centre). */
   freq: number
   /** Slide to this frequency over the tone's duration. */
   to?: number
   /** Seconds. */
   dur: number
   wave?: OscillatorType | 'noise'
+  /** 'noise' only: filter type. Default 'lowpass'. */
+  filter?: 'lowpass' | 'bandpass' | 'highpass'
+  /** 'noise' only: filter Q. Default is WebAudio's. */
+  q?: number
   /** 0..1, before the effects volume. */
   vol?: number
   /** Start offset in seconds, for building short phrases. */
@@ -30,6 +34,41 @@ export interface AudioSettings {
   muted: boolean
 }
 
+/** Most effect tones sounding at once; extra tones are dropped (layers are listed most important first). */
+export const MAX_VOICES = 24
+
+/**
+ * Safety-net soft clip on the effects bus: exactly linear (no gain change) up to `threshold` (linear
+ * amplitude, 0.5 = -6 dBFS), then a smooth tanh knee that never exceeds 1. Unlike a compressor it adds
+ * no makeup gain, so effects keep their loudness in every game.
+ */
+export const SFX_CLIP_THRESHOLD = 0.5
+
+/** WaveShaper table over input -1..1 (n points, odd n keeps 0 exact): identity to `t`, then t + (1-t)·tanh((|x|-t)/(1-t)), C1 at `t`. */
+export function softClipCurve(n: number, t = SFX_CLIP_THRESHOLD): Float32Array<ArrayBuffer> {
+  const out = new Float32Array(n)
+  const k = 1 - t
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1
+    const a = Math.abs(x)
+    out[i] = a <= t ? x : Math.sign(x) * (t + k * Math.tanh((a - t) / k))
+  }
+  return out
+}
+
+/** How many of `wanted` new tones may start with `active` already sounding. */
+export function voicesAllowed(active: number, wanted: number, cap = MAX_VOICES): number {
+  return Math.max(0, Math.min(wanted, cap - active))
+}
+
+/** Drops finished voices (end <= now, or non-finite) in place; returns how many remain. */
+export function pruneVoices(ends: number[], now: number): number {
+  let n = 0
+  for (const e of ends) if (e > now) ends[n++] = e
+  ends.length = n
+  return n
+}
+
 const SETTINGS_KEY = 'play-forge:audio'
 const DEFAULTS: AudioSettings = { music: 0.45, sfx: 0.8, muted: false }
 
@@ -39,6 +78,8 @@ let sfxBus: GainNode | null = null
 let musicBus: GainNode | null = null
 let settings = readSettings()
 let unlocked = false
+/** Scheduled end times (audio clock) of tones still sounding or pending. */
+const voiceEnds: number[] = []
 const settingsListeners = new Set<(s: AudioSettings) => void>()
 const unlockListeners = new Set<() => void>()
 
@@ -90,7 +131,10 @@ export function audioContext(): AudioContext | null {
     master = ctx.createGain()
     sfxBus = ctx.createGain()
     musicBus = ctx.createGain()
-    sfxBus.connect(master)
+    const clip = ctx.createWaveShaper()
+    clip.curve = softClipCurve(2049)
+    clip.oversample = '2x'
+    sfxBus.connect(clip).connect(master)
     musicBus.connect(master)
     master.connect(ctx.destination)
     applyLevels()
@@ -149,7 +193,10 @@ export function playSound(sound: Sound, volume = 1): void {
   const ac = audioContext()
   if (!ac || !sfxBus) return
   const now = ac.currentTime + 0.01
-  for (const t of Array.isArray(sound) ? sound : [sound]) {
+  const tones = Array.isArray(sound) ? sound : [sound]
+  const count = voicesAllowed(pruneVoices(voiceEnds, ac.currentTime), tones.length)
+  for (let i = 0; i < count; i++) {
+    const t = tones[i]
     const start = now + (t.at ?? 0)
     const end = start + t.dur
     const gain = ac.createGain()
@@ -162,7 +209,8 @@ export function playSound(sound: Sound, volume = 1): void {
     if (t.wave === 'noise') {
       const n = noiseSource(ac)
       const filter = ac.createBiquadFilter()
-      filter.type = 'lowpass'
+      filter.type = t.filter ?? 'lowpass'
+      if (t.q !== undefined) filter.Q.value = t.q
       filter.frequency.setValueAtTime(t.freq, start)
       if (t.to) filter.frequency.exponentialRampToValueAtTime(t.to, end)
       n.connect(filter).connect(gain)
@@ -175,8 +223,13 @@ export function playSound(sound: Sound, volume = 1): void {
       osc.connect(gain)
       src = osc
     }
-    src.start(start)
-    src.stop(end + 0.02)
+    try {
+      src.start(start)
+      src.stop(end + 0.02)
+      voiceEnds.push(end + 0.02)
+    } catch {
+      // bad timing (NaN / negative): skip the tone, it never counts as a voice
+    }
   }
 }
 

@@ -171,6 +171,111 @@
       transform: translateX(-3px);
     }
   }
+  /* ---------- Reaction wheel ---------- */
+
+  .pf-rxw {
+    --r: 84px;
+    --slot: 52px;
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .pf-rxw[hidden] {
+    display: none;
+  }
+  .pf-rxw-ring {
+    position: absolute;
+    width: 0;
+    height: 0;
+  }
+  .pf-rxw-ring::before {
+    content: '';
+    position: absolute;
+    width: calc(2 * var(--r) + var(--slot) + 8px);
+    height: calc(2 * var(--r) + var(--slot) + 8px);
+    left: calc(-1 * (var(--r) + var(--slot) / 2 + 4px));
+    top: calc(-1 * (var(--r) + var(--slot) / 2 + 4px));
+    border-radius: 50%;
+    background: rgb(36 26 48 / 0.72);
+    box-shadow: 0 6px 24px rgb(0 0 0 / 0.35);
+  }
+  .pf-rxw-slot,
+  .pf-rxw-center {
+    position: absolute;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgb(255 255 255 / 0.08);
+    color: inherit;
+    cursor: pointer;
+    touch-action: none;
+  }
+  .pf-rxw-slot {
+    width: var(--slot);
+    height: var(--slot);
+    left: calc(var(--ox) - var(--slot) / 2);
+    top: calc(var(--oy) - var(--slot) / 2);
+    transition: transform 90ms ease;
+  }
+  .pf-rxw-slot .pf-rx-art {
+    width: 70%;
+    height: 70%;
+    pointer-events: none;
+  }
+  .pf-rxw-slot.on {
+    transform: scale(1.15);
+    box-shadow: 0 0 0 3px var(--pf-yolk);
+    background: rgb(255 255 255 / 0.18);
+  }
+  .pf-rxw-center {
+    width: 40px;
+    height: 40px;
+    left: -20px;
+    top: -20px;
+    background: rgb(255 255 255 / 0.06);
+  }
+  .pf-rxw-btn {
+    position: absolute;
+    z-index: 29;
+    left: calc(8px + env(safe-area-inset-left, 0px));
+    top: calc(8px + env(safe-area-inset-top, 0px));
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgb(36 26 48 / 0.72);
+    cursor: pointer;
+  }
+  .pf-rxw-btn[hidden] {
+    display: none;
+  }
+  .pf-rxw-btn .pf-rx-art {
+    width: 28px;
+    height: 28px;
+  }
+  .pf-rxw-btn.nope {
+    animation: pf-rx-nope 320ms ease;
+  }
+  @media (max-height: 500px) {
+    .pf-rxw {
+      --r: 72px;
+      --slot: 48px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pf-rxw-slot {
+      transition: none;
+    }
+  }
+
   .pf-rx-opt {
     width: 52px;
     height: 52px;

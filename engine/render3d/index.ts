@@ -4,4 +4,4 @@ export { Chunks3D, glowTexture, Particles3D, type Burst3D, type Chunks3DBurst } 
 export { createOverlay2D, type Overlay2D } from './overlay'
 export { KeyedPool, type PoolOptions } from './pool'
 export { createScene3D, webglAvailable, type Scene3D, type Scene3DOptions } from './scene'
-export { QualityGovernor, type QualityLevel } from './quality'
+export { QUALITY_LEVELS, QualityGovernor, type QualityLevel } from './quality'

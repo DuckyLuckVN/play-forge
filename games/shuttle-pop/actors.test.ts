@@ -1,22 +1,27 @@
 import { describe, expect, it } from 'vitest'
-import { BufferGeometry, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, Object3D, Vector3 } from 'three'
-import { createChibi, PRESETS, restPose, setToyShading } from './actors'
+import {
+  BufferGeometry,
+  Mesh,
+  MeshBasicMaterial,
+  MeshPhysicalMaterial,
+  Object3D,
+  Vector3,
+  type Material,
+} from 'three'
+import { createChibi, JUMP_H, PRESETS, restPose, setToyShading } from './actors'
 import { STRIKE_END } from './arm'
 import { SwingDriver } from './moves'
-import { extraMeshes } from './model/extras'
-import { legless } from './model/look'
+import { BOX_HEAD, HEAD_R } from './model/dims'
+import { EXTRAS, extraMeshes } from './model/extras'
+import { HEAD_SCALE, HEAD_SIZE } from './model/head'
+import { legless, rigOf } from './model/look'
 import { modelOf } from './model/model'
 
 // Rig checks with real three.js transforms (no WebGL needed).
 function rig(preset = 0) {
   const chibi = createChibi(preset)
   const named = (n: string) => chibi.root.getObjectByName(n)!
-  let streak: Mesh | null = null
-  chibi.root.traverse((o) => {
-    if (o instanceof Mesh && o.material instanceof MeshBasicMaterial && o.material.vertexColors && !o.name)
-      streak = o
-  })
-  return { chibi, frame: named('racketHead'), head: named('head'), streak: streak! }
+  return { chibi, frame: named('racketHead'), head: named('head'), streak: named('streak') as Mesh }
 }
 
 /** Meshes that would draw (visible all the way up). */
@@ -29,6 +34,17 @@ function drawn(root: Object3D): Mesh[] {
 }
 
 describe('chibi rig', () => {
+  it('lift = the rig height setPose left it at: a jump share above 1 (the ability arc) lifts it that far', () => {
+    const { chibi } = rig()
+    const p = restPose()
+    chibi.setPose(p, 0)
+    const ground = chibi.lift
+    expect(Math.abs(ground)).toBeLessThan(0.1)
+    p.jump = 0.75 / JUMP_H
+    chibi.setPose(p, 0)
+    expect(chibi.lift - ground).toBeCloseTo(0.75, 1)
+  })
+
   it('limbs are jointed chains: shoulder → upper arm → elbow → forearm → wrist → hand, hip → thigh → knee → shin', () => {
     const { chibi } = rig()
     const parentName = (m: Object3D) => m.parent!
@@ -284,6 +300,137 @@ describe('toy shading toggle (governor)', () => {
       const u = uniformsOf(m)
       expect(u.toyRim.value).toBeGreaterThan(0)
       expect(u.toyLobes.value).toBe(1)
+    }
+  })
+})
+
+describe('fade (local player covering the shuttle)', () => {
+  it('setOpacity(<1) swaps every kit/face/extra mesh to transparent variants; 1 restores the exact originals', () => {
+    const { chibi } = rig(0)
+    const meshes: Mesh[] = []
+    chibi.root.traverse((o) => {
+      if (o instanceof Mesh && o.name !== 'hull') meshes.push(o)
+    })
+    const before = meshes.map((m) => m.material)
+    chibi.setOpacity(0.5)
+    const faded = meshes.filter((m) => m.name !== 'streak' && m.name !== 'shadow')
+    expect(faded.length).toBeGreaterThan(10)
+    for (const m of faded) {
+      const mat = m.material as Material
+      expect(mat.transparent && mat.opacity, m.name).toBe(0.5)
+      expect(mat.depthWrite, m.name).toBe(true)
+    }
+    chibi.setOpacity(1)
+    expect(meshes.map((m) => m.material)).toEqual(before)
+    for (let i = 0; i < meshes.length; i++) expect(meshes[i].material).toBe(before[i])
+  })
+
+  it('opacity changes while fading only write .opacity (no material swap); crossing 1 restores originals', () => {
+    const { chibi } = rig(0)
+    const meshes: Mesh[] = []
+    chibi.root.traverse((o) => {
+      if (o instanceof Mesh && o.name !== 'hull') meshes.push(o)
+    })
+    const before = meshes.map((m) => m.material)
+    chibi.setOpacity(0.5)
+    const faded = meshes.map((m) => m.material)
+    for (const a of [0.6, 0.7, 0.55]) {
+      chibi.setOpacity(a)
+      expect(meshes.map((m) => m.material)).toEqual(faded)
+      for (let i = 0; i < meshes.length; i++) {
+        expect(meshes[i].material).toBe(faded[i])
+        if (faded[i] !== before[i]) expect((faded[i] as Material).opacity).toBe(a)
+      }
+    }
+    chibi.setOpacity(1)
+    for (let i = 0; i < meshes.length; i++) expect(meshes[i].material).toBe(before[i])
+  })
+
+  it('a preset swap while faded stays faded; the far twin (alt) never fades by itself', () => {
+    const { chibi } = rig(0)
+    chibi.setOpacity(0.6)
+    chibi.setPreset(2)
+    expect(((chibi.root.getObjectByName('head') as Mesh).material as Material).opacity).toBe(0.6)
+    expect(((chibi.root.getObjectByName('face') as Mesh).material as Material).opacity).toBe(0.6)
+    chibi.setOpacity(1)
+    const twin = rig(1).chibi
+    twin.setPreset(1, true)
+    expect(((twin.root.getObjectByName('head') as Mesh).material as Material).transparent).toBe(false)
+  })
+
+  it('fade is pure opacity: same colour / emissive / shading as the normal materials, no tint', () => {
+    const { chibi } = rig(0)
+    const byName = (n: string) => (chibi.root.getObjectByName(n) as Mesh).material as MeshPhysicalMaterial
+    const normal = { head: byName('head'), face: byName('face') }
+    chibi.setOpacity(0.5)
+    const faded = { head: byName('head'), face: byName('face') }
+    for (const k of ['head', 'face'] as const) {
+      const a = normal[k]
+      const b = faded[k]
+      expect(b).not.toBe(a)
+      expect(b.type).toBe(a.type)
+      expect(b.color.getHex()).toBe(a.color.getHex())
+      expect(b.vertexColors).toBe(a.vertexColors)
+      if ('emissive' in a) expect(b.emissive.getHex()).toBe(a.emissive.getHex())
+      for (const p of ['roughness', 'metalness', 'clearcoat', 'sheen', 'envMapIntensity'] as const)
+        if (p in a) expect(b[p], p).toBe(a[p])
+      expect(b.transparent).toBe(true)
+      expect(b.opacity).toBe(0.5)
+    }
+    chibi.setOpacity(1)
+  })
+
+  it('two chibis (same look) fade independently: own opacity each, either restores on its own', () => {
+    const a = rig(0).chibi
+    const b = rig(0).chibi
+    const head = (c: typeof a) => (c.root.getObjectByName('head') as Mesh).material as Material
+    const original = head(a)
+    a.setOpacity(0.4)
+    b.setOpacity(0.7)
+    expect(head(a)).not.toBe(head(b))
+    expect(head(a).opacity).toBe(0.4)
+    expect(head(b).opacity).toBe(0.7)
+    a.setOpacity(1)
+    expect(head(a)).toBe(original)
+    expect(head(b).opacity).toBe(0.7)
+    b.setOpacity(1)
+    expect(head(b)).toBe(original)
+  })
+
+  it('fade variants reuse the toy program key (no new shader family) and keep the draw-call count', () => {
+    const { chibi } = rig(0)
+    const calls = drawn(chibi.root).length
+    chibi.setOpacity(0.5)
+    const m = (chibi.root.getObjectByName('head') as Mesh).material as MeshPhysicalMaterial
+    expect(m.customProgramCacheKey()).toBe('toy')
+    expect(drawn(chibi.root).length).toBe(calls)
+    chibi.setOpacity(1)
+  })
+})
+
+describe('head size', () => {
+  it('every look: head group scaled by HEAD_SIZE, bottom stays where it was, racket/hands unscaled', () => {
+    for (const p of PRESETS) {
+      const { chibi } = rig(p.id)
+      const head = chibi.root.getObjectByName('head')!.parent!
+      const r = rigOf(p.look)
+      const k = HEAD_SCALE[p.look.head]
+      expect(head.scale.x).toBeCloseTo(k * HEAD_SIZE, 9)
+      const half = p.look.head === 'box' ? BOX_HEAD.b : HEAD_R
+      expect(head.position.y + r.hipY - half * head.scale.x).toBeCloseTo(r.headY - half * k, 9)
+      const ws = new Vector3()
+      chibi.root.updateMatrixWorld(true)
+      chibi.root.getObjectByName('racket')!.getWorldScale(ws)
+      expect(ws.x).toBeCloseTo(1, 9)
+    }
+  })
+  it('head extras (ears, antenna: ExtraSpec parent "head") ride in the scaled head group', () => {
+    for (const p of PRESETS) {
+      const { chibi } = rig(p.id)
+      const head = chibi.root.getObjectByName('head')!.parent!
+      const extras = head.children.filter((c) => c.visible && c.children.some((m) => m.name === 'extra'))
+      const want = p.look.extras.filter((e) => EXTRAS[e].parent === 'head').length
+      expect(extras.length >= want, p.name).toBe(true)
     }
   })
 })

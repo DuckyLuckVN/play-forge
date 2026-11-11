@@ -16,11 +16,29 @@ export function lerpV(a: Vec3, b: Vec3, t: number, out: Vec3): Vec3 {
   return out
 }
 
+/** Shuttle moves <= 0.75 m a tick in flight; more is a reset into the server's hand. */
+export const SHUTTLE_SNAP = 2
+/** A player jumping further than this (m, |dx| + |dz|) between two ticks was placed (new serve): snap, don't glide. */
+export const PLAYER_SNAP = 1.5
+
+/** Shuttle draw position between two states; a jump over SHUTTLE_SNAP (a placement) snaps to `curr`. */
+export function interpShuttle(
+  prev: Vec3,
+  curr: Vec3,
+  alpha: number,
+  out: Vec3,
+): { pos: Vec3; snap: boolean } {
+  const snap =
+    Math.abs(curr.x - prev.x) + Math.abs(curr.y - prev.y) + Math.abs(curr.z - prev.z) > SHUTTLE_SNAP
+  return { pos: lerpV(prev, curr, snap ? 1 : alpha, out), snap }
+}
+
 /**
  * Camera behind the near baseline, looking toward the net. Metres / degrees. Pulled back and a touch
  * wide so a Perfect clear (apex ~8.5 m) stays on screen with the look-at rising with the shuttle,
  * while all four court corners stay in view (world.test.ts checks 16:9, 19.5:9 and a short canvas).
  * This is the roomy framing for tall-ish canvases (16:9 and narrower); see CAMERA_TIGHT.
+ * A player's own height / tilt tweak (CameraTweak) rides on top of this, clamped by clampCameraTweak.
  */
 export const CAMERA = {
   fov: 55,
@@ -41,6 +59,13 @@ export const CAMERA = {
   focusRate: 5,
   /** How much the camera slides with the local player's x (0 = fixed). */
   followX: 0.3,
+  /**
+   * Share of the court's length growth (Large / XL) that the camera's height and distance behind the
+   * baseline grow by. 0.75: at 0.5 a mid personal tweak was
+   * clamped to nothing at Large / XL (a clear's ~9 m apex needs the room). Normal: no growth, so Normal's
+   * pose is unchanged.
+   */
+  courtFollow: 0.75,
 } as const
 
 /**
@@ -80,21 +105,134 @@ export interface CameraPose {
 
 const mix = (a: number, b: number, t: number) => a + (b - a) * t
 
+/** The court measures the camera needs (`COURT` satisfies it; a court-size setting can pass its own). */
+export type CourtDims = Pick<import('./physics').CourtDims, 'halfLen' | 'halfWidth' | 'netH'>
+
+/** A player's personal camera offset: each −1..1, 0 = the default framing. +height raises, +tilt looks up. */
+export interface CameraTweak {
+  height: number
+  tilt: number
+}
+
+export const NO_TWEAK: Readonly<CameraTweak> = { height: 0, tilt: 0 }
+
+export const CAMERA_TWEAK = {
+  /** Metres of camera height per tweak unit. */
+  height: 2,
+  /** Degrees of look-at pitch per tweak unit. */
+  tilt: 4,
+  /** Share of the half-frame the key court points must stay within (a margin off the very edge). */
+  edge: 0.94,
+  /** Focus height (m) of a high shot, checked on top of the resting focus. */
+  focusHigh: 7,
+  /** Same on a Large / XL court: clears climb higher there (apex ~8.9 m, capped by the shuttle's max speed). */
+  focusHighBig: 9,
+} as const
+
 /**
  * Camera position + look-at + fov for a (damped) camera x and focus height, at framing tightness
- * `tight` (framingTightness; 0 = the roomy CAMERA framing). Writes into `out`.
+ * `tight` (framingTightness; 0 = the roomy CAMERA framing), with the player's `tweak` on top.
+ * Writes into `out`.
  */
-export function cameraPose(camX: number, focusY: number, out: CameraPose, tight = 0): CameraPose {
+export function cameraPose(
+  camX: number,
+  focusY: number,
+  out: CameraPose,
+  tight = 0,
+  tweak: CameraTweak = NO_TWEAK,
+  court: CourtDims = COURT,
+): CameraPose {
   const t = clamp01(tight)
   const T = CAMERA_TIGHT
   const above = Math.max(0, focusY - CAMERA.riseFrom)
+  const grow = 1 + (court.halfLen / COURT.halfLen - 1) * CAMERA.courtFollow
   out.x = camX
-  out.y = mix(CAMERA.height, T.height, t)
-  out.z = -(COURT.halfLen + mix(CAMERA.back, T.back, t))
+  out.y = mix(CAMERA.height, T.height, t) * grow + tweak.height * CAMERA_TWEAK.height
+  out.z = -(court.halfLen + mix(CAMERA.back, T.back, t) * grow)
   out.lookX = camX * 0.5
-  out.lookY = CAMERA.rise * above
   out.lookZ = mix(CAMERA.lookZ, T.lookZ, t)
+  out.lookY =
+    CAMERA.rise * above + Math.tan((tweak.tilt * CAMERA_TWEAK.tilt * Math.PI) / 180) * (out.lookZ - out.z)
   out.fov = Math.min(FOV_MAX, mix(CAMERA.fov, T.fov, t) + mix(CAMERA.zoom, T.zoom, t) * above)
+  return out
+}
+
+/**
+ * Is world point `p` inside the pose's view, within `edge` of the half-frame (1 = the very edge)?
+ * Pure look-at projection (world up +y), same answer as a three.js frustum's side planes.
+ */
+export function inView(pose: CameraPose, aspect: number, p: Vec3, edge = 1): boolean {
+  let fx = pose.lookX - pose.x
+  let fy = pose.lookY - pose.y
+  let fz = pose.lookZ - pose.z
+  const fl = Math.hypot(fx, fy, fz)
+  fx /= fl
+  fy /= fl
+  fz /= fl
+  // right = f × up(0,1,0) = (−fz, 0, fx); camera up = right × f
+  let rx = -fz
+  let rz = fx
+  const rl = Math.hypot(rx, rz)
+  rx /= rl
+  rz /= rl
+  const ux = -rz * fy
+  const uy = rz * fx - rx * fz
+  const uz = rx * fy
+  const dx = p.x - pose.x
+  const dy = p.y - pose.y
+  const dz = p.z - pose.z
+  const depth = dx * fx + dy * fy + dz * fz
+  if (depth <= 0) return false
+  const th = Math.tan((pose.fov * Math.PI) / 360) * edge
+  return (
+    Math.abs(dx * rx + dz * rz) <= depth * th * aspect && Math.abs(dx * ux + dy * uy + dz * uz) <= depth * th
+  )
+}
+
+const scratchPose: CameraPose = { x: 0, y: 0, z: 0, lookX: 0, lookY: 0, lookZ: 0, fov: 0 }
+const scratchPoint: Vec3 = { x: 0, y: 0, z: 0 }
+
+/** The tweak the player asked for, shrunk (toward 0) until both baselines and the net stay in view. */
+export function clampCameraTweak(
+  want: CameraTweak,
+  frame: { aspect: number; tight: number; court?: CourtDims },
+): CameraTweak {
+  const court = frame.court ?? COURT
+  const sane = (v: number) => (Number.isFinite(v) ? Math.min(1, Math.max(-1, v)) : 0)
+  const w: CameraTweak = { height: sane(want.height), tilt: sane(want.tilt) }
+  const m = court.halfWidth * CAMERA.followX
+  const focusTop = court.halfLen > COURT.halfLen ? CAMERA_TWEAK.focusHighBig : CAMERA_TWEAK.focusHigh
+  const fits = (tw: CameraTweak): boolean => {
+    for (const camX of [-m, 0, m])
+      for (const focus of [1, focusTop]) {
+        cameraPose(camX, focus, scratchPose, frame.tight, tw, court)
+        for (const s of [-1, 1])
+          for (const [y, z] of [
+            [0, -court.halfLen],
+            [0, court.halfLen],
+            [court.netH, 0],
+          ]) {
+            scratchPoint.x = s * court.halfWidth
+            scratchPoint.y = y
+            scratchPoint.z = z
+            if (!inView(scratchPose, frame.aspect, scratchPoint, CAMERA_TWEAK.edge)) return false
+          }
+      }
+    return true
+  }
+  if (!fits(NO_TWEAK)) return { ...NO_TWEAK }
+  if (fits(w)) return w
+  const out: CameraTweak = { height: 0, tilt: 0 }
+  for (const k of ['height', 'tilt'] as const) {
+    let lo = 0
+    let hi = 1
+    for (let i = 0; i < 12; i++) {
+      const mid = (lo + hi) / 2
+      if (fits({ ...out, [k]: mid * w[k] })) lo = mid
+      else hi = mid
+    }
+    out[k] = lo * w[k]
+  }
   return out
 }
 
@@ -117,9 +255,30 @@ export function moodOf(
   return won === -1 ? 'idle' : won === side ? 'happy' : 'sad'
 }
 
-/** Same preset on both sides: the far player (`i` ≠ the near `localIdx`) is drawn as the tinted twin. */
-export function isTwinAlt(preset0: number, preset1: number, i: number, localIdx: number): boolean {
-  return preset0 === preset1 && i !== localIdx
+/**
+ * Player `i` of `presets` (one look per player) is drawn as the tinted twin when an earlier owner of
+ * the same look exists: the local player (`localIdx`; −1 = spectator) owns their look first, else the
+ * lowest index owns it. 1v1 matches the old rule: same look on both sides → the far player is tinted.
+ */
+export function twinAlt(presets: readonly number[], i: number, localIdx: number): boolean {
+  if (i === localIdx) return false
+  const look = presets[i]
+  if (localIdx >= 0 && localIdx < presets.length && presets[localIdx] === look) return true
+  for (let j = 0; j < i; j++) if (presets[j] === look) return true
+  return false
+}
+
+/** Index of the player who made event `e` (`e.by`), else the first player on `e.side` (−1: none). */
+export function hitterIndex(
+  players: readonly { id: string; side: 0 | 1 }[],
+  e: { side: 0 | 1; by?: string },
+): number {
+  let first = -1
+  for (let i = 0; i < players.length; i++) {
+    if (e.by !== undefined && players[i].id === e.by) return i
+    if (first < 0 && players[i].side === e.side) first = i
+  }
+  return first
 }
 
 /** Crowd tuning: cheers from a rally of `rally` hits, and for `pointTime` s after every point. */

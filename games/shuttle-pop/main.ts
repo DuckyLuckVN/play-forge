@@ -1,21 +1,27 @@
-import { createGameApp, h, landscapeGuard, smoothState, type Session } from '@forge'
+import { createGameApp, h, landscapeGuard, smoothState, type MountContext, type Session } from '@forge'
 import { ARCADE } from '@forge/audio/tracks'
 import { webglAvailable } from '@forge/render3d'
 import './shuttle-pop.css'
+import type { Strike } from './ability'
+import { chargeOf } from './charge'
+import { mountEmotes } from './emotes'
 import { t } from './i18n'
 import { TouchPad } from './hud'
 import { bindInput } from './input'
 import { loadPreset, pickerStrip } from './picker'
+import { GuestShuttle, type GuestView } from './guestshuttle'
 import { GuestPredictor } from './predict'
+import { RemoteTracks } from './remotes'
 import { Court3D, type LocalSwing } from './render3d'
-import { scoreText, summaryRows } from './results'
-import { winner } from './rules'
+import { RenderClock } from './renderclock'
+import { outcomeOf, scoreChips, summaryRows } from './results'
 import {
+  canAct,
   canCharge,
   canSwing,
   createState,
+  gradesAtPress,
   seedPreset,
-  shownName,
   shuttlePopGame,
   TAPPED,
   type SpInput,
@@ -34,7 +40,7 @@ async function preload(): Promise<void> {
   court = view
 }
 
-function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => void {
+function mount(session: Session<SpState, SpInput>, stage: HTMLElement, ctx: MountContext): () => void {
   if (!court) {
     const note = h('p', { class: 'sp-nogl', textContent: t('Shuttle Pop needs WebGL to run.') })
     stage.append(note)
@@ -47,43 +53,120 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
   const live = () => session.phase === 'playing' && !session.lobby.paused
   // Online guests predict their own player (the host and vs-computer already see their state at once).
   const predictor = session.isHost || session.offline ? null : new GuestPredictor()
-  const detach = court.attach(stage, smooth, session.selfId, (cb) => (onSwing = cb), predictor, live)
+  // ...and draw the shuttle (and the other players) from a smooth clock + deterministic flight, so jitter never rubber-bands it.
+  const guest: GuestView | null =
+    session.isHost || session.offline
+      ? null
+      : (() => {
+          const clock = new RenderClock(session.tickRate)
+          return { clock, shuttle: new GuestShuttle(clock), remotes: new RemoteTracks(clock) }
+        })()
+  const detach = court.attach(stage, smooth, session.selfId, (cb) => (onSwing = cb), predictor, live, guest)
   court.surface.setAttribute('role', 'img')
   court.surface.setAttribute('aria-label', t('Badminton court'))
+  // Online only: hold T / tap the button to send an emoji; bubbles show over the sender's chibi.
+  const offEmotes = mountEmotes(court.surface, session, ctx.reactions, court)
 
   // The last state's view of our seat: may it charge (rally / own serve), would a swing count (also off
-  // cooldown)? Else the sim ignores it.
+  // cooldown)? Else the sim ignores it. The predictor's stun lock (the newest host report) also refuses.
   const seatCan = (can: typeof canSwing) => {
+    if (predictor?.stunned) return false
     const s = smooth.curr
     const me = s?.players.find((p) => p.id === session.selfId)
     return !!s && !!me && can(s, me)
+  }
+  // Online guests show their own hit at once (GuestShuttle.predictHit, the sim's contact rules): the
+  // held press (its screen tick + local time, for the charge and the tap rules) and the move last sent.
+  let press: { tick: number | undefined; ms: number } | null = null
+  const moved = { x: 0, z: 0 }
+  const predictHit = (
+    held: { x: number; z: number },
+    tap: boolean,
+    charge: number,
+    pressTick?: number,
+    act?: Strike,
+  ) => {
+    const me = smooth.curr?.players.find((p) => p.id === session.selfId)
+    if (!guest || !predictor || !me) return
+    const player = { x: predictor.x, z: predictor.z }
+    // Heard at once; the host's answering hit is then skipped (Court3D's echo).
+    if (
+      !guest.shuttle.predictHit({
+        side: me.side,
+        id: session.selfId,
+        held,
+        charge,
+        player,
+        tap,
+        pressTick,
+        act,
+      })
+    )
+      return
+    const hit = guest.shuttle.predicted()
+    if (hit) court?.ownHitPredicted(hit)
   }
   const send = (input: SpInput) => {
     // Animate our own swing button this frame (not when the session or the sim would drop it); the
     // prediction slows with the charge and moves with exactly the moves the host gets.
     if (input.t === 'charge') {
       if (input.cancel) {
+        press = null
         predictor?.setCharging(false)
         onSwing?.('cancel')
       } else if (live() && seatCan((s, me) => canCharge(s, me) && me.chargeAt !== TAPPED)) {
         // (A press already swung as a tap waits for its button-up: e.g. a resync while still held.)
         predictor?.setCharging(true)
         onSwing?.('charge')
+        // A fresh press may swing at once as a tap (sim tapOnPress); a repeat press keeps the first.
+        if (!press) {
+          press = { tick: input.tick, ms: performance.now() }
+          if (seatCan((s, me) => canSwing(s, me) && me.chargeAt === -1)) predictHit({ ...moved }, true, 0)
+        }
       } else return // the host would ignore it: don't send (no slow-down disagreement with the prediction)
     } else if (input.t === 'swing') {
-      predictor?.setCharging(false)
       // A press that already swung as a tap (sim tapOnPress): its button-up is no second swing.
       const counts = live() && seatCan((s, me) => canSwing(s, me) && me.chargeAt !== TAPPED)
+      // A counted rally swing after a full hold also slows the run for a moment (sim recoverUntil).
+      predictor?.release(counts && smooth.curr?.phase === 'rally')
       onSwing?.(counts ? 'swing' : 'cancel')
-    } else if (input.t === 'move' && live()) predictor?.setMove(input.x, input.z)
+      if (counts) {
+        // The hold is the charge (the sim counts it in arrival ticks); a short tap is graded at its press.
+        const ticks = press ? ((performance.now() - press.ms) / 1000) * session.tickRate : 0
+        const charge = chargeOf(ticks)
+        const atPress = press && gradesAtPress(ticks, charge) ? press.tick : undefined
+        predictHit({ x: input.x, z: input.z }, false, charge, atPress)
+      }
+      press = null
+    } else if (input.t === 'ability') {
+      // The host would ignore a press that can't act (locked, cooling, charging): don't send it.
+      if (!live() || !seatCan(canAct)) return
+      const me = smooth.curr?.players.find((p) => p.id === session.selfId)
+      if (guest && predictor && me) {
+        // Same pick as the host (ability.ts) on the flight shown: the body leaps now, a strike also shows its hit.
+        const pick = guest.shuttle.pickAbility({ x: predictor.x, z: predictor.z }, me.side, seatCan(canSwing))
+        predictor.startAct(pick.k, pick.dx, pick.dz)
+        // Heard and seen at once; the host's answering `act` event then stays silent (Court3D).
+        court?.ownActPredicted(pick.k)
+        if (pick.k !== 'hop') predictHit({ x: input.x, z: input.z }, false, 0, input.tick, pick.k)
+      }
+    } else if (input.t === 'move' && live()) {
+      moved.x = input.x
+      moved.z = input.z
+      predictor?.setMove(input.x, input.z)
+    }
     session.sendInput(input)
   }
   // Touch: floating stick (left) + swing button (bottom-right), over the court.
   const pad = new TouchPad()
   court.surface.append(pad.root)
+  // The phone button's cooldown follows the local player's (Court3D draws the same on its feet ring).
+  court.onCooldown = (cd) => pad.setAbility(cd)
   // Every human swing carries the tick on screen (the host rewinds up to MAX_REWIND): a guest's covers
   // its lag, the host's own its interpolation (0–1 ticks), so both sides get screen-aligned timing.
-  const seen = () => (smooth.curr ? swingTick(smooth.curr.tick, smooth.alpha()) : undefined)
+  // A guest's is the tick of the shuttle it sees (RenderClock), the same meaning as swingTick.
+  const seen = () =>
+    guest ? guest.clock.seenTick() : smooth.curr ? swingTick(smooth.curr.tick, smooth.alpha()) : undefined
   const input = bindInput(court.surface, send, seen, pad)
   // Our character on every play start (inputs are dropped before). The host's look is already seeded
   // in setup; a guest's shows from "Go!". Idempotent, so resumes may resend it.
@@ -154,7 +237,9 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement): () => vo
     document.removeEventListener('gesturestart', noPinch)
     stage.classList.remove('sp-playing')
     input.stop()
+    if (court) court.onCooldown = null
     pad.root.remove()
+    offEmotes()
     detach()
     smooth.dispose()
   }
@@ -195,11 +280,43 @@ createGameApp<SpState, SpInput>({
     },
     {
       action: t('Power shot'),
-      note: t('Let go to hit. You move slower while charging.'),
+      note: t(
+        'Let go to hit. You move slower while charging, and much slower for a moment after a full-power swing.',
+      ),
       hold: true,
       keys: [['Space'], ['J']],
       mouse: 'hold',
       touch: 'button',
+    },
+    {
+      action: t('Jump or dive'),
+      note: t('High shuttle: jump smash. Low and far: dive. Then a short cooldown.'),
+      keys: [['K'], ['Shift']],
+      mouse: 'right',
+      touch: 'button',
+      touchLabel: t('small button'),
+    },
+    {
+      action: t('Doubles (2 vs 2)'),
+      note: t(
+        'The team that wins a point serves. When your team wins the serve back, your other teammate serves. Serve from the right on an even score, the left on odd. Bonks hit teammates too!',
+      ),
+      tip: true,
+    },
+    {
+      action: t('Racket bonk'),
+      note: t(
+        "Swing your racket into another player and they see stars for a moment. Then they can't be bonked for 2 s.",
+      ),
+      tip: true,
+    },
+    {
+      action: t('Reactions'),
+      note: t('Online: move toward an emoji, let go to send'),
+      hold: true,
+      keys: [['T']],
+      touch: 'button',
+      touchLabel: t('emoji button'),
     },
     { action: t('Smash or drive'), note: t('as you swing'), hold: true, keys: [['W'], ['Up']] },
     { action: t('Clear (high and deep)'), note: t('as you swing'), hold: true, keys: [['S'], ['Down']] },
@@ -230,27 +347,9 @@ createGameApp<SpState, SpInput>({
   mount,
   menuExtras: pickerStrip,
   roomExtras: pickerStrip,
-  // Both seats; `name` labels the computer's chip, translated at display time (lobby players keep their lobby name).
-  // The computer's chip gets its own colour slot and the robot avatar (it isn't in the lobby).
-  scores: (s) =>
-    s.players.map((p) =>
-      p.kind === 'ai'
-        ? { id: p.id, score: s.score[p.side], name: shownName(p), slot: 1, avatar: 'robot' }
-        : { id: p.id, score: s.score[p.side], name: p.name },
-    ),
-  outcome(s, selfId) {
-    const score = scoreText(s, selfId)
-    const me = s.players.find((p) => p.id === selfId)
-    const won = s.players[s.winner === 1 ? 1 : 0]
-    if (!me) return { headline: t('{name} wins!', { name: shownName(won) }), result: 'done' }
-    if (won === me) {
-      // Over without a winning score: removePlayer ended it because the other side left.
-      if (winner(s.score) === null) return { headline: t('Your opponent left. You win!'), result: 'win' }
-      return { headline: t('You win {score}!', { score }), result: 'win' }
-    }
-    if (won.kind === 'ai')
-      return { headline: t('The computer wins {score}. Rematch?', { score }), result: 'lose' }
-    return { headline: t('{name} wins {score}.', { name: shownName(won), score }), result: 'lose' }
-  },
+  // Humans' chips plus a computer chip for a side with no human (robot avatar, its seat's colour slot);
+  // `name` labels the computer's chip, translated at display time (lobby players keep their lobby name).
+  scores: scoreChips,
+  outcome: outcomeOf,
   summary: summaryRows,
 })

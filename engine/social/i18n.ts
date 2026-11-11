@@ -34,6 +34,9 @@ export const VI: Dictionary = {
   // Reactions
   Reactions: 'Biểu cảm',
   'Send a reaction': 'Gửi biểu cảm',
+  'Reaction wheel': 'Vòng biểu cảm',
+  'Reactions (hold T)': 'Biểu cảm (giữ T)',
+  'Close reactions': 'Đóng biểu cảm',
   'Slow down a little': 'Chậm lại chút nhé',
   Laugh: 'Cười lăn',
   Fire: 'Cháy quá',

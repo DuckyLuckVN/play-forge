@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { COURT, DRAG, DT, G, isIn, predictLanding, solveLaunch, stepShuttle, type Flight } from './physics'
+import { courtDims } from './courtsize'
+import {
+  COURT,
+  DRAG,
+  DT,
+  G,
+  isIn,
+  launchVel,
+  predictLanding,
+  solveLaunch,
+  stepShuttle,
+  type Flight,
+} from './physics'
 
 const copy = (f: Flight): Flight => ({ pos: { ...f.pos }, vel: { ...f.vel } })
 
@@ -40,6 +52,16 @@ describe('shuttle physics', () => {
     expect(p.netHit).toBe(false)
   })
 
+  it('launchVel points at the target with the given speed and pitch', () => {
+    const from = { x: 0.5, y: 1.2, z: -5 }
+    for (const el of [-12, 0, 30, 60]) {
+      const v = launchVel(from, { x: -1, z: 3 }, el, 20)
+      expect(Math.hypot(v.x, v.y, v.z)).toBeCloseTo(20, 9)
+      expect((Math.atan2(v.y, Math.hypot(v.x, v.z)) * 180) / Math.PI).toBeCloseTo(el, 9)
+      expect(Math.atan2(v.x, v.z)).toBeCloseTo(Math.atan2(-1.5, 8), 9)
+    }
+  })
+
   it('solveLaunch returns max speed when unreachable', () => {
     const v = solveLaunch({ x: 0, y: 1.2, z: -5 }, { x: 0, z: 6 }, 45, 5)
     expect(Math.hypot(v.x, v.y, v.z)).toBeCloseTo(5, 6)
@@ -65,5 +87,11 @@ describe('shuttle physics', () => {
     expect(isIn({ x: 0, z: -1 }, 1)).toBe(false)
     expect(isIn({ x: 0, z: -1 }, 0)).toBe(true)
     expect(isIn({ x: 0, z: 6.71 }, 1)).toBe(false)
+  })
+
+  it('judges against the given court', () => {
+    expect(isIn({ x: 0, z: 7.5 }, 1)).toBe(false)
+    expect(isIn({ x: 0, z: 7.5 }, 1, courtDims('large'))).toBe(true)
+    expect(isIn({ x: 3.2, z: 3 }, 1, courtDims('xl'))).toBe(true)
   })
 })

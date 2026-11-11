@@ -32,7 +32,12 @@ export class RoomSocial {
   private chatUi: ChatControls
   private offs: (() => void)[] = []
 
-  constructor(session: Session<unknown, unknown>, layer: ReactionLayer) {
+  constructor(
+    session: Session<unknown, unknown>,
+    layer: ReactionLayer,
+    /** A game that draws reactions itself returns true: the shell then only plays the sound. */
+    claim?: (playerId: string, reactionId: string) => boolean,
+  ) {
     const s = session
     const player = (id: string) => s.lobby.players.find((p) => p.id === id)
     const isKnown = (id: string) => !!player(id)
@@ -41,7 +46,7 @@ export class RoomSocial {
     this.offs.push(
       this.reactions.on((id, reaction) => {
         const p = player(id)
-        if (p) layer.show(id, reaction, socialLook(p))
+        if (p) layer.show(id, reaction, socialLook(p), { soundOnly: claim?.(id, reaction) ?? false })
       }),
     )
 

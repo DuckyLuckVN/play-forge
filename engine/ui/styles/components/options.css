@@ -49,4 +49,10 @@
   .pf-segment:disabled:not(.on) {
     opacity: 0.6;
   }
+  /* Why a choice is greyed out (e.g. too many players for 1 vs 1). */
+  .pf-option-hint {
+    margin: 0;
+    font-size: 14px;
+    color: var(--pf-haze);
+  }
 }

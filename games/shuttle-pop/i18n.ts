@@ -4,13 +4,21 @@ import { translator, type Dictionary } from '@forge/core/i18n'
 
 export const VI: Dictionary = {
   // Options
-  'Playing alone': 'Chơi một mình',
+  Match: 'Trận',
+  '1 vs 1': '1 đấu 1',
+  '2 vs 2': '2 đấu 2',
+  'Computer level': 'Trình độ máy',
   'Easy AI': 'Máy dễ',
   'Normal AI': 'Máy vừa',
   'Hard AI': 'Máy khó',
+  'Court size': 'Cỡ sân',
+  Normal: 'Thường',
+  'Large +15%': 'Rộng +15%',
+  'XL +30%': 'Rất rộng +30%',
 
   // Players
   Computer: 'Máy',
+  '{a} & {b}': '{a} & {b}',
 
   // Start screen
   'Chibi badminton. Time your swing for a Perfect, smash on high balls. Play the computer or a friend online.':
@@ -21,7 +29,21 @@ export const VI: Dictionary = {
   Swing: 'Vung vợt',
   'Tap for a quick swing': 'Nhấn nhanh để vung nhẹ',
   'Power shot': 'Cú đánh mạnh',
-  'Let go to hit. You move slower while charging.': 'Thả ra để đánh. Khi tích lực bạn đi chậm hơn.',
+  'Let go to hit. You move slower while charging, and much slower for a moment after a full-power swing.':
+    'Thả ra để đánh. Khi tích lực bạn đi chậm hơn, và chậm hẳn trong giây lát sau cú đánh mạnh tối đa.',
+  'Jump or dive': 'Nhảy hoặc bổ nhào',
+  'Racket bonk': 'Cốc vợt',
+  "Swing your racket into another player and they see stars for a moment. Then they can't be bonked for 2 s.":
+    'Vung vợt trúng người chơi khác là họ choáng, thấy sao một lúc. Sau đó 2 giây họ không bị cốc nữa.',
+  'High shuttle: jump smash. Low and far: dive. Then a short cooldown.':
+    'Cầu cao: bật nhảy đập. Cầu thấp và xa: bổ nhào cứu cầu. Sau đó chờ hồi chiêu một chút.',
+  'small button': 'nút nhỏ',
+  'Doubles (2 vs 2)': 'Đánh đôi (2 đấu 2)',
+  'The team that wins a point serves. When your team wins the serve back, your other teammate serves. Serve from the right on an even score, the left on odd. Bonks hit teammates too!':
+    'Đội thắng điểm được giao cầu. Khi đội bạn giành lại quyền giao, đồng đội còn lại giao. Điểm chẵn giao bên phải, điểm lẻ bên trái. Cốc vợt trúng cả đồng đội đấy!',
+  Reactions: 'Biểu cảm',
+  'Online: move toward an emoji, let go to send': 'Chơi online: hướng về một biểu cảm, thả ra để gửi',
+  'emoji button': 'nút biểu cảm',
   'Smash or drive': 'Đập cầu hoặc tạt cầu',
   'as you swing': 'khi vung vợt',
   'Clear (high and deep)': 'Đánh cầu cao sâu',
@@ -69,12 +91,30 @@ export const VI: Dictionary = {
   'You win {score}!': 'Bạn thắng {score}!',
   'The computer wins {score}. Rematch?': 'Máy thắng {score}. Đấu lại nhé?',
   '{name} wins {score}.': '{name} thắng {score}.',
+  'Your team wins {score}!': 'Đội bạn thắng {score}!',
+  '{names} win {score}.': '{names} thắng {score}.',
+  '{names} win!': '{names} thắng!',
   'Final score': 'Tỉ số chung cuộc',
   'Longest rally': 'Pha cầu dài nhất',
   '{n} shot': '{n} cú đánh',
   '{n} shots': '{n} cú đánh',
   'Your Perfect hits': 'Cú Hoàn hảo của bạn',
+  "Your team's Perfect hits": 'Cú Hoàn hảo của đội bạn',
   'Perfect hits': 'Cú Hoàn hảo',
+
+  // View settings button and panel (camera-menu.ts, prefs.ts)
+  Default: 'Mặc định',
+  'View settings': 'Cài đặt hiển thị',
+  Height: 'Độ cao',
+  'Camera height': 'Độ cao camera',
+  Tilt: 'Độ nghiêng',
+  'Camera tilt': 'Độ nghiêng camera',
+  'Only changes your own screen.': 'Chỉ thay đổi trên màn hình của bạn.',
+  'Reset camera': 'Đặt lại camera',
+  'Landing ring': 'Vòng điểm rơi',
+  Hidden: 'Ẩn',
+  'Near drop': 'Sắp rơi',
+  Always: 'Luôn hiện',
 }
 
 export const t = translator(VI)

@@ -1,5 +1,13 @@
 // Public API of the play-forge engine. Games import from '@forge'.
-export { createGameApp, type GameAppOptions, type Outcome, type Scoreline, type SummaryRow } from './app'
+export { ReactionBridge } from './social/reaction-bridge'
+export {
+  createGameApp,
+  type GameAppOptions,
+  type MountContext,
+  type Outcome,
+  type Scoreline,
+  type SummaryRow,
+} from './app'
 export { playMusic, stopMusic, type Instrument, type Part, type Track } from './audio/music'
 export {
   getAudioSettings,

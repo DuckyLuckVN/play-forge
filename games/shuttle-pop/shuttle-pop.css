@@ -216,6 +216,10 @@
   font-weight: 700;
   opacity: 0.92;
 }
+/* 2v2: "Ann & Bo" per side; a long pair still ends in "…" (full names in the tooltip). */
+.sp-board.pairs .sp-team-name {
+  max-width: 20ch;
+}
 .sp-team-serve {
   flex: none;
   width: 16px;
@@ -330,6 +334,9 @@
   .sp-team-name {
     max-width: 8ch;
     font-size: 12px;
+  }
+  .sp-board.pairs .sp-team-name {
+    max-width: 13ch;
   }
   .sp-team-serve {
     width: 13px;
@@ -578,9 +585,167 @@
     0 1px 0 var(--sp-pink-dark),
     0 0 22px rgb(255 209 102 / 0.75);
 }
+/* Ability (jump / dive): smaller teal button just left of the racket; the cooldown dims it clockwise. */
+.sp-act {
+  --sp-cd: 0;
+  position: absolute;
+  right: calc(20px + 92px + 18px + env(safe-area-inset-right, 0px));
+  bottom: calc(26px + env(safe-area-inset-bottom, 0px));
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  pointer-events: auto;
+  color: var(--sp-white);
+  background: radial-gradient(circle at 35% 28%, #7be3d4, #1fb5a3 55%, #0e8576);
+  border: 3px solid rgb(255 255 255 / 0.85);
+  box-shadow:
+    0 5px 0 #0a5f55,
+    0 9px 16px rgb(0 0 0 / 0.25);
+  opacity: 0.9;
+  transition:
+    transform 0.08s ease,
+    box-shadow 0.08s ease;
+}
+.sp-act svg {
+  width: 36px;
+  height: 36px;
+}
+.sp-act.cooling::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(rgb(10 40 38 / 0.6) calc(var(--sp-cd) * 360deg), transparent 0);
+}
+.sp-act.down {
+  transform: translateY(4px) scale(0.94);
+  box-shadow:
+    0 1px 0 #0a5f55,
+    0 0 20px rgb(123 227 212 / 0.75);
+}
 @media (prefers-reduced-motion: reduce) {
   .sp-stick,
-  .sp-swing {
+  .sp-swing,
+  .sp-act {
     transition: none;
+  }
+}
+
+/* ---------- Camera button (camera-menu.ts): top-right of the game view, panel drops below ---------- */
+.sp-cam {
+  position: absolute;
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  right: calc(8px + env(safe-area-inset-right, 0px));
+  z-index: 3;
+}
+/* Phones turn popovers into bottom sheets (mobile.css); this one stays a small dropdown over the view. */
+.sp-cam .pf-popover.sp-cam-pop {
+  position: absolute;
+  left: auto;
+  right: 0;
+  top: calc(100% + 8px);
+  bottom: auto;
+  width: min(260px, calc(100vw - 48px));
+  max-height: calc(var(--pf-vh, 100dvh) - 96px);
+  overflow-y: auto;
+  padding: 16px;
+  border-radius: var(--pf-radius-md);
+  border-bottom: 2px solid var(--pf-rim);
+  box-shadow: var(--pf-lift-lg), var(--pf-drop);
+  animation: pf-rise 220ms cubic-bezier(0.2, 1.3, 0.4, 1);
+  z-index: var(--pf-z-popover);
+}
+/* Ring row: set apart from the camera controls; narrow segments so "Near drop" / "Luôn hiện" never wrap at 320 px. */
+.sp-cam-panel .sp-ring-row {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--pf-rim);
+}
+.sp-cam-panel .sp-ring-row .pf-segment {
+  font-size: 13px;
+  padding: 10px 2px;
+  white-space: nowrap;
+}
+/* Only the panel itself (a focus holder, not a control); sliders and Reset keep the global :focus-visible ring. */
+.sp-cam-panel:focus,
+.sp-cam-panel:focus-visible {
+  outline: none;
+}
+
+/* ---------- Emoji wheel button (emotes.ts): top-left of the game view, mirrors .sp-cam ---------- */
+.sp-rx-btn {
+  position: absolute;
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  left: calc(8px + env(safe-area-inset-left, 0px));
+  width: 44px;
+  height: 44px;
+  z-index: 3;
+}
+
+/* ---------- Reaction bubbles (bubbles.ts): above each chibi's head, follow the jump ---------- */
+.sp-bubbles {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 2; /* below .sp-cam (3) */
+}
+.sp-bubble {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 48px;
+  height: 48px;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+.sp-bubble[hidden] {
+  display: none;
+}
+.sp-bubble-disc {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 7px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.28);
+  transform-origin: 50% 100%;
+  animation: sp-bubble-in 160ms cubic-bezier(0.34, 1.7, 0.64, 1) both;
+}
+.sp-bubble-disc::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  transform: translateX(-50%) rotate(45deg);
+  border-radius: 0 0 3px 0;
+}
+.sp-bubble-disc .pf-rx-art {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+@keyframes sp-bubble-in {
+  from {
+    transform: scale(0.3);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sp-bubble-disc {
+    animation: none;
   }
 }

@@ -3,7 +3,15 @@ import { createBroadcastTransport } from '../net/broadcast'
 import type { Transport } from '../net/transport'
 import { VI } from './i18n'
 import { reactionSvg } from './reaction-art'
-import { RateLimiter, REACTIONS, REACTION_IDS, ReactionHub, RECEIVE_LIMIT, SEND_LIMIT } from './reactions'
+import {
+  RateLimiter,
+  REACTIONS,
+  REACTION_IDS,
+  ReactionHub,
+  RECEIVE_LIMIT,
+  SEND_LIMIT,
+  WHEEL_REACTIONS,
+} from './reactions'
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -92,5 +100,16 @@ describe('ReactionHub', () => {
     ta.send('rx', null)
     await wait(30)
     expect(seen).toEqual(Array(RECEIVE_LIMIT.max).fill('alice:boom'))
+  })
+})
+
+describe('WHEEL_REACTIONS', () => {
+  it('wheel set: 8 known, distinct reactions, no mic helpers', () => {
+    expect(WHEEL_REACTIONS).toHaveLength(8)
+    expect(new Set(WHEEL_REACTIONS).size).toBe(8)
+    for (const id of WHEEL_REACTIONS) expect(REACTION_IDS).toContain(id)
+    expect(
+      WHEEL_REACTIONS.some((id) => id.startsWith('mic') || id.includes('hear-') || id.includes('-hear')),
+    ).toBe(false)
   })
 })

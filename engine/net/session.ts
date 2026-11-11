@@ -54,6 +54,23 @@ export interface GameDefinition<S, I> {
   netView?(state: S): unknown
   /** Called on the host when a player is gone for good mid-game. */
   removePlayer?(state: S, playerId: string): void
+  /** Called on the host mid-game when a player drops (grace window starts) or returns within it. */
+  setConnected?(state: S, playerId: string, connected: boolean): void
+  /**
+   * Opt-in seating: how many seats the room opens for these options, in how
+   * many teams (seat s plays for team s % teams), and whether the game fills
+   * empty seats with computer players. Default: maxPlayers seats, no teams.
+   */
+  seating?(options: GameOptions): Seating
+}
+
+/** The room's seats for a set of options (see GameDefinition.seating). */
+export interface Seating {
+  seats: number
+  /** With more than one team, players can move to any free seat between matches. */
+  teams: number
+  /** The game plays empty seats with the computer (the room says so). */
+  botFill: boolean
 }
 
 /** Chosen value for each option id. */
@@ -69,6 +86,11 @@ export interface OptionDef {
    * rooms hide it once a second player sits down. The value is kept.
    */
   aloneOnly?: boolean
+  /**
+   * Show the option in a room only when this returns true (e.g. the
+   * computer's level while any seat is empty). Wins over `aloneOnly`.
+   */
+  shownWhen?(seated: number, options: GameOptions): boolean
 }
 
 /** Fill in defaults and drop unknown or invalid values. */
@@ -84,6 +106,22 @@ export function resolveOptions(defs: OptionDef[] = [], chosen: Partial<GameOptio
 /** The tick rate a game runs at with the given options. */
 export function tickRateOf(def: GameDefinition<any, any>, options: GameOptions): number {
   return typeof def.tickRate === 'function' ? def.tickRate(options) : def.tickRate
+}
+
+/** The seating for these options; seats are clamped to [minPlayers, maxPlayers]. */
+export function seatingOf(def: GameDefinition<any, any>, options: GameOptions): Seating {
+  const s = def.seating?.(options) ?? { seats: def.maxPlayers, teams: 1, botFill: false }
+  return { ...s, seats: Math.min(Math.max(s.seats, def.minPlayers), def.maxPlayers) }
+}
+
+/** The seats the room would open with option `id` set to `value` (setOption refuses fewer than are seated). */
+export function seatsIf(
+  def: GameDefinition<any, any>,
+  options: GameOptions,
+  id: string,
+  value: string,
+): number {
+  return seatingOf(def, resolveOptions(def.options, { ...options, [id]: value })).seats
 }
 
 /**
@@ -154,6 +192,7 @@ const CH = {
   input: 'in',
   state: 'st',
   kick: 'kick',
+  seat: 'seat',
 } as const
 
 interface Hello {
@@ -243,6 +282,11 @@ export class Session<S, I> {
         t.onPeerJoin((peer) => t.send(CH.lobby, this.lobby, peer)),
         t.on(CH.hello, (msg: Hello, peer) => this.onHello(peer, msg)),
         t.on(CH.ready, (ready: boolean, peer) => this.markReady(peer, ready === true)),
+        // A guest asks to move: only its own player, checked by applySeat.
+        t.on(CH.seat, (seat: unknown, peer) => {
+          const id = this.playerOfPeer.get(peer)
+          if (id) this.applySeat(id, seat)
+        }),
         t.on(CH.input, (input: I, peer) => {
           const id = this.playerOfPeer.get(peer)
           if (id) this.queueInput(id, input)
@@ -369,8 +413,24 @@ export class Session<S, I> {
     if (!this.isHost || (phase !== 'lobby' && phase !== 'finished')) return
     const next = resolveOptions(this.def.options, { ...this.lobby.options, [id]: value })
     if (next[id] === this.lobby.options[id]) return
+    // Fewer seats than seated players: refused. Otherwise players past the
+    // last seat move to the lowest free ones.
+    const { seats } = seatingOf(this.def, next)
+    const { players } = this.lobby
+    if (players.length > seats) return
+    for (const p of players) if (p.slot >= seats) p.slot = this.freeSeat()
+    players.sort((a, b) => a.slot - b.slot)
     this.lobby.options = next
     this.broadcastLobby()
+  }
+
+  /**
+   * Between matches, in a game with teams: move the local player to a free
+   * seat. The host applies it; a guest asks the host, which checks it.
+   */
+  moveSeat(seat: number): void {
+    if (this.isHost) this.applySeat(this.selfId, seat)
+    else if (this.hostPeer && this.hostConnected) this.transport.send(CH.seat, seat, this.hostPeer)
   }
 
   /**
@@ -508,25 +568,47 @@ export class Session<S, I> {
       this.playerOfPeer.set(peer, id)
       clearTimeout(this.dropTimers.get(id))
       this.dropTimers.delete(id)
+      const wasAway = !existing.connected
       existing.connected = true
+      if (wasAway) this.setConnected(id, true)
       existing.name = name
       if (avatar) existing.avatar = avatar
       else delete existing.avatar
     } else {
       this.playerOfPeer.set(peer, id)
-      if (players.length >= this.def.maxPlayers) {
+      if (players.length >= seatingOf(this.def, this.lobby.options).seats) {
         // Room is full: they still receive the lobby and watch.
         if (this.state) this.transport.send(CH.state, this.netState(), peer)
         this.transport.send(CH.lobby, this.lobby, peer)
         return
       }
-      let slot = 0
-      while (players.some((p) => p.slot === slot)) slot++
+      const slot = this.freeSeat()
       players.push({ id, name, slot, ready: false, connected: true, ...(avatar && { avatar }) })
       players.sort((a, b) => a.slot - b.slot)
     }
     // State first, so the lobby (e.g. a results screen) can render with it.
     if (this.state) this.transport.send(CH.state, this.netState(), peer)
+    this.broadcastLobby()
+  }
+
+  /** The lowest seat nobody sits in. */
+  private freeSeat(): number {
+    let slot = 0
+    while (this.lobby.players.some((p) => p.slot === slot)) slot++
+    return slot
+  }
+
+  private applySeat(playerId: string, seat: unknown) {
+    const { phase, players, options } = this.lobby
+    if (phase !== 'lobby' && phase !== 'finished') return
+    const { seats, teams } = seatingOf(this.def, options)
+    if (teams <= 1 || !Number.isInteger(seat)) return
+    const to = seat as number
+    if (to < 0 || to >= seats || players.some((p) => p.slot === to)) return
+    const player = players.find((p) => p.id === playerId)
+    if (!player) return
+    player.slot = to
+    players.sort((a, b) => a.slot - b.slot)
     this.broadcastLobby()
   }
 
@@ -536,6 +618,7 @@ export class Session<S, I> {
     const player = id && this.lobby.players.find((p) => p.id === id)
     if (!player) return
     player.connected = false
+    this.setConnected(player.id, false)
     this.scheduleDrop(player.id)
     this.broadcastLobby()
   }
@@ -549,6 +632,11 @@ export class Session<S, I> {
         this.removePlayer(id)
       }, this.graceMs),
     )
+  }
+
+  private setConnected(id: string, connected: boolean) {
+    const inMatch = this.lobby.phase === 'playing' || this.lobby.phase === 'countdown'
+    if (this.state && inMatch) this.def.setConnected?.(this.state, id, connected)
   }
 
   private removePlayer(id: string) {

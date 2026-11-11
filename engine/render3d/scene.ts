@@ -12,7 +12,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { prefersReducedMotion } from '../fx/tween'
-import { pickDpr, QualityGovernor } from './quality'
+import { pickDpr, QualityGovernor, type QualityLevel } from './quality'
 
 export interface Scene3DOptions {
   fov?: number
@@ -20,6 +20,8 @@ export interface Scene3DOptions {
   /** Cap on pixel density (phones at 3× cost a lot for little gain). */
   maxDpr?: number
   bloom?: { strength: number; radius: number; threshold: number }
+  /** Quality ladder, best first (default `QUALITY_LEVELS`). Games add their own extras via `QualityLevel.shadows`. */
+  levels?: readonly QualityLevel[]
 }
 
 export interface Scene3D {
@@ -33,6 +35,8 @@ export interface Scene3D {
   height: number
   /** 0..1 screen punch: colour split + dark vignette (hits). */
   glitch: number
+  /** Current quality level; `onResize` listeners fire on every change. */
+  readonly quality: QualityLevel
   /** Glow strength right now (e.g. softer in daylight). No-op without bloom. */
   setBloom(strength: number): void
   render(dt: number): void
@@ -92,7 +96,7 @@ export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): S
   const scene = new Scene()
   const camera = new PerspectiveCamera(opts.fov ?? 60, 1, 0.1, opts.far ?? 400)
   const maxDpr = opts.maxDpr ?? 2
-  const quality = new QualityGovernor()
+  const quality = new QualityGovernor(opts.levels)
 
   const composer = new EffectComposer(renderer)
   composer.addPass(new RenderPass(scene, camera))
@@ -132,6 +136,9 @@ export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): S
       l(view.width, view.height)
       return () => listeners.delete(l)
     },
+    get quality() {
+      return quality.current
+    },
     destroy() {
       observer.disconnect()
       canvas.removeEventListener('webglcontextlost', onLost)
@@ -142,6 +149,7 @@ export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): S
     },
   }
 
+  let lastLevel: QualityLevel | undefined
   function fit() {
     const w = Math.max(1, root.clientWidth)
     const h = Math.max(1, root.clientHeight)
@@ -149,6 +157,11 @@ export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): S
     view.height = h
     const level = quality.current
     const dpr = pickDpr(window.devicePixelRatio, Math.min(maxDpr, level.dpr), w, h)
+    if (import.meta.env.DEV && level !== lastLevel) {
+      lastLevel = level
+      // eslint-disable-next-line no-console
+      console.info('[render3d] quality', quality.level, 'dpr', dpr)
+    }
     if (bloom) bloom.enabled = level.bloom
     renderer.setPixelRatio(dpr)
     renderer.setSize(w, h, false)

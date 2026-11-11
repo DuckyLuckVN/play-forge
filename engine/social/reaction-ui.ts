@@ -71,11 +71,17 @@ export class ReactionLayer {
     parent.append(this.layer)
   }
 
-  show(playerId: string, reactionId: string, sender: ReactionSender): void {
+  /** `soundOnly`: play the sound, float nothing (the game draws it itself). */
+  show(
+    playerId: string,
+    reactionId: string,
+    sender: ReactionSender,
+    opts: { soundOnly?: boolean } = {},
+  ): void {
     const def = reactionDef(reactionId)
     if (!def) return
     playSound(def.sound, 0.8)
-    if (document.hidden || this.layer.childElementCount >= MAX_LIVE) return
+    if (opts.soundOnly || document.hidden || this.layer.childElementCount >= MAX_LIVE) return
 
     const { x, y, dir } = this.origin(playerId)
     const bubble = h(

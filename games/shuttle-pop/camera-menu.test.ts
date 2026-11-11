@@ -91,19 +91,8 @@ describe('camera button', () => {
     }
     expect(sent).not.toHaveBeenCalled()
     button().click() // closed: keys play again
-    key('keydown', { code: 'ArrowLeft', key: 'ArrowLeft' })
+    key('keydown', { code: 'KeyA', key: 'a' })
     expect(sent).toHaveBeenCalled()
-    input.stop()
-  })
-
-  it('a swing key held before opening is released while open (no stuck charge)', () => {
-    const sent = vi.fn()
-    const input = bindInput(view, sent, () => 0)
-    key('keydown', { code: 'KeyJ', key: 'j' })
-    expect(sent.mock.calls.map((c) => c[0].t)).toEqual(['charge'])
-    button().click()
-    key('keyup', { code: 'KeyJ', key: 'j' })
-    expect(sent.mock.calls.map((c) => c[0].t)).toEqual(['charge', 'swing'])
     input.stop()
   })
 
@@ -128,7 +117,7 @@ describe('camera button', () => {
     expect(panel().hidden).toBe(true)
     const sent = vi.fn()
     const input = bindInput(view, sent, () => 0)
-    key('keydown', { code: 'ArrowLeft', key: 'ArrowLeft' })
+    key('keydown', { code: 'KeyA', key: 'a' })
     expect(sent).toHaveBeenCalled()
     input.stop()
   })

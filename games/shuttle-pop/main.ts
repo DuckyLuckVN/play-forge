@@ -277,17 +277,13 @@ createGameApp<SpState, SpInput>({
   guide: [
     {
       action: t('Move'),
-      keys: [
-        ['W', 'A', 'S', 'D'],
-        ['Up', 'Left', 'Down', 'Right'],
-      ],
+      keys: [['W', 'A', 'S', 'D']],
       touch: 'dragLeft',
       touchLabel: t('left side'),
     },
     {
       action: t('Swing'),
       note: t('Tap for a quick swing'),
-      keys: [['J']],
       mouse: 'click',
       touch: 'button',
     },
@@ -297,14 +293,13 @@ createGameApp<SpState, SpInput>({
         'Let go to hit. You move slower while charging, and much slower for a moment after a full-power swing.',
       ),
       hold: true,
-      keys: [['J']],
       mouse: 'hold',
       touch: 'button',
     },
     {
       action: t('Jump'),
       note: t('Reach high shuttles: a jump smash. Then a short cooldown.'),
-      keys: [['Space'], ['K']],
+      keys: [['Space']],
       touch: 'button',
       touchLabel: t('jump button'),
     },
@@ -346,15 +341,11 @@ createGameApp<SpState, SpInput>({
       action: t('Aim left or right'),
       note: t('as you swing'),
       hold: true,
-      keys: [
-        ['A', 'D'],
-        ['Left', 'Right'],
-      ],
+      keys: [['A', 'D']],
     },
     {
       action: t('Drop shot'),
       note: t('Swing with no direction held'),
-      keys: [['J']],
       mouse: 'click',
     },
     {
@@ -374,4 +365,6 @@ createGameApp<SpState, SpInput>({
   scores: scoreChips,
   outcome: outcomeOf,
   summary: summaryRows,
+  // Esc only: P (and J / K / arrows) are not bound in Shuttle Pop.
+  pauseKeys: ['Escape'],
 })

@@ -97,9 +97,15 @@ export function guideRows(steps: readonly GuideStep[], touch: boolean): GuideRow
   return rows
 }
 
-/** The game's steps plus the shell's own Pause row (Esc / P; keyboards only). */
-export function withPauseRow(steps: readonly GuideStep[]): GuideStep[] {
-  return [...steps, { action: t('Pause'), keys: [['Esc'], ['P']] }]
+/** The shell's default pause keys (KeyboardEvent.code). */
+export const PAUSE_KEYS: readonly string[] = ['Escape', 'KeyP']
+
+/** A key code's keycap label: Escape → Esc, KeyP → P. */
+const keyLabel = (code: string): string => (code === 'Escape' ? 'Esc' : code.replace(/^Key/, ''))
+
+/** The game's steps plus the shell's own Pause row (its pause keys, default Esc / P; keyboards only). */
+export function withPauseRow(steps: readonly GuideStep[], keys: readonly string[] = PAUSE_KEYS): GuideStep[] {
+  return [...steps, { action: t('Pause'), keys: keys.map((k) => [keyLabel(k)]) }]
 }
 
 /**

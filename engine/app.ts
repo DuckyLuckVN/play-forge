@@ -53,6 +53,7 @@ import {
   markGuideSeen,
   openGuide,
   withPauseRow,
+  PAUSE_KEYS,
   type GuideStep,
 } from './ui/guide'
 import { t } from './ui/i18n'
@@ -134,6 +135,8 @@ export interface GameAppOptions<S, I> {
    * screen. Default false: games with their own winner rules keep the seats only.
    */
   ranking?: boolean
+  /** Keys (KeyboardEvent.code) that pause a solo game; default Esc + P (engine/ui/guide.ts PAUSE_KEYS). */
+  pauseKeys?: readonly string[]
   /**
    * Heavy setup to finish before play can start (e.g. building a 3D scene and
    * compiling its shaders). Starts at page load; the start buttons show
@@ -304,7 +307,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
 
   // ---------- Control guide ----------
   const mode = howToPlayMode(opts.guide, opts.controls)
-  const guide = mode === 'guide' ? withPauseRow(opts.guide!) : null
+  const pauseKeys = opts.pauseKeys ?? PAUSE_KEYS
+  const guide = mode === 'guide' ? withPauseRow(opts.guide!, pauseKeys) : null
   /** Closes the first-play guide while it holds back a solo match. */
   let closeFirstGuide: (() => void) | null = null
   const howToPlay = () => guide && guideButton(guide)
@@ -560,7 +564,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     if (document.hidden) session?.setPaused(true)
   })
   window.addEventListener('keydown', (e) => {
-    if ((e.code === 'Escape' || e.code === 'KeyP') && session?.offline && session.phase === 'playing')
+    if (pauseKeys.includes(e.code) && session?.offline && session.phase === 'playing')
       session.setPaused(!session.lobby.paused)
   })
   window.addEventListener('offline', () => {

@@ -93,9 +93,15 @@
     color: var(--pf-coral);
   }
 
+  /* Fits the visible height and scrolls: landscape phones get this dropdown (not
+     the bottom sheet) and a long player list would run off-screen. The bottom
+     sheet (mobile.css) sets its own max-height. */
   .pf-popover.pf-net-pop {
     width: 340px;
     gap: var(--pf-space-5);
+    max-height: calc(var(--pf-vh, 100dvh) - 80px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
   .pf-net-title {
     margin: 0;

@@ -8,6 +8,9 @@ describe('TouchPad.setAbility (every frame)', () => {
     pad.setAbility(0.5)
     expect(pad.actEl.style.getPropertyValue('--sp-cd')).toBe('0.50')
     expect(pad.actEl.classList.contains('cooling')).toBe(true)
+    // One shared cooldown: the Dive button dims the same.
+    expect(pad.diveEl.style.getPropertyValue('--sp-cd')).toBe('0.50')
+    expect(pad.diveEl.classList.contains('cooling')).toBe(true)
     let writes = 0
     const set = pad.actEl.style.setProperty.bind(pad.actEl.style)
     pad.actEl.style.setProperty = (...a: Parameters<typeof set>) => {

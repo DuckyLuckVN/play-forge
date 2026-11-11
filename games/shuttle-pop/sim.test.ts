@@ -726,7 +726,8 @@ describe('lag-compensated hits (launch from the rewound contact)', () => {
   it('AI and on-time swings are unchanged', () => {
     // Recorded before hits launched from the rewound contact (AI swings have rewind 0: a no-op for them);
     // re-recorded when the power swing changed charged launches (the bots charge) and for the full-charge recovery (seed 11);
-    // re-recorded when the bots started to jump / lunge (ai.ts LEVELS.ability).
+    // re-recorded when the bots started to jump / lunge (ai.ts LEVELS.ability), and when the lunge
+    // started to really slide (seed 2).
     const fingerprint: number[][] = []
     const finals: SpState[] = []
     for (let seed = 1; seed <= 20; seed++) {
@@ -738,7 +739,7 @@ describe('lag-compensated hits (launch from the rewound contact)', () => {
     }
     expect(fingerprint).toEqual([
       [1, 1, 1, 4, 2, 1, 1703683420],
-      [1, 0, 1, 8, 2, 1, 440012081],
+      [0, 0, 9, 0, 2, 0, 440012081],
       [1, 0, 4, 4, 0, 1, 1071847752],
       [1, 0, 6, 2, 1, 1, 1071847753],
       [0, 0, 8, 0, 3, 3, 1071847754],
@@ -769,9 +770,9 @@ describe('lag-compensated hits (launch from the rewound contact)', () => {
       lastHitter: 1,
     })
     expect(shuttle(finals[1])).toEqual({
-      pos: { x: -0.8834445067109626, y: 1.213825241338133, z: 1.2779053234318756 },
-      vel: { x: -1.8834032822313338, y: -2.4038277895700775, z: 4.3267274526608315 },
-      lastHitter: 0,
+      pos: { x: 1.504761714157241, y: 0.5044862425603807, z: -5.206450931944585 },
+      vel: { x: 0.07574510013159683, y: -7.499490006963175, z: -1.2639863585291822 },
+      lastHitter: 1,
     })
     expect(shuttle(finals[2])).toEqual({
       pos: { x: 0.25382244258068576, y: 1.167678871796932, z: -2.5788653583391055 },
@@ -1398,7 +1399,7 @@ describe('jump / lunge ability', () => {
   } // 1.8 m wide at y ≈ 0.7
   /** The jump box is first entered at index 31: out of a press-at-index-0's window (horizonOf('jump') = 30). */
   const EARLY = {
-    pos: { x: 0, y: 4.1, z: -0.95 },
+    pos: { x: 0, y: 4.28, z: -0.95 },
     vel: { x: 0, y: 1.9, z: -6.4 },
     at: { x: 0, z: -4 },
     idx: 37,
@@ -1514,11 +1515,17 @@ describe('jump / lunge ability', () => {
     const wPress = w.contact - ABILITY.lunge.lead
     at(w.s, wPress, [ev('p0', { t: 'move', x: 1, z: 0 }), ability('p0', 0, 1)])
     const from = { x: w.p.x, z: w.p.z }
-    run(w.s, dive + floor - 1)
+    const dir = { x: w.p.act!.dx, z: w.p.act!.dz }
+    // The dive slides `slide` m along its direction (the held run is locked), then lies still on the floor.
+    run(w.s, dive)
+    const slid = { x: w.p.x, z: w.p.z }
+    expect(slid.x - from.x).toBeCloseTo(dir.x * ABILITY.lunge.slide, 6)
+    expect(slid.z - from.z).toBeCloseTo(dir.z * ABILITY.lunge.slide, 6)
+    run(w.s, floor - 1)
     expect(w.s.tick).toBe(wPress + dive + floor - 1)
-    expect({ x: w.p.x, z: w.p.z }).toEqual(from)
+    expect({ x: w.p.x, z: w.p.z }).toEqual(slid)
     game.tick(w.s, [])
-    expect(w.p.x).not.toBe(from.x)
+    expect(w.p.x).not.toBe(slid.x)
   })
 
   it('a press before the jump box is in range is a hop (no committed whiff)', () => {

@@ -2,7 +2,8 @@ import { createGameApp, h, landscapeGuard, smoothState, type MountContext, type 
 import { ARCADE } from '@forge/audio/tracks'
 import { webglAvailable } from '@forge/render3d'
 import './shuttle-pop.css'
-import type { Strike } from './ability'
+import { slideEnd, type Strike } from './ability'
+import { toWorld } from './court'
 import { chargeOf } from './charge'
 import { mountEmotes } from './emotes'
 import { t } from './i18n'
@@ -85,10 +86,11 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement, ctx: Moun
     charge: number,
     pressTick?: number,
     act?: Strike,
+    from?: { x: number; z: number },
   ) => {
     const me = smooth.curr?.players.find((p) => p.id === session.selfId)
     if (!guest || !predictor || !me) return
-    const player = { x: predictor.x, z: predictor.z }
+    const player = from ?? { x: predictor.x, z: predictor.z }
     // Heard at once; the host's answering hit is then skipped (Court3D's echo).
     if (
       !guest.shuttle.predictHit({
@@ -143,12 +145,20 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement, ctx: Moun
       if (!live() || !seatCan(canAct)) return
       const me = smooth.curr?.players.find((p) => p.id === session.selfId)
       if (guest && predictor && me) {
-        // Same pick as the host (ability.ts) on the flight shown: the body leaps now, a strike also shows its hit.
-        const pick = guest.shuttle.pickAbility({ x: predictor.x, z: predictor.z }, me.side, seatCan(canSwing))
-        predictor.startAct(pick.k, pick.dx, pick.dz)
+        // Same pick as the host (ability.ts) on the flight shown: the body leaps / dives now, a strike also
+        // shows its hit. Jump / Dive buttons force the move (a rally only, like the host); a dive goes the held way.
+        const at = { x: predictor.x, z: predictor.z }
+        const want = smooth.curr?.phase === 'rally' ? input.k : undefined
+        const dir = input.x || input.z ? toWorld(me.side, input.x, input.z) : undefined
+        const pick = guest.shuttle.pickAbility(at, me.side, seatCan(canSwing), want, dir)
+        predictor.startAct(pick.k, pick.dx, pick.dz, !!pick.empty)
         // Heard and seen at once; the host's answering `act` event then stays silent (Court3D).
         court?.ownActPredicted(pick.k)
-        if (pick.k !== 'hop') predictHit({ x: input.x, z: input.z }, false, 0, input.tick, pick.k)
+        if (pick.k !== 'hop' && !pick.empty) {
+          // A lunge reaches from its slide end (sim contactFor).
+          const from = pick.k === 'lunge' ? slideEnd(at, pick.dx, pick.dz) : undefined
+          predictHit({ x: input.x, z: input.z }, false, 0, input.tick, pick.k, from)
+        }
       }
     } else if (input.t === 'move' && live()) {
       moved.x = input.x
@@ -274,7 +284,7 @@ createGameApp<SpState, SpInput>({
     {
       action: t('Swing'),
       note: t('Tap for a quick swing'),
-      keys: [['Space'], ['J']],
+      keys: [['J']],
       mouse: 'click',
       touch: 'button',
     },
@@ -284,17 +294,24 @@ createGameApp<SpState, SpInput>({
         'Let go to hit. You move slower while charging, and much slower for a moment after a full-power swing.',
       ),
       hold: true,
-      keys: [['Space'], ['J']],
+      keys: [['J']],
       mouse: 'hold',
       touch: 'button',
     },
     {
-      action: t('Jump or dive'),
-      note: t('High shuttle: jump smash. Low and far: dive. Then a short cooldown.'),
-      keys: [['K'], ['Shift']],
+      action: t('Jump'),
+      note: t('Reach high shuttles: a jump smash. Then a short cooldown.'),
+      keys: [['Space'], ['K']],
+      touch: 'button',
+      touchLabel: t('jump button'),
+    },
+    {
+      action: t('Dive'),
+      note: t('Slide the way you are moving to save a far, low shuttle. You stay down a moment.'),
+      keys: [['Shift']],
       mouse: 'right',
       touch: 'button',
-      touchLabel: t('small button'),
+      touchLabel: t('dive button'),
     },
     {
       action: t('Doubles (2 vs 2)'),
@@ -332,7 +349,7 @@ createGameApp<SpState, SpInput>({
     {
       action: t('Drop shot'),
       note: t('Swing with no direction held'),
-      keys: [['Space'], ['J']],
+      keys: [['J']],
       mouse: 'click',
     },
     {

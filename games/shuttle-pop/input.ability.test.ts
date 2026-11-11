@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest'
-import { bindInput, ABILITY_KEYS, type TouchView } from './input'
+import { bindInput, ABILITY_KEYS, DIVE_KEYS, JUMP_KEYS, type TouchView } from './input'
 import type { SpInput } from './sim'
 
 function setup(withPad = false) {
@@ -8,10 +8,12 @@ function setup(withPad = false) {
   document.body.append(target)
   const got: SpInput[] = []
   const actEl = document.createElement('div')
+  const diveEl = document.createElement('div')
   const swingEl = document.createElement('div')
-  target.append(actEl, swingEl)
+  target.append(actEl, diveEl, swingEl)
   const pad: TouchView = {
     actEl,
+    diveEl,
     swingEl,
     enable() {},
     showStick() {},
@@ -19,6 +21,7 @@ function setup(withPad = false) {
     hideStick() {},
     setPressed() {},
     setAct() {},
+    setDive() {},
   }
   const b = bindInput(
     target,
@@ -27,7 +30,9 @@ function setup(withPad = false) {
     withPad ? pad : undefined,
   )
   const kinds = () => got.filter((i) => i.t !== 'move').map((i) => i.t)
-  return { target, got, kinds, actEl, swingEl, b }
+  /** The forced move of each ability press ('-' = none: the sim picks). */
+  const moves = () => got.flatMap((i) => (i.t === 'ability' ? [i.k ?? '-'] : []))
+  return { target, got, kinds, moves, actEl, diveEl, swingEl, b }
 }
 
 const key = (code: string, extra: KeyboardEventInit = {}) =>
@@ -56,15 +61,33 @@ afterEach(() => {
 })
 
 describe('ability bindings', () => {
-  it('K and both Shifts press it; repeats do not', () => {
-    expect([...ABILITY_KEYS].sort()).toEqual(['KeyK', 'ShiftLeft', 'ShiftRight'])
+  it('Space / K jump, both Shifts dive; repeats do not; Space no longer swings', () => {
+    expect([...JUMP_KEYS].sort()).toEqual(['KeyK', 'Space'])
+    expect([...DIVE_KEYS].sort()).toEqual(['ShiftLeft', 'ShiftRight'])
+    expect([...ABILITY_KEYS].sort()).toEqual(['KeyK', 'ShiftLeft', 'ShiftRight', 'Space'])
     const s = setup()
     cleanup = s.b.stop
+    expect(key('Space')).toBe(false) // default prevented: no page scroll
     key('KeyK')
     key('ShiftLeft')
     key('ShiftRight')
     key('KeyK', { repeat: true })
-    expect(s.kinds()).toEqual(['ability', 'ability', 'ability'])
+    expect(s.kinds()).toEqual(['ability', 'ability', 'ability', 'ability'])
+    expect(s.moves()).toEqual(['jump', 'jump', 'lunge', 'lunge'])
+  })
+
+  it('a dive carries the held direction (the way the player is moving)', () => {
+    const s = setup()
+    cleanup = s.b.stop
+    key('KeyD')
+    key('ShiftLeft')
+    expect(s.got.find((i) => i.t === 'ability')).toMatchObject({
+      t: 'ability',
+      k: 'lunge',
+      x: 1,
+      z: 0,
+      tick: 5,
+    })
   })
 
   it('ignores keys typed in a field', () => {
@@ -83,6 +106,7 @@ describe('ability bindings', () => {
     expect(down.defaultPrevented).toBe(true)
     pointer(s.target, 'pointerup', { button: 2 })
     expect(s.kinds()).toEqual(['ability'])
+    expect(s.moves()).toEqual(['lunge'])
   })
 
   it('a right-button release never lets go of a held left-button charge', () => {
@@ -132,5 +156,18 @@ describe('ability bindings', () => {
     pointer(s.actEl, 'pointerup', { pointerId: 3, pointerType: 'touch' })
     pointer(s.actEl, 'pointerdown', { pointerId: 6, pointerType: 'touch' })
     expect(s.kinds()).toEqual(['ability', 'ability'])
+    expect(s.moves()).toEqual(['jump', 'jump'])
+  })
+
+  it('the phone dive button dives once per finger, never swinging', () => {
+    const s = setup(true)
+    cleanup = s.b.stop
+    pointer(s.diveEl, 'pointerdown', { pointerId: 3, pointerType: 'touch' })
+    pointer(s.diveEl, 'pointerdown', { pointerId: 4, pointerType: 'touch' })
+    expect(s.moves()).toEqual(['lunge'])
+    pointer(s.diveEl, 'pointerup', { pointerId: 3, pointerType: 'touch' })
+    pointer(s.diveEl, 'pointerdown', { pointerId: 6, pointerType: 'touch' })
+    expect(s.moves()).toEqual(['lunge', 'lunge'])
+    expect(s.kinds()).not.toContain('charge')
   })
 })

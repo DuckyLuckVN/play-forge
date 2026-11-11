@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ABILITY, type Strike } from './ability'
+import { ABILITY, pickReachOf, slideEnd, type Strike } from './ability'
 import { answersPrediction, GuestShuttle, PREDICT, type OwnSwing } from './guestshuttle'
 import { courtDims } from './courtsize'
 import { solveLaunch, type Vec3 } from './physics'
@@ -839,10 +839,10 @@ describe('GuestShuttle own jump / lunge prediction', () => {
     return s
   }
 
-  /** History tick of the scene flight's closest approach to `at` inside `act`'s reach box. */
+  /** History tick of the scene flight's closest approach to `at` inside `act`'s box seen from the press spot. */
   function boxContact(sc: Scene, act: Strike): number {
     const c = scene(sc)
-    const r = ABILITY[act].reach
+    const r = pickReachOf(act)
     let best = Infinity
     let tick = -1
     for (let i = 0; i < 60; i++) {
@@ -881,7 +881,8 @@ describe('GuestShuttle own jump / lunge prediction', () => {
       side: 1,
       held,
       charge: 0,
-      player: sc.at,
+      // A lunge reaches from its slide end (main.ts does the same).
+      player: pick.k === 'lunge' ? slideEnd(sc.at, pick.dx, pick.dz) : sc.at,
       tap: false,
       pressTick: P,
       act: pick.k as Strike,
@@ -958,6 +959,9 @@ describe('GuestShuttle own jump / lunge prediction', () => {
     }
     expect(gs.predictHit(sw)).toBe(false)
     expect(gs.predictHit({ ...sw, act: undefined })).toBe(false) // nor a plain swing
-    expect(gs.predictHit({ ...sw, act: 'lunge' })).toBe(true)
+    // The lunge reaches from its slide end (toward the shuttle, as its press picks).
+    const dive = gs.pickAbility(WIDE.at, 1, true)
+    expect(dive.k).toBe('lunge')
+    expect(gs.predictHit({ ...sw, act: 'lunge', player: slideEnd(WIDE.at, dive.dx, dive.dz) })).toBe(true)
   })
 })

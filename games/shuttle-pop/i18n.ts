@@ -31,13 +31,17 @@ export const VI: Dictionary = {
   'Power shot': 'Cú đánh mạnh',
   'Let go to hit. You move slower while charging, and much slower for a moment after a full-power swing.':
     'Thả ra để đánh. Khi tích lực bạn đi chậm hơn, và chậm hẳn trong giây lát sau cú đánh mạnh tối đa.',
-  'Jump or dive': 'Nhảy hoặc bổ nhào',
+  Jump: 'Nhảy',
+  Dive: 'Bổ nhào',
   'Racket bonk': 'Cốc vợt',
   "Swing your racket into another player and they see stars for a moment. Then they can't be bonked for 2 s.":
     'Vung vợt trúng người chơi khác là họ choáng, thấy sao một lúc. Sau đó 2 giây họ không bị cốc nữa.',
-  'High shuttle: jump smash. Low and far: dive. Then a short cooldown.':
-    'Cầu cao: bật nhảy đập. Cầu thấp và xa: bổ nhào cứu cầu. Sau đó chờ hồi chiêu một chút.',
-  'small button': 'nút nhỏ',
+  'Reach high shuttles: a jump smash. Then a short cooldown.':
+    'Với tới cầu cao: bật nhảy đập cầu. Sau đó chờ hồi chiêu một chút.',
+  'Slide the way you are moving to save a far, low shuttle. You stay down a moment.':
+    'Trượt theo hướng đang chạy để cứu cầu thấp và xa. Bạn sẽ nằm sân một chút.',
+  'jump button': 'nút nhảy',
+  'dive button': 'nút bổ nhào',
   'Doubles (2 vs 2)': 'Đánh đôi (2 đấu 2)',
   'The team that wins a point serves. When your team wins the serve back, your other teammate serves. Serve from the right on an even score, the left on odd. Bonks hit teammates too!':
     'Đội thắng điểm được giao cầu. Khi đội bạn giành lại quyền giao, đồng đội còn lại giao. Điểm chẵn giao bên phải, điểm lẻ bên trái. Cốc vợt trúng cả đồng đội đấy!',

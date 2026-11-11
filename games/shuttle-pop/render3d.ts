@@ -44,7 +44,7 @@ import type { Smoothed } from '@forge/net/smoothing'
 import { playSound } from '@forge/audio/sound'
 import { createScene3D, Particles3D, type Scene3D } from '@forge/render3d'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
-import { actArcInto, actorIndex, cooldownLeft, ABILITY, type AbilityKind, type ActArc } from './ability'
+import { actArcInto, actorIndex, cooldownLeft, type AbilityKind, type ActArc } from './ability'
 import {
   createChibi,
   JUMP_H,
@@ -952,10 +952,9 @@ export class Court3D {
       const actTick = pred?.act ? pred.stepNow : shownTick
       const arc = actArcInto(act, actTick, view.arc)
       const cd = cooldownLeft(act, actTick)
-      // The dive slides the body toward the contact (render only; the sim's player stays put).
-      const slide = act ? ABILITY.lunge.slide * arc.dive * flip : 0
+      // A dive's slide is real movement now (sim + prediction): the body just follows the player.
       const root = view.chibi.root
-      root.position.set(x + (act ? act.dx * slide : 0), 0, z + (act ? act.dz * slide : 0))
+      root.position.set(x, 0, z)
       if (i === this.localIdx) localX = x
       const alt = twinAlt(presets, i, this.spectating ? -1 : this.localIdx)
       if (cp.preset !== view.preset || alt !== view.alt) {

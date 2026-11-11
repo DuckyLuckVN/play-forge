@@ -11,6 +11,7 @@ import {
   reachOf,
   type AbilityKind,
   type Strike,
+  type Want,
 } from './ability'
 import { COURT, settleOnFloor, stepShuttle, type CourtDims, type Flight, type Vec3 } from './physics'
 import type { RemoteTracks } from './remotes'
@@ -245,7 +246,9 @@ export class GuestShuttle {
     player: { x: number; z: number },
     side: 0 | 1,
     canSwingNow: boolean,
-  ): { k: AbilityKind; dx: number; dz: number } {
+    want?: Want,
+    dir?: { x: number; z: number },
+  ): { k: AbilityKind; dx: number; dz: number; empty?: boolean } {
     const newest = this.ring[this.ring.length - 1]
     if (!newest) return { k: 'hop', dx: 0, dz: 0 }
     const awaiting = !!this.pred && this.pred.until === Infinity
@@ -253,7 +256,7 @@ export class GuestShuttle {
       newest.phase === 'rally' && newest.lastHitter !== side && !newest.pending && !awaiting && canSwingNow
     const f: Flight = { pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 } }
     this.at(this.clock.seenTick() - 1, f)
-    return abilityFor(f, player, side, newest.lastHitter, canHit)
+    return abilityFor(f, player, side, newest.lastHitter, canHit, want, dir)
   }
 
   /**

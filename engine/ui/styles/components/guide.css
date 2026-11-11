@@ -99,9 +99,19 @@
     gap: var(--pf-space-2);
     color: var(--pf-sky);
   }
-  .pf-guide-touch {
+  .pf-guide-touch,
+  .pf-guide-mouse {
     color: var(--pf-haze);
     font-size: var(--pf-fs-sm);
+  }
+  /* Mouse icons: bigger, the pressed button in yellow so left vs right reads at a glance. */
+  .pf-guide-icon:has(.pf-mouse-on) .pf-icon svg {
+    width: 30px;
+    height: 30px;
+  }
+  .pf-guide-icon .pf-mouse-on {
+    fill: var(--pf-yolk);
+    stroke: var(--pf-yolk);
   }
 
   /* Keycaps: chunky like the buttons, at text size. */

@@ -322,20 +322,6 @@ createGameApp<SpState, SpInput>({
       touchLabel: t('dive button'),
     },
     {
-      action: t('Doubles (2 vs 2)'),
-      note: t(
-        'The team that wins a point serves. When your team wins the serve back, your other teammate serves. Serve from the right on an even score, the left on odd. Bonks hit teammates too!',
-      ),
-      tip: true,
-    },
-    {
-      action: t('Racket bonk'),
-      note: t(
-        "Swing your racket into another player and they see stars for a moment. Then they can't be bonked for 2 s.",
-      ),
-      tip: true,
-    },
-    {
       action: t('Reactions'),
       note: t('Online: move toward an emoji, let go to send'),
       hold: true,

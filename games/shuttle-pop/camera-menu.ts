@@ -133,7 +133,7 @@ export function viewPanel(): { nodes: HTMLElement[] } {
 }
 
 /**
- * A small camera button over the top-right of the game view (`view`) that opens the view-settings panel
+ * A small settings (sliders) button over the top-right of the game view (`view`) that opens the view-settings panel
  * below it. The view takes every pointer as a swing / stick, so the overlay keeps its own pointer
  * events to itself, and while the panel is open a press outside only closes it (never swings).
  * While open, a capture guard keeps key press (except Esc/Tab, never a release) away from the game's window listeners.
@@ -142,7 +142,7 @@ export function viewPanel(): { nodes: HTMLElement[] } {
 export function mountCameraButton(view: HTMLElement): { root: HTMLElement; destroy(): void } {
   const button = h('button', { class: 'pf-btn icon', type: 'button' })
   setLabel(button, t('View settings'))
-  button.append(icon(icons.camera))
+  button.append(icon(icons.settings))
   const panel = viewPanel()
   const root = h('div', { class: 'sp-cam' })
 

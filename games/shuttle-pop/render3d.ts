@@ -47,7 +47,7 @@ import { prefersTouch } from '@forge/core/device'
 import { startRenderLoop } from '@forge/core/loop'
 import type { Smoothed } from '@forge/net/smoothing'
 import { playSound } from '@forge/audio/sound'
-import { createScene3D, Particles3D, type Scene3D } from '@forge/render3d'
+import { createScene3D, Particles3D, type QualityLevel, type Scene3D } from '@forge/render3d'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import {
   ABILITY,
@@ -123,7 +123,16 @@ import {
 } from './orient'
 import { BOARD, surroundOf } from './props'
 import { SAND, sandTexture } from './sand'
-import { spLadder, spStartLevel, spTier } from './quality'
+import {
+  AUTO_CHECK_SECS,
+  estimateTier,
+  loadAutoLevel,
+  readDevice,
+  saveAutoLevel,
+  spLadder,
+  spStartLevel,
+  spTier,
+} from './quality'
 import { LOOK, type GraphicsPref, type LookTier } from './look'
 import { Park } from './scenery'
 import { isOwnEvent, shownName, TAPPED, type SpEvent, type SpState } from './sim'
@@ -501,8 +510,14 @@ export class Court3D {
   /** The graphics look drawn now, and the one the quality ladder wants (applied between rallies). */
   private tier: LookTier = 'high'
   private wantTier: LookTier = 'high'
-  /** The graphics pref the ladder was built for. */
+  /** The graphics pref the ladder was built for, and that ladder (its levels, for indexOf). */
   private graphics: GraphicsPref
+  private ladder: readonly QualityLevel[] = []
+  /** Auto: the device's starting look (quality.ts estimateTier); rally time checked so far; settled; last saved level. */
+  private deviceTier: LookTier = 'medium'
+  private autoRally = 0
+  private autoLocked = false
+  private autoSaved = -1
   /** Crowd: hits in the current rally, length of the last point's rally, when that point was. */
   private rally = 0
   private pointHits = 0
@@ -578,12 +593,14 @@ export class Court3D {
       'position:fixed;left:-10000px;top:0;width:100vw;height:85vh;pointer-events:none;opacity:0'
     document.body.appendChild(this.parking)
     this.graphics = prefs.get().graphics
+    this.ladder = spLadder(this.graphics)
+    const saved = loadAutoLevel()
     this.view = createScene3D(this.parking, {
       fov: CAMERA.fov,
       far: 120,
       maxDpr: 2,
-      levels: spLadder(this.graphics),
-      startLevel: spStartLevel(prefersTouch(), this.graphics),
+      levels: this.ladder,
+      startLevel: spStartLevel(this.graphics, { saved }),
       toneMapping: LOOK.toneMapping,
       exposure: LOOK.exposure,
       bloom: LOOK.bloom,
@@ -591,6 +608,10 @@ export class Court3D {
       grade: LOOK.grade,
     })
     const { scene, renderer } = this.view
+    // Auto with nothing saved yet: start from the device estimate (read from our own GL context, once).
+    this.deviceTier = estimateTier(readDevice(renderer.getContext(), prefersTouch()))
+    if (this.graphics === 'auto' && saved === null)
+      this.view.setLevels(this.ladder, spStartLevel('auto', { tier: this.deviceTier }))
     // PCF with a blur radius per look (scenery.ts setLook): soft edges.
     renderer.shadowMap.enabled = true
     this.park = new Park(scene)
@@ -620,7 +641,15 @@ export class Court3D {
       this.tagsOn = p.nameTags
       if (p.graphics !== this.graphics) {
         this.graphics = p.graphics
-        this.view.setLevels(spLadder(p.graphics), spStartLevel(prefersTouch(), p.graphics))
+        this.ladder = spLadder(p.graphics)
+        // Choosing Auto again starts a fresh check (from where it settled, else the estimate).
+        this.autoRally = 0
+        this.autoLocked = false
+        this.autoSaved = -1
+        this.view.setLevels(
+          this.ladder,
+          spStartLevel(p.graphics, { saved: loadAutoLevel(), tier: this.deviceTier }),
+        )
       }
       this.refitCamera()
     })
@@ -1024,6 +1053,7 @@ export class Court3D {
     // The quality ladder (or the player) changed the look: apply between rallies so shadows don't pop
     // mid-shot. Blob shadows stay either way.
     if (this.wantTier !== this.tier && curr.phase !== 'rally') this.setLook(this.wantTier)
+    if (this.graphics === 'auto') this.checkAuto(curr.phase, dt)
     // Never the old match's last state (rematch countdown) or another seat layout: see sameMatchPrev.
     const prev = sameMatchPrev(this.smooth!.prev ?? curr, curr)
     const a = this.smooth!.alpha()
@@ -1884,6 +1914,25 @@ export class Court3D {
       if (bubble) this.bubbles.place(i, this.time, at, this.fades[i], sh)
       else if (this.tagsOn) this.tags.place(i, at, mode, this.fades[i], sh)
       else this.tags.hide(i)
+    }
+  }
+
+  /**
+   * Auto graphics: judge frames for AUTO_CHECK_SECS of rally time per page (climbing from the starting look
+   * or stepping down), then settle (no more probing: no up / down stutter) and remember the level in this
+   * browser; a later step down on sustained slowness is remembered too.
+   */
+  private checkAuto(phase: SpState['phase'], dt: number) {
+    if (!this.autoLocked) {
+      if (phase === 'rally') this.autoRally += dt
+      if (this.autoRally < AUTO_CHECK_SECS) return
+      this.view.lockQuality()
+      this.autoLocked = true
+    }
+    const level = this.ladder.indexOf(this.view.quality)
+    if (level >= 0 && level !== this.autoSaved) {
+      this.autoSaved = level
+      saveAutoLevel(level)
     }
   }
 

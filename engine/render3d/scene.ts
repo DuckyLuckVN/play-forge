@@ -65,6 +65,11 @@ export interface Scene3D {
   setBloom(strength: number): void
   /** Swap the quality ladder (e.g. a player-picked graphics tier), starting at `start`; refits at once. */
   setLevels(levels: readonly QualityLevel[], start?: number): void
+  /**
+   * Settle on the current quality level (QualityGovernor.lock): no more probing up; only sustained
+   * slowness still steps down. No refit. A later setLevels starts a fresh, unlocked governor.
+   */
+  lockQuality(): void
   /** Draw one frame through every post pass the view has (bloom, AO), so their shaders compile now. */
   warmPasses(): void
   render(dt: number): void
@@ -231,6 +236,9 @@ export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): S
     setLevels(levels, start = 0) {
       quality = new QualityGovernor(levels, start)
       fit()
+    },
+    lockQuality() {
+      quality.lock()
     },
     warmPasses() {
       const bloomWas = bloom?.enabled ?? false

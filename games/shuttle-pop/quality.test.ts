@@ -1,7 +1,16 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { GRAPHICS_PREFS } from './look'
-import { SP_QUALITY, spLadder, spStartLevel, spTier } from './quality'
+import {
+  estimateTier,
+  loadAutoLevel,
+  saveAutoLevel,
+  SP_QUALITY,
+  spLadder,
+  spStartLevel,
+  spTier,
+  type DeviceInfo,
+} from './quality'
 
 describe('Shuttle Pop quality ladder', () => {
   it('Auto walks the looks High → Medium → Low at full resolution, then drops resolution', () => {
@@ -34,14 +43,70 @@ describe('Shuttle Pop quality ladder', () => {
   it('only the engine decides quality: the renderer builds no governor of its own', () => {
     const src = readFileSync(new URL('./render3d.ts', import.meta.url), 'utf8')
     expect(src).not.toMatch(/new QualityGovernor|QualityGovernor\(/)
-    expect(src).toContain('levels: spLadder(')
+    expect(src).toContain('this.ladder = spLadder(')
+    expect(src).toContain('levels: this.ladder')
     expect(src).toContain('spTier(this.view.quality)')
   })
-  it('Auto on phones starts at the Low look (full resolution); desktops and pinned looks at the top', () => {
-    expect(spTier(SP_QUALITY[spStartLevel(true)])).toBe('low')
-    expect(SP_QUALITY[spStartLevel(true)].dpr).toBe(Infinity)
-    expect(spStartLevel(false)).toBe(0)
-    expect(spStartLevel(true, 'high')).toBe(0)
-    expect(spStartLevel(true, 'low')).toBe(0)
+  it('start: a pinned look at the top; Auto from the saved level, else the device estimate, else Medium', () => {
+    expect(spStartLevel('high')).toBe(0)
+    expect(spStartLevel('low', { saved: 3 })).toBe(0)
+    expect(spStartLevel('auto', { saved: 3, tier: 'high' })).toBe(3)
+    expect(spTier(SP_QUALITY[spStartLevel('auto', { tier: 'high' })])).toBe('high')
+    expect(spTier(SP_QUALITY[spStartLevel('auto', { tier: 'low' })])).toBe('low')
+    expect(SP_QUALITY[spStartLevel('auto', { tier: 'low' })].dpr).toBe(Infinity)
+    expect(spTier(SP_QUALITY[spStartLevel('auto')])).toBe('medium')
+  })
+
+  const dev = (d: Partial<DeviceInfo>): DeviceInfo => ({
+    gpu: '',
+    cores: 8,
+    memGB: 8,
+    pixels: 2e6,
+    touch: false,
+    ...d,
+  })
+  it('device estimate: strong desktop GPU → High, weak GPU or small hardware → Low, unknown → Medium', () => {
+    expect(
+      estimateTier(dev({ gpu: 'ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)' })),
+    ).toBe('high')
+    expect(
+      estimateTier(dev({ gpu: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0)' })),
+    ).toBe('high')
+    expect(estimateTier(dev({ gpu: 'Mali-G52 MC2' }))).toBe('low')
+    expect(estimateTier(dev({ gpu: 'Adreno (TM) 506' }))).toBe('low')
+    expect(estimateTier(dev({ gpu: 'Google SwiftShader' }))).toBe('low')
+    expect(estimateTier(dev({ gpu: 'Intel(R) UHD Graphics 620', cores: 4 }))).toBe('low')
+    expect(estimateTier(dev({ gpu: 'Intel(R) Iris(R) Xe Graphics' }))).toBe('medium')
+    expect(estimateTier(dev({ gpu: 'Adreno (TM) 740', touch: true }))).toBe('medium')
+    // A strong GPU on a phone / tablet still starts at Medium (thermals); hidden signals → Medium.
+    expect(estimateTier(dev({ gpu: 'Apple M1', touch: true }))).toBe('medium')
+    expect(estimateTier(dev({ cores: 0, memGB: 0 }))).toBe('medium')
+  })
+
+  it('the saved Auto level: valid ladder indexes only; garbage or blocked storage → null', () => {
+    const mem = (v: string | null) => {
+      let x = v
+      return { getItem: () => x, setItem: (_k: string, val: string) => void (x = val) }
+    }
+    expect(loadAutoLevel(mem(null))).toBe(null)
+    expect(loadAutoLevel(mem('2'))).toBe(2)
+    expect(loadAutoLevel(mem('9'))).toBe(null)
+    expect(loadAutoLevel(mem('-1'))).toBe(null)
+    expect(loadAutoLevel(mem('1.5'))).toBe(null)
+    expect(loadAutoLevel(mem('hi'))).toBe(null)
+    expect(loadAutoLevel(null)).toBe(null)
+    const m = mem(null)
+    saveAutoLevel(1, m)
+    expect(loadAutoLevel(m)).toBe(1)
+    const broken = {
+      getItem: () => {
+        throw new Error('blocked')
+      },
+      setItem: () => {
+        throw new Error('blocked')
+      },
+    }
+    expect(() => saveAutoLevel(1, broken)).not.toThrow()
+    expect(loadAutoLevel(broken)).toBe(null)
   })
 })

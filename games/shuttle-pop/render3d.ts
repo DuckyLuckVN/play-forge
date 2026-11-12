@@ -89,7 +89,8 @@ import { createPath, firstAhead, samplePath } from './flightpath'
 import { ringShown, type RingMode } from './landing'
 import { mountCameraButton } from './camera-menu'
 import { headAnchorY, ReactionBubbles, toScreen } from './bubbles'
-import { boardView, Scoreboard } from './scoreboard'
+import { boardView, Scoreboard, tintCss } from './scoreboard'
+import { NameTags, tagMode } from './nametags'
 import { t } from './i18n'
 import { damp, Gait, GaitEvent } from './locomotion'
 import {
@@ -430,6 +431,9 @@ export class Court3D {
   private occ: number[] = []
   /** Reaction bubbles over the chibis (bubbles.ts), and the shuttle's NDC point from updateVisibility (shOn: in front, drawn). */
   private bubbles = new ReactionBubbles()
+  /** Name tags over the chibis (nametags.ts); names / colours refreshed once per new state (tagState). */
+  private tags = new NameTags()
+  private tagState: SpState | null = null
   private shNdcX = 0
   private shNdcY = 0
   private shOn = false
@@ -707,6 +711,7 @@ export class Court3D {
     this.view.onResize((_w, h) => this.fx.setScale(h * this.view.renderer.getPixelRatio()))
     this.view.root.appendChild(this.hud.root)
     this.hud.root.appendChild(this.board.splash.root)
+    this.view.root.appendChild(this.tags.root)
     this.view.root.appendChild(this.bubbles.root)
     this.banner.className = 'sp-outcome-stamp'
     this.banner.setAttribute('aria-live', 'polite')
@@ -909,6 +914,8 @@ export class Court3D {
     this.pathOn = false
     this.hud.reset()
     this.bubbles.reset()
+    this.tags.hideFrom(0)
+    this.tagState = null
     this.board.reset()
     this.net.reset()
     this.hudPhase = ''
@@ -1826,7 +1833,10 @@ export class Court3D {
     return this.bubbles.show(i, reactionId, this.time)
   }
 
-  /** Per frame, after updateVisibility: each live bubble hangs above its chibi's head (follows the jump). Allocates only for live bubbles. */
+  /**
+   * Per frame, after updateVisibility: each chibi's name tag, or its live reaction bubble instead, hangs above
+   * its head (follows the jump). Names / colours are rewritten once per new state; no other allocation.
+   */
   private placeBubbles(curr: SpState) {
     const cam = this.view.camera
     const w = this.view.width
@@ -1836,9 +1846,27 @@ export class Court3D {
       sh.x = ((this.shNdcX + 1) / 2) * w
       sh.y = ((1 - this.shNdcY) / 2) * h
     }
-    for (let i = 0; i < Math.min(curr.players.length, this.players.length); i++) {
-      if (!this.bubbles.live(i)) continue
+    const n = Math.min(curr.players.length, this.players.length)
+    if (curr !== this.tagState) {
+      this.tagState = curr
+      for (let i = 0; i < n; i++) {
+        const p = curr.players[i]
+        // The team's colour (its first player's), as on the scoreboard.
+        const first = curr.players.find((q) => q.side === p.side) ?? p
+        const tint = tintCss(PRESETS[first.preset]?.tint ?? PRESETS[p.side].tint)
+        this.tags.set(i, shownName(p), tint, i === this.localIdx && !this.spectating)
+      }
+    }
+    const mode = tagMode(curr.phase)
+    this.tags.hideFrom(n)
+    for (let i = 0; i < n; i++) {
+      const bubble = this.bubbles.live(i)
+      if (bubble) this.tags.hide(i)
       const chibi = this.players[i].chibi
+      if (!chibi.root.visible) {
+        this.tags.hide(i)
+        continue
+      }
       const root = chibi.root
       const v = this.visP
       v.set(
@@ -1849,7 +1877,9 @@ export class Court3D {
       v.applyMatrix4(cam.matrixWorldInverse)
       const depth = -v.z
       v.applyMatrix4(cam.projectionMatrix)
-      this.bubbles.place(i, this.time, toScreen(v, depth, w, h), this.fades[i], sh)
+      const at = toScreen(v, depth, w, h)
+      if (bubble) this.bubbles.place(i, this.time, at, this.fades[i], sh)
+      else this.tags.place(i, at, mode, this.fades[i], sh)
     }
   }
 

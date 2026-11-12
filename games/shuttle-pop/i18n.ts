@@ -126,6 +126,8 @@ export const VI: Dictionary = {
   Low: 'Thấp',
   Medium: 'Vừa',
   High: 'Cao',
+  // Name tags over the players (nametags.ts)
+  You: 'Bạn',
 }
 
 export const t = translator(VI)

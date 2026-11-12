@@ -166,26 +166,29 @@ function racketIcon(): SVGSVGElement {
   return svg
 }
 
-/** A low swoosh forward over a floor line: the Dive button's glyph (drawn once). */
+const STROKE = 'fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"'
+
+/** A figure diving forward (body tipped, arm reaching out, legs trailing) over the floor, speed lines behind: the Dive button's glyph (drawn once). */
 function diveIcon(): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg')
   svg.setAttribute('viewBox', '0 0 48 48')
   svg.setAttribute('aria-hidden', 'true')
   svg.innerHTML =
-    '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="4">' +
-    '<path d="M8 32c10 0 18-4 26-14"/><path d="M24 16h11v11"/><path d="M8 40h30" opacity=".6"/></g>'
+    '<circle cx="33" cy="14" r="5" fill="currentColor"/>' +
+    `<g ${STROKE} stroke-width="4.6"><path d="M28 21 14 30M27 22l17 2M14 30 3 27M14 30 7 38"/></g>` +
+    `<g ${STROKE} stroke-width="2.8" opacity=".6"><path d="M2 14h8M5 20h6M12 44h30"/></g>`
   return svg
 }
 
-/** Up-chevron over two feet: the Jump button's glyph (drawn once). */
+/** A figure in mid-air (arms up, knees tucked) over its shadow: the Jump button's glyph (drawn once). */
 function actIcon(): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg')
   svg.setAttribute('viewBox', '0 0 48 48')
   svg.setAttribute('aria-hidden', 'true')
   svg.innerHTML =
-    '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="4">' +
-    '<path d="M14 18 24 8l10 10M14 30 24 20l10 10"/></g>' +
-    '<g fill="currentColor"><ellipse cx="17" cy="41" rx="5" ry="3"/><ellipse cx="31" cy="41" rx="5" ry="3"/></g>'
+    '<circle cx="24" cy="7" r="5" fill="currentColor"/>' +
+    `<g ${STROKE} stroke-width="4.6"><path d="M24 14v12M24 17l-9-8M24 17l9-8M24 26l-7 5 2 8M24 26l8 4 3 7"/></g>` +
+    '<ellipse cx="24" cy="45.5" rx="9" ry="1.9" fill="currentColor" opacity=".55"/>'
   return svg
 }
 

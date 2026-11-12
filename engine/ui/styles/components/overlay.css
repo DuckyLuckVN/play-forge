@@ -55,4 +55,13 @@
   .pf-panel.wide {
     width: min(560px, 100%);
   }
+  /* Results with a leaderboard: room for the name, a badge and five stat columns without scrolling. */
+  .pf-panel:has(.pf-leaderboard) {
+    width: min(760px, 100%);
+  }
+  @media (max-width: 520px) {
+    .pf-panel:has(.pf-leaderboard) {
+      --pf-panel-pad: var(--pf-space-5);
+    }
+  }
 }

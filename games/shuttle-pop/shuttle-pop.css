@@ -667,8 +667,15 @@
   -webkit-tap-highlight-color: transparent;
 }
 .sp-touch {
-  /* The thumb buttons' gap to the bottom-right corner (swing, Jump and Dive all follow it). */
-  --sp-edge: 8px;
+  /*
+   * Thumb cluster, like most landscape action games: the swing button's centre sits in the thumb's
+   * resting zone (~12% of the view's width from the right, ~24% of its height from the bottom; a % in
+   * `right` / `bottom` resolves against the view), with Jump and Dive on an arc up-left of it.
+   */
+  --sp-cx: clamp(72px, 12%, 132px);
+  --sp-cy: clamp(66px, 24%, 120px);
+  /* Swing button size; the small buttons are 64px, their centres ~92px from the swing's (≈14px gaps). */
+  --sp-swing: 92px;
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -705,13 +712,13 @@
     0 3px 8px rgb(0 0 0 / 0.25),
     inset 0 -3px 0 rgb(230 62 109 / 0.25);
 }
-/* Swing: big round thumb button tucked into the bottom-right corner (where the thumb rests in landscape); squashes and glows while pressed. */
+/* Swing: big round thumb button bottom-right, in from the corner (where the thumb rests in landscape); squashes and glows while pressed. */
 .sp-swing {
   position: absolute;
-  right: calc(var(--sp-edge) + env(safe-area-inset-right, 0px));
-  bottom: calc(var(--sp-edge) + env(safe-area-inset-bottom, 0px));
-  width: 92px;
-  height: 92px;
+  right: calc(var(--sp-cx) - var(--sp-swing) / 2 + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--sp-cy) - var(--sp-swing) / 2 + env(safe-area-inset-bottom, 0px));
+  width: var(--sp-swing);
+  height: var(--sp-swing);
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -742,12 +749,15 @@
     0 1px 0 var(--sp-pink-dark),
     0 0 22px rgb(255 209 102 / 0.75);
 }
-/* Ability (jump / dive): smaller teal button just left of the racket; the cooldown dims it clockwise. */
+/*
+ * Ability (jump / dive): smaller teal Jump button above the racket, a touch left (110° on the arc, where
+ * the thumb reaches by bending); the cooldown dims it clockwise.
+ */
 .sp-act {
   --sp-cd: 0;
   position: absolute;
-  right: calc(var(--sp-edge) + 92px + 18px + env(safe-area-inset-right, 0px));
-  bottom: calc(var(--sp-edge) + 6px + env(safe-area-inset-bottom, 0px));
+  right: calc(var(--sp-cx) + 31px - 32px + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--sp-cy) + 86px - 32px + env(safe-area-inset-bottom, 0px));
   width: 64px;
   height: 64px;
   border-radius: 50%;
@@ -783,10 +793,10 @@
     0 1px 0 #0a5f55,
     0 0 20px rgb(123 227 212 / 0.75);
 }
-/* Dive: same size, orange, stacked above the racket button. */
+/* Dive: same size, orange, left of the racket button, level with its middle (180° on the arc). */
 .sp-dive {
-  right: calc(var(--sp-edge) + 14px + env(safe-area-inset-right, 0px));
-  bottom: calc(var(--sp-edge) + 92px + 16px + env(safe-area-inset-bottom, 0px));
+  right: calc(var(--sp-cx) + 92px - 32px + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--sp-cy) - 32px + env(safe-area-inset-bottom, 0px));
   background: radial-gradient(circle at 35% 28%, var(--sp-cream), var(--sp-gold) 45%, var(--sp-amber));
   box-shadow:
     0 5px 0 #a8620f,

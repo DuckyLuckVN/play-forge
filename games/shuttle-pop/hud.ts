@@ -216,7 +216,7 @@ export function touchFirst(
 
 /**
  * Touch controls' visuals: a floating stick (rests dim in the bottom-left corner, jumps under the
- * thumb while held), the swing button bottom-right, Jump to its left and Dive above it (one shared
+ * thumb while held), the swing button bottom-right (in from the corner), Jump above it and Dive to its left (one shared
  * cooldown dims both). Hidden until the device is touch-first (touchFirst)
  * or the first touch lands. Input logic lives in input.ts; this only draws.
  */

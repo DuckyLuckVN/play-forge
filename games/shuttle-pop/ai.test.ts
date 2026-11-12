@@ -6,13 +6,16 @@ import {
   LEVELS,
   NEAR_LINE,
   newBotMemory,
+  readShot,
   readyDepth,
+  safeOffset,
   type BotLevel,
   type BotMemory,
 } from './ai'
 import type { InputEvent } from '@forge/net/session'
 import { MATCH_CAP, play, SLOW } from './ai.harness'
-import { COURT } from './physics'
+import { COURT, predictLanding } from './physics'
+import { findContact, WINDOW } from './shots'
 import { COURT_SIZES, courtDims } from './courtsize'
 import { toWorld } from './court'
 import { STUN } from './stun'
@@ -176,6 +179,107 @@ describe('rolled whiff', () => {
   })
 })
 
+describe('no silent miss', () => {
+  it('safeOffset mirrors a late-side swing that would come with the landing; keeps the rest', () => {
+    // Contact 22 ticks ahead, landing 26 ahead: a swing 12 after the contact is too late → 12 before.
+    expect(safeOffset(12, 22, 26)).toBe(-12)
+    expect(safeOffset(4, 22, 26)).toBe(-4)
+    // Room before the landing, or an early swing: unchanged.
+    expect(safeOffset(12, 22, 60)).toBe(12)
+    expect(safeOffset(-9, 22, 26)).toBe(-9)
+    expect(safeOffset(0, 22, 23)).toBe(0)
+  })
+
+  it('a low drop with a late-side Good roll still swings before the shuttle lands', () => {
+    // A drop falling short in front of the bot: the meet is low (~0.3 m), a few ticks before the landing.
+    const s = incoming(0.3, 1, 1.6, { x: 0, y: -2, z: 3 })
+    const mem = newBotMemory(1, 1)
+    // Rolls: grade 0.4 → Good, no smash (0.9), Good on the late side (0.9), the latest (0.99 → +12).
+    const rolls = [0.4, 0.9, 0.9, 0.99]
+    let i = 0
+    const rng = () => rolls[i++] ?? 0.9
+    const land = predictLanding(s.shuttle)
+    const start = s.tick
+    const kinds: string[] = []
+    let landedAt = -1
+    let lastId = s.nextEventId - 1
+    while (s.phase === 'rally' && s.shuttle.lastHitter !== 1 && s.tick < start + 120) {
+      const out = botStep(s, 1, 'normal', mem, rng, () => 0.99)
+      if (s.tick === start) {
+        const c = findContact(s.shuttle, mem.target, 0, land.ticks)
+        // The case under test: the late-side swing (contact + 12) would come after the landing.
+        expect(c!.dt + WINDOW.good).toBeGreaterThanOrEqual(land.ticks)
+        expect(mem.plannedSwingTick).toBeLessThan(start + land.ticks)
+      }
+      for (const x of out) if (x.t !== 'move') kinds.push(x.t)
+      game.tick(
+        s,
+        out.map((input) => ({ player: s.players[1].id, input })),
+      )
+      for (const e of s.events) if (e.id > lastId && e.k === 'land' && landedAt < 0) landedAt = e.tick
+      lastId = s.nextEventId - 1
+    }
+    expect(kinds).toContain('swing')
+    expect(landedAt).toBe(-1) // returned (a Good hit), never left to drop
+  })
+})
+
+describe('meet height', () => {
+  it('meets a deep falling shuttle around swing height, not at its lowest in-reach point', () => {
+    // A deep clear coming down near the bot: time to set up at the preferred meet height (MEET_Y 1.4).
+    const s = incoming(0.5, 1.5, 4, { x: 0, y: 2, z: 3 })
+    const mem = newBotMemory(1, 1)
+    botStep(s, 1, 'normal', mem, () => 0.5) // Good, no smash try
+    const c = findContact(s.shuttle, mem.target, 0, predictLanding(s.shuttle).ticks)
+    expect(c).not.toBeNull()
+    expect(c!.pos.y).toBeGreaterThanOrEqual(0.9) // MEET_Y − 0.5
+    expect(Math.abs(c!.pos.y - 1.4)).toBeLessThan(0.3)
+  })
+})
+
+describe('shot tactics', () => {
+  it('readShot: a drop when they are deep, a clear when at the net, a drive between', () => {
+    expect(readShot(COURT.halfLen - 0.5, COURT)).toBe(0)
+    expect(readShot(1, COURT)).toBe(-1)
+    expect(readShot(3.2, COURT)).toBe(1)
+    // Bigger courts read depth as a share of the half.
+    const xl = courtDims('xl')
+    expect(readShot(0.5 * xl.halfLen, xl)).toBe(1)
+  })
+
+  it('a read plays by where the opponent stands; harder levels read more', () => {
+    expect(LEVELS.easy.tactics.read).toBeLessThan(LEVELS.normal.tactics.read)
+    expect(LEVELS.normal.tactics.read).toBeLessThan(LEVELS.hard.tactics.read)
+    /** Side 1's planned held z for the deep clear, the opponent standing `depth` m from the net. */
+    const heldZ = (depth: number) => {
+      const s = incoming(0.5, 1.5, 4, { x: 0, y: 2, z: 3 })
+      s.players[0].x = 0
+      s.players[0].z = -depth
+      const mem = newBotMemory(1, 1)
+      // rng 0.45 (normal): Good, no smash try, no body shot, the read roll hits (< 0.5).
+      botStep(s, 1, 'normal', mem, () => 0.45)
+      return mem.plannedHeld.z
+    }
+    expect(heldZ(COURT.halfLen - 0.5)).toBe(0) // deep → drop
+    expect(heldZ(1)).toBe(-1) // at the net → clear over them
+    expect(heldZ(3.2)).toBe(1) // mid → drive
+  })
+
+  it('a body shot aims at the opponent; otherwise away from them', () => {
+    const heldX = (rng: number) => {
+      const s = incoming(0.5, 1.5, 4, { x: 0, y: 2, z: 3 })
+      s.players[0].x = 1.5 // world x; side 1 views it as x = 1.5 (toWorld)
+      s.players[0].z = -3
+      const mem = newBotMemory(1, 1)
+      botStep(s, 1, 'hard', mem, () => rng)
+      return mem.plannedHeld.x
+    }
+    // hard: rng 0.1 → body roll hits (< 0.12): aim at them; rng 0.95 (whiff roll, no body): away.
+    expect(heldX(0.1)).toBeCloseTo(1.5 / (COURT.halfWidth - 0.4))
+    expect(heldX(0.95)).toBeLessThan(0)
+  })
+})
+
 describe('bot hold-to-charge', () => {
   it('levels charge more the harder they are; never a sure thing', () => {
     expect(LEVELS.easy.charge).toBeLessThan(LEVELS.normal.charge)
@@ -328,7 +432,7 @@ describe('bot under a racket stun', () => {
     expect(seen.some((e) => (e.k === 'hit' || e.k === 'whiff') && e.side === 1)).toBe(true)
   })
 
-  it('never aims at players: the plan ignores where the opponent stands', () => {
+  it('never chases players: where it stands and when it swings ignore the opponent (only the shot reads them)', () => {
     /** Side 1's inputs for 120 ticks of the same flight, the opponent standing at (x, z). */
     const run = (x: number, z: number) => {
       const s = incoming(0.5, 1.5, 4, { x: 0, y: 3, z: 3 })
@@ -341,12 +445,11 @@ describe('bot under a racket stun', () => {
     }
     const atNet = run(0, -0.4)
     expect(atNet.length).toBe(120)
-    // Where the computer stands and when it swings: the same wherever the opponent is.
-    expect(run(0.2, -5)).toEqual(atNet)
-    // Far to one side, only the shot's aim changes (it plays away from the opponent: shot placement,
-    // not the body): moves and swing ticks stay the same.
+    // Where the computer stands and when it swings: the same wherever the opponent is; only the shot
+    // (held direction: placement and the tactics' read, shot tactics) changes.
     const noAim = (outs: SpInput[][]) =>
       outs.map((o) => o.map((i) => (i.t === 'swing' || i.t === 'ability' ? i.t : i)))
+    expect(noAim(run(0.2, -5))).toEqual(noAim(atNet))
     expect(noAim(run(2, -5))).toEqual(noAim(atNet))
   })
 })

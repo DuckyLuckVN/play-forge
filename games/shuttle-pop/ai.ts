@@ -9,37 +9,46 @@ import { CHARGE } from './charge'
 import { MOVE_SPEED, NET_MARGIN, TICK_RATE, toWorld } from './court'
 import { COVER, coverSpot, mateOf, takerOf } from './doubles'
 import { canAct, canStrike, serverPlayer, type SpInput, type SpPlayer, type SpState } from './sim'
-import { stunned } from './stun'
+import { racketHits, stunImmune, stunned } from './stun'
 
 type GradeRoll = Grade | 'whiff'
 
+/**
+ * Per-level skill. Tuned vs the balance harness's scripted players (balance.harness.ts BASELINE; casual
+ * wins ~all on Easy, about half on Normal, rarely on Hard): since the bot always swings (safeOffset /
+ * misreadSpot), its mistakes are the grade rolls (whiffs and Late floaters) instead of standing still;
+ * a narrower aim (tactics.wide) keeps rallies longer.
+ */
 export const LEVELS = {
   easy: {
     reactTicks: 22,
     speedMul: 0.72,
-    grade: { perfect: 0.1, good: 0.55, late: 0.22, whiff: 0.13 },
+    grade: { perfect: 0.05, good: 0.29, late: 0.33, whiff: 0.33 },
     smash: 0.15,
     misjudge: 0.3,
     charge: 0.15,
     ability: 0.08,
+    tactics: { read: 0.15, body: 0, wide: 0.45 },
   },
   normal: {
     reactTicks: 14,
     speedMul: 0.88,
-    grade: { perfect: 0.34, good: 0.5, late: 0.1, whiff: 0.06 },
-    smash: 0.4,
+    grade: { perfect: 0.25, good: 0.38, late: 0.2, whiff: 0.17 },
+    smash: 0.3,
     misjudge: 0,
-    charge: 0.25,
+    charge: 0.2,
     ability: 0.25,
+    tactics: { read: 0.5, body: 0.05, wide: 0.55 },
   },
   hard: {
     reactTicks: 10,
     speedMul: 0.93,
-    grade: { perfect: 0.52, good: 0.31, late: 0.08, whiff: 0.09 },
-    smash: 0.85,
+    grade: { perfect: 0.5, good: 0.3, late: 0.08, whiff: 0.12 },
+    smash: 0.9,
     misjudge: 0,
-    charge: 0.7,
+    charge: 0.75,
     ability: 0.4,
+    tactics: { read: 0.7, body: 0.12, wide: 0.45 },
   },
 } satisfies Record<
   string,
@@ -54,6 +63,13 @@ export const LEVELS = {
     charge: number
     /** Chance to use the ability (ability.ts) when the plan offers one: a jump smash or a lunge save. */
     ability: number
+    /**
+     * Shot choice (non-smash): `read` = chance to pick the shot from where the opponents stand (readShot:
+     * a drop when they're deep, a clear when they're at the net, a drive between) instead of SHOT_MIX;
+     * `body` = chance to aim at them (their x) instead of away; `wide` = the widest aim away (held x, 1 = the
+     * sideline aim), drawn from AIM_MIN up.
+     */
+    tactics: { read: number; body: number; wide: number }
   }
 >
 
@@ -100,6 +116,8 @@ const SMASH_MEET_Y = 2.6
 /** A jump smash meets the shuttle above the plain reach (REACH.maxY) and inside the jump box. */
 const JUMP_BOX = { minY: REACH.maxY, maxY: ABILITY.jump.reach.maxY }
 const JUMP_MEET_Y = 3.2
+/** The narrowest aim away from the opponents (held x); LEVELS tactics.wide is the widest. */
+const AIM_MIN = 0.3
 /** Non-smash shot weights (held z: clear −1, drop 0, drive +1). */
 const SHOT_MIX = { clear: 0.4, drop: 0.3, drive: 0.3 }
 /** Charge holds (ticks): a little past the start up to a little past full. */
@@ -172,10 +190,62 @@ function swingOffset(g: GradeRoll, rng: () => number): number {
   return randInt(rng, WINDOW.pastGrace + 1, WINDOW.pastGrace + 3)
 }
 
+/** A swing this many ticks before the landing (or later) is too late to strike. */
+const LAND_MARGIN = 2
+/**
+ * A misread whiff stands this far (m) off the meet spot in depth: out of reach (REACH.radius) with some
+ * margin for a run that hasn't settled.
+ */
+const MISREAD = REACH.radius + 0.4
+
+/** A swing `off` ticks after a contact `dt` ticks ahead still comes before the landing `landDt` ticks ahead. */
+const beforeLanding = (off: number, dt: number, landDt: number): boolean => dt + off < landDt - LAND_MARGIN
+
+/**
+ * `off` (swingOffset) made safe for a contact `dt` ticks ahead whose shuttle lands `landDt` ticks ahead: a
+ * late-side swing (after the contact) that would come with the landing is mirrored to the early side
+ * (|offset| kept: the same grade). No silent miss on a low shuttle: the bot always swings.
+ */
+export function safeOffset(off: number, dt: number, landDt: number): number {
+  return off <= 0 || beforeLanding(off, dt, landDt) ? off : -off
+}
+
+/**
+ * Where a rolled whiff stands when a too-late swing won't fit before the landing (a low shuttle): the meet
+ * spot misread by MISREAD in depth (deeper; nearer the net when the back of the court is in the way), so
+ * its swing at the contact visibly misses. (A too-early swing would mostly still connect on a slow, low
+ * shuttle: still in reach a moment before the contact.)
+ */
+function misreadSpot(t: { x: number; z: number }, side: 0 | 1, court: CourtDims): { x: number; z: number } {
+  const back = side === 0 ? -1 : 1
+  const deep = { x: t.x, z: t.z + back * MISREAD }
+  clampTarget(deep, side, court)
+  if (Math.abs(deep.z - t.z) >= MISREAD - 0.05) return deep
+  const short = { x: t.x, z: t.z - back * MISREAD }
+  clampTarget(short, side, court)
+  return short
+}
+
+/** Opponent depth (share of the half's length from the net) at / above which a read plays a drop. */
+const READ_DEEP = 0.6
+/** At / below this share a read plays a clear over them. */
+const READ_NEAR = 0.4
+
+/**
+ * The held z a read picks (clear −1, drop 0, drive +1) from the opponents' mean distance to the net
+ * (`depth`, m): deep → a drop (make them run in), at the net → a clear over them, between → a drive.
+ */
+export function readShot(depth: number, court: CourtDims): -1 | 0 | 1 {
+  const u = depth / court.halfLen
+  return u >= READ_DEEP ? 0 : u <= READ_NEAR ? -1 : 1
+}
+
 /** Within NEAR_LINE of one of `court`'s side or back lines. */
 const nearLine = (p: { x: number; z: number }, court: CourtDims) =>
   Math.abs(Math.abs(p.x) - court.halfWidth) <= NEAR_LINE ||
   Math.abs(Math.abs(p.z) - court.halfLen) <= NEAR_LINE
+
+const clampX = (x: number) => Math.max(-1, Math.min(1, x))
 
 const onMyHalf = (z: number, side: 0 | 1) => (side === 0 ? z < 0 : z > 0)
 
@@ -285,21 +355,35 @@ function plan(
   mem.target = target
   const c = findContact(s.shuttle, target, 0, land.ticks)
   if (!c) return
-  mem.plannedSwingTick = Math.max(s.tick, s.tick + c.dt + swingOffset(grade, rng))
-  // Aim away from the opponents (their mean), in my view frame (held x = screen right; shotTarget
-  // mirrors it per side).
+  const off = swingOffset(grade, rng)
+  if (grade === 'whiff' && !mate && !beforeLanding(off, c.dt, land.ticks)) {
+    // No room for a too-late swing: misread it, swinging at the contact from out of reach (a visible miss).
+    // Not in doubles: the misread run can take the swing into the teammate (a friendly bonk).
+    mem.target = misreadSpot(target, side, s.court)
+    mem.plannedSwingTick = s.tick + c.dt
+  } else mem.plannedSwingTick = Math.max(s.tick, s.tick + c.dt + safeOffset(off, c.dt, land.ticks))
+  // Where the opponents stand (their mean), in my view frame (held x = screen right; shotTarget mirrors
+  // it per side) and as a distance from the net.
   let oppSum = 0
+  let depthSum = 0
   let opps = 0
   for (const q of s.players)
     if (q.side !== side) {
       oppSum += toWorld(side, q.x, q.z).x
+      depthSum += Math.abs(q.z)
       opps++
     }
   const oppView = oppSum / opps
+  const T = L.tactics
+  // Aim away from them, or now and then at them (their x: a body shot).
   const away = Math.abs(oppView) > 0.3 ? -Math.sign(oppView) : rng() < 0.5 ? -1 : 1
-  const heldX = away * (0.3 + 0.5 * rng())
+  const heldX =
+    rng() < T.body
+      ? clampX(oppView / (s.court.halfWidth - 0.4))
+      : away * (AIM_MIN + (T.wide - AIM_MIN) * rng())
   let heldZ: number
   if (high) heldZ = 1
+  else if (rng() < T.read) heldZ = readShot(depthSum / opps, s.court)
   else {
     const r = rng() * (SHOT_MIX.clear + SHOT_MIX.drop + SHOT_MIX.drive)
     heldZ = r < SHOT_MIX.clear ? -1 : r < SHOT_MIX.clear + SHOT_MIX.drop ? 0 : 1
@@ -320,18 +404,20 @@ function plan(
       const spot = { x: jm.x, z: jm.z }
       clampTarget(spot, side, s.court)
       const jc = findContact(s.shuttle, spot, 0, land.ticks, reachOf('jump'))
-      if (jc && jc.pos.y > REACH.maxY && planAct(s, idx, mem, 'jump', spot, jc.dt, grade, actRng)) return
+      if (jc && jc.pos.y > REACH.maxY && planAct(s, idx, mem, 'jump', spot, jc.dt, land.ticks, grade, actRng))
+        return
     }
   }
   // A lunge save: the plain meet is out of time, but the dive reaches it from the spot I'm heading to.
   if (meet?.late) {
     const lc = findContact(s.shuttle, target, 0, land.ticks, pickReachOf('lunge'))
-    if (lc) planAct(s, idx, mem, 'lunge', target, lc.dt, grade, actRng)
+    if (lc) planAct(s, idx, mem, 'lunge', target, lc.dt, land.ticks, grade, actRng)
   }
 }
 
 /**
- * Switch the plan to an ability press at `spot` whose contact is `dt` ticks ahead (pressed `lead` early),
+ * Switch the plan to an ability press at `spot` whose contact is `dt` ticks ahead (pressed `lead` early;
+ * the shuttle lands `landDt` ticks ahead: safeOffset),
  * unless the button will still be cooling then (false: the plain plan stands).
  */
 function planAct(
@@ -341,10 +427,11 @@ function planAct(
   act: Strike,
   spot: { x: number; z: number },
   dt: number,
+  landDt: number,
   grade: GradeRoll,
   rng: () => number,
 ): boolean {
-  const at = Math.max(s.tick, s.tick + dt - leadOf(act) + swingOffset(grade, rng))
+  const at = Math.max(s.tick, s.tick + dt - leadOf(act) + safeOffset(swingOffset(grade, rng), dt, landDt))
   if (!actReady(s.players[idx].act, at)) return false
   mem.plannedAct = act
   mem.target = spot
@@ -393,6 +480,12 @@ export function homeSpot(s: SpState, me: SpPlayer, mate: SpPlayer | undefined): 
   const mateX = toWorld(me.side, mate.x, mate.z).x
   const lane = Math.abs(mateX) < COVER.centre ? (me.slot === 0 ? -1 : 1) : mateX > 0 ? -1 : 1
   return toWorld(me.side, lane * s.court.halfWidth * COVER.splitX, -depth)
+}
+
+/** Doubles: a teammate in racket reach (not immune) — a swing now would bonk them (stun.ts): hold it. */
+function partnerInSwing(s: SpState, me: SpPlayer): boolean {
+  const mate = mateOf(s.players, me)
+  return !!mate && racketHits(me, mate) && !stunImmune(mate.stunAt, s.tick)
 }
 
 const STILL: SpInput = { t: 'move', x: 0, z: 0 }
@@ -468,7 +561,7 @@ export function botStep(
     const c = findContact(s.shuttle, me, 0, 2 * ABILITY.horizon)
     if (c) mem.plannedSwingTick = s.tick + c.dt
   }
-  if (planned && s.tick === mem.plannedSwingTick) {
+  if (planned && s.tick === mem.plannedSwingTick && !partnerInSwing(s, me)) {
     const { x, z } = mem.plannedHeld
     out.push(mem.plannedAct ? { t: 'ability', x, z, tick: s.tick } : { t: 'swing', x, z, tick: s.tick })
   } else if (charging && !(planned && s.tick < mem.plannedSwingTick)) out.push(UNCHARGE)

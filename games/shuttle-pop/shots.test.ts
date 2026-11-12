@@ -570,7 +570,8 @@ describe('pickContact', () => {
   it('pickContact results on recorded bot rallies match the pinned snapshot', () => {
     // 200 swings near the shuttle in a seeded bot rally (rewind 0 / 4 / 7), expected values are a
     // snapshot of pickContact's output (originally recorded from the old contactFor; re-recorded when
-    // the power swing changed charged launches and bot rallies, so this pins current behaviour only).
+    // the power swing changed charged launches and bot rallies, and when the 2026-11-12 AI retune changed
+    // the bots' rallies, so this pins current behaviour only; past-candidate picks are covered below).
     const s = setupBots('hard', 'hard', 1)
     const got: { tick: number; side: number; rewind: number; c: ReturnType<typeof strip> }[] = []
     for (let i = 0; i < 600 && got.length < 200; i++) {
@@ -589,14 +590,12 @@ describe('pickContact', () => {
     const hits = got.filter((g) => g.c)
     const grades = { perfect: 0, good: 0, late: 0 }
     for (const g of hits) grades[g.c!.grade]++
-    expect(hits).toHaveLength(107)
-    expect(grades).toEqual({ perfect: 25, good: 24, late: 58 })
-    expect(hits.reduce((a, g) => a + g.c!.tick, 0)).toBe(23815)
-    expect(hits.reduce((a, g) => a + g.c!.y, 0)).toBeCloseTo(148.7099912698525, 9)
+    expect(hits).toHaveLength(120)
+    expect(grades).toEqual({ perfect: 15, good: 31, late: 74 })
+    expect(hits.reduce((a, g) => a + g.c!.tick, 0)).toBe(26653)
+    expect(hits.reduce((a, g) => a + g.c!.y, 0)).toBeCloseTo(154.47960900576615, 9)
     const at = (tick: number, side: number, rewind: number) =>
       got.find((g) => g.tick === tick && g.side === side && g.rewind === rewind)?.c
-    // perfect from the past (rewound)
-    expect(at(225, 0, 4)).toEqual({ tick: 224, y: 2.726254906579812, grade: 'perfect' })
     // good in the future
     expect(at(63, 0, 0)).toEqual({ tick: 75, y: 0.8461322289050712, grade: 'good' })
     // late

@@ -21,6 +21,7 @@ import {
   faPaperPlane,
   faPause,
   faRightFromBracket,
+  faSliders,
   faSignal,
   faUserGroup,
   faVolumeHigh,
@@ -46,6 +47,8 @@ export const icons = {
   soundOn: faSvg(faVolumeHigh),
   soundOff: faSvg(faVolumeXmark),
   camera: faSvg(faCamera),
+  /** Sliders: a settings panel (e.g. a game's view settings). */
+  settings: faSvg(faSliders),
   pause: faSvg(faPause),
   leave: faSvg(faRightFromBracket),
   copy: faSvg(faCopy),

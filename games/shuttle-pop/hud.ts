@@ -185,7 +185,10 @@ function diveIcon(): SVGSVGElement {
   return svg
 }
 
-/** A player in mid-air (racket raised for a smash, knees tucked) over its shadow: the Jump button's glyph (drawn once). */
+/**
+ * A player in mid-air (racket raised for a smash, knees tucked) with rising motion lines under it, over its
+ * shadow: the Jump button's glyph (drawn once).
+ */
 function actIcon(): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg')
   svg.setAttribute('viewBox', '0 0 48 48')
@@ -195,6 +198,7 @@ function actIcon(): SVGSVGElement {
     `<g ${STROKE} stroke-width="4.4"><path d="M18 20v11M18 23l-8-6M18 23l9-7M18 31l-6 5 2 7M18 31l7 4 3 6"/></g>` +
     `<g ${STROKE} stroke-width="3"><path d="M27 16l3.5-4"/>` +
     '<ellipse cx="35" cy="8" rx="4.4" ry="5.8" transform="rotate(40 35 8)" fill="currentColor" fill-opacity=".25"/></g>' +
+    `<g ${STROKE} stroke-width="2.8" opacity=".85"><path d="M6 27v7M9 35v5M31 35v6"/></g>` +
     '<ellipse cx="19" cy="46" rx="8" ry="1.8" fill="currentColor" opacity=".55"/>'
   return svg
 }

@@ -750,11 +750,13 @@
     0 0 22px rgb(255 209 102 / 0.75);
 }
 /*
- * Ability (jump / dive): smaller teal Jump button above the racket, a touch left (110° on the arc, where
- * the thumb reaches by bending); the cooldown dims it clockwise.
+ * Ability (jump / dive): smaller Jump button above the racket, a touch left (110° on the arc, where the
+ * thumb reaches by bending); the cooldown dims it clockwise. Dark glass with a glowing ring, the figure in
+ * the ring's colour (`--sp-act-c`: teal Jump, gold Dive), so they sit quietly over the 3D view.
  */
 .sp-act {
   --sp-cd: 0;
+  --sp-act-c: #7be3d4;
   position: absolute;
   right: calc(var(--sp-cx) + 31px - 32px + env(safe-area-inset-right, 0px));
   bottom: calc(var(--sp-cy) + 86px - 32px + env(safe-area-inset-bottom, 0px));
@@ -765,47 +767,38 @@
   place-items: center;
   overflow: hidden;
   pointer-events: auto;
-  color: var(--sp-white);
-  background: radial-gradient(circle at 35% 28%, #7be3d4, #1fb5a3 55%, #0e8576);
-  border: 3px solid rgb(255 255 255 / 0.85);
+  color: var(--sp-act-c);
+  background: rgb(24 26 56 / 0.82);
+  border: 3px solid var(--sp-act-c);
   box-shadow:
-    0 5px 0 #0a5f55,
-    0 9px 16px rgb(0 0 0 / 0.25);
-  opacity: 0.9;
+    0 0 14px color-mix(in srgb, var(--sp-act-c) 50%, transparent),
+    0 6px 14px rgb(0 0 0 / 0.3);
+  opacity: 0.95;
   transition:
     transform 0.08s ease,
     box-shadow 0.08s ease;
 }
 .sp-act svg {
-  width: 36px;
-  height: 36px;
+  width: 42px;
+  height: 42px;
 }
 .sp-act.cooling::after {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: conic-gradient(rgb(10 40 38 / 0.6) calc(var(--sp-cd) * 360deg), transparent 0);
+  background: conic-gradient(rgb(6 8 24 / 0.6) calc(var(--sp-cd) * 360deg), transparent 0);
 }
 .sp-act.down {
-  transform: translateY(4px) scale(0.94);
-  box-shadow:
-    0 1px 0 #0a5f55,
-    0 0 20px rgb(123 227 212 / 0.75);
+  transform: translateY(3px) scale(0.94);
+  background: color-mix(in srgb, var(--sp-act-c) 22%, rgb(24 26 56 / 0.9));
+  box-shadow: 0 0 24px color-mix(in srgb, var(--sp-act-c) 85%, transparent);
 }
-/* Dive: same size, orange, left of the racket button, level with its middle (180° on the arc). */
+/* Dive: same size, gold, left of the racket button, level with its middle (180° on the arc). */
 .sp-dive {
+  --sp-act-c: #ffc93c;
   right: calc(var(--sp-cx) + 92px - 32px + env(safe-area-inset-right, 0px));
   bottom: calc(var(--sp-cy) - 32px + env(safe-area-inset-bottom, 0px));
-  background: radial-gradient(circle at 35% 28%, var(--sp-cream), var(--sp-gold) 45%, var(--sp-amber));
-  box-shadow:
-    0 5px 0 #a8620f,
-    0 9px 16px rgb(0 0 0 / 0.25);
-}
-.sp-dive.down {
-  box-shadow:
-    0 1px 0 #a8620f,
-    0 0 20px rgb(255 209 102 / 0.75);
 }
 /* Cooldown seconds over the touch buttons / chips (cooldown.ts), and the flash when it is ready again. */
 .sp-cd-num {
@@ -881,10 +874,13 @@
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 28%, #7be3d4, #1fb5a3 55%, #0e8576);
+  /* Same dark glass + coloured figure as the touch buttons. */
+  color: #7be3d4;
+  background: rgb(24 26 56 / 0.9);
+  box-shadow: inset 0 0 0 2px currentColor;
 }
 .sp-chip-dive .sp-chip-icon {
-  background: radial-gradient(circle at 35% 28%, var(--sp-cream), var(--sp-gold) 45%, var(--sp-amber));
+  color: #ffc93c;
 }
 .sp-chip-icon svg {
   width: 22px;

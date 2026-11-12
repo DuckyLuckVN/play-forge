@@ -6,12 +6,12 @@ const mats = (r: ChargeRing) =>
   r.root.children.map((c) => ((c as Mesh).material as MeshBasicMaterial).opacity)
 
 describe('rings at the feet', () => {
-  it('the charge ring keeps its look; the cooldown ring sits just outside it, lavender over a navy track (reads on the teal court), no pulse', () => {
+  it('the charge ring keeps its look; the cooldown ring sits just outside it, lime over a navy track (reads on the teal court), no pulse', () => {
     expect(CHARGE_LOOK).toMatchObject({ inner: 0.44, outer: 0.56, pulse: true })
     expect(CHARGE_LOOK.low.getHexString()).toBe('7ef0c8')
     expect(COOLDOWN_LOOK).toMatchObject({ inner: 0.6, outer: 0.74, pulse: false })
     expect(COOLDOWN_LOOK.inner).toBeGreaterThan(CHARGE_LOOK.outer)
-    expect(COOLDOWN_LOOK.low.getHexString()).toBe('b9a6ff')
+    expect(COOLDOWN_LOOK.low.getHexString()).toBe('c6f26b')
     expect(COOLDOWN_LOOK.full.getHexString()).toBe('fff1a8')
     expect(COOLDOWN_LOOK.track).toMatchObject({ opacity: 0.5, width: 0.14 })
     expect(COOLDOWN_LOOK.track?.color.getHexString()).toBe('181a38')
@@ -42,7 +42,7 @@ describe('rings at the feet', () => {
     expect(c.root.scale.x).toBeGreaterThan(1)
   })
 
-  it('warms only over the last quarter: lavender until 75%, cream at full', () => {
+  it('warms only over the last quarter: lime until 75%, cream at full', () => {
     expect(warmth(0.5, 0.75)).toBe(0)
     expect(warmth(0.875, 0.75)).toBeCloseTo(0.5)
     expect(warmth(1, 0.75)).toBe(1)
@@ -51,7 +51,7 @@ describe('rings at the feet', () => {
     const r = new ChargeRing(COOLDOWN_LOOK)
     const fill = r.root.children[1] as Mesh
     r.update(0.5, 0, 0, 0)
-    expect((fill.material as MeshBasicMaterial).color.getHexString()).toBe('b9a6ff')
+    expect((fill.material as MeshBasicMaterial).color.getHexString()).toBe('c6f26b')
   })
 
   it('pops when ready (grows and fades ~0.3 s, then hides); hide() and the charge ring never pop', () => {

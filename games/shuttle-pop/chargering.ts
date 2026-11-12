@@ -42,14 +42,14 @@ export const CHARGE_LOOK: Readonly<RingLook> = {
 
 /**
  * The ability cooldown ring, just outside the charge ring (no overlap), styled like the Jump / Dive buttons:
- * a dark navy track the full band wide that refills in soft lavender (reads on the teal court and the sand,
+ * a dark navy track the full band wide that refills in fresh lime (reads on the teal court and the sand,
  * apart from the charge ring's mint / gold), warms to cream over the last quarter, then pops when ready.
  */
 const READY = new Color('#fff1a8')
 export const COOLDOWN_LOOK: Readonly<RingLook> = {
   inner: 0.6,
   outer: 0.74,
-  low: new Color('#b9a6ff'),
+  low: new Color('#c6f26b'),
   high: READY,
   full: READY,
   pulse: false,

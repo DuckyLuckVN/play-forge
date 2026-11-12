@@ -189,10 +189,35 @@ function actIcon(): SVGSVGElement {
   return svg
 }
 
+/** A media-query matcher (globalThis.matchMedia by default; tests pass their own). */
+export type MediaMatch = (query: string) => boolean
+
+const browserMatch: MediaMatch = (q) => {
+  try {
+    return globalThis.matchMedia?.(q).matches ?? false
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Touch-first device: the touch controls show from the start and the keyboard chips never do. A coarse
+ * primary pointer, or a touch screen with no pointer that can hover (some phones / tablets report a
+ * fine primary pointer). A touch laptop has a mouse / trackpad that hovers, so it keeps the key chips
+ * (its first touch still turns the pad on).
+ */
+export function touchFirst(
+  match: MediaMatch = browserMatch,
+  touchPoints: number = globalThis.navigator?.maxTouchPoints ?? 0,
+): boolean {
+  if (match('(pointer: coarse)')) return true
+  return (touchPoints > 0 || match('(any-pointer: coarse)')) && !match('(any-hover: hover)')
+}
+
 /**
  * Touch controls' visuals: a floating stick (rests dim in the bottom-left corner, jumps under the
  * thumb while held), the swing button bottom-right, Jump to its left and Dive above it (one shared
- * cooldown dims both). Hidden until the device has a coarse pointer
+ * cooldown dims both). Hidden until the device is touch-first (touchFirst)
  * or the first touch lands. Input logic lives in input.ts; this only draws.
  */
 export class TouchPad {
@@ -207,7 +232,7 @@ export class TouchPad {
   private knobEl: HTMLElement
   private badges: CooldownBadge[]
 
-  constructor() {
+  constructor(touch: boolean = touchFirst()) {
     this.knobEl = h('div', { class: 'sp-knob' })
     this.stickEl = h('div', { class: 'sp-stick idle' }, this.knobEl)
     this.stickEl.style.setProperty('--sp-stick-r', `${STICK_RADIUS}px`)
@@ -216,7 +241,7 @@ export class TouchPad {
     this.diveEl = h('div', { class: 'sp-act sp-dive' }, diveIcon())
     this.root = h('div', { class: 'sp-touch' }, this.stickEl, this.actEl, this.diveEl, this.swingEl)
     this.root.setAttribute('aria-hidden', 'true')
-    this.root.hidden = !globalThis.matchMedia?.('(pointer: coarse)').matches
+    this.root.hidden = !touch
     this.badges = [new CooldownBadge(this.actEl), new CooldownBadge(this.diveEl)]
   }
 

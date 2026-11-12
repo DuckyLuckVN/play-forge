@@ -782,13 +782,6 @@
   width: 42px;
   height: 42px;
 }
-.sp-act.cooling::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: conic-gradient(rgb(6 8 24 / 0.6) calc(var(--sp-cd) * 360deg), transparent 0);
-}
 .sp-act.down {
   transform: translateY(3px) scale(0.94);
   background: color-mix(in srgb, var(--sp-act-c) 22%, rgb(24 26 56 / 0.9));
@@ -799,6 +792,19 @@
   --sp-act-c: #ffc93c;
   right: calc(var(--sp-cx) + 92px - 32px + env(safe-area-inset-right, 0px));
   bottom: calc(var(--sp-cy) - 32px + env(safe-area-inset-bottom, 0px));
+}
+/*
+ * Cooling: the ring itself is the timer. The glow goes out and the ring turns into a dim track that refills
+ * in the button's colour, clockwise from the top (--sp-cd = share left, cooldown.ts); full = ready (flash).
+ */
+.sp-act.cooling,
+.sp-act.cooling.down {
+  border-color: transparent;
+  box-shadow: 0 6px 14px rgb(0 0 0 / 0.3);
+  background:
+    radial-gradient(closest-side, rgb(24 26 56 / 0.92) calc(100% - 5px), transparent calc(100% - 4px))
+      border-box,
+    conic-gradient(var(--sp-act-c) calc((1 - var(--sp-cd)) * 360deg), rgb(255 255 255 / 0.16) 0) border-box;
 }
 /* Cooldown seconds over the touch buttons / chips (cooldown.ts), and the flash when it is ready again. */
 .sp-cd-num {
@@ -816,8 +822,9 @@
 .sp-cd-num:empty {
   display: none;
 }
+/* Cooling dims the figure only (the ring is the timer and stays bright). */
 .sp-act.cooling svg,
-.sp-chip.cooling .sp-chip-icon {
+.sp-chip.cooling .sp-chip-icon svg {
   opacity: 0.35;
 }
 .sp-act.ready,
@@ -890,14 +897,12 @@
   height: 24px;
   font-size: 13px;
 }
-/* The sweep: the cooling share darkens the chip from the left; the seconds sit over the icon. */
-.sp-chip.cooling::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  width: calc(var(--sp-cd) * 100%);
-  background: rgb(10 10 20 / 0.55);
-  pointer-events: none;
+/* Cooling: the icon's ring refills like the touch buttons' (clockwise from the top); the seconds sit over it. */
+.sp-chip.cooling .sp-chip-icon {
+  box-shadow: none;
+  background:
+    radial-gradient(closest-side, rgb(24 26 56 / 0.92) calc(100% - 3.5px), transparent calc(100% - 3px)),
+    conic-gradient(currentColor calc((1 - var(--sp-cd)) * 360deg), rgb(255 255 255 / 0.18) 0);
 }
 .sp-chip .sp-cd-num {
   inset: 0 auto 0 6px;

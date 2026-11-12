@@ -16,6 +16,8 @@ export interface SpPrefs {
   path: RingMode
   /** The Jump / Dive buttons also swing by themselves (default false: the player swings). */
   autoSwing: boolean
+  /** Name tags over the chibis (nametags.ts); default true (shown). */
+  nameTags: boolean
   /** Graphics look (look.ts / quality.ts): Auto (the quality governor picks) or a pinned Low / Medium / High. */
   graphics: GraphicsPref
 }
@@ -46,7 +48,14 @@ const unit = (v: unknown): number =>
 export function parsePrefs(raw: unknown): SpPrefs {
   const r =
     raw && typeof raw === 'object'
-      ? (raw as { camera?: unknown; ring?: unknown; path?: unknown; autoSwing?: unknown; graphics?: unknown })
+      ? (raw as {
+          camera?: unknown
+          ring?: unknown
+          path?: unknown
+          autoSwing?: unknown
+          nameTags?: unknown
+          graphics?: unknown
+        })
       : {}
   const cam = r.camera
   const c = cam && typeof cam === 'object' ? (cam as Record<string, unknown>) : {}
@@ -57,6 +66,7 @@ export function parsePrefs(raw: unknown): SpPrefs {
     ring,
     path,
     autoSwing: r.autoSwing === true,
+    nameTags: r.nameTags !== false,
     graphics: GRAPHICS_PREFS.find((g) => g === r.graphics) ?? DEFAULT_GRAPHICS,
   }
 }

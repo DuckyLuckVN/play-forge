@@ -36,6 +36,15 @@ describe('shuttle-pop prefs', () => {
     expect(createPrefs(m).get().autoSwing).toBe(true)
   })
 
+  it('name tags: shown by default (old saves too); only a stored false hides them', () => {
+    expect(createPrefs(mem()).get().nameTags).toBe(true)
+    expect(parsePrefs({}).nameTags).toBe(true)
+    expect(parsePrefs({ nameTags: 'no' }).nameTags).toBe(true)
+    const m = mem()
+    createPrefs(m).set({ nameTags: false })
+    expect(createPrefs(m).get().nameTags).toBe(false)
+  })
+
   it('graphics: Auto by default (old saves too), garbage → Auto, a pinned look persists', () => {
     expect(createPrefs(mem()).get().graphics).toBe('auto')
     for (const graphics of ['ultra', 2, null, 'High']) expect(parsePrefs({ graphics }).graphics).toBe('auto')
@@ -82,6 +91,7 @@ describe('shuttle-pop prefs', () => {
       ring: 'always',
       path: 'hidden',
       autoSwing: false,
+      nameTags: true,
       graphics: 'auto',
     })
     for (const ring of ['x', 3, null, 'Near']) expect(parsePrefs({ ring }).ring).toBe('always')
@@ -107,6 +117,7 @@ describe('shuttle-pop prefs', () => {
       ring: 'hidden',
       path: 'hidden',
       autoSwing: false,
+      nameTags: true,
       graphics: 'auto',
     })
   })

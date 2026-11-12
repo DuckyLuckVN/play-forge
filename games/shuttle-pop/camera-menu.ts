@@ -83,6 +83,18 @@ const autoSwingPicker = (): HTMLElement =>
     'sp-auto-row',
   )
 
+/** Name tags over the players (nametags.ts): Show (default) / Hide. */
+const nameTagsPicker = (): HTMLElement =>
+  segmentedPref(
+    'nameTags',
+    t('Name tags'),
+    [
+      { value: true, text: t('Show') },
+      { value: false, text: t('Hide') },
+    ],
+    'sp-tags-row',
+  )
+
 /** Graphics look: Auto (steps down by itself when frames run slow) or a pinned Low / Medium / High. */
 const graphicsPicker = (): HTMLElement =>
   segmentedPref(
@@ -94,7 +106,7 @@ const graphicsPicker = (): HTMLElement =>
 
 /**
  * The panel body of the view-settings menu: height and tilt of the player's own camera, when the
- * landing ring shows, whether Jump / Dive swing by themselves and the graphics look. Saved in this browser (prefs.ts) and applied live by the renderer; sliders show
+ * landing ring shows, whether Jump / Dive swing by themselves, name tags and the graphics look. Saved in this browser (prefs.ts) and applied live by the renderer; sliders show
  * the raw saved value, the court-framing clamp is applied at render time.
  */
 export function viewPanel(): { nodes: HTMLElement[] } {
@@ -126,6 +138,7 @@ export function viewPanel(): { nodes: HTMLElement[] } {
       ringPicker(),
       pathPicker(),
       autoSwingPicker(),
+      nameTagsPicker(),
       graphicsPicker(),
       note,
     ],

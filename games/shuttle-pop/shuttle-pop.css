@@ -976,6 +976,62 @@
   z-index: 3;
 }
 
+/* ---------- Name tags (nametags.ts): a pill over each chibi, the team's colour on its rim ---------- */
+.sp-tags {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 2; /* with the bubbles, below .sp-cam (3) */
+}
+.sp-tag {
+  --sp-tag: var(--sp-white);
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: var(--sp-white);
+  background: rgb(24 26 56 / 0.78);
+  border: 2px solid var(--sp-tag);
+  font: 800 13px / 1.2 var(--pf-font, inherit);
+  white-space: nowrap;
+  transition:
+    opacity 0.2s ease,
+    font-size 0.2s ease,
+    padding 0.2s ease;
+}
+.sp-tag-name {
+  max-width: 10ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* "You": a solid chip in the team's colour, and a soft glow, so you find yourself at a glance. */
+.sp-tag.you {
+  box-shadow: 0 0 10px color-mix(in srgb, var(--sp-tag) 60%, transparent);
+}
+.sp-tag-you {
+  padding: 0 5px;
+  border-radius: 999px;
+  color: var(--sp-ink, #1b1c3a);
+  background: var(--sp-tag);
+  font-size: 0.8em;
+  text-transform: uppercase;
+}
+/* During a rally: smaller (and fainter, nametags.ts TAG.faint) so it never distracts from the shuttle. */
+.sp-tag.faint {
+  padding: 1px 6px;
+  font-size: 10px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sp-tag {
+    transition: none;
+  }
+}
+
 /* ---------- Reaction bubbles (bubbles.ts): above each chibi's head, follow the jump ---------- */
 .sp-bubbles {
   position: absolute;

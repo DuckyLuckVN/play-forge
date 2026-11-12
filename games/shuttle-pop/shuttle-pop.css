@@ -667,6 +667,8 @@
   -webkit-tap-highlight-color: transparent;
 }
 .sp-touch {
+  /* The thumb buttons' gap to the bottom-right corner (swing, Jump and Dive all follow it). */
+  --sp-edge: 8px;
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -703,11 +705,11 @@
     0 3px 8px rgb(0 0 0 / 0.25),
     inset 0 -3px 0 rgb(230 62 109 / 0.25);
 }
-/* Swing: big round thumb button bottom-right; squashes and glows while pressed. */
+/* Swing: big round thumb button tucked into the bottom-right corner (where the thumb rests in landscape); squashes and glows while pressed. */
 .sp-swing {
   position: absolute;
-  right: calc(20px + env(safe-area-inset-right, 0px));
-  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  right: calc(var(--sp-edge) + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--sp-edge) + env(safe-area-inset-bottom, 0px));
   width: 92px;
   height: 92px;
   border-radius: 50%;
@@ -744,8 +746,8 @@
 .sp-act {
   --sp-cd: 0;
   position: absolute;
-  right: calc(20px + 92px + 18px + env(safe-area-inset-right, 0px));
-  bottom: calc(26px + env(safe-area-inset-bottom, 0px));
+  right: calc(var(--sp-edge) + 92px + 18px + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--sp-edge) + 6px + env(safe-area-inset-bottom, 0px));
   width: 64px;
   height: 64px;
   border-radius: 50%;
@@ -783,8 +785,8 @@
 }
 /* Dive: same size, orange, stacked above the racket button. */
 .sp-dive {
-  right: calc(20px + 14px + env(safe-area-inset-right, 0px));
-  bottom: calc(20px + 92px + 16px + env(safe-area-inset-bottom, 0px));
+  right: calc(var(--sp-edge) + 14px + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--sp-edge) + 92px + 16px + env(safe-area-inset-bottom, 0px));
   background: radial-gradient(circle at 35% 28%, var(--sp-cream), var(--sp-gold) 45%, var(--sp-amber));
   box-shadow:
     0 5px 0 #a8620f,

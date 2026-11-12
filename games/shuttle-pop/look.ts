@@ -45,14 +45,15 @@ export const LOOK = {
   } satisfies Record<Exclude<LookTier, 'low'>, ShadowLook>,
   /**
    * Bloom on the HDR image: the threshold sits above anything the sun lights, so only the lamp bulbs and
-   * lanterns (drawn at `glow` × their colour) bloom. Small and soft.
+   * lanterns (drawn at `glow` luminance) bloom. Weak and tight: a soft halo, never a dazzle at the screen
+   * edges (the near lanterns are big on screen).
    */
-  bloom: { strength: 0.28, radius: 0.3, threshold: 2.4 },
+  bloom: { strength: 0.16, radius: 0.25, threshold: 1.8 },
   /**
    * Lamp bulbs / lanterns / LEDs: the luminance every bulb is drawn at (HDR, whatever its hue), just over the
    * bloom threshold, so they glow softly and never out-shine the shuttle.
    */
-  glow: 2.7,
+  glow: 2,
   /** Contact shading where things meet the ground; subtle so pastels never look dirty. */
   ao: { intensity: 0.55, radius: 0.6, distanceFallOff: 1, thickness: 0.6 } satisfies AoOptions,
   /**
@@ -60,7 +61,7 @@ export const LOOK = {
    * so a little over 1 lands it on full white and it pops over the lit court. Kept under the bloom
    * threshold (no glow smear on a fast shot).
    */
-  shuttleBoost: 1.9,
+  shuttleBoost: 1.6,
   /** Its ground shadow's opacity (the dot that tells where it is over the court). */
   shuttleShadow: 0.32,
   grade: { saturation: 1.03, contrast: 1.05, tint: [1.02, 1, 0.98] } satisfies ColorGrade,

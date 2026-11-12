@@ -53,6 +53,8 @@ const IGNORE_DT = 0.1
 export const QUALITY_SETTLE = 2
 /** Consecutive bad windows before a level drop. */
 export const BAD_WINDOWS = 2
+/** After lock(): only sustained slowness steps down (this many bad windows in a row). */
+export const LOCKED_BAD_WINDOWS = 4
 /** Consecutive clean windows before probing one level back up. */
 export const RECOVER_WINDOWS = 5
 /** Clean windows a probe must survive before a later failure no longer locks the ceiling. */
@@ -80,6 +82,8 @@ export class QualityGovernor {
   private probeLeft = 0
   /** Level the last probe climbed to; falling from it later still locks the ceiling (-1: none). */
   private probedTo = -1
+  /** Bad windows in a row before a drop (BAD_WINDOWS; LOCKED_BAD_WINDOWS once locked). */
+  private dropAfter = BAD_WINDOWS
 
   /**
    * `start`: the level to begin at (e.g. a step down on phones). The ceiling stays at the top, so a
@@ -103,6 +107,19 @@ export class QualityGovernor {
     this.badRun = 0
     this.goodRun = 0
     this.settle = QUALITY_SETTLE
+  }
+
+  /**
+   * Stop judging for better: keep this level as the best (no more probes up, so no up / down flapping),
+   * and step down only on sustained slowness (LOCKED_BAD_WINDOWS). For games that check for a while and
+   * then settle (e.g. Shuttle Pop's Auto graphics). No refit: nothing about the current level changes.
+   */
+  lock(): void {
+    this.ceiling = this.level
+    this.probeLeft = 0
+    this.probedTo = -1
+    this.goodRun = 0
+    this.dropAfter = LOCKED_BAD_WINDOWS
   }
 
   /** Drop one level now (e.g. the GPU ran out of memory) and never probe back above it. False at the floor. */
@@ -134,7 +151,7 @@ export class QualityGovernor {
     if (lateShare >= LATE_SHARE || median > 1 / MIN_FPS) {
       this.badRun++
       this.goodRun = 0
-      if (this.badRun < BAD_WINDOWS || this.level >= this.levels.length - 1) return false
+      if (this.badRun < this.dropAfter || this.level >= this.levels.length - 1) return false
       const from = this.level++
       if (this.probeLeft > 0 || from === this.probedTo) {
         this.ceiling = this.level

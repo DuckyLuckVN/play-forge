@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { PIXEL_BUDGET, RECOVER_WINDOWS, pickDpr, QUALITY_LEVELS, QualityGovernor } from './quality'
+import {
+  LOCKED_BAD_WINDOWS,
+  PIXEL_BUDGET,
+  RECOVER_WINDOWS,
+  pickDpr,
+  QUALITY_LEVELS,
+  QualityGovernor,
+} from './quality'
 
 describe('pickDpr', () => {
   it('keeps full density on small views', () => {
@@ -256,5 +263,34 @@ describe('QualityGovernor', () => {
     expect(g.level).toBe(1)
     expect(g.current).toBe(ladder[1])
     expect(g.stepDown()).toBe(false)
+  })
+
+  it('lock(): never probes up again, however clean', () => {
+    const g = new QualityGovernor(QUALITY_LEVELS, 1)
+    settled(g)
+    g.lock()
+    feed(
+      g,
+      repeat(60 * RECOVER_WINDOWS * 4, () => 1 / 60),
+    )
+    expect(g.level).toBe(1)
+  })
+
+  it('lock(): a short slow patch no longer drops; sustained slowness still does', () => {
+    const g = new QualityGovernor()
+    settled(g)
+    g.lock()
+    expect(
+      feed(
+        g,
+        repeat(60 * (LOCKED_BAD_WINDOWS - 1), () => 1 / 40),
+      ),
+    ).toBe(false)
+    expect(g.level).toBe(0)
+    feed(
+      g,
+      repeat(60, () => 1 / 40),
+    )
+    expect(g.level).toBe(1)
   })
 })

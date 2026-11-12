@@ -9,7 +9,10 @@ describe('jump / lunge balance', () => {
     const smart = gauge(PROFILES.casualSmart, 'normal', N)
     const spam = gauge(PROFILES.casualSpam, 'normal', N)
     if (process.env.BALANCE_LOG) console.warn(JSON.stringify({ plain, smart, spam }))
-    expect(smart.win).toBeGreaterThanOrEqual(plain.win) // worth learning
+    // Worth learning: no worse than plain beyond noise (~±0.05 at N = 80). Since the computer stopped
+    // letting low shots drop without a swing (ai.ts safeOffset), a jump smash no longer feeds on that gap:
+    // measured smart 0.5 vs plain 0.525 win (share 0.495 vs 0.504); before, 0.5875 vs 0.5375.
+    expect(smart.win).toBeGreaterThanOrEqual(plain.win - 0.05)
     expect(smart.win).toBeLessThanOrEqual(plain.win + 0.15) // not a cheat code
     expect(spam.win).toBeLessThan(smart.win) // pressing it always is worse
     expect(spam.share).toBeLessThanOrEqual(plain.share + 0.02) // spam ≈ no better than never

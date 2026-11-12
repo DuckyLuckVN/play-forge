@@ -464,7 +464,10 @@ export const N = 80
 
 // Measured at 973e671 before slice 10 (power swing), N = 80; the power-swing balance band
 // ('power swing balance', balance-power.simulation.test.ts) holds every row near these.
-// `tap` = casual who never charges.
+// `tap` = casual who never charges. Re-measured after the 2026-11-12 AI retune (the computer always swings;
+// its misses are visible whiffs / Late floaters; ai.ts LEVELS): every row still inside its band, e.g.
+// casual 0.988 / 0.525 / 0.087 win and 0.721 / 0.504 / 0.343 share v easy / normal / hard (N = 80), with
+// longer rallies (casual shots per point 3.63 / 5.90 / 6.03, was 3.48 / 5.69 / 5.86).
 export const BASELINE = {
   'casual v easy': { win: 0.9875, share: 0.763 },
   'casual v normal': { win: 0.5375, share: 0.512 },

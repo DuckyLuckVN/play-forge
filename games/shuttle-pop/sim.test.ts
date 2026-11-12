@@ -728,7 +728,7 @@ describe('lag-compensated hits (launch from the rewound contact)', () => {
     // Recorded before hits launched from the rewound contact (AI swings have rewind 0: a no-op for them);
     // re-recorded when the power swing changed charged launches (the bots charge) and for the full-charge recovery (seed 11);
     // re-recorded when the bots started to jump / lunge (ai.ts LEVELS.ability), and when the lunge
-    // started to really slide (seed 2).
+    // started to really slide (seed 2), and for the 2026-11-12 AI retune (no silent misses, LEVELS, tactics).
     const fingerprint: number[][] = []
     const finals: SpState[] = []
     for (let seed = 1; seed <= 20; seed++) {
@@ -739,26 +739,26 @@ describe('lag-compensated hits (launch from the rewound contact)', () => {
       finals.push(s)
     }
     expect(fingerprint).toEqual([
-      [1, 1, 1, 4, 2, 1, 1703683420],
-      [0, 0, 9, 0, 2, 0, 440012081],
-      [1, 0, 4, 4, 0, 1, 1071847752],
-      [1, 0, 6, 2, 1, 1, 1071847753],
-      [0, 0, 8, 0, 3, 3, 1071847754],
-      [0, 1, 0, 9, 3, 2, 440012085],
-      [1, 0, 5, 3, 2, 1, 1071847756],
-      [1, 1, 0, 5, 1, 2, 1703683427],
-      [0, 0, 12, 0, 3, 4, -1455494922],
-      [0, 0, 9, 0, 2, 3, 440012089],
-      [0, 1, 5, 3, 3, 1, 1071847760],
-      [1, 1, 2, 3, 1, 1, 1703683431],
-      [1, 0, 4, 4, 2, 1, 1071847762],
-      [1, 1, 3, 2, 1, 2, -1959448193],
-      [0, 0, 8, 0, 2, 3, 1071847764],
-      [0, 0, 8, 0, 2, 2, 1071847765],
-      [0, 0, 10, 0, 3, 3, -191823574],
-      [0, 0, 10, 0, 3, 4, -191823573],
-      [0, 0, 7, 0, 1, 3, 1703683438],
-      [0, 0, 11, 0, 3, 4, -823659241],
+      [0, 0, 13, 0, 5, 4, -2087330600],
+      [1, 0, 3, 4, 0, 2, 1703683421],
+      [0, 2, 3, 3, 2, 0, 1703683422],
+      [1, 0, 1, 6, 1, 0, 1703683423],
+      [0, 0, 9, 0, 2, 3, 440012084],
+      [1, 1, 0, 4, 1, 1, -1959448201],
+      [1, 0, 6, 3, 2, 1, 440012086],
+      [0, 1, 4, 8, 3, 4, -1455494923],
+      [0, 1, 1, 8, 2, 3, 440012088],
+      [0, 0, 10, 0, 1, 2, -191823581],
+      [0, 0, 11, 0, 3, 2, -823659250],
+      [0, 1, 2, 8, 2, 2, -191823579],
+      [0, 0, 9, 0, 1, 2, 440012092],
+      [1, 1, 3, 2, 1, 1, -1959448193],
+      [1, 0, 3, 7, 2, 1, -191823576],
+      [1, 0, 3, 6, 0, 2, 440012095],
+      [0, 0, 9, 0, 3, 3, 440012096],
+      [1, 0, 1, 7, 2, 3, 1071847767],
+      [0, 0, 9, 0, 0, 3, 440012098],
+      [0, 1, 5, 3, 3, 1, 1071847769],
     ])
     const shuttle = (s: SpState) => ({
       pos: s.shuttle.pos,
@@ -766,18 +766,18 @@ describe('lag-compensated hits (launch from the rewound contact)', () => {
       lastHitter: s.shuttle.lastHitter,
     })
     expect(shuttle(finals[0])).toEqual({
-      pos: { x: -0.35118484681342194, y: 1.293311339477553, z: 1.5552314125963136 },
-      vel: { x: 2.861929622214458, y: 3.046933112049844, z: -6.611121650518929 },
+      pos: { x: 0.12586644319516704, y: 3.339972512884435, z: -0.08573807386155502 },
+      vel: { x: 0.3764278853494044, y: 1.633769134173773, z: -4.669030124007942 },
       lastHitter: 1,
     })
     expect(shuttle(finals[1])).toEqual({
-      pos: { x: 1.504761714157241, y: 0.5044862425603807, z: -5.206450931944585 },
-      vel: { x: 0.07574510013159683, y: -7.499490006963175, z: -1.2639863585291822 },
-      lastHitter: 1,
+      pos: { x: -0.23485331425952694, y: 3.052342289719443, z: -0.2983834438958312 },
+      vel: { x: 1.358591095044205, y: 4.353216196552958, z: 6.415336354956283 },
+      lastHitter: 0,
     })
     expect(shuttle(finals[2])).toEqual({
-      pos: { x: 0.25382244258068576, y: 1.167678871796932, z: -2.5788653583391055 },
-      vel: { x: 0.8986949147934271, y: -3.063709567868111, z: -7.864988484471223 },
+      pos: { x: 0.20672236036324512, y: 3.4848480613073316, z: -0.515953532199011 },
+      vel: { x: 1.4481727566437648, y: 1.9865173542241958, z: -5.066241665003376 },
       lastHitter: 1,
     })
   })
@@ -2298,11 +2298,12 @@ describe('doubles', () => {
     expect(s.phase).toBe('over')
     expect(s.winner).toBe(0)
   })
-  it('setupDoubles runs 600 ticks without throwing and scores', () => {
+  it('setupDoubles runs 1500 ticks without throwing and scores', () => {
     const s = setupDoubles(['normal', 'normal', 'normal', 'normal'], 11)
     expect(s.players.map((p) => p.id)).toEqual([0, 1, 2, 3].map((i) => `${AI_ID}${i}`))
     expect(s.players.every((p) => p.kind === 'ai' && p.level === 'normal')).toBe(true)
-    const seen = run(s, 600)
+    // 1500 ticks (25 s): since the bots stopped letting low shots drop (ai.ts safeOffset), first rallies run longer.
+    const seen = run(s, 1500)
     const shots = seen.filter((e) => e.k === 'hit' || e.k === 'serve')
     expect(shots.length).toBeGreaterThan(2)
     expect(shots.every((e) => 'by' in e && !!e.by)).toBe(true)

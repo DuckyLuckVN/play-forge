@@ -168,27 +168,34 @@ function racketIcon(): SVGSVGElement {
 
 const STROKE = 'fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"'
 
-/** A figure diving forward (body tipped, arm reaching out, legs trailing) over the floor, speed lines behind: the Dive button's glyph (drawn once). */
+/**
+ * A player diving forward (body tipped, racket arm reaching out, legs trailing) over the floor, speed lines
+ * behind: the Dive button's glyph (drawn once).
+ */
 function diveIcon(): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg')
   svg.setAttribute('viewBox', '0 0 48 48')
   svg.setAttribute('aria-hidden', 'true')
   svg.innerHTML =
-    '<circle cx="33" cy="14" r="5" fill="currentColor"/>' +
-    `<g ${STROKE} stroke-width="4.6"><path d="M28 21 14 30M27 22l17 2M14 30 3 27M14 30 7 38"/></g>` +
-    `<g ${STROKE} stroke-width="2.8" opacity=".6"><path d="M2 14h8M5 20h6M12 44h30"/></g>`
+    '<circle cx="25" cy="15" r="4.6" fill="currentColor"/>' +
+    `<g ${STROKE} stroke-width="4.4"><path d="M20 22 8 30M19 23l11 2M8 30 2 25M8 30 3 37"/></g>` +
+    `<g ${STROKE} stroke-width="3"><path d="M30 25l4 .5"/>` +
+    '<ellipse cx="39.5" cy="25.5" rx="5.6" ry="4.2" transform="rotate(-15 39.5 25.5)" fill="currentColor" fill-opacity=".25"/></g>' +
+    `<g ${STROKE} stroke-width="2.6" opacity=".6"><path d="M3 12h6M5 17h4M8 44h32"/></g>`
   return svg
 }
 
-/** A figure in mid-air (arms up, knees tucked) over its shadow: the Jump button's glyph (drawn once). */
+/** A player in mid-air (racket raised for a smash, knees tucked) over its shadow: the Jump button's glyph (drawn once). */
 function actIcon(): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg')
   svg.setAttribute('viewBox', '0 0 48 48')
   svg.setAttribute('aria-hidden', 'true')
   svg.innerHTML =
-    '<circle cx="24" cy="7" r="5" fill="currentColor"/>' +
-    `<g ${STROKE} stroke-width="4.6"><path d="M24 14v12M24 17l-9-8M24 17l9-8M24 26l-7 5 2 8M24 26l8 4 3 7"/></g>` +
-    '<ellipse cx="24" cy="45.5" rx="9" ry="1.9" fill="currentColor" opacity=".55"/>'
+    '<circle cx="18" cy="13" r="4.6" fill="currentColor"/>' +
+    `<g ${STROKE} stroke-width="4.4"><path d="M18 20v11M18 23l-8-6M18 23l9-7M18 31l-6 5 2 7M18 31l7 4 3 6"/></g>` +
+    `<g ${STROKE} stroke-width="3"><path d="M27 16l3.5-4"/>` +
+    '<ellipse cx="35" cy="8" rx="4.4" ry="5.8" transform="rotate(40 35 8)" fill="currentColor" fill-opacity=".25"/></g>' +
+    '<ellipse cx="19" cy="46" rx="8" ry="1.8" fill="currentColor" opacity=".55"/>'
   return svg
 }
 

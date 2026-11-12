@@ -433,6 +433,8 @@ export class Court3D {
   private bubbles = new ReactionBubbles()
   /** Name tags over the chibis (nametags.ts); names / colours refreshed once per new state (tagState). */
   private tags = new NameTags()
+  /** The player's Name tags setting (prefs.ts). */
+  private tagsOn = prefs.get().nameTags
   private tagState: SpState | null = null
   private shNdcX = 0
   private shNdcY = 0
@@ -615,6 +617,7 @@ export class Court3D {
       this.camWant = p.camera
       this.ringMode = p.ring
       this.pathMode = p.path
+      this.tagsOn = p.nameTags
       if (p.graphics !== this.graphics) {
         this.graphics = p.graphics
         this.view.setLevels(spLadder(p.graphics), spStartLevel(prefersTouch(), p.graphics))
@@ -1879,7 +1882,8 @@ export class Court3D {
       v.applyMatrix4(cam.projectionMatrix)
       const at = toScreen(v, depth, w, h)
       if (bubble) this.bubbles.place(i, this.time, at, this.fades[i], sh)
-      else this.tags.place(i, at, mode, this.fades[i], sh)
+      else if (this.tagsOn) this.tags.place(i, at, mode, this.fades[i], sh)
+      else this.tags.hide(i)
     }
   }
 

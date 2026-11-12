@@ -981,7 +981,7 @@ export class Court3D {
       p.chibi.root.visible = on
       if (on) continue
       p.ring.update(-1, 0, 0, 0)
-      p.cd.update(-1, 0, 0, 0)
+      p.cd.hide()
       p.stars.group.visible = false
       p.fresh = true
     }

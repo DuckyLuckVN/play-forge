@@ -24,6 +24,10 @@ export interface RingLook {
   full: Color
   pulse: boolean
   track?: Readonly<RingTrack>
+  /** The fill blends low → high from this share up (default 0: across the whole fill). */
+  warmFrom?: number
+  /** Pops when it empties after showing (ready): flashes `full` and grows as it fades (RING.pop). */
+  pop?: boolean
 }
 
 /** The swing charge ring. */
@@ -38,18 +42,20 @@ export const CHARGE_LOOK: Readonly<RingLook> = {
 
 /**
  * The ability cooldown ring, just outside the charge ring (no overlap), styled like the Jump / Dive buttons:
- * a dark navy track the full band wide that refills in bright white (white and navy both read on the teal
- * court and the sand, where a teal ring would vanish).
+ * a dark navy track the full band wide that refills in soft lavender (reads on the teal court and the sand,
+ * apart from the charge ring's mint / gold), warms to cream over the last quarter, then pops when ready.
  */
-const COOL = new Color('#ffffff')
+const READY = new Color('#fff1a8')
 export const COOLDOWN_LOOK: Readonly<RingLook> = {
   inner: 0.6,
   outer: 0.74,
-  low: COOL,
-  high: COOL,
-  full: COOL,
+  low: new Color('#b9a6ff'),
+  high: READY,
+  full: READY,
   pulse: false,
   track: { color: new Color('#181a38'), opacity: 0.5, width: 0.14 },
+  warmFrom: 0.75,
+  pop: true,
 }
 
 /**
@@ -68,6 +74,8 @@ const RING = {
   trackOpacity: 0.28,
   pulseHz: 7,
   pulse: 0.08,
+  /** Ready pop: length (s) and how much it grows by the end. */
+  pop: { dur: 0.3, grow: 0.4 },
 } as const
 
 /** The default track: a thin faint white line at the outer edge. */
@@ -87,6 +95,10 @@ export class ChargeRing {
   private track: Mesh
   private trackMat: MeshBasicMaterial
   private trackOpacity: number
+  /** Shown last frame (a hide after showing = ready: pop). */
+  private wasShown = false
+  /** When the ready pop started (s); -Infinity = none. */
+  private popAt = -Infinity
 
   constructor(private readonly look: Readonly<RingLook> = CHARGE_LOOK) {
     // Starts at the back of the ring (toward the camera for the near player) and fills clockwise.
@@ -121,11 +133,16 @@ export class ChargeRing {
    * `time` in s; `alpha` scales its opacity (e.g. others' rings fainter).
    */
   update(charge: number, x: number, z: number, time: number, alpha = 1) {
+    const L = this.look
     if (charge < 0) {
-      this.root.visible = false
+      if (this.wasShown && L.pop) this.popAt = time
+      this.wasShown = false
+      this.drawPop(x, z, time, alpha)
       return
     }
-    const L = this.look
+    this.wasShown = true
+    this.popAt = -Infinity
+    this.track.visible = true
     this.root.visible = true
     this.root.position.x = x
     this.root.position.z = z
@@ -133,7 +150,7 @@ export class ChargeRing {
     const n = Math.max(1, Math.round(charge * RING.segments))
     this.fill.geometry.setDrawRange(0, n * PER_SEGMENT)
     if (full) this.fillMat.color.copy(L.full)
-    else this.fillMat.color.copy(L.low).lerp(L.high, charge)
+    else this.fillMat.color.copy(L.low).lerp(L.high, warmth(charge, L.warmFrom ?? 0))
     const throb = full && L.pulse
     const s = throb ? 1 + RING.pulse * (0.5 + 0.5 * Math.sin(time * RING.pulseHz * Math.PI * 2)) : 1
     this.root.scale.set(s, s, 1)
@@ -141,8 +158,39 @@ export class ChargeRing {
     this.trackMat.opacity = this.trackOpacity * alpha
   }
 
+  /** The ready pop (if one is running at `time`): the full ring in `full`, growing as it fades; else hidden. */
+  private drawPop(x: number, z: number, time: number, alpha: number) {
+    const t = (time - this.popAt) / RING.pop.dur
+    if (!(t >= 0 && t < 1)) {
+      this.root.visible = false
+      return
+    }
+    this.root.visible = true
+    this.track.visible = false
+    this.root.position.x = x
+    this.root.position.z = z
+    this.fill.geometry.setDrawRange(0, Infinity)
+    this.fillMat.color.copy(this.look.full)
+    const s = 1 + RING.pop.grow * (1 - (1 - t) * (1 - t))
+    this.root.scale.set(s, s, 1)
+    this.fillMat.opacity = (1 - t) * alpha
+  }
+
+  /** Hide now, with no ready pop (the player's view goes away). */
+  hide() {
+    this.wasShown = false
+    this.popAt = -Infinity
+    this.root.visible = false
+  }
+
   /** Visible for shader warm-up. */
   set shown(on: boolean) {
     this.root.visible = on
   }
+}
+
+/** How far the fill has blended low → high at `charge`: 0 until `from`, then up to 1 at full. */
+export function warmth(charge: number, from: number): number {
+  if (from <= 0) return charge
+  return Math.min(1, Math.max(0, (charge - from) / (1 - from)))
 }

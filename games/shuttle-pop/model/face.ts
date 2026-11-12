@@ -1,4 +1,5 @@
-// Chibi face: big shiny eyes (dark iris, tinted lower half, two highlights), brows, mouth and blush as
+// Chibi face: shiny eyes (human toy faces a dark bean + one shine; others a dark eye, tinted lower half,
+// two highlights), brows, mouth and blush as
 // thin decals hugging the head surface (a sphere, a box, a muzzle bump: `surfaceOf`), all in ONE mesh. Expressions are morph targets with the same
 // topology (only positions move), so moods blend smoothly: happy (^ ^ eyes, open smile), sad (droopy
 // eyes, raised inner brows, frown), effort (squint, angry brows, yell), blink.
@@ -45,7 +46,7 @@ export interface FaceStyle {
   /** Two lash flicks at each eye's outer top corner (follow the eye's expression shape). */
   lashes: boolean
   /**
-   * Toy eyes (humans): bigger and lower, an iris gradient with a dark pupil, a thick upper lid line; thin
+   * Toy eyes (humans): small solid dark dots, set lower; thin
    * brows, a small open smile, soft (alpha-faded) blush.
    */
   toy: boolean
@@ -112,33 +113,20 @@ const EYE: EyeDims = { a: 0.066, b: 0.086, x: 0.138, y: -0.012 }
 const BROW = { w: 0.05, x: 0.138, y: 0.108, th: 0.019 }
 const MOUTH_Y = -0.125
 /**
- * Toy eyes: dims; iris + pupil size shares; lid line thickness (middle, ends) as shares of the radius;
+ * Toy eyes: dims (small solid dark dots, no shine, no lashes);
  * brows (gap over the eye top); mouth height; soft blush; tongue colour.
  */
 const TOY = {
   // Taller than wide, like the reference's soft oval eyes.
-  eye: { a: 0.064, b: 0.08, x: 0.128, y: -0.092 } as EyeDims,
-  iris: { a: 0.9, b: 0.93, dy: -0.004 },
-  pupil: { a: 0.56, b: 0.58, dy: 0.01 },
-  lid: { mid: 0.05, end: 0.02, from: 0.1 },
-  brow: { gap: 0.018, w: 0.044, th: 0.028 },
+  eye: { a: 0.032, b: 0.04, x: 0.128, y: -0.08 } as EyeDims,
+  brow: { gap: 0.046, w: 0.044, th: 0.028 },
   mouthY: -0.19,
   blush: { a: 0.07, b: 0.04, x: 0.235, y: -0.178 },
   tongue: 0xd4566a,
   /** Open-mouth dark (the toy smile's inside). */
   mouth: 0x6e1e2c,
-  /** Thin dark-brown eye ring and lash line (softer than the eye-dark used elsewhere). */
-  rim: 0x4a2a22,
-  lash: 0x2a1612,
   brows: 0x4a2e22,
 }
-/** Toy lash flicks: one small flick for every toy face; lashed faces (Berry) get three. */
-const TOY_FLICK: readonly (readonly [number, number, number])[] = [[0.92, 0.5, 0.35]]
-const TOY_LASHES: readonly (readonly [number, number, number])[] = [
-  [0.9, 0.55, 0.45],
-  [0.98, 0.25, 0.15],
-  [0.7, 0.82, 0.75],
-]
 /** Mouth size share (shapes below are drawn at 1). */
 const MOUTH_K = 1.3
 const BLUSH = { a: 0.046, b: 0.024, x: 0.215, y: -0.085 }
@@ -238,13 +226,7 @@ function toyMouth(e: Expr): { w: number; top: (t: number) => number; bot: (t: nu
   }
 }
 
-/** `a` → `b` by k (0..1). */
-function mixHex(a: number, b: number, k: number): number {
-  return c.setHex(a).lerp(c2.setHex(b), k).getHex()
-}
-
 const c = new Color()
-const c2 = new Color()
 
 /** Height (+z) of the head surface at (u, v) for a decal `lift` m outside it. */
 export type Surface = (u: number, v: number, lift: number) => number
@@ -288,17 +270,6 @@ export function faceLayout(look: Look, e: Expr): FaceLayout {
   const E = st.toy ? TOY.eye : EYE
   const eyeY = E.y + st.eyeUp
   /** Quad strip through point pairs (outer, inner) running left → right, CCW seen from +z. */
-  const band = (pairs: [number, number, number, number][], layer: number, hex: number) => {
-    const first = out.pos.length / 3
-    for (const [ox, oy, ix, iy] of pairs) {
-      vert(ox, oy, layer, hex)
-      vert(ix, iy, layer, hex)
-    }
-    for (let j = 0; j < pairs.length - 1; j++) {
-      const a = first + j * 2
-      out.idx.push(a, a + 1, a + 2, a + 2, a + 1, a + 3)
-    }
-  }
   const vert = (u: number, v: number, layer: number, hex: number, alpha = 1) => {
     out.pos.push(u, v, surf(u, v, 0.004 + layer * 0.0025))
     c.setHex(hex)
@@ -367,58 +338,34 @@ export function faceLayout(look: Look, e: Expr): FaceLayout {
         return [px + du * ca - dv * sa, py + du * sa + dv * ca]
       })
     }
-    // Eye: dark iris, lower tint, big + small highlight.
+    // Eye: animal / visor faces a dark eye, lower iris tint, big + small highlight; toy faces a bean + one shine.
     const { f, shine } = eyeShape(e, s, E)
     const at = (u: number, v: number): [number, number] => {
       const [dx, dy] = f(u - ex, v - eyeY)
       return [ex + dx, eyeY + dy]
     }
-    disc(ex, eyeY, E.a, E.b, L, st.toy ? TOY.rim : eyeCol, at)
-    if (st.toy) {
-      // Iris: dark at the top, glowing toward the bottom; pupil; then the lid line over the top arc.
-      const top = shade(look.iris, 0.65)
-      const bottom = tint(look.iris, 0.05)
-      const I = TOY.iris
-      disc(ex, eyeY + I.dy, E.a * I.a, E.b * I.b, L + 1, shade(look.iris, 0.15), at, (ang) =>
-        mixHex(top, bottom, (1 - Math.sin(ang)) / 2),
-      )
-      const Pu = TOY.pupil
-      disc(ex, eyeY + Pu.dy, E.a * Pu.a, E.b * Pu.b, L + 2, COL.eye, at)
-      const pairs: [number, number, number, number][] = []
-      const N = 12
-      for (let j = 0; j <= N; j++) {
-        const th = Math.PI * (1 - TOY.lid.from) - (j / N) * Math.PI * (1 - 2 * TOY.lid.from)
-        const sn = Math.sin(th)
-        const w = TOY.lid.end + (TOY.lid.mid - TOY.lid.end) * sn
-        const o = at(ex + Math.cos(th) * E.a * (1 + w * 0.6), eyeY + sn * E.b * (1 + w))
-        const i = at(ex + Math.cos(th) * E.a * 0.97, eyeY + sn * E.b * 0.97)
-        pairs.push([o[0], o[1], i[0], i[1]])
-      }
-      band(pairs, L + 3, TOY.lash)
-    } else disc(ex, eyeY - 0.034, 0.048, 0.039, L + 1, irisCol, at)
-    const hiL = st.toy ? L + 4 : L + 2
-    for (const [hx, hy, hr] of st.toy
-      ? [
-          [0.015, 0.029, 0.02],
-          [-0.016, -0.032, 0.009],
-        ]
+    // Toy eyes: a small solid dark dot (simple, reads at any size).
+    disc(ex, eyeY, E.a, E.b, L, st.toy ? COL.eye : eyeCol, at)
+    if (!st.toy) disc(ex, eyeY - 0.034, 0.048, 0.039, L + 1, irisCol, at)
+    const shines: readonly (readonly [number, number, number])[] = st.toy
+      ? []
       : [
           [0.019, 0.032, 0.024],
           [-0.023, -0.041, 0.011],
-        ]) {
+        ]
+    for (const [hx, hy, hr] of shines) {
       const [cx, cy] = at(ex + hx, eyeY + hy)
-      disc(cx, cy, hr * shine, hr * shine, hiL, COL.shine, (u, v) => [u, v])
+      disc(cx, cy, hr * shine, hr * shine, L + 2, COL.shine, (u, v) => [u, v])
     }
-    const lashes = st.toy ? (st.lashes ? TOY_LASHES : TOY_FLICK) : st.lashes ? LASHES : []
+    const lashes = !st.toy && st.lashes ? LASHES : []
     for (const [ox, oy, tilt] of lashes) {
       // Anchored on the eye's (morphed) outline, so a happy squint carries them down.
       const [cx, cy] = at(ex + s * ox * E.a, eyeY + oy * E.b)
       const ca = Math.cos(tilt * s)
       const sa = Math.sin(tilt * s)
-      // A boy's single flick is shorter than a lash.
-      const la = st.toy && !st.lashes ? LASH.a * 0.6 : LASH.a
+      const la = LASH.a
       const lx = cx + s * la * 0.8
-      disc(lx, cy, la, LASH.b, st.toy ? L + 3 : L, st.toy ? TOY.lash : eyeCol, (u, v) => {
+      disc(lx, cy, la, LASH.b, L, eyeCol, (u, v) => {
         const du = u - lx
         const dv = v - cy
         return [lx + du * ca - dv * sa, cy + du * sa + dv * ca]

@@ -41,7 +41,8 @@ describe('chibi face', () => {
     const { col } = faceLayout(look, 'neutral')
     const alphas = col.filter((_, i) => i % 4 === 3)
     expect(alphas.some((a) => a === 0)).toBe(true)
-    expect(alphas.filter((a) => a === 1).length).toBeGreaterThan(alphas.length * 0.7)
+    // Only the blush fades (dot eyes leave few other vertices, so a lower share).
+    expect(alphas.filter((a) => a === 1).length).toBeGreaterThan(alphas.length * 0.5)
     // Non-toy faces stay fully opaque.
     const cat = faceLayout(PRESETS[4].look, 'neutral').col.filter((_, i) => i % 4 === 3)
     expect(cat.every((a) => a === 1)).toBe(true)

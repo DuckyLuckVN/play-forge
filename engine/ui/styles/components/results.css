@@ -178,15 +178,33 @@
     font-size: var(--pf-fs-sm);
     text-align: center;
   }
+  /* Phones: tight cells, headers wrap per word, a shorter name, so five stat columns fit without scrolling. */
   @media (max-width: 520px) {
     .pf-leaderboard th,
     .pf-leaderboard td {
-      padding: 5px 4px;
+      padding: 5px 2px;
       font-size: 12px;
     }
+    .pf-leaderboard th {
+      font-size: 10px;
+      letter-spacing: 0;
+    }
+    .pf-leaderboard td.pf-rank {
+      width: 1.8em;
+    }
+    .pf-lb-who {
+      gap: 4px;
+    }
     .pf-leaderboard .pf-lb-avatar {
-      width: 24px;
-      height: 24px;
+      width: 22px;
+      height: 22px;
+    }
+    .pf-lb-player {
+      max-width: 7ch;
+    }
+    .pf-lb-badge {
+      padding: 0 4px;
+      font-size: 10px;
     }
   }
 }

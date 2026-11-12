@@ -3,7 +3,7 @@
 // benches + lantern strings, the cheering crowd (crowd.ts) and ambient life (ambient.ts).
 //
 // Draw-call lean: every repeated thing is one InstancedMesh (or one merged geometry), so the whole
-// park is ~22 draw calls. With real shadows on (look.ts tiers), the lawn and the near props cast / receive
+// park is ~30 draw calls. With real shadows on (look.ts tiers), the lawn and the near props cast / receive
 // the sun's soft shadow; the painted far layer, sky and ambient life never do. The background is kept soft
 // (muted colours, fog, pre-hazed far layer) so the court, players and white shuttle pop; nothing tall
 // stands between the camera and the court, and nothing pale sits behind the far baseline.
@@ -14,6 +14,7 @@ import {
   BackSide,
   BoxGeometry,
   BufferGeometry,
+  CanvasTexture,
   CircleGeometry,
   Color,
   DirectionalLight,
@@ -30,6 +31,7 @@ import {
   Object3D,
   ShaderMaterial,
   SphereGeometry,
+  SRGBColorSpace,
   Vector3,
   type Scene,
 } from 'three'
@@ -38,7 +40,7 @@ import { Ambient } from './ambient'
 import { Backdrop, HAZE } from './backdrop'
 import { courtScale, spreadXZ } from './courtsize'
 import { Crowd } from './crowd'
-import { buildProps, instanced, lambert, yawTo } from './kit'
+import { buildProps, instanced, lambert, rng, showDetail, yawTo, type Detail } from './kit'
 import { LOOK, type LookTier } from './look'
 import type { CourtDims } from './physics'
 import { BENCHES, LANTERN, lanternHang, parkLayout } from './props'
@@ -68,12 +70,58 @@ const PARK = {
  */
 const SUN_DIR = new Vector3(-12, 12, 2).normalize()
 const SKY_R = 100
-const FOG_NEAR = 40
-const FOG_FAR = 150
+/** Fog: starts past the court (it never touches play), fades the far tree ring a little into the haze. */
+const FOG_NEAR = 34
+const FOG_FAR = 130
 /** Sun shadow box half-size on the Normal court (grows with the court). */
 const SHADOW_HALF = LOOK.shadowHalf
 /** How far up the sun's beam the shadow camera sits (m), and its depth range. */
 const SUN_DIST = 40
+
+/** Prop detail per graphics look (kit.ts showDetail): Low draws only the core park. */
+const DETAIL: Record<LookTier, Detail> = { low: 0, medium: 1, high: 2 }
+
+/** Lawn variation: soft lighter / warmer / deeper patches (m across), painted once on a canvas. */
+const LAWN = {
+  size: 1024,
+  base: PARK.grass,
+  patches: [
+    { color: '#8fc35e', n: 70, r: [2, 6] },
+    { color: '#a0c867', n: 30, r: [1.5, 4] },
+    { color: '#6aa547', n: 60, r: [2, 5] },
+  ],
+  alpha: 0.75,
+} as const
+
+/** The lawn's colour map: base green with soft blotches (seeded), covering the grass disc (2 × `radius` m). */
+function lawnTexture(radius: number): CanvasTexture {
+  const c = document.createElement('canvas')
+  c.width = c.height = LAWN.size
+  const ctx = c.getContext('2d')
+  const tex = new CanvasTexture(c)
+  tex.colorSpace = SRGBColorSpace
+  if (!ctx) return tex
+  const px = LAWN.size / (radius * 2)
+  ctx.fillStyle = LAWN.base
+  ctx.fillRect(0, 0, LAWN.size, LAWN.size)
+  const r = rng(13)
+  for (const p of LAWN.patches)
+    for (let k = 0; k < p.n; k++) {
+      // Mostly near the park (the middle third of the disc), where the camera looks.
+      const x = LAWN.size * (0.5 + (r() - 0.5) * 0.36)
+      const y = LAWN.size * (0.5 + (r() - 0.5) * 0.36)
+      const rad = (p.r[0] + r() * (p.r[1] - p.r[0])) * px
+      const g = ctx.createRadialGradient(x, y, 0, x, y, rad)
+      g.addColorStop(0, p.color)
+      g.addColorStop(1, p.color + '00')
+      ctx.globalAlpha = LAWN.alpha
+      ctx.fillStyle = g
+      ctx.fillRect(x - rad, y - rad, rad * 2, rad * 2)
+    }
+  ctx.globalAlpha = 1
+  tex.anisotropy = 4
+  return tex
+}
 
 /** Golden-hour gradient + a soft sun glow. One draw call, no fog. */
 function makeSky(): Mesh {
@@ -178,6 +226,8 @@ export class Park {
   /** The park's prop InstancedMeshes (props.ts; rebuilt on a court change). */
   private props = new Group()
   private benches = makeBenches()
+  /** Prop detail for the current look (kept across a court rebuild). */
+  private detail: Detail = DETAIL.high
   private wire = new LineSegments(wireGeometry(this.k), new LineBasicMaterial({ color: PARK.wire }))
 
   constructor(scene: Scene) {
@@ -198,9 +248,10 @@ export class Park {
     this.sun.shadow.normalBias = LOOK.shadowNormalBias
     this.setLook('high')
 
+    const lawnR = SKY_R * 0.9
     const grass = new Mesh(
-      new CircleGeometry(SKY_R * 0.9, 48),
-      new MeshLambertMaterial({ color: PARK.grass }),
+      new CircleGeometry(lawnR, 48),
+      new MeshLambertMaterial({ map: lawnTexture(lawnR) }),
     )
     grass.rotation.x = -Math.PI / 2
     grass.receiveShadow = true
@@ -217,9 +268,15 @@ export class Park {
       this.crowd.root,
       this.ambient.root,
     )
-    this.props.add(...buildProps(parkLayout()))
+    this.addProps(parkLayout())
     placeBenches(this.benches, this.k)
     scene.add(this.root)
+  }
+
+  private addProps(layout: ReturnType<typeof parkLayout>) {
+    const meshes = buildProps(layout)
+    showDetail(meshes, this.detail)
+    this.props.add(...meshes)
   }
 
   /**
@@ -236,7 +293,7 @@ export class Park {
       m.dispose()
     }
     this.props.clear()
-    this.props.add(...buildProps(parkLayout(court)))
+    this.addProps(parkLayout(court))
     placeBenches(this.benches, k)
     this.wire.geometry.dispose()
     this.wire.geometry = wireGeometry(k)
@@ -250,10 +307,12 @@ export class Park {
 
   /**
    * Real shadows for a graphics look: Low has none (the sun stops casting: no shadow pass at all), Medium /
-   * High a soft map of their size. Turning casting on / off swaps the lit materials' shadow program variant
+   * High a soft map of their size; the park's ground cover and far trees follow the look's detail. Turning casting on / off swaps the lit materials' shadow program variant
    * (both are compiled in Court3D.warm); a new map size reallocates the map. Rare: between rallies only.
    */
   setLook(tier: LookTier) {
+    this.detail = DETAIL[tier]
+    showDetail(this.props.children as InstancedMesh[], this.detail)
     const on = tier !== 'low'
     this.sun.castShadow = on
     if (!on) return

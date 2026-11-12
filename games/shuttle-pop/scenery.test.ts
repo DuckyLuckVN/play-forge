@@ -152,7 +152,7 @@ describe('Park.setLook', () => {
     expect(sun.shadow.mapSize.x).toBe(2048)
     expect(sun.shadow.intensity).toBeLessThan(1)
   })
-  it('lit props cast + receive the sun shadow; glow bulbs (unlit, HDR for bloom) never do; LED panels only cast', () => {
+  it('lit props cast + receive the sun shadow (ground cover only receives, far props neither); glow bulbs (unlit, HDR for bloom) never do; LED panels only cast', () => {
     const meshes = propsOf(new Park(new Scene())).children as InstancedMesh[]
     const unlit = meshes.filter((m) => (m.material as MeshBasicMaterial).isMeshBasicMaterial)
     const glow = unlit.filter((m) => !(m.material as MeshBasicMaterial).fog)
@@ -160,7 +160,14 @@ describe('Park.setLook', () => {
     const lit = meshes.filter((m) => !unlit.includes(m))
     expect([glow.length, panel.length]).toEqual([1, 1])
     expect(lit.length).toBeGreaterThan(0)
-    for (const m of lit) expect([m.castShadow, m.receiveShadow]).toEqual([true, true])
+    const far = lit.filter((m) => m.name.endsWith(':far'))
+    const cover = lit.filter((m) => ['tuft', 'bloom', 'slab'].includes(m.name))
+    expect(far.length).toBeGreaterThan(0)
+    expect(cover.map((m) => m.name).sort()).toEqual(['bloom', 'slab', 'tuft'])
+    for (const m of lit) {
+      const want = far.includes(m) ? [false, false] : cover.includes(m) ? [false, true] : [true, true]
+      expect([m.name, m.castShadow, m.receiveShadow]).toEqual([m.name, ...want])
+    }
     expect([glow[0].castShadow, glow[0].receiveShadow]).toEqual([false, false])
     expect([panel[0].castShadow, panel[0].receiveShadow]).toEqual([true, false])
     // Every bulb's luminance clears the bloom threshold (so the lamps glow on Medium / High).
@@ -174,5 +181,23 @@ describe('Park.setLook', () => {
       panel[0].getColorAt(i, c)
       expect(Math.max(c.r, c.g, c.b)).toBeLessThanOrEqual(1)
     }
+  })
+
+  it('Low draws only the core props (far ring + extra cover hidden); High shows them all again', () => {
+    const park = new Park(new Scene())
+    const meshes = propsOf(park).children as InstancedMesh[]
+    const shown = () => meshes.filter((m) => m.visible).reduce((n, m) => n + m.count, 0)
+    const all = shown()
+    park.setLook('low')
+    expect(shown()).toBeLessThan(all)
+    // The far ring (Medium+) is gone; only the core back row of unshadowed trees is left.
+    const far = meshes.filter((m) => m.name.endsWith(':far'))
+    for (const m of far) expect(m.count).toBeLessThan(m.instanceMatrix.count)
+    park.setLook('medium')
+    const medium = shown()
+    expect(medium).toBeLessThan(all)
+    park.setLook('high')
+    expect(shown()).toBe(all)
+    for (const m of meshes) expect(m.count).toBe(m.instanceMatrix.count)
   })
 })

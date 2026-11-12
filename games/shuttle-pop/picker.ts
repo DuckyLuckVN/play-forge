@@ -268,32 +268,19 @@ const FACE_SVG: Svg<FaceKind> = {
       ),
     ),
   }),
-  chibiLash: (l) => ({ face: toyFace(l, true) }),
-  chibiBold: (l) => ({ face: toyFace(l, false) }),
-  chibiCalm: (l) => ({ face: toyFace(l, false) }),
-  chibi: (l) => ({ face: toyFace(l, false) }),
+  chibiLash: (l) => ({ face: toyFace(l) }),
+  chibiBold: (l) => ({ face: toyFace(l) }),
+  chibiCalm: (l) => ({ face: toyFace(l) }),
+  chibi: (l) => ({ face: toyFace(l) }),
 }
 
-/** Toy eyes (humans): dark rim, iris darker on top, big pupil, two highlights, a thick upper lid (+ lashes). */
-function toyFace(l: Look, lashes: boolean): string {
+/** Toy eyes (humans): small solid dark dots, as in 3D (face.ts). */
+function toyFace(l: Look): string {
   const brow = hex(shade(l.hair, 0.15))
-  const top = hex(shade(l.iris, 0.5))
-  const iris = hex(l.iris)
-  const low = hex(tint(l.iris, 0.25))
   const eyes = [24.5, 39.5]
     .map((x) => {
-      const o = x < 32 ? -1 : 1
       return (
-        `<ellipse cx="${x}" cy="31" rx="3.9" ry="4.7" fill="${EYE_DARK}"/>` +
-        `<ellipse cx="${x}" cy="31.2" rx="3.4" ry="4.1" fill="${iris}"/>` +
-        `<path d="M${x - 3.4} 30.6A3.4 4.1 0 0 1 ${x + 3.4} 30.6Q${x} 29 ${x - 3.4} 30.6z" fill="${top}"/>` +
-        `<ellipse cx="${x}" cy="33.6" rx="2.4" ry="1.3" fill="${low}"/>` +
-        `<ellipse cx="${x}" cy="31.4" rx="1.8" ry="2.2" fill="${EYE_DARK}"/>` +
-        `<circle cx="${x + 1.1}" cy="29.6" r="1.25" fill="#fff"/><circle cx="${x - 1.2}" cy="33.2" r=".6" fill="#fff"/>` +
-        `<path d="M${x - 4.2} 30Q${x} 25 ${x + 4.2} 30" stroke="${EYE_DARK}" stroke-width="1.1" fill="none" stroke-linecap="round"/>` +
-        (lashes
-          ? `<path d="M${x + o * 3.8} 28.2l${o * 1.8} -1.4M${x + o * 4.2} 29.8l${o * 1.9} -0.5" stroke="${EYE_DARK}" stroke-width=".8" stroke-linecap="round"/>`
-          : '') +
+        `<ellipse cx="${x}" cy="31" rx="2" ry="2.5" fill="${EYE_DARK}"/>` +
         `<path d="M${x - 2.6} 24.2q2.6-1.2 5.2 0" stroke="${brow}" stroke-width=".8" fill="none" stroke-linecap="round"/>`
       )
     })

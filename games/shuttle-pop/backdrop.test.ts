@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hillHeight, skylineBlocks, wrap01 } from './backdrop'
+import { hillHeight, mountainPeaks, skylineBlocks, wrap01 } from './backdrop'
 
 describe('backdrop helpers', () => {
   it('wrap01 keeps drifting offsets in [0, 1)', () => {
@@ -34,5 +34,26 @@ describe('backdrop helpers', () => {
       expect(hillHeight(x, 237, false)).toBeGreaterThan(0)
       expect(hillHeight(x, 237, true)).toBeLessThan(10)
     }
+  })
+})
+
+describe('mountain ranges', () => {
+  const length = 80 * ((85 * Math.PI) / 180) * 2
+  it('are deterministic, span the arc, and stay under the painted top (18 m)', () => {
+    for (const range of [0, 1] as const) {
+      const peaks = mountainPeaks(4, length, range)
+      expect(mountainPeaks(4, length, range)).toEqual(peaks)
+      expect(peaks[0].x - peaks[0].half).toBeLessThanOrEqual(0)
+      const last = peaks[peaks.length - 1]
+      expect(last.x + last.half).toBeGreaterThanOrEqual(length)
+      for (const p of peaks) expect(p.h).toBeLessThan(18)
+    }
+  })
+  it('front range is lower than the back on average (layered depth)', () => {
+    const avg = (r: 0 | 1) => {
+      const p = mountainPeaks(4, length, r)
+      return p.reduce((n, q) => n + q.h, 0) / p.length
+    }
+    expect(avg(1)).toBeLessThan(avg(0))
   })
 })

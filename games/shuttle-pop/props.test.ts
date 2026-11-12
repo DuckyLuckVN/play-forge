@@ -112,6 +112,33 @@ describe('park layout', () => {
       expect([...blockers]).toEqual([])
     })
 
+    it(`${size}: keeps decor off the fans (nothing between knee and head height within 0.3 m of one)`, () => {
+      const fans = FANS.map((f) => spreadXZ(f, k))
+      const hit = layout.filter(
+        (p) =>
+          topOf(p) > 0.3 &&
+          p.y - p.sy / 2 < 1.6 &&
+          p.sx > 0.03 && // balloon strings (thin, tied behind the bench)
+          fans.some((f) => {
+            const [ex, , ez] = extents(p)
+            return Math.abs(p.x - f.x) < ex + 0.3 && Math.abs(p.z - f.z) < ez + 0.3
+          }),
+      )
+      expect(
+        hit.map((p) => [p.shape, p.color, +p.x.toFixed(2), +p.z.toFixed(2), +topOf(p).toFixed(2)]),
+      ).toEqual([])
+    })
+
+    it(`${size}: each graphics detail adds props (Low < Medium < High), the far ring is never core`, () => {
+      const at = (d: number) => layout.filter((p) => (p.detail ?? 0) <= d).length
+      expect(at(0)).toBeLessThan(at(1))
+      expect(at(1)).toBeLessThan(at(2))
+      const farCore = layout.filter(
+        (p) => p.shadow === false && Math.hypot(p.x / k.x, p.z / k.z) > 45 && !p.detail,
+      )
+      expect(farCore).toEqual([])
+    })
+
     it(`${size}: has nothing pale above the net behind the far baseline (the white shuttle reads there)`, () => {
       const pale = layout.filter(
         (p) =>

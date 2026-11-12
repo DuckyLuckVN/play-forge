@@ -1,18 +1,27 @@
 import { describe, expect, it } from 'vitest'
 import { Mesh, type MeshBasicMaterial } from 'three'
-import { CHARGE_LOOK, ChargeRing, COOLDOWN_LOOK } from './chargering'
+import { CHARGE_LOOK, ChargeRing, cooldownFill, COOLDOWN_LOOK } from './chargering'
 
 const mats = (r: ChargeRing) =>
   r.root.children.map((c) => ((c as Mesh).material as MeshBasicMaterial).opacity)
 
 describe('rings at the feet', () => {
-  it('the charge ring keeps its look; the cooldown ring sits just outside it, cool blue, no pulse', () => {
+  it('the charge ring keeps its look; the cooldown ring sits just outside it, white over a navy track (reads on the teal court), no pulse', () => {
     expect(CHARGE_LOOK).toMatchObject({ inner: 0.44, outer: 0.56, pulse: true })
     expect(CHARGE_LOOK.low.getHexString()).toBe('7ef0c8')
-    expect(COOLDOWN_LOOK).toMatchObject({ inner: 0.6, outer: 0.72, pulse: false })
+    expect(COOLDOWN_LOOK).toMatchObject({ inner: 0.6, outer: 0.74, pulse: false })
     expect(COOLDOWN_LOOK.inner).toBeGreaterThan(CHARGE_LOOK.outer)
     for (const c of [COOLDOWN_LOOK.low, COOLDOWN_LOOK.high, COOLDOWN_LOOK.full])
-      expect(c.getHexString()).toBe('5cc8ff')
+      expect(c.getHexString()).toBe('ffffff')
+    expect(COOLDOWN_LOOK.track).toMatchObject({ opacity: 0.5, width: 0.14 })
+    expect(COOLDOWN_LOOK.track?.color.getHexString()).toBe('181a38')
+  })
+
+  it('the cooldown ring refills as the cooldown runs out (like the buttons), hidden once ready', () => {
+    expect(cooldownFill(1)).toBe(0)
+    expect(cooldownFill(0.25)).toBeCloseTo(0.75)
+    expect(cooldownFill(0.01)).toBeCloseTo(0.99)
+    expect(cooldownFill(0)).toBe(-1)
   })
 
   it('a full cooldown ring never throbs; < 0 hides it; alpha fades fill and track together', () => {

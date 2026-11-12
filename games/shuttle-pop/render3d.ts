@@ -72,7 +72,7 @@ import {
 import { AVAILABLE_IDS } from './presets'
 import { chargeOf, chargeStage, CHARGE } from './charge'
 import { isPowerHit } from './power'
-import { ChargeRing, COOLDOWN_LOOK } from './chargering'
+import { ChargeRing, cooldownFill, COOLDOWN_LOOK } from './chargering'
 import { TICK_RATE } from './court'
 import { courtScale } from './courtsize'
 import { DustPuffs } from './dust'
@@ -1142,7 +1142,7 @@ export class Court3D {
       if (!local && cp.chargeAt < 0 && view.swing.holding) view.swing.cancel()
       this.chargeFx(view, charge, x, z, local || this.spectating)
       view.cd.update(
-        cd > 0 ? cd : -1,
+        cooldownFill(cd),
         root.position.x,
         root.position.z,
         this.time,

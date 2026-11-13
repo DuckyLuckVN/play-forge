@@ -236,8 +236,10 @@
     display: grid;
     gap: var(--pf-space-5);
   }
+  /* Wraps rather than squeezing: How to play must never be pushed out of reach. */
   .pf-room-actions > .pf-row {
     justify-content: center;
+    flex-wrap: wrap;
   }
   /* Phones: one full-width button per row (the floating chat button sits at the right edge). */
   @media (max-width: 520px) {

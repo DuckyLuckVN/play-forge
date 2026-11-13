@@ -58,6 +58,8 @@ import {
   type GuideStep,
 } from './ui/guide'
 import { t } from './ui/i18n'
+import { isTyping } from './ui/key-guard'
+import { pauseAction } from './ui/pause-keys'
 import {
   openTutorial,
   shouldAutoOpen,
@@ -267,7 +269,12 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
 
   // ---------- Shell ----------
   const scoresEl = h('div', { class: 'pf-bar-scores' })
-  const pauseBtn = iconButton(icons.pause, t('Pause'), () => session?.setPaused(true))
+  // Solo: pauses the match. Online: opens a local menu, the match keeps running (see onlineMenu).
+  const pauseBtn = iconButton(icons.pause, t('Pause'), () => {
+    if (session?.offline) return session.setPaused(true)
+    onlineMenu = true
+    render()
+  })
   const leaveBtn = iconButton(icons.leave, t('Leave'), () => leave())
   // Reactions, voice and chat: only in online rooms; `social` is set while in one.
   let social: RoomSocial | null = null
@@ -341,16 +348,28 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     // "Full controls" opens the guide over the deck; closing the deck by code closes it too.
     let closeGuide: (() => void) | undefined
     const closeDeck = openTutorial(tutorial, {
-      onClose,
+      onClose: (end) => {
+        // Forget it once closed, so later renders don't hold (or call) a stale closer.
+        if (closeOpenHelp === close) closeOpenHelp = null
+        onClose?.(end)
+      },
       fullControls: guide ? () => (closeGuide = openGuide(guide)) : undefined,
     })
-    closeOpenHelp = () => {
+    const close = () => {
       closeGuide?.()
       closeDeck()
     }
-    return closeOpenHelp
+    closeOpenHelp = close
+    return close
   }
-  const howToPlay = () => (tutorial ? tutorialButton(() => openHelp()) : guide && guideButton(guide))
+  /** Marks the game seen once the player finished or skipped the help (not when a match closed it). */
+  const markSeenOn = (end: DeckEnd) => {
+    if (shouldMarkSeen(end)) markGuideSeen(def.id)
+  }
+  const howToPlay = () =>
+    tutorial ? tutorialButton(() => openHelp(markSeenOn)) : guide && guideButton(guide)
+  /** Online only: the local menu (Esc / pause button) is open. The match keeps running under it. */
+  let onlineMenu = false
   /** The old paragraph, for games that pass `controls` only. */
   const controlsText = (cls: string) => mode === 'text' && h('p', { class: cls, textContent: opts.controls })
 
@@ -516,6 +535,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     cleanup?.()
     session?.leave()
     session = cleanup = null
+    onlineMenu = false
     closeFirstHelp?.()
     // Left on purpose (or removed): don't rejoin this room's voice next time.
     if (room) clearVoiceRejoin(def.id, room)
@@ -603,13 +623,20 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     countdownEl.replaceChildren(h('span', { textContent: text }))
   }
 
-  // Solo games pause when the tab is hidden, and on Esc / P.
+  // Solo games pause when the tab is hidden, and on Esc / P. Online, those keys toggle a local menu
+  // (never a pause: the other players keep playing). Bubbling phase: an open deck / guide swallows Esc first.
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) session?.setPaused(true)
   })
   window.addEventListener('keydown', (e) => {
-    if (pauseKeys.includes(e.code) && session?.offline && session.phase === 'playing')
-      session.setPaused(!session.lobby.paused)
+    const s = session
+    if (!s || e.repeat || isTyping(e.target)) return
+    const action = pauseAction({ key: e.code, pauseKeys, offline: s.offline, phase: s.phase })
+    if (action === 'toggle-solo') s.setPaused(!s.lobby.paused)
+    else if (action === 'toggle-menu') {
+      onlineMenu = !onlineMenu
+      render()
+    }
   })
   window.addEventListener('offline', () => {
     if (session && !session.offline) toast(t('You are offline. Reconnecting when the network is back.'))
@@ -623,7 +650,9 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   // ---------- Rendering ----------
   function render() {
     const s = session
-    pauseBtn.hidden = !(s?.offline && s.phase === 'playing' && !s.lobby.paused)
+    // The online menu only lives during a match in progress.
+    if (!s || s.offline || s.phase !== 'playing') onlineMenu = false
+    pauseBtn.hidden = !(s?.phase === 'playing' && (s.offline ? !s.lobby.paused : !onlineMenu))
     leaveBtn.hidden = !s
     // Reactions need someone to see them: online rooms we're seated or watching in.
     fan.root.hidden = !s || s.offline || (!s.isHost && !s.lobby.hostId)
@@ -641,8 +670,10 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         if (!s.offline) closeHelpOnline()
         return show(null)
       case 'playing':
-        if (!s.offline) closeHelpOnline()
-        return s.lobby.paused ? showPaused(s) : show(null)
+        if (s.offline) return s.lobby.paused ? showPaused(s) : show(null)
+        // How to play opened from the online menu stays open over it.
+        if (!onlineMenu) closeHelpOnline()
+        return onlineMenu ? showPaused(s) : show(null)
       case 'finished':
         return s.offline ? showSoloResult(s) : showRoom(s)
       case 'lobby':
@@ -1254,7 +1285,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
           h(
             'div',
             { class: 'pf-row' },
-            (tutorial || guide) && !finished && howToPlay(),
+            (tutorial || guide) && howToPlay(),
             button(t('Leave room'), leave, 'quiet'),
           ),
         ),
@@ -1289,21 +1320,32 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     )
   }
 
+  /** Solo: the real pause. Online: a local menu over a match that keeps running (no Restart, no pause). */
   function showPaused(s: Session<S, I>) {
-    const resume = button(t('Resume'), () => s.setPaused(false), 'primary wide')
+    const resume = s.offline
+      ? button(t('Resume'), () => s.setPaused(false), 'primary wide')
+      : button(t('Back to the game'), closeOnlineMenu, 'primary wide')
     resume.autofocus = true
     show(
       h(
         'div',
         { class: 'pf-panel' },
-        h('h2', { class: 'pf-heading', textContent: t('Paused') }),
+        h('h2', {
+          class: 'pf-heading',
+          textContent: s.offline ? t('Paused') : t('The match is still running'),
+        }),
         controlsText('pf-lede'),
         resume,
         howToPlay(),
-        button(t('Quit to menu'), leave, 'quiet'),
+        button(s.offline ? t('Quit to menu') : t('Leave room'), leave, 'quiet'),
       ),
-      'paused',
+      s.offline ? 'paused' : 'online-menu',
     )
+  }
+
+  function closeOnlineMenu() {
+    onlineMenu = false
+    render()
   }
 
   function showMessage(title: string, text: string) {

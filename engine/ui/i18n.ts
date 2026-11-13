@@ -157,6 +157,8 @@ export const VI: Dictionary = {
   'Go!': 'Chiến!',
   Paused: 'Tạm dừng',
   Resume: 'Tiếp tục',
+  'The match is still running': 'Trận đấu vẫn đang diễn ra',
+  'Back to the game': 'Quay lại trận',
   'Play again': 'Chơi lại',
   'Back to menu': 'Về menu',
   'Game over': 'Kết thúc',

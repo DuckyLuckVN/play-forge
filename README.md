@@ -15,6 +15,7 @@ Fun mini-games to play with friends: solo, on one device, or online. No accounts
 | [Phantom Drift](https://duckyluckvn.github.io/play-forge/games/phantom-drift/) | 1 | Dodge down a neon rift. Read the danger, graze it for points, go Phantom and phase through. |
 | [Synthstride](https://duckyluckvn.github.io/play-forge/games/synthstride/) | 1–4 | Dance across a neon grid to the beat. Read the warned tiles, dodge on the drop, grab the notes. Solo or with up to 4 friends. |
 | [Shuttle Pop](https://duckyluckvn.github.io/play-forge/games/shuttle-pop/) | 1–4 | Chibi badminton. Time your swing for a Perfect, smash on high balls. Play the computer or friends online, 1 vs 1 or 2 vs 2. |
+| [Gloop Pop](https://duckyluckvn.github.io/play-forge/games/gloop-pop/) | 1–4 | Drop fizzy capsules, match 4 colours and pop every goo monster. Chain pops for big points, race the computer or up to 4 friends. |
 <!-- games:end -->
 
 **Online with friends:** click **Create room** and share the 5-letter code or the invite link. Opening the link joins the room straight away; players set their name, avatar and character in the room.

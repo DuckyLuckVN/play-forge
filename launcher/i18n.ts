@@ -17,6 +17,8 @@ export const VI: Dictionary = {
     'Nhảy trên lưới neon theo nhịp. Đọc ô cảnh báo, né đúng nhịp, nhặt nốt nhạc. Chơi một mình hoặc tối đa 4 người.',
   'Chibi badminton. Time your swing for a Perfect, smash on high balls. Play the computer or friends online, 1 vs 1 or 2 vs 2.':
     'Cầu lông chibi. Vung vợt đúng lúc để được Perfect, đập mạnh khi cầu cao. Chơi với máy hoặc với bạn bè trực tuyến, 1 đấu 1 hoặc 2 đấu 2.',
+  'Drop fizzy capsules, match 4 colours and pop every goo monster. Chain pops for big points, race the computer or up to 4 friends.':
+    'Thả viên nang sủi bọt, xếp 4 ô cùng màu và nổ tung mọi quái vật chất nhờn. Nổ dây chuyền để ghi điểm lớn, đua với máy hoặc tối đa 4 người bạn.',
   Background: 'Hình nền',
   'Background: {name}': 'Hình nền: {name}',
   Random: 'Ngẫu nhiên',
@@ -47,6 +49,8 @@ export const VI: Dictionary = {
     'Năm dấu X liên tiếp bị gạch ngang trên giấy ô ly',
   'Two snakes racing for an apple': 'Hai con rắn đua nhau tới quả táo',
   'A chibi player swinging a racket at a shuttlecock': 'Một nhân vật chibi vung vợt đánh quả cầu lông',
+  'A glass jar of goo monsters and a falling two-colour capsule':
+    'Một lọ thủy tinh đầy quái vật chất nhờn và một viên nang hai màu đang rơi',
 }
 
 export const t = translator(VI)

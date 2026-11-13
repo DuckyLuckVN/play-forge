@@ -1,29 +1,174 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="A chibi player swinging a racket at a shuttlecock">
-  <rect width="320" height="200" rx="16" fill="#bfe6ff"/>
-  <circle cx="268" cy="38" r="18" fill="#fff4c2"/>
-  <path d="M0 150 Q160 128 320 150 V200 H0 Z" fill="#a7dca0"/>
-  <path d="M40 200 L92 146 H228 L280 200 Z" fill="#5fb87c"/>
-  <path d="M92 146 H228 M66 173 H254 M160 146 V200" stroke="#ffffff" stroke-width="2.5" fill="none" opacity="0.9"/>
-  <g transform="translate(108 104)">
-    <ellipse cx="0" cy="66" rx="30" ry="6" fill="#000" opacity="0.15"/>
-    <path d="M-22 64 Q-24 30 0 26 Q24 30 22 64 Z" fill="#ff8fab"/>
-    <circle cx="0" cy="0" r="30" fill="#ffe0c7"/>
-    <path d="M-31 -2 Q-30 -34 0 -33 Q30 -34 31 -2 Q22 -18 4 -16 Q-14 -22 -31 -2 Z" fill="#6b5b73"/>
-    <ellipse cx="-10" cy="4" rx="3.6" ry="5" fill="#3d2f45"/>
-    <ellipse cx="11" cy="4" rx="3.6" ry="5" fill="#3d2f45"/>
-    <circle cx="-9" cy="2.5" r="1.3" fill="#fff"/>
-    <circle cx="12" cy="2.5" r="1.3" fill="#fff"/>
-    <ellipse cx="-19" cy="13" rx="5" ry="3" fill="#ff9fb4" opacity="0.7"/>
-    <ellipse cx="20" cy="13" rx="5" ry="3" fill="#ff9fb4" opacity="0.7"/>
-    <path d="M-4 16 Q1 21 6 16" stroke="#3d2f45" stroke-width="2" fill="none" stroke-linecap="round"/>
-    <path d="M18 38 L44 6" stroke="#ff6f91" stroke-width="5" stroke-linecap="round"/>
-    <ellipse cx="56" cy="-12" rx="17" ry="23" transform="rotate(38 56 -12)" fill="#ffffff" fill-opacity="0.55" stroke="#ff6f91" stroke-width="5"/>
-    <circle cx="18" cy="38" r="6" fill="#ffe0c7"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Two players rallying a shuttlecock over the net on a park badminton court at sunset">
+  <defs>
+    <linearGradient id="sp-sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d4559f"/>
+      <stop offset="0.55" stop-color="#ef7f97"/>
+      <stop offset="1" stop-color="#fbb07c"/>
+    </linearGradient>
+    <radialGradient id="sp-glow">
+      <stop offset="0" stop-color="#fff6c8"/>
+      <stop offset="0.45" stop-color="#ffe27a" stop-opacity="0.7"/>
+      <stop offset="1" stop-color="#ffb070" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="sp-bulb">
+      <stop offset="0" stop-color="#fff7c2"/>
+      <stop offset="0.4" stop-color="#ffd84a" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#ffd84a" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="sp-mesh" width="3.2" height="3.2" patternUnits="userSpaceOnUse">
+      <path d="M0 0 H3.2 M0 0 V3.2" stroke="#ffffff" stroke-width="0.5" opacity="0.85"/>
+    </pattern>
+    <pattern id="sp-strings" width="2.2" height="2.2" patternUnits="userSpaceOnUse">
+      <path d="M0 0 H2.2 M0 0 V2.2" stroke="#ffffff" stroke-width="0.45"/>
+    </pattern>
+    <clipPath id="sp-card"><rect width="320" height="200" rx="16"/></clipPath>
+  </defs>
+  <g clip-path="url(#sp-card)" stroke-linejoin="round" stroke-linecap="round">
+    <rect width="320" height="200" fill="url(#sp-sky)"/>
+    <!-- sun + clouds -->
+    <circle cx="66" cy="50" r="40" fill="url(#sp-glow)"/>
+    <circle cx="66" cy="52" r="17" fill="#ffe680"/>
+    <g fill="#f8b4d0" opacity="0.9">
+      <path d="M12 22 Q14 14 22 16 Q26 8 35 12 Q42 10 44 18 Q54 18 54 23 H10 Z"/>
+      <path d="M92 28 Q94 21 101 23 Q105 15 114 19 Q121 17 122 25 Q131 25 130 30 H90 Z"/>
+      <path d="M258 22 Q260 14 268 16 Q273 8 283 12 Q291 10 292 18 Q304 18 303 24 H254 Z"/>
+      <path d="M130 50 Q133 45 139 47 Q143 42 149 45 Q155 45 155 50 Z"/>
+    </g>
+    <!-- low-poly mountains -->
+    <path d="M-4 66 L30 50 L52 58 L104 38 L136 58 L168 44 L196 56 L238 36 L272 56 L300 46 L326 56 V96 H-4 Z" fill="#9a49b4"/>
+    <path d="M104 38 L118 60 L136 58 Z M238 36 L250 58 L272 56 Z M30 50 L40 60 L52 58 Z M168 44 L178 58 L196 56 Z" fill="#7b3597"/>
+    <path d="M104 38 L92 50 L100 52 Z M238 36 L224 48 L232 50 Z" fill="#c07ad0"/>
+    <!-- grass -->
+    <rect y="86" width="320" height="114" fill="#62c443"/>
+    <!-- back tree line -->
+    <g stroke="#2d5a24" stroke-width="0.8">
+      <path d="M8 92 Q4 76 16 70 Q24 62 34 70 Q44 76 40 92 Z" fill="#5cb83a"/>
+      <path d="M16 70 L24 92 L40 92 Q44 76 34 70 Z" fill="#479c2c" stroke="none"/>
+      <rect x="22" y="90" width="4" height="8" fill="#7a4a2e"/>
+      <path d="M52 94 L65 58 L78 94 Z" fill="#2e8a3e"/>
+      <path d="M65 58 L71 94 L78 94 Z" fill="#23703a" stroke="none"/>
+      <path d="M86 92 L96 68 L114 66 L122 92 Z" fill="#f28fbd" stroke="#b34f86"/>
+      <path d="M96 68 L106 92 L122 92 L114 66 Z" fill="#dc6aa3" stroke="none"/>
+      <rect x="102" y="90" width="4" height="8" fill="#7a4a2e"/>
+      <path d="M124 90 Q122 74 134 70 Q142 64 152 72 Q160 80 156 90 Z" fill="#5cb83a"/>
+      <path d="M163 94 L174 64 L185 94 Z" fill="#2e8a3e"/>
+      <path d="M174 64 L179 94 L185 94 Z" fill="#23703a" stroke="none"/>
+      <path d="M196 92 Q192 76 204 72 Q212 66 222 74 Q230 80 226 92 Z" fill="#5cb83a"/>
+      <path d="M234 92 L244 66 L264 64 L270 92 Z" fill="#f7a434" stroke="#b96a1c"/>
+      <path d="M244 66 L254 92 L270 92 L264 64 Z" fill="#e2861f" stroke="none"/>
+      <rect x="250" y="90" width="4" height="8" fill="#7a4a2e"/>
+      <path d="M272 94 L284 62 L296 94 Z" fill="#2e8a3e"/>
+      <path d="M284 62 L290 94 L296 94 Z" fill="#23703a" stroke="none"/>
+      <path d="M298 92 L306 70 L322 72 L324 92 Z" fill="#f28fbd" stroke="#b34f86"/>
+    </g>
+    <!-- string lights -->
+    <path d="M4 58 Q78 82 146 66 Q228 86 310 56" stroke="#2a1f33" stroke-width="1" fill="none"/>
+    <g fill="url(#sp-bulb)">
+      <circle cx="25" cy="66" r="7"/><circle cx="58" cy="72" r="7"/><circle cx="92" cy="74" r="7"/><circle cx="126" cy="70" r="7"/>
+      <circle cx="182" cy="72" r="7"/><circle cx="218" cy="76" r="7"/><circle cx="254" cy="74" r="7"/><circle cx="290" cy="64" r="7"/>
+    </g>
+    <g fill="#ffe680" stroke="#2a1f33" stroke-width="0.5">
+      <circle cx="25" cy="67" r="2.3"/><circle cx="58" cy="73" r="2.3"/><circle cx="92" cy="75" r="2.3"/><circle cx="126" cy="71" r="2.3"/>
+      <circle cx="182" cy="73" r="2.3"/><circle cx="218" cy="77" r="2.3"/><circle cx="254" cy="75" r="2.3"/><circle cx="290" cy="65" r="2.3"/>
+    </g>
+    <!-- sand path + court -->
+    <path d="M98 97 H226 L322 202 H8 Z" fill="#e8cc9a"/>
+    <path d="M110 99 H212 L306 202 H30 Z" fill="#1fb79f"/>
+    <!-- tree + player shadows on the court -->
+    <g fill="#169a86">
+      <path d="M42 186 Q52 168 70 170 Q80 178 66 192 L58 202 H34 Z" opacity="0.7"/>
+      <path d="M264 150 Q284 144 296 156 L302 198 Q276 186 264 150 Z" opacity="0.8"/>
+      <ellipse cx="226" cy="172" rx="22" ry="9"/>
+      <ellipse cx="108" cy="192" rx="18" ry="4.5"/>
+    </g>
+    <path d="M110 99 H212 L306 202 H30 Z M161 99 V202 M118 107 H204 M60 172 H264" stroke="#ffffff" stroke-width="1.8" fill="none"/>
+    <!-- the computer behind the net -->
+    <g stroke="#2a1f33" stroke-width="1">
+      <path d="M186 101 L176 88" stroke-width="5.6"/>
+      <path d="M186 101 L176 88" stroke="#ffe0c7" stroke-width="3.6"/>
+      <path d="M175 86 L172 79" stroke-width="2"/>
+      <ellipse cx="170" cy="72" rx="5.5" ry="7" transform="rotate(-20 170 72)" fill="#2f6fe0"/>
+      <ellipse cx="170" cy="72" rx="3.6" ry="5" transform="rotate(-20 170 72)" fill="url(#sp-strings)" stroke="none"/>
+      <path d="M183 112 Q182 100 192 99 Q202 100 201 112 Z" fill="#2f6fe0"/>
+      <path d="M184 106 Q183 101 187 100 L189 104 Z M200 106 Q201 101 197 100 L195 104 Z" fill="#ffffff"/>
+      <circle cx="192" cy="91" r="8.5" fill="#ffe0c7"/>
+      <path d="M183.5 89 Q183 80 192 80 Q201 80 200.5 89 Z" fill="#2f6fe0"/>
+      <path d="M197 88 Q204 87 207 90 Q202 91 197 90 Z" fill="#2f6fe0"/>
+      <circle cx="189" cy="92" r="1.1" fill="#2a1f33" stroke="none"/><circle cx="195" cy="92" r="1.1" fill="#2a1f33" stroke="none"/>
+    </g>
+    <!-- net: posts, bunting, mesh -->
+    <rect x="80" y="106" width="4" height="34" rx="2" fill="#2a1f33"/>
+    <rect x="235" y="106" width="4" height="34" rx="2" fill="#2a1f33"/>
+    <rect x="84" y="120" width="151" height="9" fill="url(#sp-mesh)"/>
+    <g stroke="#2a1f33" stroke-width="1">
+      <rect x="84" y="109" width="18.9" height="11" fill="#9a3ed8"/>
+      <rect x="102.9" y="109" width="18.9" height="11" fill="#22c45a"/>
+      <rect x="121.8" y="109" width="18.9" height="11" fill="#f04848"/>
+      <rect x="140.7" y="109" width="18.9" height="11" fill="#2f8ff0"/>
+      <rect x="159.6" y="109" width="18.9" height="11" fill="#fbbf1e"/>
+      <rect x="178.5" y="109" width="18.9" height="11" fill="#9a3ed8"/>
+      <rect x="197.4" y="109" width="18.9" height="11" fill="#22c45a"/>
+      <rect x="216.3" y="109" width="18.7" height="11" fill="#f04848"/>
+    </g>
+    <path d="M84 129 H235" stroke="#ffffff" stroke-width="0.8"/>
+    <!-- big foreground trees -->
+    <g stroke="#9c3f72" stroke-width="1">
+      <path d="M-6 112 L18 92 L44 98 L54 124 L46 146 L18 154 L-6 140 Z" fill="#f28fbd"/>
+      <path d="M18 92 L28 120 L54 124 L44 98 Z" fill="#fbb0d2" stroke="none"/>
+      <path d="M28 120 L18 154 L46 146 L54 124 Z" fill="#dc6aa3" stroke="none"/>
+      <path d="M-6 140 L18 154 L28 120 L-6 112 Z" fill="#c9558f" stroke="none" opacity="0.5"/>
+      <path d="M22 108 Q26 104 30 107 M12 128 Q16 124 20 127" stroke="#fbc8df" fill="none"/>
+    </g>
+    <path d="M14 150 L13 178 H22 L21 150 Z" fill="#7a4a2e" stroke="#4a2b1a" stroke-width="1"/>
+    <g stroke="#a3561a" stroke-width="1">
+      <path d="M326 110 L306 92 L280 100 L266 124 L274 146 L300 154 L326 140 Z" fill="#f7a434"/>
+      <path d="M306 92 L292 120 L266 124 L280 100 Z" fill="#ffc25a" stroke="none"/>
+      <path d="M292 120 L300 154 L274 146 L266 124 Z" fill="#e2861f" stroke="none"/>
+    </g>
+    <path d="M294 150 L293 176 H302 L301 150 Z" fill="#7a4a2e" stroke="#4a2b1a" stroke-width="1"/>
+    <!-- flowers + rock -->
+    <g fill="#ffffff"><circle cx="60" cy="108" r="1.6"/><circle cx="62" cy="106" r="1.6"/><circle cx="58" cy="106" r="1.6"/><circle cx="244" cy="108" r="1.6"/><circle cx="246" cy="106" r="1.6"/><circle cx="242" cy="106" r="1.6"/><circle cx="30" cy="164" r="1.4"/><circle cx="32" cy="162" r="1.4"/></g>
+    <g fill="#ffd23f"><circle cx="60" cy="106.6" r="0.9"/><circle cx="244" cy="106.6" r="0.9"/></g>
+    <path d="M252 116 Q256 110 262 112 Q266 114 265 118 Z" fill="#8c8a9c" stroke="#5a576a" stroke-width="0.8"/>
+    <!-- flight trail -->
+    <g fill="#ffffff">
+      <circle cx="140" cy="119" r="1.5"/><circle cx="142" cy="106" r="1.5"/><circle cx="145" cy="94" r="1.6"/><circle cx="149" cy="84" r="1.6"/>
+      <circle cx="154" cy="75" r="1.7"/><circle cx="160" cy="68" r="1.7"/><circle cx="167" cy="63" r="1.8"/><circle cx="174" cy="59" r="1.8"/>
+      <circle cx="181" cy="56" r="1.9"/><circle cx="187" cy="54" r="1.9"/>
+    </g>
+    <!-- impact burst + shuttlecock -->
+    <g transform="translate(219 44)">
+      <path d="M0 -28 L7 -10 L26 -18 L14 -2 L30 8 L10 10 L12 29 L0 15 L-12 27 L-10 8 L-28 4 L-12 -5 L-20 -22 L-5 -12 Z" fill="#ffe23a" stroke="#ffffff" stroke-width="2.4"/>
+      <path d="M0 -14 L4 -5 L13 -9 L7 -1 L15 4 L5 5 L6 14 L0 7 L-6 13 L-5 4 L-14 2 L-6 -3 L-10 -11 L-3 -6 Z" fill="#fff6c8"/>
+    </g>
+    <path d="M190 18 L198 24 M182 28 L190 30 M200 12 L202 20" stroke="#ffe23a" stroke-width="3" fill="none"/>
+    <g transform="translate(212 46) rotate(-108)" stroke="#2a1f33" stroke-width="1.4">
+      <path d="M-11 -24 L11 -24 L5 0 L-5 0 Z" fill="#ffffff"/>
+      <path d="M-5 -24 L-2.5 0 M0 -24 V0 M5 -24 L2.5 0 M-9 -15 H9 M-7 -7 H7" stroke="#9aa6c0" stroke-width="0.9"/>
+      <circle cy="4.5" r="6" fill="#ff5c8a"/>
+      <circle cx="-2" cy="2.5" r="1.8" fill="#ffffff" stroke="none" opacity="0.7"/>
+    </g>
+    <!-- you: a boy seen from behind, racket up after the hit -->
+    <g stroke="#2a1f33" stroke-width="1.2">
+      <path d="M101 182 L101 188 M115 182 L115 188" stroke-width="6.5"/>
+      <path d="M101 182 L101 188 M115 182 L115 188" stroke="#ffe0c7" stroke-width="4.5"/>
+      <path d="M97 189 Q97 185 102 186 L104 190 Q100 192 97 189 Z M119 189 Q119 185 114 186 L112 190 Q116 192 119 189 Z" fill="#2f6fe0"/>
+      <path d="M98 188 H104 M112 188 H118" stroke="#ffffff" stroke-width="1"/>
+      <path d="M99 175 H117 L118 184 H109 L108 181 L107 184 H98 Z" fill="#2b3a8f"/>
+      <path d="M100 160 Q100 156 104 156 H112 Q116 156 116 160 L117 176 H99 Z" fill="#ff8a2a"/>
+      <path d="M99.6 166 H116.4" stroke="#ffffff" stroke-width="2"/>
+      <path d="M101 159 L94 171 M115 158 L125 147" stroke-width="6.8"/>
+      <path d="M101 159 L94 171 M115 158 L125 147" stroke="#ffe0c7" stroke-width="4.6"/>
+      <path d="M95.5 168 L94.6 169.6 M122 150.3 L123.4 148.8" stroke="#ffffff" stroke-width="4.6"/>
+      <path d="M126 146 L130 139" stroke-width="2.2"/>
+      <ellipse cx="135" cy="131" rx="6.5" ry="8.5" transform="rotate(30 135 131)" fill="#ff8a2a"/>
+      <ellipse cx="135" cy="131" rx="4.4" ry="6.2" transform="rotate(30 135 131)" fill="#bfeee4"/>
+      <ellipse cx="135" cy="131" rx="4.4" ry="6.2" transform="rotate(30 135 131)" fill="url(#sp-strings)" stroke="none"/>
+      <circle cx="98" cy="145" r="2.8" fill="#ffe0c7"/>
+      <circle cx="118" cy="145" r="2.8" fill="#ffe0c7"/>
+      <path d="M102 154 H114 V158 H102 Z" fill="#ffe0c7"/>
+      <path d="M97 146 Q96 134 102 131 L101 125 L106 129 L109 122 L111 129 L117 124 L115 131 Q120 135 119 146 Q114 154 108 154 Q101 154 97 146 Z" fill="#6a3a1e"/>
+      <path d="M103 136 Q108 132 113 136" stroke="#8a5430" stroke-width="1" fill="none"/>
+    </g>
   </g>
-  <g transform="translate(222 70) rotate(-35)">
-    <path d="M-12 -24 L12 -24 L6 0 L-6 0 Z" fill="#ffffff" stroke="#c9d6e8" stroke-width="1.5"/>
-    <path d="M-6 -24 L-3 0 M0 -24 V0 M6 -24 L3 0" stroke="#c9d6e8" stroke-width="1"/>
-    <circle cx="0" cy="4" r="6.5" fill="#ffd166"/>
-  </g>
-  <path d="M186 96 q8 -10 18 -14 M180 84 q8 -8 16 -10" stroke="#ffffff" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.8"/>
 </svg>

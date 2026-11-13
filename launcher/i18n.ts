@@ -48,7 +48,8 @@ export const VI: Dictionary = {
   'Five crosses in a row struck through on notebook paper':
     'Năm dấu X liên tiếp bị gạch ngang trên giấy ô ly',
   'Two snakes racing for an apple': 'Hai con rắn đua nhau tới quả táo',
-  'A chibi player swinging a racket at a shuttlecock': 'Một nhân vật chibi vung vợt đánh quả cầu lông',
+  'Two players rallying a shuttlecock over the net on a park badminton court at sunset':
+    'Hai người chơi đánh cầu lông qua lưới trên sân trong công viên lúc hoàng hôn',
   'A glass jar of goo monsters and a falling two-colour capsule':
     'Một lọ thủy tinh đầy quái vật chất nhờn và một viên nang hai màu đang rơi',
 }

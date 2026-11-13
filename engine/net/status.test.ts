@@ -364,6 +364,20 @@ describe('with the game relay (backup server)', () => {
     expect(v).toMatchObject({ health: 'warn', hints: ['relayed'] })
   })
 
+  it('a WebRTC link through TURN shows as TURN (with or without the relay transport)', () => {
+    const viaTurn = (route?: 'direct' | 'relay') =>
+      netPanelView(net({ peers: [{ id: 'p1', state: 'connected', rttMs: 90, turn: true, route }] }), [host])
+        .rows[0].route
+    expect(viaTurn('direct')).toBe('turn')
+    expect(viaTurn()).toBe('turn')
+    // Messages actually going over the WebSocket relay are still shown as that.
+    expect(viaTurn('relay')).toBe('relay')
+    const stillConnecting = netPanelView(net({ peers: [{ id: 'p1', state: 'connecting', turn: true }] }), [
+      host,
+    ])
+    expect(stillConnecting.rows[0].route).toBeNull()
+  })
+
   it('shows direct links without the relayed hint', () => {
     const v = netPanelView(
       net({ peers: [{ id: 'p1', state: 'connected', rttMs: 20, route: 'direct' }], gameRelay: relayUp }),

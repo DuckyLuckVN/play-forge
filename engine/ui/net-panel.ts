@@ -7,7 +7,7 @@ import {
   type NetPanelView,
   type NetStatus,
   type PanelRow,
-  type Route,
+  type PanelRoute,
 } from '../net/status'
 import { h, icon, iconButton, toast } from './dom'
 import { t } from './i18n'
@@ -51,13 +51,15 @@ const HINT_TEXT: Record<NetHint, () => string> = {
 }
 
 /** A connected player's state says which way the game data goes. */
-const ROUTE_TEXT: Record<Route, () => string> = {
+const ROUTE_TEXT: Record<PanelRoute, () => string> = {
   direct: () => t('Direct'),
+  turn: () => t('Via TURN'),
   relay: () => t('Via server'),
 }
-const ROUTE_TITLE: Record<Route, () => string> = {
+const ROUTE_TITLE: Record<PanelRoute, () => string> = {
   direct: () => t('Connected browser to browser'),
-  relay: () => t('Connected through our backup server'),
+  turn: () => t('Connected through our TURN server: voice works'),
+  relay: () => t('Connected through our backup server (no voice)'),
 }
 
 function stateCell(r: PanelRow) {

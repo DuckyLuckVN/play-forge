@@ -347,6 +347,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     if (!tutorial) return openGuide(guide!, { onClose: () => onClose?.('done') })
     // "Full controls" opens the guide over the deck; closing the deck by code closes it too.
     let closeGuide: (() => void) | undefined
+    // Declared before the deck opens: its onClose compares against it.
+    let close: (() => void) | null = null
     const closeDeck = openTutorial(tutorial, {
       onClose: (end) => {
         // Forget it once closed, so later renders don't hold (or call) a stale closer.
@@ -355,12 +357,13 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       },
       fullControls: guide ? () => (closeGuide = openGuide(guide)) : undefined,
     })
-    const close = () => {
+    const closeAll = () => {
       closeGuide?.()
       closeDeck()
     }
-    closeOpenHelp = close
-    return close
+    close = closeAll
+    closeOpenHelp = closeAll
+    return closeAll
   }
   /** Marks the game seen once the player finished or skipped the help (not when a match closed it). */
   const markSeenOn = (end: DeckEnd) => {
@@ -631,7 +634,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   window.addEventListener('keydown', (e) => {
     const s = session
     if (!s || e.repeat || isTyping(e.target)) return
-    const action = pauseAction({ key: e.code, pauseKeys, offline: s.offline, phase: s.phase })
+    const hostLost = !s.offline && !s.isHost && !s.hostConnected
+    const action = pauseAction({ key: e.code, pauseKeys, offline: s.offline, phase: s.phase, hostLost })
     if (action === 'toggle-solo') s.setPaused(!s.lobby.paused)
     else if (action === 'toggle-menu') {
       onlineMenu = !onlineMenu

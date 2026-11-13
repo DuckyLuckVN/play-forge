@@ -24,4 +24,9 @@ describe('pauseAction', () => {
     expect(pauseAction({ key: 'KeyW', pauseKeys, offline: false, phase: 'playing' })).toBeNull()
     expect(pauseAction({ key: 'Escape', pauseKeys: ['KeyP'], offline: false, phase: 'playing' })).toBeNull()
   })
+  it('online: nothing while the host is lost (the host-lost screen shows, not the menu)', () => {
+    expect(
+      pauseAction({ key: 'Escape', pauseKeys, offline: false, phase: 'playing', hostLost: true }),
+    ).toBeNull()
+  })
 })

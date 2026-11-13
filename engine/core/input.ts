@@ -10,6 +10,10 @@ export interface InputBindings<A extends string> {
   swipeTarget?: HTMLElement
 }
 
+/** Typing in a field, pressing a button / link, or anything over a menu overlay isn't play. */
+const isUi = (t: EventTarget | null) =>
+  t instanceof Element && !!t.closest('input, textarea, select, button, a, .pf-overlay')
+
 /**
  * Translates raw keyboard / touch events into game actions.
  * Returns a cleanup function that removes all listeners.
@@ -23,7 +27,7 @@ export function bindInput<A extends string>(
   if (bindings.keys) {
     const keys = bindings.keys
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (isUi(e.target)) return
       const action = keys[e.code]
       if (!action) return
       e.preventDefault()

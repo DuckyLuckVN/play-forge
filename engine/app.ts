@@ -50,7 +50,6 @@ import { leaderboardTable, type Leaderboard } from './ui/leaderboard'
 import { fullscreenButton } from './ui/fullscreen'
 import {
   guideButton,
-  guideSeen,
   howToPlayMode,
   markGuideSeen,
   openGuide,
@@ -59,6 +58,14 @@ import {
   type GuideStep,
 } from './ui/guide'
 import { t } from './ui/i18n'
+import {
+  openTutorial,
+  shouldAutoOpen,
+  shouldMarkSeen,
+  tutorialButton,
+  type DeckEnd,
+  type TutorialCard,
+} from './ui/tutorial'
 import { chipLook, scoreLabel } from './ui/scoreline'
 import { icons } from './ui/icons'
 import { optionPickers } from './ui/options'
@@ -110,6 +117,13 @@ export interface GameAppOptions<S, I> {
    * shell adds a Pause row). Text is translated by the game.
    */
   guide?: GuideStep[]
+  /**
+   * How to play as step cards (see engine/ui/tutorial). When set, the "How to play" button and the
+   * first play open this deck instead of the guide card; the last card links to `guide` (if any).
+   * It counts as seen once finished or skipped, not when a match starting closes it. Text is
+   * translated by the game.
+   */
+  tutorial?: TutorialCard[]
   /**
    * Gameplay music. Menus and lobbies use the shared lounge track. `null`: no
    * background music while playing (the game makes its own, e.g. beat-synced).
@@ -316,9 +330,27 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   const mode = howToPlayMode(opts.guide, opts.controls)
   const pauseKeys = opts.pauseKeys ?? PAUSE_KEYS
   const guide = mode === 'guide' ? withPauseRow(opts.guide!, pauseKeys) : null
-  /** Closes the first-play guide while it holds back a solo match. */
-  let closeFirstGuide: (() => void) | null = null
-  const howToPlay = () => guide && guideButton(guide)
+  const tutorial = opts.tutorial?.length ? opts.tutorial : null
+  /** Closes the first-play help (deck or guide) while it holds back a solo match or sits over a room. */
+  let closeFirstHelp: (() => void) | null = null
+  /** Closes the deck last opened, with any guide over it (online: closed when the match starts, it swallows keys). */
+  let closeOpenHelp: (() => void) | null = null
+  /** Opens How to play: the tutorial deck when the game has one, else the guide card ('done' on close). */
+  function openHelp(onClose?: (end: DeckEnd) => void): () => void {
+    if (!tutorial) return openGuide(guide!, { onClose: () => onClose?.('done') })
+    // "Full controls" opens the guide over the deck; closing the deck by code closes it too.
+    let closeGuide: (() => void) | undefined
+    const closeDeck = openTutorial(tutorial, {
+      onClose,
+      fullControls: guide ? () => (closeGuide = openGuide(guide)) : undefined,
+    })
+    closeOpenHelp = () => {
+      closeGuide?.()
+      closeDeck()
+    }
+    return closeOpenHelp
+  }
+  const howToPlay = () => (tutorial ? tutorialButton(() => openHelp()) : guide && guideButton(guide))
   /** The old paragraph, for games that pass `controls` only. */
   const controlsText = (cls: string) => mode === 'text' && h('p', { class: cls, textContent: opts.controls })
 
@@ -446,14 +478,12 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       unmount()
     }
     if (extra.offline) {
-      // First match of this game: the guide first, the countdown once it's dismissed.
-      if (guide && !guideSeen(def.id))
-        closeFirstGuide = openGuide(guide, {
-          onClose() {
-            closeFirstGuide = null
-            markGuideSeen(def.id)
-            if (session === s && s.phase === 'lobby') s.start()
-          },
+      // First match of this game: the deck / guide first, the countdown once it's closed.
+      if (shouldAutoOpen(def.id, !!(tutorial || guide)))
+        closeFirstHelp = openHelp((end) => {
+          closeFirstHelp = null
+          if (shouldMarkSeen(end)) markGuideSeen(def.id)
+          if (session === s && s.phase === 'lobby') s.start()
         })
       else s.start()
     }
@@ -486,7 +516,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     cleanup?.()
     session?.leave()
     session = cleanup = null
-    closeFirstGuide?.()
+    closeFirstHelp?.()
     // Left on purpose (or removed): don't rejoin this room's voice next time.
     if (room) clearVoiceRejoin(def.id, room)
     room = ''
@@ -552,7 +582,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
 
     if (lobby.phase === 'countdown' && (prev.phase !== 'countdown' || prev.countdown !== lobby.countdown)) {
       // Online the guide shows in the room (never holding up the match); once one starts it's seen.
-      if (guide) markGuideSeen(def.id)
+      // A tutorial deck's own onClose decides instead (closed by the countdown = not seen).
+      if (guide && !tutorial) markGuideSeen(def.id)
       playSound(UI_SOUNDS.tick)
       showCount(String(lobby.countdown))
     }
@@ -606,11 +637,11 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     if (!s.isHost && !s.hostConnected) return showHostLost()
     switch (s.phase) {
       case 'countdown':
-        // A room's first-time guide closes when the match starts (it would swallow game keys).
-        if (!s.offline) closeFirstGuide?.()
+        // A room's first-time guide / any open deck closes when the match starts (it would swallow game keys).
+        if (!s.offline) closeHelpOnline()
         return show(null)
       case 'playing':
-        if (!s.offline) closeFirstGuide?.()
+        if (!s.offline) closeHelpOnline()
         return s.lobby.paused ? showPaused(s) : show(null)
       case 'finished':
         return s.offline ? showSoloResult(s) : showRoom(s)
@@ -618,6 +649,11 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         // Solo waits in 'lobby' only while the first-play guide is open (over the stage).
         return s.offline ? show(null) : showRoom(s)
     }
+  }
+
+  function closeHelpOnline() {
+    closeFirstHelp?.()
+    closeOpenHelp?.()
   }
 
   // Chips are rebuilt only when who's shown changes; scores update in place,
@@ -1218,7 +1254,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
           h(
             'div',
             { class: 'pf-row' },
-            guide && !finished && howToPlay(),
+            (tutorial || guide) && !finished && howToPlay(),
             button(t('Leave room'), leave, 'quiet'),
           ),
         ),
@@ -1226,13 +1262,11 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       finished ? `results-${s.lobby.round}` : 'room',
     )
     if (focused?.isConnected) focused.focus({ preventScroll: true })
-    // First time in this game: the guide pops up once over the room (like solo's first play).
-    if (guide && !finished && !closeFirstGuide && !guideSeen(def.id)) {
-      closeFirstGuide = openGuide(guide, {
-        onClose() {
-          closeFirstGuide = null
-          markGuideSeen(def.id)
-        },
+    // First time in this game: the deck / guide pops up once over the room (like solo's first play).
+    if (!finished && !closeFirstHelp && shouldAutoOpen(def.id, !!(tutorial || guide))) {
+      closeFirstHelp = openHelp((end) => {
+        closeFirstHelp = null
+        if (shouldMarkSeen(end)) markGuideSeen(def.id)
       })
     }
   }

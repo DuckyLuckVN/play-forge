@@ -7,3 +7,4 @@ export {
   type OpenTutorialOptions,
   type TutorialCard,
 } from './deck'
+export { shouldAutoOpen, shouldMarkSeen } from './first-play'

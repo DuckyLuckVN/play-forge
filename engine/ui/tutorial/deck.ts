@@ -71,6 +71,9 @@ export function openTutorial(cards: readonly TutorialCard[], o: OpenTutorialOpti
     render()
   }
   const onKey = (e: KeyboardEvent) => {
+    // A dialog opened over the deck (the guide from "Full controls") owns the keys; it swallows them.
+    const layers = document.querySelectorAll('.pf-guide-layer')
+    if (layers[layers.length - 1] !== layer) return
     e.stopPropagation()
     if (e.code === 'Escape') {
       e.preventDefault()

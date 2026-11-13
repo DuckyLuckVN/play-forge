@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { openGuide } from '../guide'
 import { openTutorial, tutorialButton, type ClipContext, type TutorialCard } from './deck'
 
 const cards = (n = 3, extra: Partial<TutorialCard> = {}): TutorialCard[] =>
@@ -117,6 +118,28 @@ describe('tutorial deck device and options', () => {
     btn('Full controls ›')!.click()
     expect(fullControls).toHaveBeenCalledOnce()
     expect(layer()).not.toBeNull()
+  })
+
+  it('guide opened from Full controls sits on top: Esc / arrows go to it, not the deck', () => {
+    const onClose = vi.fn()
+    openTutorial(cards(2), {
+      onClose,
+      fullControls: () => openGuide([{ action: 'Jump', keys: [['Space']] }]),
+    })
+    btn('Next')!.click()
+    btn('Full controls ›')!.click()
+    const guideLayer = () => document.querySelector('.pf-guide-layer:not(.pf-tut-layer)')
+    expect(guideLayer()).not.toBeNull()
+    // Opened later, so it's later in the DOM: same z-index, painted above the deck.
+    expect(layer()!.compareDocumentPosition(guideLayer()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    key('ArrowLeft')
+    expect(title()).toBe('T1')
+    key('Escape')
+    expect(guideLayer()).toBeNull()
+    expect(layer()).not.toBeNull()
+    expect(onClose).not.toHaveBeenCalled()
+    key('Escape')
+    expect(onClose).toHaveBeenCalledExactlyOnceWith('skipped')
   })
 
   it('no fullControls link when option unset', () => {

@@ -26,6 +26,21 @@ describe('keyframes', () => {
   })
 })
 
+describe('keyframes clamping', () => {
+  const stopsOf = (css: string) =>
+    [...css.matchAll(/([\d.,%]+)\{[^}]*\}/g)].flatMap((m) => m[1].split(',').map((x) => parseFloat(x)))
+  const cases: [string, { at: number; dur: number }][] = [
+    ['ends exactly at loop end', { at: 2, dur: 8 }],
+    ['very short', { at: 5, dur: 0.01 }],
+    ['starts at 0', { at: 0, dur: 3 }],
+  ]
+  it.each(cases)('%s: stops within 0-100 and non-decreasing', (_n, beat) => {
+    const pcts = stopsOf(keyframes('k', 10, beat, 'opacity:1', 'opacity:0'))
+    expect(pcts.every((p) => p >= 0 && p <= 100)).toBe(true)
+    expect([...pcts].sort((a, b) => a - b)).toEqual(pcts)
+  })
+})
+
 describe('animation', () => {
   it('shorthand', () => expect(animation('k', 12)).toBe('k 12s infinite'))
 })

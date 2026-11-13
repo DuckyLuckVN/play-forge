@@ -12,9 +12,12 @@ const pct = (n: number) => +n.toFixed(2)
 
 /** `@keyframes name{...}`: `off` until the beat, `on` during it, `off` again after. */
 export function keyframes(name: string, loop: number, beat: Beat, on: string, off: string): string {
-  const a = (beat.at / loop) * 100
-  const b = ((beat.at + beat.dur) / loop) * 100
-  return `@keyframes ${name}{0%,${pct(a)}%{${off}}${pct(a + RAMP)}%,${pct(b)}%{${on}}${pct(b + RAMP)}%,100%{${off}}}`
+  const a = Math.min((beat.at / loop) * 100, 100)
+  const b = Math.min(((beat.at + beat.dur) / loop) * 100, 100)
+  // ramp stops stay inside [0,100] and never pass the next stop, so the order is always monotonic
+  const aOn = Math.min(a + RAMP, b)
+  const bOff = Math.min(b + RAMP, 100)
+  return `@keyframes ${name}{0%,${pct(a)}%{${off}}${pct(aOn)}%,${pct(b)}%{${on}}${pct(bOff)}%,100%{${off}}}`
 }
 
 /** animation shorthand for a clip loop, e.g. "k 12s infinite". */

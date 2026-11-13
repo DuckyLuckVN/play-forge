@@ -164,6 +164,15 @@ export const VI: Dictionary = {
   // Control guide (engine/ui/guide.ts). Key names on keycaps stay as printed (Space, Esc, W…).
   'How to play': 'Cách chơi',
   'Got it': 'Đã hiểu',
+
+  // Tutorial deck (engine/ui/tutorial/deck.ts)
+  Skip: 'Bỏ qua',
+  Next: 'Tiếp',
+  Back: 'Lùi',
+  "Let's play!": 'Chơi thôi!',
+  'Full controls': 'Toàn bộ phím',
+  'Step {n} of {total}': 'Bước {n}/{total}',
+
   or: 'hoặc',
   hold: 'giữ',
   'Up arrow': 'Mũi tên lên',

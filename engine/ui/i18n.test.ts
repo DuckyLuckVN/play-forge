@@ -3,7 +3,7 @@ import { translatedKeys } from '../core/i18n-scan'
 import { VI } from './i18n'
 
 // Every `t('…')` in the game shell and the shared UI.
-const sources = import.meta.glob<string>(['../app.ts', './*.ts', '!./*.test.ts'], {
+const sources = import.meta.glob<string>(['../app.ts', './*.ts', './tutorial/*.ts', '!./**/*.test.ts'], {
   eager: true,
   query: '?raw',
   import: 'default',

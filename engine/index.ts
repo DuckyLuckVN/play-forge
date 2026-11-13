@@ -113,6 +113,7 @@ export {
   type MouseAction,
   type TouchAction,
 } from './ui/guide'
+export * from './ui/tutorial'
 export { landscapeGuard, lockLandscape, needsRotate, unlockLandscape, watchPortrait } from './ui/landscape'
 export { popover, type Popover, type PopoverOptions } from './ui/popover'
 export { icons, inputIcons } from './ui/icons'

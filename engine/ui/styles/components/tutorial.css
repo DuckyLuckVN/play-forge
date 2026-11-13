@@ -1,0 +1,39 @@
+@layer pf.components {
+  /* ---------- Tutorial clips (engine/ui/tutorial/clip) ---------- */
+
+  .pf-clip {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: var(--pf-radius-lg);
+    font-family: var(--pf-font);
+  }
+
+  /* Reduced motion: one static key frame; the clip's own elements marked data-still are shown. */
+  .pf-clip-still,
+  .pf-clip-still * {
+    animation: none !important;
+  }
+  .pf-clip-still [data-still] {
+    opacity: 1 !important;
+  }
+
+  .pf-pad {
+    display: grid;
+    grid-template-columns: repeat(3, 36px);
+    grid-template-rows: repeat(2, 36px);
+    gap: 5px;
+  }
+  .pf-pad-key {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #222;
+    border-bottom-width: 4px;
+    border-radius: var(--pf-radius-sm);
+    background: #fff;
+    color: #222;
+    font-weight: var(--pf-fw-bold);
+    font-size: var(--pf-fs-base);
+  }
+}

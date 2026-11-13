@@ -2,6 +2,7 @@
 // net, opponent and the player ("you"). Forward (z) points up-right, toward the opponent.
 // Shots draw into two layers: `ground` (under the net: shadow paths, landing rings) and `air`
 // (over the net and opponent: flight paths, badges); balls from `flyAlong` go on top of everything.
+// Move cards animate their own player in `actor` (just under `air`) and pass `{ player: false }`.
 import {
   chibi,
   clipRoot,
@@ -22,8 +23,11 @@ export const NET_H = 1.55
 /** Where the player stands (own half, slightly right of centre). */
 export const PLAYER_AT = { x: 0.4, z: -4.5 }
 export const VIEW = { w: 400, h: 300 }
+/** The player's shirt and hair (seen from behind). */
+export const ME_TEAM = '#ff5a7a'
+export const ME_HAIR = '#5a3a2a'
 
-const OPPONENT_AT = { x: 0, z: 5.2 }
+export const OPPONENT_AT = { x: 0, z: 5.2 }
 const LABEL = { 'font-weight': 900, 'font-size': 12, fill: '#fff' }
 
 export const courtProjection = (): Projection =>
@@ -35,16 +39,19 @@ export interface CourtScene {
   clip: Clip
   p: Projection
   ground: SVGGElement
+  /** Empty layer for an animated player, over the net and opponent, under `air`. */
+  actor: SVGGElement
   air: SVGGElement
 }
 
-/** A fresh clip with the court drawn and empty shot layers. */
-export function courtScene(label: string): CourtScene {
+/** A fresh clip with the court drawn and empty shot layers. `player: false` leaves "you" out. */
+export function courtScene(label: string, o: { player?: boolean } = {}): CourtScene {
   const clip = clipRoot(VIEW, { label })
   const p = courtProjection()
   const W = COURT_W
   const L = COURT_L
   const ground = s('g')
+  const actor = s('g')
   const air = s('g')
   const opp = p(OPPONENT_AT.x, OPPONENT_AT.z)
   const oppTag = p(1.2, 8.2)
@@ -80,14 +87,17 @@ export function courtScene(label: string): CourtScene {
       { x: oppTag.x.toFixed(1), y: oppTag.y.toFixed(1), 'text-anchor': 'end', ...LABEL },
       t('Opponent').toLocaleUpperCase(),
     ),
+    actor,
     air,
     // Seen from behind: the head is all hair.
-    chibi({ at: { x: me.x, y: me.y + 6 }, team: '#ff5a7a', skin: '#5a3a2a', facing: 'right', racket: true }),
+    o.player === false
+      ? ''
+      : chibi({ at: { x: me.x, y: me.y + 6 }, team: ME_TEAM, skin: ME_HAIR, facing: 'right', racket: true }),
     s(
       'text',
       { x: (me.x + 22).toFixed(1), y: (me.y + 28).toFixed(1), ...LABEL },
       t('You').toLocaleUpperCase(),
     ),
   )
-  return { clip, p, ground, air }
+  return { clip, p, ground, actor, air }
 }

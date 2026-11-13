@@ -12,10 +12,12 @@ arrow keys and swipe. Games pass already-translated text; the shell supplies the
 | Clip toolkit | `engine/ui/tutorial/clip/*` (`@forge/ui/tutorial/clip`) | Game-agnostic SVG + CSS-animation helpers, below.                                                                                                                                               |
 | App wiring   | `createGameApp({ tutorial })` in `engine/app.ts`        | Opens the deck from the "How to play" buttons and on first play.                                                                                                                                |
 
-Card fields: `id`, `title`, `caption`, `clip?`, `hint?` (`pc` / `touch`), `body?` (e.g. a settings list, under the clip), `below?` (e.g. a key pad).
+Card fields: `id`, `title`, `caption`, `clip?`, `hint?` (`pc` / `touch`), `body?` (e.g. a settings list, under the clip), `below?` (e.g. a key pad; may return `null` to show nothing on a device, e.g. no keys on touch).
 
 Game side: a `tutorial/` folder with one file per card plus an `index.ts` returning `TutorialCard[]`
-(see `games/shuttle-pop/tutorial/`).
+(see `games/shuttle-pop/tutorial/`: tap, power shot, aim, jump smash, dive, settings; `moves.ts` holds
+the pieces its move cards share: an animated player, the rally, the swing swoosh and a badge that shows
+mouse / keycaps on PC and the touch buttons' glyphs on touch).
 
 ## Wiring
 
@@ -41,18 +43,25 @@ full controls list. Games with only `guide` or `controls` are unchanged.
 
 All SVG, no canvas, no JS per frame: loops are CSS keyframes, so a clip costs nothing at rest.
 
-- `isoProjection({ yawDeg: 45 | -45, scale, origin })` world (x right, z forward, y up) to screen `p(x, z, y?)`.
+- `isoProjection({ yawDeg: 45 | -45, scale, origin })` world (x right, z forward, y up) to screen `p(x, z, y?)`;
+  `unproject(p, screenPoint, y?)` back to world `{ x, z }` at a known height (e.g. where a racket drawn on screen meets the ball).
 - `arc(p, from, to, { start, peak, end })` returns `{ air, ground }` point lists; `pathD(points)` makes path data.
 - `clipRoot(viewBox, { label })` an `SVGSVGElement` plus `css[]` collector; `finishClip(clip, reducedMotion)` writes the CSS.
 - Timeline: `Beat { at, dur }` (seconds in a loop), `beatPct`, `keyframes`, `animation`, `uid`.
 - `showDuring(clip, el, loop, beat, { still })` visible only during a beat.
-- `flyAlong(clip, pathD, loop, beat, { shadow, still })` ball (and ground shadow) along a path.
+- `flyAlong(clip, pathD, loop, beat, { shadow, still, flight, ease })` ball (and ground shadow) along a path; `flight`
+  is the share of the beat spent flying (default 0.55, then it rests), `ease` a CSS timing function.
+- `track(clip, el, loop, stops, { base, timing, still })` free-form keyframes for moves the beat helpers don't cover
+  (a racket swing, a jump, a dive): stops are loop percentages (`at: 42` or a held span `at: [44, 48]`), `still`
+  is the element's style in the reduced-motion still frame.
 - `keyPad(clip, WASD, lit, loop, reducedMotion)` HTML key pad; lit keys press down in their colour during their beat.
-- `badge`, `landingRing`, `chargeRing`, `popText`, `chibi` smaller pieces.
+- `badge`, `landingRing`, `chargeRing`, `popText` (`{ fill, size, burst }`: `burst` scales the word up past full size,
+  then settles), `chibi` smaller pieces.
 
 Reduced motion: pass `ctx.reducedMotion` to `finishClip` / `keyPad`; the clip shows a still frame.
 Elements marked `still` (default for `showDuring` / `flyAlong`) are the frame; set `still: false` on
-the rest.
+the rest. Pick one coherent moment per clip (Shuttle Pop: the return shot resting where it lands, the
+incoming one hidden; a `track`'s `still` puts a moving part, e.g. the jumping player, in that moment).
 
 ## Minimal two-card example
 

@@ -1,5 +1,6 @@
 // Tutorial card "Aim your shot": from the −45° court, the five shots a direction picks (W smash,
 // S clear, no key drop, A / D left / right), one per beat, with the matching key lit below.
+// On touch there are no keys: the badges show the stick's direction and nothing goes below.
 import { h } from '@forge/ui/dom'
 import type { ClipContext, TutorialCard } from '@forge/ui/tutorial'
 import {
@@ -81,6 +82,8 @@ const beatOf = (i: number, n: number): Beat => ({ at: (i * LOOP) / n, dur: (LOOP
 /** The shot shown in the reduced-motion still frame (the smash). */
 const STILL = 0
 const BADGE_AT = { x: 220, y: 236 }
+/** On touch, the stick direction for each key (the camera looks down the court, so up = forward). */
+const STICK: Record<string, string> = { w: '↑', s: '↓', a: '←', d: '→' }
 const KEY_ON = (color: string) => `background:${color};color:#fff;transform:translateY(3px)`
 
 /** The "no key" chip beside the pad, lit during the drop's beat. */
@@ -94,7 +97,7 @@ function noKeyChip(c: Clip, color: string, beat: Beat): HTMLElement {
 }
 
 /** Builds the clip and the pad together: the pad's lit keys share the clip's timeline and style. */
-function buildAim(ctx: ClipContext): { svg: SVGSVGElement; below: HTMLElement } {
+function buildAim(ctx: ClipContext): { svg: SVGSVGElement; below: HTMLElement | null } {
   const list = shots()
   const { clip, p, ground, air } = courtScene(t('Aim your shot'))
   const lit: { id: string; beat: Beat; color: string; still?: boolean }[] = []
@@ -125,7 +128,7 @@ function buildAim(ctx: ClipContext): { svg: SVGSVGElement; below: HTMLElement } 
         'stroke-dasharray': '2 10',
       }),
       badge({
-        key: shot.key ? shot.key.toUpperCase() : '—',
+        key: shot.key ? (ctx.touch ? STICK[shot.key] : shot.key.toUpperCase()) : '—',
         name: shot.name.toLocaleUpperCase(),
         desc: shot.desc,
         color: shot.color,
@@ -140,6 +143,7 @@ function buildAim(ctx: ClipContext): { svg: SVGSVGElement; below: HTMLElement } 
     if (shot.key) lit.push({ id: shot.key, beat, color: shot.color, still })
     else chip = noKeyChip(clip, shot.color, beat)
   })
+  if (ctx.touch) return { svg: finishClip(clip, ctx.reducedMotion), below: null }
   const pad = keyPad(clip, WASD, lit, LOOP, ctx.reducedMotion)
   const below = h('div', { class: 'sp-tut-keys' }, pad)
   if (chip) below.append(chip)

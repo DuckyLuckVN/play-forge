@@ -27,6 +27,24 @@ export function isoProjection(o: { yawDeg: 45 | -45; scale: number; origin: Vec2
   return p
 }
 
+/**
+ * Screen to world on the plane at height `y`: the (x, z) that `p` draws at `at`. Works for any affine
+ * projection (solves from three sample points), e.g. where a racket drawn on screen meets the ball.
+ */
+export function unproject(p: Projection, at: Vec2, y = 0): { x: number; z: number } {
+  const o = p(0, 0, y)
+  const ex = p(1, 0, y)
+  const ez = p(0, 1, y)
+  const a = ex.x - o.x
+  const b = ez.x - o.x
+  const c = ex.y - o.y
+  const d = ez.y - o.y
+  const det = a * d - b * c
+  const dx = at.x - o.x
+  const dy = at.y - o.y
+  return { x: (d * dx - b * dy) / det + 0, z: (a * dy - c * dx) / det + 0 }
+}
+
 /** SVG path data "M x,y L x,y ..." with 1 decimal. */
 export function pathD(points: readonly Vec2[]): string {
   return 'M' + points.map((q) => `${q.x.toFixed(1)},${q.y.toFixed(1)}`).join(' L')

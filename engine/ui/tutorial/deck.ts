@@ -21,8 +21,8 @@ export interface TutorialCard {
   hint?: { pc?: string; touch?: string }
   /** E.g. a settings list; shown under the clip. */
   body?: (ctx: ClipContext) => Element
-  /** E.g. a key pad. */
-  below?: (ctx: ClipContext) => Element
+  /** E.g. a key pad. Null = nothing on this device (e.g. no keys on touch). */
+  below?: (ctx: ClipContext) => Element | null
 }
 
 /** dismissed = closed by code (e.g. an online countdown starting). */
@@ -128,7 +128,8 @@ export function openTutorial(cards: readonly TutorialCard[], o: OpenTutorialOpti
       body.append(el)
     }
     if (card.body) body.append(card.body(ctx))
-    if (card.below) body.append(card.below(ctx))
+    const below = card.below?.(ctx)
+    if (below) body.append(below)
 
     const dots = h(
       'div',

@@ -110,6 +110,14 @@ describe('tutorial deck device and options', () => {
     for (const c of seen) expect(c).toEqual({ reducedMotion: true, touch: true })
   })
 
+  it('below may return null for a device: nothing is added', () => {
+    openTutorial(cards(1, { below: (ctx) => (ctx.touch ? null : document.createElement('i')) }), {
+      touch: true,
+    })
+    const card = document.querySelector('.pf-tut-card')!
+    expect(card.lastChild).toBe(card.querySelector('.pf-tut-caption'))
+  })
+
   it('fullControls link shows only on last card and keeps deck open', () => {
     const fullControls = vi.fn()
     openTutorial(cards(2), { fullControls })

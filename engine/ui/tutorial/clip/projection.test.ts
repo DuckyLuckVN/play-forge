@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { arc, isoProjection, pathD } from './projection'
+import { arc, isoProjection, pathD, unproject } from './projection'
 
 const o = { x: 200, y: 168 }
 
@@ -52,5 +52,15 @@ describe('arc', () => {
   it('midpoint is peak above ground', () => {
     const m = 15
     expect(ground[m].y - air[m].y).toBeCloseTo(h.peak * 20, 6)
+  })
+})
+
+describe('unproject', () => {
+  it.each([-45, 45] as const)('inverts p(x, z, y) for a known height (yaw %i)', (yawDeg) => {
+    const p = isoProjection({ yawDeg, scale: 22, origin: o })
+    const w = unproject(p, p(1.3, -2.4, 0.9), 0.9)
+    expect(w.x).toBeCloseTo(1.3, 6)
+    expect(w.z).toBeCloseTo(-2.4, 6)
+    expect(unproject(p, o)).toEqual({ x: 0, z: 0 })
   })
 })

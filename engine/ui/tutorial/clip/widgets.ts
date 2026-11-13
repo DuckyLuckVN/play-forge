@@ -82,7 +82,8 @@ export function showDuring(
 
 /**
  * A ball (and optional ground shadow) that travels along path `d` during the beat: appears at the
- * start, flies over the first 55% of the beat, rests at the end, then fades. In the reduced-motion
+ * start, flies over the first `flight` of the beat (default 0.55), rests at the end, then fades.
+ * `ease` is a CSS timing function for the flight (e.g. 'ease-in' for a smash). In the reduced-motion
  * still frame it rests at the end of its path, unless `still: false` (then it is hidden).
  */
 export function flyAlong(
@@ -90,19 +91,23 @@ export function flyAlong(
   d: string,
   loop: number,
   beat: Beat,
-  o: { shadow?: string; r?: number; still?: boolean } = {},
+  o: { shadow?: string; r?: number; still?: boolean; flight?: number; ease?: string } = {},
 ): void {
   const still = o.still !== false
   const k = uid('fl')
   const { a, on, b, off: bOff } = beatPct(beat, loop)
-  const fly = a + (b - a) * 0.55
+  const flight = Math.min(Math.max(o.flight ?? 0.55, 0), 1)
+  const fly = a + (b - a) * flight
   const aOn = Math.min(on, fly)
   const st = (dist: number, op: number) => `offset-distance:${dist}%;opacity:${op}`
+  // Stops that coincide (flight 1: the flight ends as the beat does) are written once.
+  const land = pct(fly) === pct(b) ? `${pct(b)}%` : `${pct(fly)}%,${pct(b)}%`
   c.css.push(
-    `@keyframes ${k}{0%,${pct(a)}%{${st(0, 0)}}${pct(aOn)}%{${st(0, 1)}}${pct(fly)}%,${pct(b)}%{${st(100, 1)}}${pct(bOff)}%,100%{${st(100, 0)}}}`,
+    `@keyframes ${k}{0%,${pct(a)}%{${st(0, 0)}}${pct(aOn)}%{${st(0, 1)}}${land}{${st(100, 1)}}${pct(bOff)}%,100%{${st(100, 0)}}}`,
   )
+  const ease = o.ease ? ` ${o.ease}` : ''
   const rule = (path: string) =>
-    `offset-path:path("${path}");offset-rotate:0deg;opacity:0;animation:${animation(k, loop)}`
+    `offset-path:path("${path}");offset-rotate:0deg;opacity:0;animation:${animation(k, loop)}${ease}`
   if (o.shadow) {
     const sh = s('ellipse', { class: `${k}s`, rx: 7, ry: 3.5, fill: '#0008', 'data-still': still && '' })
     c.el.append(sh)
@@ -197,14 +202,38 @@ export function chargeRing(c: Clip, at: Vec2, loop: number, beat: Beat): SVGGEle
   return s('g', { transform: `translate(${at.x},${at.y})` }, ring)
 }
 
-/** A short word that pops up and drifts during the beat (e.g. "SMASH!"). */
-export function popText(c: Clip, text: string, at: Vec2, loop: number, beat: Beat): SVGTextElement {
+/** Seconds a `burst` pop takes to overshoot, then to settle. */
+const BURST_UP = 0.15
+const BURST_SETTLE = 0.3
+
+/**
+ * A short word that pops up and drifts during the beat (e.g. "SMASH!"). `burst`: a bigger italic
+ * word that scales up past full size, settles, then fades. Shown in the reduced-motion still frame.
+ */
+export function popText(
+  c: Clip,
+  text: string,
+  at: Vec2,
+  loop: number,
+  beat: Beat,
+  o: { fill?: string; size?: number; burst?: boolean } = {},
+): SVGTextElement {
   const k = uid('pt')
   const { a, on, b, off } = beatPct(beat, loop)
-  c.css.push(
-    `.${k}{opacity:0;animation:${animation(k, loop)}}`,
-    `@keyframes ${k}{0%,${pct(a)}%{opacity:0;transform:translateY(6px)}${pct(on)}%{opacity:1;transform:translateY(0)}${pct(b)}%{opacity:1;transform:translateY(-8px)}${pct(off)}%,100%{opacity:0;transform:translateY(-8px)}}`,
-  )
+  if (o.burst) {
+    const up = Math.min(a + (BURST_UP / loop) * 100, b)
+    const settle = Math.min(a + (BURST_SETTLE / loop) * 100, b)
+    const gone = Math.min(b + (BURST_UP / loop) * 100, 100)
+    c.css.push(
+      `.${k}{transform-box:fill-box;transform-origin:center;opacity:0;animation:${animation(k, loop)}}`,
+      `@keyframes ${k}{0%,${pct(a)}%{opacity:0;transform:scale(.3)}${pct(up)}%{opacity:1;transform:scale(1.25)}${pct(settle)}%,${pct(b)}%{opacity:1;transform:scale(1)}${pct(gone)}%,100%{opacity:0;transform:scale(1.1) translateY(-6px)}}`,
+    )
+  } else {
+    c.css.push(
+      `.${k}{opacity:0;animation:${animation(k, loop)}}`,
+      `@keyframes ${k}{0%,${pct(a)}%{opacity:0;transform:translateY(6px)}${pct(on)}%{opacity:1;transform:translateY(0)}${pct(b)}%{opacity:1;transform:translateY(-8px)}${pct(off)}%,100%{opacity:0;transform:translateY(-8px)}}`,
+    )
+  }
   return s(
     'text',
     {
@@ -214,12 +243,45 @@ export function popText(c: Clip, text: string, at: Vec2, loop: number, beat: Bea
       y: at.y,
       'text-anchor': 'middle',
       'font-weight': 900,
-      'font-size': 16,
-      fill: '#ffd24a',
+      'font-size': o.size ?? 16,
+      'font-style': o.burst && 'italic',
+      fill: o.fill ?? '#ffd24a',
       stroke: OUTLINE,
-      'stroke-width': 3,
+      'stroke-width': o.burst ? 4 : 3,
       'paint-order': 'stroke',
     },
     text,
   )
+}
+
+/** One stop of a `track`: a loop percentage, or a [from, to] span that holds the style. */
+export interface TrackStop {
+  at: number | readonly [number, number]
+  css: string
+}
+
+/**
+ * Free-form loop animation for moves the beat helpers don't cover (a racket swing, a jump, a dive):
+ * `el` runs through `stops` (percent of the loop, like CSS @keyframes). `base` is its resting rule
+ * (e.g. transform-origin), `timing` a CSS timing function for the whole track, `still` its style in
+ * the reduced-motion still frame (otherwise it rests in `base`).
+ */
+export function track(
+  c: Clip,
+  el: Element,
+  loop: number,
+  stops: readonly TrackStop[],
+  o: { base?: string; timing?: string; still?: string } = {},
+): void {
+  if (!(loop > 0)) throw new RangeError(`loop must be > 0, got ${loop}`)
+  const k = uid('tk')
+  el.classList.add(k)
+  const at = (x: TrackStop['at']) => (typeof x === 'number' ? [x] : x).map((n) => `${pct(n)}%`).join(',')
+  const base = o.base ? `${o.base};` : ''
+  const timing = o.timing ? ` ${o.timing}` : ''
+  c.css.push(
+    `.${k}{${base}animation:${animation(k, loop)}${timing}}`,
+    `@keyframes ${k}{${stops.map((x) => `${at(x.at)}{${x.css}}`).join('')}}`,
+  )
+  if (o.still) c.css.push(`.pf-clip-still .${k}{${o.still}}`)
 }

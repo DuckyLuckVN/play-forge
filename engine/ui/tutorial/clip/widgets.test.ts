@@ -14,6 +14,7 @@ import {
   landingRing,
   popText,
   showDuring,
+  track,
 } from './widgets'
 import { s } from './svg'
 
@@ -155,5 +156,93 @@ describe('still frame choice', () => {
     const c = clipRoot({ w: 10, h: 10 })
     keyPad(c, WASD, [{ id: 'w', beat: { at: 1, dur: 2 }, color: '#f36', still: true }], 10, true)
     expect(c.css.join('')).toMatch(/\.pf-clip-still \.kp\d+\{background:#f36/)
+  })
+})
+
+describe('track', () => {
+  it('animates an element through percent stops; a pair holds a style over a span', () => {
+    const c = clipRoot({ w: 10, h: 10 })
+    const g = s('g')
+    track(c, g, 4, [
+      { at: [0, 30], css: 'transform:rotate(0)' },
+      { at: 42, css: 'transform:rotate(35deg)' },
+      { at: [52, 100], css: 'transform:rotate(0)' },
+    ])
+    const k = [...g.classList].find((x) => /^tk\d+$/.test(x))!
+    expect(k).toBeDefined()
+    const css = c.css.join('\n')
+    expect(css).toContain(`.${k}{animation:${k} 4s infinite}`)
+    expect(css).toContain(
+      `@keyframes ${k}{0%,30%{transform:rotate(0)}42%{transform:rotate(35deg)}52%,100%{transform:rotate(0)}}`,
+    )
+    expect(g.hasAttribute('data-still')).toBe(false)
+  })
+
+  it('base style, timing and a still-frame style', () => {
+    const c = clipRoot({ w: 10, h: 10 })
+    const g = s('g')
+    track(c, g, 3.8, [{ at: [0, 100], css: 'opacity:1' }], {
+      base: 'transform-origin:6px -8px',
+      timing: 'linear',
+      still: 'transform:translateY(-40px)',
+    })
+    const k = g.getAttribute('class')!
+    const css = c.css.join('\n')
+    expect(css).toContain(`.${k}{transform-origin:6px -8px;animation:${k} 3.8s infinite linear}`)
+    expect(css).toContain(`.pf-clip-still .${k}{transform:translateY(-40px)}`)
+  })
+
+  it('clamps and rounds stops; rejects a bad loop', () => {
+    const c = clipRoot({ w: 10, h: 10 })
+    track(c, s('g'), 3, [
+      { at: [-5, 33.33333], css: 'opacity:0' },
+      { at: 120, css: 'opacity:1' },
+    ])
+    expect(c.css.join('')).toMatch(/\{0%,33\.33%\{opacity:0\}100%\{opacity:1\}\}/)
+    expect(() => track(c, s('g'), 0, [])).toThrow(RangeError)
+  })
+})
+
+describe('flyAlong flight and easing', () => {
+  it('flight: 1 flies the whole beat (no rest), with an easing', () => {
+    const c = clipRoot({ w: 10, h: 10 })
+    flyAlong(c, 'M0,0 L1,1', 10, { at: 2, dur: 4 }, { flight: 1, ease: 'ease-out' })
+    const css = c.css.join('\n')
+    expect(css).toMatch(/60%\{offset-distance:100%;opacity:1\}/)
+    expect(css).not.toMatch(/42%/)
+    expect(css).toMatch(/animation:fl\d+ 10s infinite ease-out/)
+  })
+  it('defaults stay: 55% flight, no easing', () => {
+    const c = clipRoot({ w: 10, h: 10 })
+    flyAlong(c, 'M0,0 L1,1', 10, { at: 2, dur: 4 })
+    const css = c.css.join('\n')
+    expect(css).toMatch(/42%,60%\{offset-distance:100%;opacity:1\}/)
+    expect(css).toMatch(/animation:fl\d+ 10s infinite\}/)
+  })
+})
+
+describe('popText burst', () => {
+  it('colour, size and a scale-up pop; default stays the drifting yellow word', () => {
+    const c = clipRoot({ w: 10, h: 10 })
+    const t = popText(
+      c,
+      'POWER!',
+      { x: 5, y: 6 },
+      4,
+      { at: 2, dur: 1 },
+      { fill: '#ff8a00', size: 26, burst: true },
+    )
+    expect(t.getAttribute('fill')).toBe('#ff8a00')
+    expect(t.getAttribute('font-size')).toBe('26')
+    expect(t.getAttribute('font-style')).toBe('italic')
+    expect(t.hasAttribute('data-still')).toBe(true)
+    const css = c.css.join('\n')
+    expect(css).toContain('scale(1.25)')
+    expect(css).toContain('transform-box:fill-box')
+    noNaN(t)
+    const d = popText(c, 'x', { x: 1, y: 1 }, 4, { at: 1, dur: 1 })
+    expect(d.getAttribute('fill')).toBe('#ffd24a')
+    expect(d.getAttribute('font-size')).toBe('16')
+    expect(d.hasAttribute('font-style')).toBe(false)
   })
 })

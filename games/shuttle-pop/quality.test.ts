@@ -17,7 +17,7 @@ describe('Shuttle Pop quality ladder', () => {
     expect(SP_QUALITY.slice(0, 3).map(spTier)).toEqual(['high', 'medium', 'low'])
     for (const l of SP_QUALITY.slice(0, 3)) expect(l.dpr).toBe(Infinity)
   })
-  it('resolution never rises down any ladder; floor is DPR 1; shadows / AO / bloom stay off once off', () => {
+  it('resolution never rises down any ladder; floor is DPR 1 (0.75 render scale on the last rung); shadows / AO / bloom stay off once off', () => {
     for (const pref of GRAPHICS_PREFS) {
       const L = spLadder(pref)
       for (let i = 1; i < L.length; i++) {
@@ -27,18 +27,24 @@ describe('Shuttle Pop quality ladder', () => {
         if (!L[i - 1].bloom) expect(L[i].bloom).toBe(false)
       }
       expect(L.at(-1)!.dpr).toBe(1)
+      // The last rung may render a canvas over the pixel budget below 1× (big window / fullscreen); only it.
+      expect(L.at(-1)!.minDpr).toBe(0.75)
+      for (const l of L.slice(0, -1)) expect(l.minDpr).toBeUndefined()
     }
   })
   it('a pinned look keeps its look on every rung (only resolution steps)', () => {
-    for (const pref of ['low', 'medium', 'high'] as const)
+    for (const pref of ['low', 'medium', 'high', 'ultra'] as const)
       for (const l of spLadder(pref)) expect(spTier(l)).toBe(pref)
   })
-  it('Low has no post effects (straight to the canvas); High alone has AO', () => {
+  it('Low has no post effects (straight to the canvas); live AO only on Ultra (baked light everywhere)', () => {
     const [low] = spLadder('low')
     expect(low).toMatchObject({ bloom: false, shadows: false })
     expect(low.ao).toBeFalsy()
     expect(spLadder('medium')[0]).toMatchObject({ bloom: true, shadows: true, ao: false })
-    expect(spLadder('high')[0]).toMatchObject({ bloom: true, shadows: true, ao: true })
+    expect(spLadder('high')[0]).toMatchObject({ bloom: true, shadows: true, ao: false })
+    expect(spLadder('ultra')[0]).toMatchObject({ bloom: true, shadows: true, ao: true })
+    // Auto never reaches for live AO (Ultra is opt-in only).
+    for (const l of SP_QUALITY) expect(l.ao).toBeFalsy()
   })
   it('only the engine decides quality: the renderer builds no governor of its own', () => {
     const src = readFileSync(new URL('./render3d.ts', import.meta.url), 'utf8')

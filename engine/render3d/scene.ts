@@ -15,6 +15,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
+import { perfProbe } from '../core/perfprobe'
 import { prefersReducedMotion } from '../fx/tween'
 import { SceneAoPass, type AoOptions } from './ao'
 import { pickDpr, QualityGovernor, type QualityLevel } from './quality'
@@ -190,7 +191,7 @@ export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): S
     // At no more than CSS resolution, like bloom: the occlusion is soft and denoised anyway.
     const setSize = ao.setSize.bind(ao)
     ao.setSize = (w, h) => {
-      const k = Math.min(1, 1 / renderer.getPixelRatio())
+      const k = Math.min(1, 1 / renderer.getPixelRatio()) * (opts.ao?.scale ?? 1)
       setSize(Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k)))
     }
     ao.enabled = false
@@ -276,11 +277,12 @@ export function createScene3D(parent: HTMLElement, opts: Scene3DOptions = {}): S
     view.width = w
     view.height = h
     const level = quality.current
-    const dpr = pickDpr(window.devicePixelRatio, Math.min(maxDpr, level.dpr), w, h)
-    if (import.meta.env.DEV && level !== lastLevel) {
+    const dpr = pickDpr(window.devicePixelRatio, Math.min(maxDpr, level.dpr), w, h, undefined, level.minDpr)
+    if (level !== lastLevel) {
       lastLevel = level
+      perfProbe()?.note('quality', { level: quality.level, dpr, size: [w, h] })
       // eslint-disable-next-line no-console
-      console.info('[render3d] quality', quality.level, 'dpr', dpr)
+      if (import.meta.env.DEV) console.info('[render3d] quality', quality.level, 'dpr', dpr)
     }
     if (bloom) bloom.enabled = level.bloom
     if (ao) ao.enabled = level.ao === true

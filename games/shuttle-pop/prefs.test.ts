@@ -47,7 +47,9 @@ describe('shuttle-pop prefs', () => {
 
   it('graphics: Auto by default (old saves too), garbage → Auto, a pinned look persists', () => {
     expect(createPrefs(mem()).get().graphics).toBe('auto')
-    for (const graphics of ['ultra', 2, null, 'High']) expect(parsePrefs({ graphics }).graphics).toBe('auto')
+    for (const graphics of ['extreme', 2, null, 'High'])
+      expect(parsePrefs({ graphics }).graphics).toBe('auto')
+    expect(parsePrefs({ graphics: 'ultra' }).graphics).toBe('ultra')
     const m = mem()
     createPrefs(m).set({ graphics: 'low' })
     expect(createPrefs(m).get().graphics).toBe('low')

@@ -6,8 +6,9 @@ export const PIXEL_BUDGET = 1.6e6
 
 /**
  * Pixel ratio for a `w`×`h` (CSS px) view: the device ratio, capped by
- * `maxDpr` and by the pixel budget, but never below 1 (or the device ratio,
- * if that is lower) so text and edges stay crisp.
+ * `maxDpr` and by the pixel budget, but never below `floor` (default 1; or the
+ * device ratio, if that is lower) so text and edges stay crisp. A floor under 1
+ * (QualityLevel.minDpr) lets a huge canvas render smaller and be upscaled.
  */
 export function pickDpr(
   deviceDpr: number,
@@ -15,20 +16,28 @@ export function pickDpr(
   w: number,
   h: number,
   budget = PIXEL_BUDGET,
+  floor = 1,
 ): number {
   const want = Math.min(maxDpr, deviceDpr || 1)
   const fit = Math.sqrt(budget / Math.max(1, w * h))
-  return Math.max(Math.min(1, want), Math.min(want, fit))
+  return Math.max(Math.min(floor, want), Math.min(want, fit))
 }
 
 export interface QualityLevel {
   /** Extra cap on pixel ratio. */
   dpr: number
+  /**
+   * Lowest pixel ratio the pixel budget may pick (default 1). Under 1: a canvas bigger than the budget
+   * (a big window / fullscreen) renders smaller and the browser upscales it (softer, much cheaper).
+   */
+  minDpr?: number
   bloom: boolean
   /** Screen-space ambient occlusion (only when the view was made with an `ao` option). */
   ao?: boolean
   /** Game-drawn extra, e.g. real shadows. The engine ignores it; games read `Scene3D.quality`. */
   shadows?: boolean
+  /** Game label for the look this level draws (e.g. 'high'). The engine ignores it. */
+  tag?: string
 }
 
 /** Cheaper and cheaper; the last level is the floor. */
@@ -36,7 +45,7 @@ export const QUALITY_LEVELS: readonly QualityLevel[] = [
   { dpr: Infinity, bloom: true },
   { dpr: 1.5, bloom: true },
   { dpr: 1, bloom: true },
-  { dpr: 1, bloom: false },
+  { dpr: 1, bloom: false, minDpr: 0.75 },
 ]
 
 /** Frames per judgement window. */
@@ -53,8 +62,12 @@ const IGNORE_DT = 0.1
 export const QUALITY_SETTLE = 2
 /** Consecutive bad windows before a level drop. */
 export const BAD_WINDOWS = 2
-/** After lock(): only sustained slowness steps down (this many bad windows in a row). */
+/**
+ * After lock(): only sustained slowness steps down: this many bad windows among the last
+ * LOCKED_SPAN (not in a row: a jittery stretch alternates bad and so-so windows).
+ */
 export const LOCKED_BAD_WINDOWS = 4
+export const LOCKED_SPAN = 6
 /** Consecutive clean windows before probing one level back up. */
 export const RECOVER_WINDOWS = 5
 /** Clean windows a probe must survive before a later failure no longer locks the ceiling. */
@@ -84,6 +97,9 @@ export class QualityGovernor {
   private probedTo = -1
   /** Bad windows in a row before a drop (BAD_WINDOWS; LOCKED_BAD_WINDOWS once locked). */
   private dropAfter = BAD_WINDOWS
+  /** Locked: the last LOCKED_SPAN windows' verdicts (true = bad). */
+  private recent: boolean[] = []
+  private locked = false
 
   /**
    * `start`: the level to begin at (e.g. a step down on phones). The ceiling stays at the top, so a
@@ -104,6 +120,7 @@ export class QualityGovernor {
   /** Start a fresh window (after a resize or level change, buffers realloc). */
   restart(): void {
     this.dts.length = 0
+    this.recent.length = 0
     this.badRun = 0
     this.goodRun = 0
     this.settle = QUALITY_SETTLE
@@ -120,6 +137,8 @@ export class QualityGovernor {
     this.probedTo = -1
     this.goodRun = 0
     this.dropAfter = LOCKED_BAD_WINDOWS
+    this.locked = true
+    this.recent.length = 0
   }
 
   /** Drop one level now (e.g. the GPU ran out of memory) and never probe back above it. False at the floor. */
@@ -148,10 +167,17 @@ export class QualityGovernor {
     this.dts.length = 0
     const median = sorted[WINDOW / 2]
     const lateShare = late / WINDOW
-    if (lateShare >= LATE_SHARE || median > 1 / MIN_FPS) {
+    const bad = lateShare >= LATE_SHARE || median > 1 / MIN_FPS
+    if (this.locked) {
+      this.recent.push(bad)
+      if (this.recent.length > LOCKED_SPAN) this.recent.shift()
+    }
+    if (bad) {
       this.badRun++
       this.goodRun = 0
-      if (this.badRun < this.dropAfter || this.level >= this.levels.length - 1) return false
+      const due = this.locked ? this.recent.filter(Boolean).length : this.badRun
+      if (due < this.dropAfter || this.level >= this.levels.length - 1) return false
+      this.recent.length = 0
       const from = this.level++
       if (this.probeLeft > 0 || from === this.probedTo) {
         this.ceiling = this.level

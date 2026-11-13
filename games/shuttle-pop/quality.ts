@@ -1,24 +1,31 @@
 import type { QualityLevel } from '@forge/render3d'
 import type { GraphicsPref, LookTier } from './look'
 
-// The view's quality ladder (the engine governor owns it). Three looks (look.ts):
-//   high   = soft real shadows (players + park), bloom on the lamps, colour grade, ambient occlusion;
-//   medium = the same without AO;
+// The view's quality ladder (the engine governor owns it). Four looks (look.ts); every one draws the park's
+// baked light (sun shadows + contact shading, scenery.ts), so live shadows are the players' only:
+//   ultra  = High + live ambient occlusion at half resolution (opt-in only; Auto never picks it);
+//   high   = soft real player shadows (2048 map), bloom on the lamps, colour grade, every prop;
+//   medium = the same at a 1024 map and fewer far props;
 //   low    = lit scenery, blob shadows only, no post passes (frames draw straight to the canvas).
-// Then resolution steps down to DPR 1. The player can pin a look (View settings → Graphics); the governor
+// Then resolution steps down to DPR 1 (the last rung renders a too-big canvas down to 0.75×). The player can pin a look (View settings → Graphics); the governor
 // then only steps the resolution.
 
-const HIGH: QualityLevel = { dpr: Infinity, bloom: true, shadows: true, ao: true }
-const MEDIUM: QualityLevel = { dpr: Infinity, bloom: true, shadows: true, ao: false }
-const LOW: QualityLevel = { dpr: Infinity, bloom: false, shadows: false, ao: false }
-const TIERS: Record<LookTier, QualityLevel> = { high: HIGH, medium: MEDIUM, low: LOW }
+const ULTRA: QualityLevel = { dpr: Infinity, bloom: true, shadows: true, ao: true, tag: 'ultra' }
+const HIGH: QualityLevel = { dpr: Infinity, bloom: true, shadows: true, ao: false, tag: 'high' }
+const MEDIUM: QualityLevel = { dpr: Infinity, bloom: true, shadows: true, ao: false, tag: 'medium' }
+const LOW: QualityLevel = { dpr: Infinity, bloom: false, shadows: false, ao: false, tag: 'low' }
+const TIERS: Record<LookTier, QualityLevel> = { ultra: ULTRA, high: HIGH, medium: MEDIUM, low: LOW }
 
 /** A look at a lower pixel-ratio cap. */
 const at = (level: QualityLevel, dpr: number): QualityLevel => ({ ...level, dpr })
+/** The last rung: DPR 1, and a canvas over the pixel budget (a big window / fullscreen) renders down to 0.75×. */
+const floor = (level: QualityLevel): QualityLevel => ({ ...level, dpr: 1, minDpr: 0.75 })
 
 /** Which look a ladder level draws. */
 export function spTier(level: QualityLevel): LookTier {
-  if (level.ao) return 'high'
+  const tag = level.tag as LookTier | undefined
+  if (tag && tag in TIERS) return tag
+  if (level.ao) return 'ultra'
   return level.shadows === false ? 'low' : 'medium'
 }
 
@@ -26,9 +33,9 @@ export function spTier(level: QualityLevel): LookTier {
 export function spLadder(pref: GraphicsPref): readonly QualityLevel[] {
   if (pref !== 'auto') {
     const look = TIERS[pref]
-    return [look, at(look, 1.5), at(look, 1)]
+    return [look, at(look, 1.5), floor(look)]
   }
-  return [HIGH, MEDIUM, LOW, at(LOW, 1.5), at(LOW, 1)]
+  return [HIGH, MEDIUM, LOW, at(LOW, 1.5), floor(LOW)]
 }
 
 /** The Auto ladder. */

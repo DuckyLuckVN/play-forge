@@ -23,6 +23,7 @@ const GRAPHICS_LABELS: Record<GraphicsPref, string> = {
   low: 'Low',
   medium: 'Medium',
   high: 'High',
+  ultra: 'Ultra',
 }
 
 /**

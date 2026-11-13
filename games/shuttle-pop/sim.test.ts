@@ -769,17 +769,26 @@ describe('lag-compensated hits (launch from the rewound contact)', () => {
       vel: s.shuttle.vel,
       lastHitter: s.shuttle.lastHitter,
     })
-    expect(shuttle(finals[0])).toEqual({
+    // Positions / velocities to 9 decimals, not bit-exact: the last bits of float maths differ across
+    // Node / V8 versions and CPUs (CI: Node 22 x64 vs a dev Mac), while any real change in the rally moves
+    // them far more (and the integer fingerprint above stays exact).
+    const close = (got: SpState, want: ReturnType<typeof shuttle>) => {
+      const g = shuttle(got)
+      expect(g.lastHitter).toBe(want.lastHitter)
+      for (const k of ['pos', 'vel'] as const)
+        for (const a of ['x', 'y', 'z'] as const) expect(g[k][a], `${k}.${a}`).toBeCloseTo(want[k][a], 9)
+    }
+    close(finals[0], {
       pos: { x: 0.40595205467668344, y: 3.1589127364028, z: 2.9817299727350797 },
       vel: { x: -0.1910177998194872, y: -1.2797944904123113, z: 3.444133166335663 },
       lastHitter: 0,
     })
-    expect(shuttle(finals[1])).toEqual({
+    close(finals[1], {
       pos: { x: -0.18511115742703074, y: 4.10702988934557, z: 0.9369640285419196 },
       vel: { x: 1.1418936243332736, y: 3.5330349570184563, z: 6.263307307540929 },
       lastHitter: 0,
     })
-    expect(shuttle(finals[2])).toEqual({
+    close(finals[2], {
       pos: { x: 0.6478971825462866, y: 1.6003728563011055, z: 0.037685372102987454 },
       vel: { x: 0.44093018521080973, y: -3.0624243302739664, z: 3.181654814883022 },
       lastHitter: 0,

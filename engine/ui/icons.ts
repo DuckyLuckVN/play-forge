@@ -6,6 +6,7 @@
 import {
   faCamera,
   faCheck,
+  faChevronDown,
   faCommentDots,
   faCompress,
   faCopy,
@@ -67,6 +68,8 @@ export const icons = {
   network: faSvg(faSignal),
   cross: faSvg(faXmark),
   crown: faSvg(faCrown),
+  /** A dropdown's open-me caret (engine/ui/dropdown.ts). */
+  chevronDown: faSvg(faChevronDown, 14),
 }
 
 // Input icons for the control guide (engine/ui/guide.ts): a finer stroke, since they sit beside

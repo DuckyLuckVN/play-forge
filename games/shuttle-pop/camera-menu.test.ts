@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { mountCameraButton } from './camera-menu'
 import { prefs } from './prefs'
 import { bindInput } from './input'
@@ -174,24 +176,28 @@ describe('ring picker', () => {
     prefs.set({ autoSwing: false })
   })
 
-  it('graphics: Auto / Low / Medium / High / Ultra, Auto by default, click saves', () => {
+  it('graphics (5 looks): a dropdown, Auto by default; picking saves, a change elsewhere shows', () => {
     prefs.set({ graphics: 'auto' })
     button().click()
-    const segs = [...panel().querySelectorAll<HTMLButtonElement>('.sp-graphics-row [role=radio]')]
-    expect(segs.map((b) => b.textContent)).toEqual(['Auto', 'Low', 'Medium', 'High', 'Ultra'])
-    expect(segs.map((b) => b.getAttribute('aria-checked'))).toEqual([
-      'true',
-      'false',
-      'false',
-      'false',
-      'false',
-    ])
-    segs[3].click()
+    const row = panel().querySelector<HTMLElement>('.sp-graphics-row')!
+    expect(row.querySelector('[role=radio]')).toBe(null) // not a segmented row any more
+    const open = row.querySelector<HTMLButtonElement>('.pf-dropdown-btn')!
+    expect(open.textContent).toContain('Auto')
+    open.click()
+    const opts = [...row.querySelectorAll<HTMLElement>('[role=option]')]
+    expect(opts.map((o) => o.textContent)).toEqual(['Auto', 'Low', 'Medium', 'High', 'Ultra'])
+    opts[3].click()
     expect(prefs.get().graphics).toBe('high')
-    expect(segs[3].getAttribute('aria-checked')).toBe('true')
-    segs[4].click()
-    expect(prefs.get().graphics).toBe('ultra')
+    expect(open.textContent).toContain('High')
+    prefs.set({ graphics: 'ultra' })
+    expect(open.textContent).toContain('Ultra')
     prefs.set({ graphics: 'auto' })
+  })
+
+  it('rows with 2–3 choices stay segmented (ring, path, auto swing, name tags)', () => {
+    button().click()
+    for (const cls of ['.sp-ring-row', '.sp-path-row', '.sp-auto-row', '.sp-tags-row'])
+      expect(panel().querySelector(`${cls} [role=radiogroup]`), cls).not.toBe(null)
   })
 
   it('the ring group is labelled', () => {
@@ -207,6 +213,15 @@ describe('ring picker', () => {
     for (const code of ['Space', 'KeyJ', 'ArrowLeft', 'ArrowRight']) key('keydown', { code, key: code }, seg)
     expect(sent).not.toHaveBeenCalled()
     input.stop()
+  })
+})
+
+describe('one settings corner on every screen', () => {
+  it('main.ts mounts it on the stage (stageExtras: menu, room, match, pause); the 3D view no longer has its own', () => {
+    const main = readFileSync(join(process.cwd(), 'games/shuttle-pop/main.ts'), 'utf8')
+    const r3d = readFileSync(join(process.cwd(), 'games/shuttle-pop/render3d.ts'), 'utf8')
+    expect(main).toMatch(/stageExtras: \(stage\) => \{\s*mountCameraButton\(stage\)/)
+    expect(r3d).not.toContain('mountCameraButton')
   })
 })
 

@@ -1,4 +1,5 @@
 import { h, icon, setLabel } from '@forge/ui/dom'
+import { dropdown } from '@forge/ui/dropdown'
 import { icons } from '@forge/ui/icons'
 import { guardGameKeys } from '@forge/ui/key-guard'
 import { popover } from '@forge/ui/popover'
@@ -61,6 +62,44 @@ function segmentedPref<K extends keyof SpPrefs>(
   )
 }
 
+/** A setting with this many choices or more is a dropdown; fewer stay a segmented row. */
+const DROPDOWN_FROM = 4
+
+/**
+ * A pref picked from a list: a segmented row for a few choices, a dropdown (engine/ui/dropdown.ts) from
+ * DROPDOWN_FROM on. Either way it saves on pick and follows changes made elsewhere.
+ */
+function choicePref<K extends keyof SpPrefs>(
+  key: K,
+  label: string,
+  choices: readonly { value: SpPrefs[K]; text: string }[],
+  cls: string,
+): HTMLElement {
+  if (choices.length < DROPDOWN_FROM) return segmentedPref(key, label, choices, cls)
+  // Dropdown values are strings; map back to the pref's own values by position.
+  const ids = choices.map((_, i) => String(i))
+  const idOf = (v: SpPrefs[K]) =>
+    String(
+      Math.max(
+        0,
+        choices.findIndex((c) => c.value === v),
+      ),
+    )
+  const menu = dropdown({
+    label,
+    choices: choices.map((c, i) => ({ value: ids[i], text: c.text })),
+    value: idOf(prefs.get()[key]),
+    onChange: (id) => prefs.set({ [key]: choices[Number(id)].value } as Partial<SpPrefs>),
+  })
+  prefs.onChange((p) => menu.set(idOf(p[key])))
+  return h(
+    'div',
+    { class: `pf-option ${cls}` },
+    h('span', { class: 'pf-option-label', textContent: label }),
+    menu.root,
+  )
+}
+
 /** When does the landing ring show. */
 const ringPicker = (): HTMLElement =>
   segmentedPref(
@@ -103,9 +142,9 @@ const nameTagsPicker = (): HTMLElement =>
     'sp-tags-row',
   )
 
-/** Graphics look: Auto (steps down by itself when frames run slow) or a pinned Low / Medium / High. */
+/** Graphics look: Auto (steps down by itself when frames run slow) or a pinned Low … Ultra (a dropdown). */
 const graphicsPicker = (): HTMLElement =>
-  segmentedPref(
+  choicePref(
     'graphics',
     t(SETTING_LABELS.graphics),
     GRAPHICS_PREFS.map((g) => ({ value: g, text: t(GRAPHICS_LABELS[g]) })),
@@ -154,8 +193,9 @@ export function viewPanel(): { nodes: HTMLElement[] } {
 }
 
 /**
- * A small settings (sliders) button over the top-right of the game view (`view`) that opens the view-settings panel
- * below it. The view takes every pointer as a swing / stick, so the overlay keeps its own pointer
+ * A small settings (sliders) button in the top-right corner of `view` (the game's stage: main.ts
+ * stageExtras, so it is there on the menu, in a match and over the pause screen) that opens the
+ * view-settings panel below it. The view takes every pointer as a swing / stick, so the overlay keeps its own pointer
  * events to itself, and while the panel is open a press outside only closes it (never swings).
  * While open, a capture guard keeps key press (except Esc/Tab, never a release) away from the game's window listeners.
  * Focus never stays on the button after closing, so Space keeps swinging.

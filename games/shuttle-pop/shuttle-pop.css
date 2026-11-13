@@ -922,11 +922,19 @@
 }
 
 /* ---------- Camera button (camera-menu.ts): top-right of the game view, panel drops below ---------- */
+/* On the stage (main.ts stageExtras): the 3D view's top-right corner (its frame is inset 16px, scene.ts),
+   on every screen; above the menu / pause overlay so it works there too. */
 .sp-cam {
   position: absolute;
   top: calc(8px + env(safe-area-inset-top, 0px));
-  right: calc(8px + env(safe-area-inset-right, 0px));
-  z-index: 3;
+  right: calc(24px + env(safe-area-inset-right, 0px));
+  z-index: calc(var(--pf-z-overlay) + 1);
+}
+/* Phones in fullscreen: the view goes edge to edge (shell.css), so does its corner. */
+@media (pointer: coarse) {
+  .pf-fullscreen .sp-cam {
+    right: calc(8px + env(safe-area-inset-right, 0px));
+  }
 }
 /* Phones turn popovers into bottom sheets (mobile.css); this one stays a small dropdown over the view. */
 .sp-cam .pf-popover.sp-cam-pop {
@@ -956,16 +964,6 @@
 }
 .sp-cam-panel .sp-ring-row .pf-segment,
 .sp-cam-panel .sp-path-row .pf-segment {
-  font-size: 13px;
-  padding: 10px 2px;
-  white-space: nowrap;
-}
-/* Graphics: five looks (Auto … Ultra) in a 3 + 2 grid, so "Medium" / "Tự động" / "Siêu cao" fit at 260 px. */
-.sp-cam-panel .sp-graphics-row .pf-segmented {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-}
-.sp-cam-panel .sp-graphics-row .pf-segment {
   font-size: 13px;
   padding: 10px 2px;
   white-space: nowrap;

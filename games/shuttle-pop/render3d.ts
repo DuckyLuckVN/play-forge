@@ -87,7 +87,6 @@ import { Net } from './net'
 import { prefs } from './prefs'
 import { createPath, firstAhead, samplePath } from './flightpath'
 import { ringShown, type RingMode } from './landing'
-import { mountCameraButton } from './camera-menu'
 import { headAnchorY, ReactionBubbles, toScreen } from './bubbles'
 import { boardView, Scoreboard, tintCss } from './scoreboard'
 import { NameTags, tagMode } from './nametags'
@@ -747,7 +746,6 @@ export class Court3D {
     this.view.root.appendChild(this.bubbles.root)
     this.banner.className = 'sp-outcome-stamp'
     this.banner.setAttribute('aria-live', 'polite')
-    mountCameraButton(this.view.root)
   }
 
   /** The element under the view (for pointer input). */

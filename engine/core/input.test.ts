@@ -24,18 +24,26 @@ describe('bindInput keys', () => {
     expect(e.defaultPrevented).toBe(true)
   })
 
-  it('leaves keys on UI alone: a focused overlay button keeps Space (not play, not preventDefault)', () => {
+  it('leaves keys on UI alone: fields, and anything over a menu overlay (not play, not preventDefault)', () => {
     const got: string[] = []
-    off = bindInput({ keys: { Space: 'boost', Enter: 'boost' } }, (a) => got.push(a))
+    off = bindInput({ keys: { Space: 'boost' } }, (a) => got.push(a))
     const overlay = document.createElement('div')
     overlay.className = 'pf-overlay'
     const btn = document.createElement('button')
     const panel = document.createElement('div')
     overlay.append(btn, panel)
-    const link = document.createElement('a')
     const input = document.createElement('input')
-    document.body.append(overlay, link, input)
-    for (const t of [btn, panel, link, input]) expect(press(t, 'Space').defaultPrevented).toBe(false)
+    document.body.append(overlay, input)
+    for (const t of [btn, panel, input]) expect(press(t, 'Space').defaultPrevented).toBe(false)
     expect(got).toEqual([])
+  })
+
+  it('still plays keys on a focused button outside the overlay (e.g. a top-bar button)', () => {
+    const got: string[] = []
+    off = bindInput({ keys: { ArrowUp: 'up' } }, (a) => got.push(a))
+    const bar = document.createElement('button')
+    document.body.append(bar)
+    expect(press(bar, 'ArrowUp').defaultPrevented).toBe(true)
+    expect(got).toEqual(['up'])
   })
 })

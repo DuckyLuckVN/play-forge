@@ -10,9 +10,12 @@ export interface InputBindings<A extends string> {
   swipeTarget?: HTMLElement
 }
 
-/** Typing in a field, pressing a button / link, or anything over a menu overlay isn't play. */
+/**
+ * Typing in a field, or anything on a menu overlay (e.g. its focused buttons), isn't play.
+ * Top-bar buttons outside the overlay keep focus after a click; keys there still reach the game.
+ */
 const isUi = (t: EventTarget | null) =>
-  t instanceof Element && !!t.closest('input, textarea, select, button, a, .pf-overlay')
+  t instanceof Element && !!t.closest('input, textarea, select, .pf-overlay')
 
 /**
  * Translates raw keyboard / touch events into game actions.

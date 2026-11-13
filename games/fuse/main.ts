@@ -205,6 +205,8 @@ function mount(session: Session<FuseState, FuseInput>, stage: HTMLElement): () =
     } else if (e.code === 'KeyB') toggleBlast()
     else if (e.code === 'KeyU') undo()
     else if (e.code === 'Escape' && ui.armed) {
+      // Claimed: online, the shell's Esc menu then stays shut (solo still pauses, as before).
+      e.preventDefault()
       ui.armed = false
       renderToolbar()
     }

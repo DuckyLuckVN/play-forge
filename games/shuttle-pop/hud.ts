@@ -153,7 +153,7 @@ function showBadge(el: HTMLElement, text: string | null) {
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 /** Racket glyph for the swing button (drawn once). */
-function racketIcon(): SVGSVGElement {
+export function racketIcon(): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg')
   svg.setAttribute('viewBox', '0 0 48 48')
   svg.setAttribute('aria-hidden', 'true')
@@ -172,7 +172,7 @@ const STROKE = 'fill="none" stroke="currentColor" stroke-linecap="round" stroke-
  * A player diving forward (body tipped, racket arm reaching out, legs trailing) over the floor, speed lines
  * behind: the Dive button's glyph (drawn once).
  */
-function diveIcon(): SVGSVGElement {
+export function diveIcon(): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg')
   svg.setAttribute('viewBox', '0 0 48 48')
   svg.setAttribute('aria-hidden', 'true')
@@ -189,7 +189,7 @@ function diveIcon(): SVGSVGElement {
  * A player in mid-air (racket raised for a smash, knees tucked) with rising motion lines under it, over its
  * shadow: the Jump button's glyph (drawn once).
  */
-function actIcon(): SVGSVGElement {
+export function actIcon(): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg')
   svg.setAttribute('viewBox', '0 0 48 48')
   svg.setAttribute('aria-hidden', 'true')

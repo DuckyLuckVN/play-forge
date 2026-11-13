@@ -1,0 +1,122 @@
+@layer pf.components {
+  /* ---------- Tutorial clips (engine/ui/tutorial/clip) ---------- */
+
+  .pf-clip {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: var(--pf-radius-lg);
+    font-family: var(--pf-font);
+  }
+
+  /* Reduced motion: one static key frame; the clip's own elements marked data-still are shown. */
+  .pf-clip-still,
+  .pf-clip-still * {
+    animation: none !important;
+  }
+  .pf-clip-still [data-still] {
+    opacity: 1 !important;
+  }
+
+  .pf-pad {
+    display: grid;
+    grid-template-columns: repeat(3, 36px);
+    grid-template-rows: repeat(2, 36px);
+    gap: 5px;
+  }
+  .pf-pad-key {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #222;
+    border-bottom-width: 4px;
+    border-radius: var(--pf-radius-sm);
+    background: #fff;
+    color: #222;
+    font-weight: var(--pf-fw-bold);
+    font-size: var(--pf-fs-base);
+  }
+
+  /* ---------- Tutorial deck (engine/ui/tutorial/deck.ts); layer reuses .pf-guide-layer ---------- */
+
+  .pf-tut-panel {
+    width: min(480px, 100%);
+    gap: var(--pf-space-4);
+    margin: auto;
+    touch-action: pan-y;
+  }
+  .pf-tut-card {
+    display: grid;
+    gap: var(--pf-space-3);
+    text-align: center;
+    min-width: 0;
+  }
+  .pf-tut-step {
+    margin: 0;
+    color: var(--pf-haze);
+    font-size: var(--pf-fs-xs);
+  }
+  .pf-tut-title {
+    margin: 0;
+    font-size: var(--pf-fs-xl);
+    font-weight: var(--pf-fw-bold);
+    overflow-wrap: anywhere;
+  }
+  .pf-tut-clip {
+    max-height: 45vh;
+    overflow: hidden;
+    border-radius: var(--pf-radius-lg);
+  }
+  .pf-tut-clip > * {
+    max-height: 45vh;
+  }
+  .pf-tut-caption {
+    margin: 0;
+    font-size: var(--pf-fs-base);
+    font-weight: var(--pf-fw-semi);
+    overflow-wrap: anywhere;
+  }
+  .pf-tut-hint {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--pf-space-2);
+    color: var(--pf-haze);
+    font-size: var(--pf-fs-md);
+    overflow-wrap: anywhere;
+  }
+  .pf-tut-dots {
+    display: flex;
+    justify-content: center;
+    gap: var(--pf-space-3);
+  }
+  .pf-tut-dots i {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--pf-rim);
+  }
+  .pf-tut-dots i.on {
+    background: var(--pf-yolk);
+  }
+  .pf-tut-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--pf-space-3);
+  }
+  .pf-tut-row .pf-tut-primary {
+    margin-left: auto;
+  }
+  .pf-tut-full {
+    justify-self: center;
+  }
+
+  @media (max-height: 500px) {
+    .pf-tut-clip,
+    .pf-tut-clip > * {
+      max-height: 38vh;
+    }
+  }
+}

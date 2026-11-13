@@ -29,6 +29,7 @@ import {
   type SpInput,
   type SpState,
 } from './sim'
+import { shuttleTutorial } from './tutorial'
 import { swingTick } from './world'
 
 /** Built and warmed while the menu shows, then reused by every match. */
@@ -284,6 +285,8 @@ createGameApp<SpState, SpInput>({
   tagline: t(
     'Chibi badminton. Time your swing for a Perfect, smash on high balls. Play the computer or friends online, 1 vs 1 or 2 vs 2.',
   ),
+  // How to play: step cards (first play opens them); the guide below stays as "Full controls".
+  tutorial: shuttleTutorial(),
   // Desktop rows (keys / mouse) and touch rows (stick / racket button); each device sees its own.
   guide: [
     {

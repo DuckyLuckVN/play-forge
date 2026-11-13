@@ -11,6 +11,13 @@ export interface InputBindings<A extends string> {
 }
 
 /**
+ * Typing in a field, or anything on a menu overlay (e.g. its focused buttons), isn't play.
+ * Top-bar buttons outside the overlay keep focus after a click; keys there still reach the game.
+ */
+const isUi = (t: EventTarget | null) =>
+  t instanceof Element && !!t.closest('input, textarea, select, .pf-overlay')
+
+/**
  * Translates raw keyboard / touch events into game actions.
  * Returns a cleanup function that removes all listeners.
  */
@@ -23,7 +30,7 @@ export function bindInput<A extends string>(
   if (bindings.keys) {
     const keys = bindings.keys
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (isUi(e.target)) return
       const action = keys[e.code]
       if (!action) return
       e.preventDefault()

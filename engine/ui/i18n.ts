@@ -159,6 +159,8 @@ export const VI: Dictionary = {
   'Go!': 'Chiến!',
   Paused: 'Tạm dừng',
   Resume: 'Tiếp tục',
+  'The match is still running': 'Trận đấu vẫn đang diễn ra',
+  'Back to the game': 'Quay lại trận',
   'Play again': 'Chơi lại',
   'Back to menu': 'Về menu',
   'Game over': 'Kết thúc',
@@ -166,6 +168,15 @@ export const VI: Dictionary = {
   // Control guide (engine/ui/guide.ts). Key names on keycaps stay as printed (Space, Esc, W…).
   'How to play': 'Cách chơi',
   'Got it': 'Đã hiểu',
+
+  // Tutorial deck (engine/ui/tutorial/deck.ts)
+  Skip: 'Bỏ qua',
+  Next: 'Tiếp',
+  Back: 'Lùi',
+  "Let's play!": 'Chơi thôi!',
+  'Full controls': 'Toàn bộ phím',
+  'Step {n} of {total}': 'Bước {n}/{total}',
+
   or: 'hoặc',
   hold: 'giữ',
   'Up arrow': 'Mũi tên lên',

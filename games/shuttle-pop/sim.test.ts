@@ -11,6 +11,7 @@ import { launchShot, shotTarget } from './shots'
 import { readyDepth } from './ai'
 import { serveBox } from './rules'
 import { STUN } from './stun'
+import { TICK_RATE } from './court'
 import {
   AI_ID,
   canAct,
@@ -799,6 +800,10 @@ describe('lag-compensated hits (launch from the rewound contact)', () => {
 })
 
 describe('serve timeout', () => {
+  it('SERVE_TIMEOUT is one minute', () => {
+    expect(SERVE_TIMEOUT / TICK_RATE).toBe(60)
+  })
+
   it('an idle server short-serves after SERVE_TIMEOUT ticks', () => {
     const s = game.setup(players(1), 5, {})
     s.server = 1

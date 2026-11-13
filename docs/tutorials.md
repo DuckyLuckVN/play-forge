@@ -12,6 +12,8 @@ arrow keys and swipe. Games pass already-translated text; the shell supplies the
 | Clip toolkit | `engine/ui/tutorial/clip/*` (`@forge/ui/tutorial/clip`) | Game-agnostic SVG + CSS-animation helpers, below.                                                                                                                                               |
 | App wiring   | `createGameApp({ tutorial })` in `engine/app.ts`        | Opens the deck from the "How to play" buttons and on first play.                                                                                                                                |
 
+Card fields: `id`, `title`, `caption`, `clip?`, `hint?` (`pc` / `touch`), `body?` (e.g. a settings list, under the clip), `below?` (e.g. a key pad).
+
 Game side: a `tutorial/` folder with one file per card plus an `index.ts` returning `TutorialCard[]`
 (see `games/shuttle-pop/tutorial/`).
 

@@ -68,27 +68,28 @@ drift apart, so change a colour in both places. For a translucent tint of a toke
 
 ## Components
 
-| File            | Classes                                                                                                     | TS helper                                                    |
-| --------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `shell.css`     | `.pf-shell` `.pf-bar` `.pf-bar-title` `.pf-bar-scores` `.pf-bar-actions` `.pf-stage`                        | `createGameApp` builds it                                    |
-| `surface.css`   | `.pf-card` (+ `.sunken` `.raised` `.sm`)                                                                    | `card()`, `cardClass()`                                      |
-| `pill.css`      | `.pf-pill` (+ `.mint` `.common` `.rare` `.epic` `.dot`); accent classes set `--accent`                      | `pill()`, `pillClass()`                                      |
-| `button.css`    | `.pf-btn` + `.primary` `.quiet` `.icon` `.wide` `.sm` `.go` `.danger` `.loading`; `.pf-icon`; `.pf-toolbar` | `button()`, `toolButton()`, `iconButton()`, `icon()`         |
-| `overlay.css`   | `.pf-overlay`, `.pf-panel` (+ `.wide`, `.enter`; `--pf-panel-pad`)                                          | `panel()`                                                    |
-| `text.css`      | `.pf-heading` `.pf-lede` `.pf-headline` `.pf-note` (+ `.error`) `.pf-or`                                    | `note()`                                                     |
-| `forms.css`     | `.pf-field` `.pf-input` (+ `.code`) `.pf-row`                                                               |                                                              |
-| `results.css`   | `.pf-summary` `.pf-stat` (+ `.hi`), `.pf-ranking` `.pf-rank*`, `.pf-leaderboard` `.pf-lb-*`                 |                                                              |
-| `room.css`      | `.pf-room` `.pf-room-code`, `.pf-seats` `.pf-seat` `.pf-token` `.pf-badge` `.pf-seat-*`                     |                                                              |
-| `chip.css`      | `.pf-chip` (+ `.self` `.out` `.bump`; `.dot`)                                                               |                                                              |
-| `dots.css`      | `.pf-dots` (waiting)                                                                                        |                                                              |
-| `popover.css`   | `.pf-popover-anchor` `.pf-popover` `.pf-lang-btn` `.pf-lang-pop`                                            | `popover()`, `audioMenu()`, `langMenu()`                     |
-| `slider.css`    | `.pf-slider` `.pf-range` `.pf-range-value`                                                                  | `slider()`                                                   |
-| `countdown.css` | `.pf-countdown`                                                                                             |                                                              |
-| `toast.css`     | `.pf-toasts` `.pf-toast` (`--pf-toast-dot`)                                                                 | `toast()`                                                    |
-| `count.css`     | `.pf-count` (number badge on a button)                                                                      | `countBadge()`                                               |
-| `mobile.css`    | top-bar groups: `.pf-fan*` `.pf-fab` `.pf-more*` `.pf-overflow` `.pf-slot`; phone bottom sheets             |                                                              |
-| `options.css`   | `.pf-options` `.pf-option` `.pf-segmented` `.pf-segment`                                                    | `optionPickers()`                                            |
-| `guide.css`     | `.pf-guide-layer` `.pf-guide-panel` `.pf-guide-card` `.pf-guide*` rows, `.pf-key` (keycap), `.pf-sr`        | `openGuide()`, `guideCard()`, `guideList()`, `guideButton()` |
+| File            | Classes                                                                                                         | TS helper                                                      |
+| --------------- | --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `shell.css`     | `.pf-shell` `.pf-bar` `.pf-bar-title` `.pf-bar-scores` `.pf-bar-actions` `.pf-stage`                            | `createGameApp` builds it                                      |
+| `surface.css`   | `.pf-card` (+ `.sunken` `.raised` `.sm`)                                                                        | `card()`, `cardClass()`                                        |
+| `pill.css`      | `.pf-pill` (+ `.mint` `.common` `.rare` `.epic` `.dot`); accent classes set `--accent`                          | `pill()`, `pillClass()`                                        |
+| `button.css`    | `.pf-btn` + `.primary` `.quiet` `.icon` `.wide` `.sm` `.go` `.danger` `.loading`; `.pf-icon`; `.pf-toolbar`     | `button()`, `toolButton()`, `iconButton()`, `icon()`           |
+| `overlay.css`   | `.pf-overlay`, `.pf-panel` (+ `.wide`, `.enter`; `--pf-panel-pad`)                                              | `panel()`                                                      |
+| `text.css`      | `.pf-heading` `.pf-lede` `.pf-headline` `.pf-note` (+ `.error`) `.pf-or`                                        | `note()`                                                       |
+| `forms.css`     | `.pf-field` `.pf-input` (+ `.code`) `.pf-row`                                                                   |                                                                |
+| `results.css`   | `.pf-summary` `.pf-stat` (+ `.hi`), `.pf-ranking` `.pf-rank*`, `.pf-leaderboard` `.pf-lb-*`                     |                                                                |
+| `room.css`      | `.pf-room` `.pf-room-code`, `.pf-seats` `.pf-seat` `.pf-token` `.pf-badge` `.pf-seat-*`                         |                                                                |
+| `chip.css`      | `.pf-chip` (+ `.self` `.out` `.bump`; `.dot`)                                                                   |                                                                |
+| `dots.css`      | `.pf-dots` (waiting)                                                                                            |                                                                |
+| `popover.css`   | `.pf-popover-anchor` `.pf-popover` `.pf-lang-btn` `.pf-lang-pop`                                                | `popover()`, `audioMenu()`, `langMenu()`                       |
+| `slider.css`    | `.pf-slider` `.pf-range` `.pf-range-value`                                                                      | `slider()`                                                     |
+| `countdown.css` | `.pf-countdown`                                                                                                 |                                                                |
+| `toast.css`     | `.pf-toasts` `.pf-toast` (`--pf-toast-dot`)                                                                     | `toast()`                                                      |
+| `count.css`     | `.pf-count` (number badge on a button)                                                                          | `countBadge()`                                                 |
+| `mobile.css`    | top-bar groups: `.pf-fan*` `.pf-fab` `.pf-more*` `.pf-overflow` `.pf-slot`; phone bottom sheets                 |                                                                |
+| `options.css`   | `.pf-options` `.pf-option` `.pf-segmented` `.pf-segment`                                                        | `optionPickers()`                                              |
+| `guide.css`     | `.pf-guide-layer` `.pf-guide-panel` `.pf-guide-card` `.pf-guide*` rows, `.pf-key` (keycap), `.pf-sr`            | `openGuide()`, `guideCard()`, `guideList()`, `guideButton()`   |
+| `tutorial.css`  | `.pf-tut-*` (panel, card, clip, caption, hint, dots, row), `.pf-clip` `.pf-clip-still`, `.pf-pad` `.pf-pad-key` | `openTutorial()`, `tutorialButton()`, `clipRoot()`, `keyPad()` |
 
 The look in numbers ("tidy chunky"):
 

@@ -57,7 +57,7 @@ const OUT_MARGIN = 0.8
 export const POINT_TICKS = 72
 /** Ticks before a player can swing again (stops swing-mashing). */
 export const SWING_COOLDOWN = 20
-/** Ticks in the serve phase before the server short-serves automatically (idle player / AI). Long enough to read the menu / tutorial. */
+/** Ticks in the serve phase before the server short-serves automatically (an idle human server; bots serve after ai.ts BOT_SERVE_TICKS). Long enough to read the menu / tutorial. */
 export const SERVE_TIMEOUT = 3600
 /** A scheduled hit whiffs if the swinger is further than its reach radius (REACH / ability.ts reachOf) + this from the shuttle. */
 const PENDING_SLACK = 0.3

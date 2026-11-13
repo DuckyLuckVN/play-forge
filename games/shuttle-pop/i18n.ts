@@ -149,7 +149,7 @@ export const VI: Dictionary = {
   'no key': 'không phím',
   Opponent: 'Đối thủ',
   'Tap to swing': 'Chạm để vung vợt',
-  Click: 'Bấm chuột',
+  Click: 'Nhấp chuột',
   'Tap 🏸': 'Chạm 🏸',
   Tap: 'Chạm',
   'quick swing': 'vung nhanh',

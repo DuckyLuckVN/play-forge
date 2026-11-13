@@ -17,7 +17,7 @@ const RING_R = 30
 const RING_LEN = 2 * Math.PI * RING_R
 
 /** The charge ring around the player: fills from the top while held, flashes, bursts on release. */
-function chargeRing(clip: Clip): SVGGElement {
+function powerRing(clip: Clip): SVGGElement {
   const len = RING_LEN.toFixed(1)
   const fill = s('circle', {
     cy: -6,
@@ -68,7 +68,7 @@ function chargeRing(clip: Clip): SVGGElement {
 function chargeClip(ctx: ClipContext): SVGSVGElement {
   const { clip, p, ground, actor, air } = courtScene(t('Power shot'), { player: false })
   const o = playerOrigin(p)
-  const me = player(chargeRing(clip))
+  const me = player(powerRing(clip))
   actor.append(me.el)
   rally(clip, { ground, air }, p, LOOP, {
     hitAt: { x: o.x + RACKET.x, y: o.y + RACKET.y },

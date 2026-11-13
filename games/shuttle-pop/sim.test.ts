@@ -729,7 +729,10 @@ describe('lag-compensated hits (launch from the rewound contact)', () => {
     // Recorded before hits launched from the rewound contact (AI swings have rewind 0: a no-op for them);
     // re-recorded when the power swing changed charged launches (the bots charge) and for the full-charge recovery (seed 11);
     // re-recorded when the bots started to jump / lunge (ai.ts LEVELS.ability), and when the lunge
-    // started to really slide (seed 2), and for the 2026-11-12 AI retune (no silent misses, LEVELS, tactics).
+    // started to really slide (seed 2), for the 2026-11-12 AI retune (no silent misses, LEVELS, tactics), and for the 2026-11-13 near-shuttle
+    // fix (swing from where it stands, re-timed contact, blocked-swing retry, split step, reactTicks; believable
+    // misread whiffs and the whiff/Late weights; easy balls never whiffed,
+    // timing whiffs, Hard reactTicks 9).
     const fingerprint: number[][] = []
     const finals: SpState[] = []
     for (let seed = 1; seed <= 20; seed++) {
@@ -740,26 +743,26 @@ describe('lag-compensated hits (launch from the rewound contact)', () => {
       finals.push(s)
     }
     expect(fingerprint).toEqual([
-      [0, 0, 13, 0, 5, 4, -2087330600],
-      [1, 0, 3, 4, 0, 2, 1703683421],
-      [0, 2, 3, 3, 2, 0, 1703683422],
-      [1, 0, 1, 6, 1, 0, 1703683423],
-      [0, 0, 9, 0, 2, 3, 440012084],
-      [1, 1, 0, 4, 1, 1, -1959448201],
+      [0, 0, 12, 0, 5, 4, -1455494930],
+      [1, 0, 3, 8, 4, 3, -823659259],
+      [0, 1, 8, 1, 3, 1, 440012082],
+      [0, 0, 9, 0, 2, 1, 440012083],
+      [0, 1, 0, 7, 3, 2, 1703683424],
+      [0, 0, 9, 0, 1, 1, 440012085],
       [1, 0, 6, 3, 2, 1, 440012086],
-      [0, 1, 4, 8, 3, 4, -1455494923],
-      [0, 1, 1, 8, 2, 3, 440012088],
-      [0, 0, 10, 0, 1, 2, -191823581],
-      [0, 0, 11, 0, 3, 2, -823659250],
-      [0, 1, 2, 8, 2, 2, -191823579],
-      [0, 0, 9, 0, 1, 2, 440012092],
-      [1, 1, 3, 2, 1, 1, -1959448193],
-      [1, 0, 3, 7, 2, 1, -191823576],
-      [1, 0, 3, 6, 0, 2, 440012095],
-      [0, 0, 9, 0, 3, 3, 440012096],
-      [1, 0, 1, 7, 2, 3, 1071847767],
-      [0, 0, 9, 0, 0, 3, 440012098],
-      [0, 1, 5, 3, 3, 1, 1071847769],
+      [0, 1, 4, 8, 4, 4, -1455494923],
+      [0, 0, 12, 0, 3, 5, -1455494922],
+      [0, 0, 10, 0, 2, 2, -191823581],
+      [1, 0, 0, 14, 7, 4, 1575801036],
+      [0, 1, 0, 8, 3, 1, 1071847761],
+      [0, 0, 10, 0, 2, 2, -191823578],
+      [0, 0, 8, 0, 2, 3, 1071847763],
+      [1, 0, 0, 11, 3, 2, -823659246],
+      [0, 0, 9, 0, 0, 2, 440012095],
+      [1, 0, 3, 6, 3, 3, 440012096],
+      [0, 1, 1, 8, 1, 4, 440012097],
+      [1, 0, 0, 9, 1, 4, 440012098],
+      [0, 0, 10, 0, 3, 2, -191823571],
     ])
     const shuttle = (s: SpState) => ({
       pos: s.shuttle.pos,
@@ -767,19 +770,19 @@ describe('lag-compensated hits (launch from the rewound contact)', () => {
       lastHitter: s.shuttle.lastHitter,
     })
     expect(shuttle(finals[0])).toEqual({
-      pos: { x: 0.12586644319516704, y: 3.339972512884435, z: -0.08573807386155502 },
-      vel: { x: 0.3764278853494044, y: 1.633769134173773, z: -4.669030124007942 },
-      lastHitter: 1,
+      pos: { x: 0.40595205467668344, y: 3.1589127364028, z: 2.9817299727350797 },
+      vel: { x: -0.1910177998194872, y: -1.2797944904123113, z: 3.444133166335663 },
+      lastHitter: 0,
     })
     expect(shuttle(finals[1])).toEqual({
-      pos: { x: -0.23485331425952694, y: 3.052342289719443, z: -0.2983834438958312 },
-      vel: { x: 1.358591095044205, y: 4.353216196552958, z: 6.415336354956283 },
+      pos: { x: -0.18511115742703074, y: 4.10702988934557, z: 0.9369640285419196 },
+      vel: { x: 1.1418936243332736, y: 3.5330349570184563, z: 6.263307307540929 },
       lastHitter: 0,
     })
     expect(shuttle(finals[2])).toEqual({
-      pos: { x: 0.20672236036324512, y: 3.4848480613073316, z: -0.515953532199011 },
-      vel: { x: 1.4481727566437648, y: 1.9865173542241958, z: -5.066241665003376 },
-      lastHitter: 1,
+      pos: { x: 0.6478971825462866, y: 1.6003728563011055, z: 0.037685372102987454 },
+      vel: { x: 0.44093018521080973, y: -3.0624243302739664, z: 3.181654814883022 },
+      lastHitter: 0,
     })
   })
 
@@ -916,7 +919,10 @@ describe('match stats (results screen)', () => {
       else if (e.k === 'hit') {
         shots++
         if (e.grade === 'perfect') perfect[e.side]++
-      } else if (e.k === 'point') longest = Math.max(longest, shots)
+      } else if (e.k === 'point') {
+        longest = Math.max(longest, shots)
+        shots = 0 // the sim's stats.shots resets at the point too (the window can end before the next serve)
+      }
     }
     expect(longest).toBeGreaterThan(1)
     expect(s.stats).toMatchObject({ shots, longest, perfect })

@@ -126,6 +126,7 @@ export const VI: Dictionary = {
   Low: 'Thấp',
   Medium: 'Vừa',
   High: 'Cao',
+  Ultra: 'Siêu cao',
   // Name tags over the players (nametags.ts)
   You: 'Bạn',
   'Name tags': 'Thẻ tên',

@@ -468,15 +468,17 @@ export const N = 80
 // its misses are visible whiffs / Late floaters; ai.ts LEVELS): every row still inside its band, e.g.
 // casual 0.988 / 0.525 / 0.087 win and 0.721 / 0.504 / 0.343 share v easy / normal / hard (N = 80), with
 // longer rallies (casual shots per point 3.63 / 5.90 / 6.03, was 3.48 / 5.69 / 5.86).
+// Normal rows re-measured for the 2026-11-13 bot retune (dive saves, smash defence, whiff 0.15: asked
+// to be a bit tougher); the rest are unchanged.
 export const BASELINE = {
   'casual v easy': { win: 0.9875, share: 0.763 },
-  'casual v normal': { win: 0.5375, share: 0.512 },
+  'casual v normal': { win: 0.3875, share: 0.464 },
   'casual v hard': { win: 0.05, share: 0.337 },
   'tap v easy': { win: 1, share: 0.76 },
-  'tap v normal': { win: 0.425, share: 0.491 },
+  'tap v normal': { win: 0.3625, share: 0.458 },
   'tap v hard': { win: 0.075, share: 0.348 },
   'skilled v easy': { win: 1, share: 0.918 },
-  'skilled v normal': { win: 0.9625, share: 0.708 },
+  'skilled v normal': { win: 0.95, share: 0.673 },
   'skilled v hard': { win: 0.625, share: 0.539 },
 } satisfies Record<string, { win: number; share: number }>
 

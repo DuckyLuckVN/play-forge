@@ -6,10 +6,10 @@ import { NeutralToneMapping, type ToneMapping } from 'three'
 import type { AoOptions, ColorGrade } from '@forge/render3d'
 
 /** A look the renderer can draw (quality.ts maps each to a ladder level). */
-export type LookTier = 'low' | 'medium' | 'high'
+export type LookTier = 'low' | 'medium' | 'high' | 'ultra'
 
 /** The player's graphics choice (prefs.ts): Auto lets the quality governor pick. */
-export const GRAPHICS_PREFS = ['auto', 'low', 'medium', 'high'] as const
+export const GRAPHICS_PREFS = ['auto', 'low', 'medium', 'high', 'ultra'] as const
 export type GraphicsPref = (typeof GRAPHICS_PREFS)[number]
 export const DEFAULT_GRAPHICS: GraphicsPref = 'auto'
 
@@ -42,6 +42,7 @@ export const LOOK = {
   shadow: {
     medium: { map: 1024, radius: 3 },
     high: { map: 2048, radius: 4 },
+    ultra: { map: 2048, radius: 4 },
   } satisfies Record<Exclude<LookTier, 'low'>, ShadowLook>,
   /**
    * Bloom on the HDR image: the threshold sits above anything the sun lights, so only the lamp bulbs and
@@ -54,8 +55,11 @@ export const LOOK = {
    * bloom threshold, so they glow softly and never out-shine the shuttle.
    */
   glow: 2,
-  /** Contact shading where things meet the ground; subtle so pastels never look dirty. */
-  ao: { intensity: 0.55, radius: 0.6, distanceFallOff: 1, thickness: 0.6 } satisfies AoOptions,
+  /**
+   * Live contact shading (Ultra only; every look has the park's baked light, scenery.ts), at half
+   * resolution: subtle so pastels never look dirty.
+   */
+  ao: { intensity: 0.55, radius: 0.6, distanceFallOff: 1, thickness: 0.6, scale: 0.5 } satisfies AoOptions,
   /**
    * The shuttlecock (unlit) is drawn at this × its colours: Neutral tone mapping puts plain white at ~0.88,
    * so a little over 1 lands it on full white and it pops over the lit court. Kept under the bloom

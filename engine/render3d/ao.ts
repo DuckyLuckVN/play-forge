@@ -16,6 +16,8 @@ export interface AoOptions {
   distanceFallOff?: number
   /** Occluder thickness (m): thin props stop casting a wide dark halo. */
   thickness?: number
+  /** AO buffer size vs the view's CSS pixels (default 1; 0.5 = half each way, ~4× cheaper, softer). */
+  scale?: number
 }
 
 /** True for things the AO depth pass must not see: sprites and any mesh that does not write depth. */

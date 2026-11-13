@@ -5,4 +5,11 @@ export { createOverlay2D, type Overlay2D } from './overlay'
 export { KeyedPool, type PoolOptions } from './pool'
 export { createScene3D, webglAvailable, type ColorGrade, type Scene3D, type Scene3DOptions } from './scene'
 export { aoSkips, SceneAoPass, type AoOptions } from './ao'
+export {
+  bakeGround,
+  groundShadeOverlay,
+  type BakeArea,
+  type GroundBake,
+  type GroundBakeOptions,
+} from './bake'
 export { QUALITY_LEVELS, QualityGovernor, type QualityLevel } from './quality'

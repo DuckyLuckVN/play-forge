@@ -614,7 +614,7 @@ export class Court3D {
       this.view.setLevels(this.ladder, spStartLevel('auto', { tier: this.deviceTier }))
     // PCF with a blur radius per look (scenery.ts setLook): soft edges.
     renderer.shadowMap.enabled = true
-    this.park = new Park(scene)
+    this.park = new Park(scene, renderer)
     // The chibis' soft reflections: a procedural studio room baked into a PMREM map (no asset files).
     const pmrem = new PMREMGenerator(renderer)
     const room = new RoomEnvironment()

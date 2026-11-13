@@ -34,7 +34,9 @@ import {
   SRGBColorSpace,
   Vector3,
   type Scene,
+  type WebGLRenderer,
 } from 'three'
+import { bakeGround, groundShadeOverlay, type GroundBake } from '@forge/render3d'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { Ambient } from './ambient'
 import { Backdrop, HAZE } from './backdrop'
@@ -77,9 +79,16 @@ const FOG_FAR = 130
 const SHADOW_HALF = LOOK.shadowHalf
 /** How far up the sun's beam the shadow camera sits (m), and its depth range. */
 const SUN_DIST = 40
+/**
+ * The cooked static light (engine bake.ts): the park's sun shadows + contact shading on the ground, baked
+ * once per layout. `shadow` matches a live shadow (shade ≈ 0.4× lit, look.ts); blur in metres.
+ */
+const BAKE = { res: 1024, shadow: 0.6, ao: 0.35, aoHeight: 1.2, shadowBlur: 0.35, aoBlur: 0.9, y: 0.01 }
+/** A static prop mesh whose shadow is baked (it no longer casts in the live shadow map). */
+const BAKED = 'bakedCaster'
 
 /** Prop detail per graphics look (kit.ts showDetail): Low draws only the core park. */
-const DETAIL: Record<LookTier, Detail> = { low: 0, medium: 1, high: 2 }
+const DETAIL: Record<LookTier, Detail> = { low: 0, medium: 1, high: 2, ultra: 2 }
 
 /** Lawn variation: soft lighter / warmer / deeper patches (m across), painted once on a canvas. */
 const LAWN = {
@@ -229,8 +238,19 @@ export class Park {
   /** Prop detail for the current look (kept across a court rebuild). */
   private detail: Detail = DETAIL.high
   private wire = new LineSegments(wireGeometry(this.k), new LineBasicMaterial({ color: PARK.wire }))
+  /** The cooked ground light (null until baked; never without a renderer, e.g. in tests). */
+  private bake: GroundBake | null = null
+  private shade: Mesh | null = null
+  /** What the bake was made for (court stretch + prop detail): re-baked only when it changes. */
+  private bakedFor = ''
+  /** The constructor has built everything (setLook runs earlier, before there are props to bake). */
+  private built = false
 
-  constructor(scene: Scene) {
+  /** `renderer`: bakes the park's static light (shadows + contact shading) onto the ground; none = no bake. */
+  constructor(
+    private readonly scene: Scene,
+    private readonly renderer?: WebGLRenderer,
+  ) {
     scene.background = new Color(SKY.horizon)
     scene.fog = new Fog(SKY.horizon, FOG_NEAR, FOG_FAR)
 
@@ -271,6 +291,46 @@ export class Park {
     this.addProps(parkLayout())
     placeBenches(this.benches, this.k)
     scene.add(this.root)
+    this.built = true
+    this.cook()
+  }
+
+  /**
+   * Bake the static park's sun shadows and contact shading onto the ground (engine bake.ts) for the
+   * current layout and prop detail, then stop those props casting in the live shadow map (it keeps only
+   * the players). A few ms of GPU work; skipped when nothing changed.
+   */
+  private cook() {
+    const key = `${this.k.x},${this.k.z},${this.detail}`
+    if (!this.renderer || !this.built || key === this.bakedFor) return
+    this.bakedFor = key
+    this.bake?.dispose()
+    if (this.shade) {
+      this.root.remove(this.shade)
+      this.shade.geometry.dispose()
+      ;(this.shade.material as Material).dispose()
+    }
+    const half = SHADOW_HALF * Math.max(this.k.x, this.k.z)
+    const casters = [this.props, this.benches, this.crowd.root]
+    this.bake = bakeGround(this.renderer, this.scene, casters, {
+      area: { minX: -half, maxX: half, minZ: -half, maxZ: half },
+      sun: SUN_DIR,
+      res: BAKE.res,
+      shadow: BAKE.shadow,
+      ao: BAKE.ao,
+      aoHeight: BAKE.aoHeight,
+      shadowBlur: BAKE.shadowBlur,
+      aoBlur: BAKE.aoBlur,
+      filter: (o) => o.castShadow || o.userData[BAKED] === true,
+    })
+    for (const c of casters)
+      c.traverse((o) => {
+        if (!o.castShadow) return
+        o.userData[BAKED] = true
+        o.castShadow = false
+      })
+    this.shade = groundShadeOverlay(this.bake, BAKE.y)
+    this.root.add(this.shade)
   }
 
   private addProps(layout: ReturnType<typeof parkLayout>) {
@@ -298,6 +358,7 @@ export class Park {
     this.wire.geometry.dispose()
     this.wire.geometry = wireGeometry(k)
     this.crowd.place(k)
+    this.cook()
     const cam = this.sun.shadow.camera
     const half = SHADOW_HALF * Math.max(k.x, k.z)
     cam.left = cam.bottom = -half
@@ -313,6 +374,7 @@ export class Park {
   setLook(tier: LookTier) {
     this.detail = DETAIL[tier]
     showDetail(this.props.children as InstancedMesh[], this.detail)
+    this.cook()
     const on = tier !== 'low'
     this.sun.castShadow = on
     if (!on) return

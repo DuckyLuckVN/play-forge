@@ -174,15 +174,23 @@ describe('ring picker', () => {
     prefs.set({ autoSwing: false })
   })
 
-  it('graphics: Auto / Low / Medium / High, Auto by default, click saves', () => {
+  it('graphics: Auto / Low / Medium / High / Ultra, Auto by default, click saves', () => {
     prefs.set({ graphics: 'auto' })
     button().click()
     const segs = [...panel().querySelectorAll<HTMLButtonElement>('.sp-graphics-row [role=radio]')]
-    expect(segs.map((b) => b.textContent)).toEqual(['Auto', 'Low', 'Medium', 'High'])
-    expect(segs.map((b) => b.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false', 'false'])
+    expect(segs.map((b) => b.textContent)).toEqual(['Auto', 'Low', 'Medium', 'High', 'Ultra'])
+    expect(segs.map((b) => b.getAttribute('aria-checked'))).toEqual([
+      'true',
+      'false',
+      'false',
+      'false',
+      'false',
+    ])
     segs[3].click()
     expect(prefs.get().graphics).toBe('high')
     expect(segs[3].getAttribute('aria-checked')).toBe('true')
+    segs[4].click()
+    expect(prefs.get().graphics).toBe('ultra')
     prefs.set({ graphics: 'auto' })
   })
 

@@ -9,15 +9,17 @@ import { type ShotKind } from './shots'
 // ~53–55%) for every Hard grade mix tried (task-14 report), so the Hard bands (casual ≥ 5%, skilled ≤ 65%)
 // can't both have margin.
 describe('balance vs scripted players (tuning gauges)', () => {
-  it('casual: beats Easy, about even with Normal, wins vs Hard now and then; even rallies stay short', () => {
+  it('casual: beats Easy, a bit under even with Normal, wins vs Hard now and then; even rallies stay short', () => {
     const r = {
       easy: gauge(PROFILES.casual, 'easy', N),
       normal: gauge(PROFILES.casual, 'normal', N),
       hard: gauge(PROFILES.casual, 'hard', N),
     }
     expect(r.easy.win).toBeGreaterThanOrEqual(0.9)
-    expect(r.normal.win).toBeGreaterThanOrEqual(0.45)
-    expect(r.normal.win).toBeLessThanOrEqual(0.65)
+    // 0.3–0.5 (was 0.45–0.65) since the 2026-11-13 bot retune: Normal was asked to be a bit tougher
+    // (better smash defence, dive saves); measured 0.39.
+    expect(r.normal.win).toBeGreaterThanOrEqual(0.3)
+    expect(r.normal.win).toBeLessThanOrEqual(0.5)
     expect(r.hard.win).toBeGreaterThanOrEqual(0.05)
     expect(r.hard.win).toBeLessThan(r.normal.win)
     // Spec: 4–10 hits a rally between equal players (shots = serve + hits), at most 5 min a match.

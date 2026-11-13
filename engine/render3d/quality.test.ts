@@ -20,6 +20,22 @@ describe('pickDpr', () => {
     expect(1600 * dpr * 1000 * dpr).toBeLessThanOrEqual(PIXEL_BUDGET + 1)
   })
 
+  it('a level floor under 1 (minDpr) lets a huge canvas render smaller, down to that floor', () => {
+    // 2365×1392 CSS px (a big window / fullscreen) at 1× is ~3.3 MP: twice the budget.
+    expect(pickDpr(2, 1, 2365, 1392, PIXEL_BUDGET, 0.75)).toBe(0.75)
+    const mid = pickDpr(2, 1, 1700, 1100, PIXEL_BUDGET, 0.5)
+    expect(mid).toBeLessThan(1)
+    expect(1700 * mid * 1100 * mid).toBeCloseTo(PIXEL_BUDGET, -3)
+    // Within budget: the floor changes nothing.
+    expect(pickDpr(2, 1, 800, 600, PIXEL_BUDGET, 0.75)).toBe(1)
+  })
+
+  it('the default ladder floor renders under 1× when it must; the others keep 1', () => {
+    const last = QUALITY_LEVELS[QUALITY_LEVELS.length - 1]
+    expect(last.minDpr).toBe(0.75)
+    for (const l of QUALITY_LEVELS.slice(0, -1)) expect(l.minDpr).toBeUndefined()
+  })
+
   it('never drops below 1 for budget alone', () => {
     expect(pickDpr(2, 2, 2560, 1440)).toBe(1)
   })
@@ -274,6 +290,20 @@ describe('QualityGovernor', () => {
       repeat(60 * RECOVER_WINDOWS * 4, () => 1 / 60),
     )
     expect(g.level).toBe(1)
+  })
+
+  it('lock(): a jittery stretch (bad windows broken by so-so ones) still steps down', () => {
+    const g = new QualityGovernor()
+    settled(g)
+    g.lock()
+    // A 120 Hz screen: bad = 30% of frames late, so-so = 10% (neither bad nor clean).
+    const win = (lateEvery: number) => repeat(60, (i) => (i % lateEvery === 0 ? 1 / 40 : 1 / 120))
+    const bad = () => win(3)
+    const soso = () => win(10)
+    feed(g, [...bad(), ...bad(), ...soso(), ...bad()])
+    expect(g.level).toBe(0) // 3 bad windows: not yet
+    feed(g, bad())
+    expect(g.level).toBe(1) // 4 bad out of the last 5 (never 4 in a row)
   })
 
   it('lock(): a short slow patch no longer drops; sustained slowness still does', () => {

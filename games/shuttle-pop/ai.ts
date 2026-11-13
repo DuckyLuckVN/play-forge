@@ -16,39 +16,42 @@ type GradeRoll = Grade | 'whiff'
 /**
  * Per-level skill. Tuned vs the balance harness's scripted players (balance.harness.ts BASELINE; casual
  * wins ~all on Easy, about half on Normal, rarely on Hard): since the bot always swings (safeOffset /
- * misreadSpot), its mistakes are the grade rolls (whiffs and Late floaters) instead of standing still;
+ * EASY), its mistakes are the grade rolls (whiffs on hard balls, Late floaters) instead of standing still;
  * a narrower aim (tactics.wide) keeps rallies longer.
  */
 export const LEVELS = {
   easy: {
-    reactTicks: 22,
+    reactTicks: 27,
     speedMul: 0.72,
-    grade: { perfect: 0.05, good: 0.29, late: 0.33, whiff: 0.33 },
+    grade: { perfect: 0.05, good: 0.25, late: 0.3, whiff: 0.4 },
     smash: 0.15,
     misjudge: 0.3,
     charge: 0.15,
     ability: 0.08,
+    dive: 0.15,
     tactics: { read: 0.15, body: 0, wide: 0.45 },
   },
   normal: {
     reactTicks: 14,
     speedMul: 0.88,
-    grade: { perfect: 0.25, good: 0.38, late: 0.2, whiff: 0.17 },
+    grade: { perfect: 0.245, good: 0.37, late: 0.2, whiff: 0.185 },
     smash: 0.3,
     misjudge: 0,
     charge: 0.2,
     ability: 0.25,
+    dive: 0.5,
     tactics: { read: 0.5, body: 0.05, wide: 0.55 },
   },
   hard: {
-    reactTicks: 10,
+    reactTicks: 9,
     speedMul: 0.93,
-    grade: { perfect: 0.5, good: 0.3, late: 0.08, whiff: 0.12 },
+    grade: { perfect: 0.55, good: 0.21, late: 0.1, whiff: 0.14 },
     smash: 0.9,
     misjudge: 0,
     charge: 0.75,
     ability: 0.4,
-    tactics: { read: 0.7, body: 0.12, wide: 0.45 },
+    dive: 0.75,
+    tactics: { read: 0.7, body: 0.12, wide: 0.4 },
   },
 } satisfies Record<
   string,
@@ -61,8 +64,13 @@ export const LEVELS = {
     misjudge: number
     /** Chance to hold-to-charge a smash / clear / drive (drops are never charged). */
     charge: number
-    /** Chance to use the ability (ability.ts) when the plan offers one: a jump smash or a lunge save. */
+    /** Chance to jump-smash (ability.ts) when the plan offers one (a smash try at a high shuttle). */
     ability: number
+    /**
+     * Chance to dive (the lunge save, ability.ts) for a ball the plain run can't reach in time. Never on
+     * a rolled whiff: the dive's long reach would turn the intended miss into a return.
+     */
+    dive: number
     /**
      * Shot choice (non-smash): `read` = chance to pick the shot from where the opponents stand (readShot:
      * a drop when they're deep, a clear when they're at the net, a drive between) instead of SHOT_MIX;
@@ -97,6 +105,13 @@ export interface BotMemory {
   actRng?: number
   /** Doubles: this plan leaves the shot to the mate (doubles.ts takerOf) and covers the other half. */
   cover?: boolean
+  /**
+   * The planned plain swing's rolled offset from its contact (swingOffset): as the contact nears, the swing
+   * is re-timed off the contact from where I actually stand. Missing = keep the tick (a rolled whiff / ability).
+   */
+  plannedOff?: number
+  /** Tick of the planned swing's contact (with plannedOff); re-timing stops once it has passed. */
+  plannedContact?: number
 }
 
 /** Server swings this many ticks into the serve phase (well under SERVE_TIMEOUT). */
@@ -112,6 +127,14 @@ const MEET_Y = 1.4
 export const NEAR_LINE = 0.3
 /** Extra ticks on top of distance / speed to get going and settle (accel + arrive easing). */
 const ARRIVE_TICKS = 12
+/** A shuttle passing this close (m) to where I stand is in reach without a step (REACH.radius less a margin). */
+const STAND_REACH = REACH.radius - 0.35
+/** Re-time the planned swing off my actual spot within this many ticks of its contact (the run may not have settled). */
+const RETIME_TICKS = 8
+/** Reacting this much nearer the net than base (m), the bot keeps recovering back instead of a split step. */
+const RECOVER_NET = 0.8
+/** A plain swing blocked on its tick (cooldown, a teammate in the way) is pressed up to this many ticks late. */
+const SWING_RETRY = 6
 const SMASH_MEET_Y = 2.6
 /** A jump smash meets the shuttle above the plain reach (REACH.maxY) and inside the jump box. */
 const JUMP_BOX = { minY: REACH.maxY, maxY: ABILITY.jump.reach.maxY }
@@ -190,14 +213,15 @@ function swingOffset(g: GradeRoll, rng: () => number): number {
   return randInt(rng, WINDOW.pastGrace + 1, WINDOW.pastGrace + 3)
 }
 
+/**
+ * An easy ball (plenty of time, a comfortable height, not fast): a rolled whiff becomes a Late floater
+ * instead. The bot never looks dumb on a ball nobody would miss; its misses are timing errors on hard
+ * balls. `slack` = spare ticks after the run, `y` = contact height (m), `speed` = at contact (m/s).
+ */
+const EASY = { slack: 20, minY: 0.8, maxY: 2.6, speed: 12 }
+
 /** A swing this many ticks before the landing (or later) is too late to strike. */
 const LAND_MARGIN = 2
-/**
- * A misread whiff stands this far (m) off the meet spot in depth: out of reach (REACH.radius) with some
- * margin for a run that hasn't settled.
- */
-const MISREAD = REACH.radius + 0.4
-
 /** A swing `off` ticks after a contact `dt` ticks ahead still comes before the landing `landDt` ticks ahead. */
 const beforeLanding = (off: number, dt: number, landDt: number): boolean => dt + off < landDt - LAND_MARGIN
 
@@ -210,20 +234,46 @@ export function safeOffset(off: number, dt: number, landDt: number): number {
   return off <= 0 || beforeLanding(off, dt, landDt) ? off : -off
 }
 
+/** Doubles: share of rolled whiffs on hard balls that become a floater (a partner-covered scramble). */
+const DOUBLES_SAVE = 0.2
+
+/** A too-early whiff swings at least this many ticks before the contact (the run may not have settled). */
+const EARLY_WHIFF = WINDOW.late + 8
+
 /**
- * Where a rolled whiff stands when a too-late swing won't fit before the landing (a low shuttle): the meet
- * spot misread by MISREAD in depth (deeper; nearer the net when the back of the court is in the way), so
- * its swing at the contact visibly misses. (A too-early swing would mostly still connect on a slow, low
- * shuttle: still in reach a moment before the contact.)
+ * When (ticks ahead) a rolled whiff swings, from the right spot, to miss on timing a contact `dt` ahead
+ * of a shuttle landing `landDt` ahead; `off` = its rolled too-late offset (swingOffset). Too late when
+ * that comes before the landing; else just before the landing if that is past the grace; else too early
+ * (EARLY_WHIFF); null: no room to miss (the caller plays a Late floater instead).
  */
-function misreadSpot(t: { x: number; z: number }, side: 0 | 1, court: CourtDims): { x: number; z: number } {
-  const back = side === 0 ? -1 : 1
-  const deep = { x: t.x, z: t.z + back * MISREAD }
-  clampTarget(deep, side, court)
-  if (Math.abs(deep.z - t.z) >= MISREAD - 0.05) return deep
-  const short = { x: t.x, z: t.z - back * MISREAD }
-  clampTarget(short, side, court)
-  return short
+export function whiffTick(off: number, dt: number, landDt: number): number | null {
+  if (beforeLanding(off, dt, landDt)) return dt + off
+  const lastCall = landDt - LAND_MARGIN - 1
+  if (lastCall - dt > WINDOW.pastGrace) return lastCall
+  if (dt >= EARLY_WHIFF) return dt - EARLY_WHIFF - (off - WINDOW.pastGrace - 1)
+  return null
+}
+
+/**
+ * A ball nobody would miss (EASY): I get to `target` with EASY.slack ticks to spare, meet it at a
+ * comfortable height, and it isn't fast at the contact (`dt` ticks ahead).
+ */
+function easyBall(
+  s: SpState,
+  me: SpPlayer,
+  target: { x: number; z: number },
+  dt: number,
+  y: number,
+  level: BotLevel,
+): boolean {
+  if (y < EASY.minY || y > EASY.maxY) return false
+  const speed = (MOVE_SPEED * LEVELS[level].speedMul) / TICK_RATE
+  if (dt - (Math.hypot(target.x - me.x, target.z - me.z) / speed + ARRIVE_TICKS) < EASY.slack) return false
+  const f = scratch
+  Object.assign(f.pos, s.shuttle.pos)
+  Object.assign(f.vel, s.shuttle.vel)
+  for (let t = 0; t < dt; t++) stepShuttle(f)
+  return Math.hypot(f.vel.x, f.vel.y, f.vel.z) < EASY.speed
 }
 
 /** Opponent depth (share of the half's length from the net) at / above which a read plays a drop. */
@@ -299,6 +349,12 @@ function meetSpot(
         bestScore = score
         best = { x, z, y: pos.y }
       }
+      // Passing within reach of where I stand (overhead, at my feet, just behind me): no run needed.
+      const here = Math.abs(pos.y - prefY)
+      if (Math.hypot(pos.x - me.x, pos.z - me.z) <= STAND_REACH && here < bestScore) {
+        bestScore = here
+        best = { x: me.x, z: me.z, y: pos.y }
+      }
     }
     if (stepShuttle(f).netHit || pos.y <= 0) break
   }
@@ -324,6 +380,7 @@ function plan(
   mem.plannedSwingTick = -1
   mem.plannedChargeTick = -1
   mem.plannedAct = null
+  mem.plannedOff = mem.plannedContact = undefined
   if (mate) mem.cover = false
   // Leave shots that go into the net or out (near-line calls can be misjudged on low levels).
   let callIn = isIn(land.pos, side, s.court)
@@ -343,10 +400,11 @@ function plan(
       return
     }
   }
-  const grade = rollGrade(level, rng)
+  let grade = rollGrade(level, rng)
   const smashTry = rng() < L.smash
-  // A rolled whiff meets the shuttle high so the too-late swing still happens in the air (visible whiff).
-  const meetY = smashTry || grade === 'whiff' ? SMASH_MEET_Y : MEET_Y
+  // A rolled whiff meets the shuttle as usual: an easy ball turns it into a floater, a hard one misses on
+  // timing (whiffTick).
+  const meetY = smashTry ? SMASH_MEET_Y : MEET_Y
   const meet = meetSpot(s, idx, level, meetY, land.ticks)
   const high = smashTry && grade !== 'whiff' && meet !== null && meet.y >= REACH.smashY
   const back = side === 0 ? -1 : 1 // world z sign of "away from the net"
@@ -355,13 +413,24 @@ function plan(
   mem.target = target
   const c = findContact(s.shuttle, target, 0, land.ticks)
   if (!c) return
+  if (grade === 'whiff' && easyBall(s, me, target, c.dt, c.pos.y, level)) grade = 'late'
+  // Doubles: two on the court make some hard balls a scramble-save (a floater) instead of a miss, so
+  // rallies run longer than 1v1 (the rng draw only in doubles: 1v1 streams unchanged).
+  else if (grade === 'whiff' && mate && rng() < DOUBLES_SAVE) grade = 'late'
   const off = swingOffset(grade, rng)
-  if (grade === 'whiff' && !mate && !beforeLanding(off, c.dt, land.ticks)) {
-    // No room for a too-late swing: misread it, swinging at the contact from out of reach (a visible miss).
-    // Not in doubles: the misread run can take the swing into the teammate (a friendly bonk).
-    mem.target = misreadSpot(target, side, s.court)
-    mem.plannedSwingTick = s.tick + c.dt
-  } else mem.plannedSwingTick = Math.max(s.tick, s.tick + c.dt + safeOffset(off, c.dt, land.ticks))
+  // A whiff (a hard ball): from the right spot, a timing error (whiffTick); no room for one: a Late
+  // floater after all (never a parked bot, never a silent miss). Doubles too: no run off the spot, so no
+  // swing into the teammate.
+  const miss = grade === 'whiff' ? whiffTick(off, c.dt, land.ticks) : null
+  if (grade === 'whiff' && miss === null) grade = 'late'
+  if (miss !== null) mem.plannedSwingTick = s.tick + miss
+  else {
+    mem.plannedSwingTick = Math.max(s.tick, s.tick + c.dt + safeOffset(off, c.dt, land.ticks))
+    if (grade !== 'whiff') {
+      mem.plannedOff = off
+      mem.plannedContact = s.tick + c.dt
+    }
+  }
   // Where the opponents stand (their mean), in my view frame (held x = screen right; shotTarget mirrors
   // it per side) and as a distance from the net.
   let oppSum = 0
@@ -394,9 +463,11 @@ function plan(
   // Only on a clean (Perfect) roll: a charged Good / Late sprays (shots.ts POWER.jitter).
   if (heldZ !== 0 && grade === 'perfect' && rng() < L.charge)
     mem.plannedChargeTick = mem.plannedSwingTick - hold
-  // The ability (its own stream: the plain plan above draws today's sequence).
-  if (actRng() >= L.ability) return
-  if (smashTry) {
+  // The ability (its own stream: the plain plan above draws today's sequence). One roll: under `ability`
+  // a jump smash is on, under `dive` a dive save. A rolled whiff never uses either (it stays a miss).
+  const roll = actRng()
+  if (grade === 'whiff') return
+  if (smashTry && roll < L.ability) {
     // A jump smash: stand under the shuttle where it passes above the plain reach (ability.ts picks a
     // jump there), if I can get there in time.
     const jm = meetSpot(s, idx, level, JUMP_MEET_Y, land.ticks, JUMP_BOX)
@@ -409,7 +480,7 @@ function plan(
     }
   }
   // A lunge save: the plain meet is out of time, but the dive reaches it from the spot I'm heading to.
-  if (meet?.late) {
+  if (meet?.late && roll < L.dive) {
     const lc = findContact(s.shuttle, target, 0, land.ticks, pickReachOf('lunge'))
     if (lc) planAct(s, idx, mem, 'lunge', target, lc.dt, land.ticks, grade, actRng)
   }
@@ -434,6 +505,7 @@ function planAct(
   const at = Math.max(s.tick, s.tick + dt - leadOf(act) + safeOffset(swingOffset(grade, rng), dt, landDt))
   if (!actReady(s.players[idx].act, at)) return false
   mem.plannedAct = act
+  mem.plannedOff = mem.plannedContact = undefined
   mem.target = spot
   if (act === 'jump') mem.plannedHeld = { x: mem.plannedHeld.x, z: 1 }
   mem.plannedSwingTick = at
@@ -460,6 +532,28 @@ function moveToward(p: SpPlayer, level: BotLevel, to: { x: number; z: number }):
   const v = toWorld(p.side, dx * k, dz * k) // toWorld is its own inverse
   return { t: 'move', x: v.x, z: v.z }
 }
+
+/**
+ * In the last RETIME_TICKS before the planned contact: move the contact (and the swing with it) to the
+ * closest approach from where I actually stand (the run may be short of, or past, the planned spot),
+ * keeping the rolled offset (same grade). Stops once the contact is here (a passed closest approach would
+ * otherwise read as "now" every tick and drag a late-side swing along).
+ */
+function retime(s: SpState, me: SpPlayer, mem: BotMemory) {
+  const left = (mem.plannedContact ?? -1) - s.tick
+  // Not once the swing is due or done (an early-side swing: the contact is still ahead; moving the tick
+  // then would re-arm the blocked-swing retry and press again).
+  if (left <= 0 || left > RETIME_TICKS || mem.plannedSwingTick <= s.tick) return
+  const land = predictLanding(s.shuttle)
+  if (land.netHit) return
+  const c = findContact(s.shuttle, me, 0, land.ticks)
+  if (!c) return
+  mem.plannedContact = s.tick + c.dt
+  mem.plannedSwingTick = Math.max(s.tick, s.tick + c.dt + safeOffset(mem.plannedOff!, c.dt, land.ticks))
+}
+
+/** Standing more than RECOVER_NET (m) nearer the net than base. */
+const nearerNet = (p: SpPlayer, home: { z: number }) => Math.abs(p.z) < Math.abs(home.z) - RECOVER_NET
 
 /** Tick of the opponent's latest hit/serve still in the event log, or -1. */
 function lastShotTick(s: SpState, opp: 0 | 1): number {
@@ -542,9 +636,11 @@ export function botStep(
     plan(s, idx, level, mem, rng, actRng)
   }
   const planned = mem.targetAt >= 0 && (shot < 0 || mem.targetAt === planAt)
-  // Still reacting: drift back toward base until the plan is made.
-  const to = planned ? mem.target : home
-  const out: SpInput[] = [moveToward(me, level, to)]
+  // Still reacting: hold my ground (a split step) until the plan is made, not drift off toward base; caught
+  // up near the net, keep recovering back (a net rusher shouldn't find me parked in racket reach).
+  const wait = nearerNet(me, home) ? moveToward(me, level, home) : STILL
+  const out: SpInput[] = [planned ? moveToward(me, level, mem.target) : wait]
+  if (planned && mem.plannedOff !== undefined) retime(s, me, mem)
   if (
     planned &&
     mem.plannedChargeTick >= 0 &&
@@ -561,7 +657,13 @@ export function botStep(
     const c = findContact(s.shuttle, me, 0, 2 * ABILITY.horizon)
     if (c) mem.plannedSwingTick = s.tick + c.dt
   }
-  if (planned && s.tick === mem.plannedSwingTick && !partnerInSwing(s, me)) {
+  // A plain swing blocked on its tick (cooldown, a teammate in the way) is pressed on the next free tick.
+  const swingDue = mem.plannedAct
+    ? s.tick === mem.plannedSwingTick
+    : s.tick >= mem.plannedSwingTick &&
+      s.tick <= mem.plannedSwingTick + SWING_RETRY &&
+      me.swingAt < mem.plannedSwingTick
+  if (planned && mem.plannedSwingTick >= 0 && swingDue && !partnerInSwing(s, me)) {
     const { x, z } = mem.plannedHeld
     out.push(mem.plannedAct ? { t: 'ability', x, z, tick: s.tick } : { t: 'swing', x, z, tick: s.tick })
   } else if (charging && !(planned && s.tick < mem.plannedSwingTick)) out.push(UNCHARGE)

@@ -19,7 +19,9 @@ describe('doubles gauges', () => {
     expect(dubsOf('skilled', 'normal').share).toBeLessThanOrEqual(0.7)
     expect(sk('hard')).toBeGreaterThanOrEqual(0.08)
     expect(dubsOf('casual', 'easy').win).toBeGreaterThanOrEqual(0.35)
-    expect(dubsOf('tap', 'normal').win).toBeGreaterThanOrEqual(0.1)
+    // 0.05 (was 0.1) since the 2026-11-13 near-shuttle fix: the bots stopped gifting points on easy shots
+    // near / behind them, and a tap-only human is the pair's weak link (measured 0.05; one match ≈ 0.025).
+    expect(dubsOf('tap', 'normal').win).toBeGreaterThanOrEqual(0.05)
     expect(sk('easy')).toBeGreaterThanOrEqual(sk('normal'))
     expect(sk('normal')).toBeGreaterThanOrEqual(sk('hard') - 0.05)
   })

@@ -960,6 +960,16 @@
   padding: 10px 2px;
   white-space: nowrap;
 }
+/* Graphics: five looks (Auto … Ultra) in a 3 + 2 grid, so "Medium" / "Tự động" / "Siêu cao" fit at 260 px. */
+.sp-cam-panel .sp-graphics-row .pf-segmented {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+.sp-cam-panel .sp-graphics-row .pf-segment {
+  font-size: 13px;
+  padding: 10px 2px;
+  white-space: nowrap;
+}
 /* Only the panel itself (a focus holder, not a control); sliders and Reset keep the global :focus-visible ring. */
 .sp-cam-panel:focus,
 .sp-cam-panel:focus-visible {

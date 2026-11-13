@@ -158,7 +158,8 @@ function botMatch(): { log: string[]; s: SpState } {
   const s = setupBots('normal', 'hard', 5)
   for (const p of s.players) p.level = undefined
   const log: string[] = []
-  for (let t = 0; t < 4000 && s.phase !== 'over'; t++) {
+  // 6000 (was 4000): since the 2026-11-13 bot retune this seed opens with a 73-shot rally (point at ~4460).
+  for (let t = 0; t < 6000 && s.phase !== 'over'; t++) {
     const inputs: InputEvent<SpInput>[] = []
     s.players.forEach((p, i) => {
       const mem = p.bot!

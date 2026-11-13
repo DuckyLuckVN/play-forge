@@ -570,8 +570,8 @@ describe('pickContact', () => {
   it('pickContact results on recorded bot rallies match the pinned snapshot', () => {
     // 200 swings near the shuttle in a seeded bot rally (rewind 0 / 4 / 7), expected values are a
     // snapshot of pickContact's output (originally recorded from the old contactFor; re-recorded when
-    // the power swing changed charged launches and bot rallies, and when the 2026-11-12 AI retune changed
-    // the bots' rallies, so this pins current behaviour only; past-candidate picks are covered below).
+    // the power swing changed charged launches and bot rallies, when the 2026-11-12 AI retune changed
+    // the bots' rallies, and for the 2026-11-13 near-shuttle fix, so this pins current behaviour only; past-candidate picks are covered below).
     const s = setupBots('hard', 'hard', 1)
     const got: { tick: number; side: number; rewind: number; c: ReturnType<typeof strip> }[] = []
     for (let i = 0; i < 600 && got.length < 200; i++) {
@@ -590,14 +590,14 @@ describe('pickContact', () => {
     const hits = got.filter((g) => g.c)
     const grades = { perfect: 0, good: 0, late: 0 }
     for (const g of hits) grades[g.c!.grade]++
-    expect(hits).toHaveLength(120)
-    expect(grades).toEqual({ perfect: 15, good: 31, late: 74 })
-    expect(hits.reduce((a, g) => a + g.c!.tick, 0)).toBe(26653)
-    expect(hits.reduce((a, g) => a + g.c!.y, 0)).toBeCloseTo(154.47960900576615, 9)
+    expect(hits).toHaveLength(118)
+    expect(grades).toEqual({ perfect: 13, good: 33, late: 72 })
+    expect(hits.reduce((a, g) => a + g.c!.tick, 0)).toBe(24994)
+    expect(hits.reduce((a, g) => a + g.c!.y, 0)).toBeCloseTo(144.05280960712497, 9)
     const at = (tick: number, side: number, rewind: number) =>
       got.find((g) => g.tick === tick && g.side === side && g.rewind === rewind)?.c
     // good in the future
-    expect(at(63, 0, 0)).toEqual({ tick: 75, y: 0.8461322289050712, grade: 'good' })
+    expect(at(66, 0, 0)).toEqual({ tick: 73, y: 0.9613516361468086, grade: 'good' })
     // late
     expect(at(54, 0, 0)).toEqual({ tick: 72, y: 1.0159664682800775, grade: 'late' })
   })

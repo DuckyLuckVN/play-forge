@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="A glass jar of goo monsters and a falling two-colour capsule">
+  <rect width="320" height="200" rx="16" fill="#10132c"/>
+  <g fill="#ffffff" opacity="0.08">
+    <circle cx="60" cy="150" r="5"/><circle cx="74" cy="110" r="3"/><circle cx="248" cy="80" r="4"/><circle cx="262" cy="140" r="6"/><circle cx="40" cy="60" r="3"/><circle cx="286" cy="40" r="3"/>
+  </g>
+  <rect x="98" y="34" width="124" height="152" rx="18" fill="#4be3a0" opacity="0.08"/>
+  <rect x="98" y="34" width="124" height="152" rx="18" fill="none" stroke="#343b7a" stroke-width="5"/>
+  <rect x="106" y="44" width="7" height="110" rx="3.5" fill="#ffffff" opacity="0.08"/>
+  <!-- falling capsule -->
+  <g>
+    <rect x="132" y="18" width="28" height="26" rx="13" fill="#c98f00"/>
+    <rect x="132" y="18" width="28" height="23" rx="11.5" fill="#ffc83d"/>
+    <rect x="146" y="18" width="14" height="26" fill="#c98f00"/>
+    <rect x="146" y="18" width="14" height="23" fill="#ffc83d"/>
+    <rect x="160" y="18" width="28" height="26" rx="13" fill="#2d7fc4"/>
+    <rect x="160" y="18" width="28" height="23" rx="11.5" fill="#5ab8ff"/>
+    <rect x="160" y="18" width="14" height="26" fill="#2d7fc4"/>
+    <rect x="160" y="18" width="14" height="23" fill="#5ab8ff"/>
+    <ellipse cx="142" cy="25" rx="5" ry="3" fill="#fff" opacity="0.5"/>
+    <ellipse cx="170" cy="25" rx="5" ry="3" fill="#fff" opacity="0.5"/>
+  </g>
+  <!-- stacked halves -->
+  <rect x="190" y="130" width="24" height="24" rx="12" fill="#ff6b6b"/>
+  <rect x="190" y="154" width="24" height="24" rx="8" fill="#5ab8ff"/>
+  <!-- spiky coral gloop -->
+  <g transform="translate(130 156)">
+    <path d="M0-26 7-19 17-21 18-11 26-4 20 5 23 15 12 17 6 25-3 20-12 25-16 16-26 12-21 3-27-6-18-11-17-21-8-19Z" fill="#c0392b"/>
+    <path d="M0-28 7-21 17-23 18-13 26-6 20 3 23 13 12 15 6 23-3 18-12 23-16 14-26 10-21 1-27-8-18-13-17-23-8-21Z" fill="#ff6b6b"/>
+    <ellipse cx="-8" cy="-6" rx="6" ry="7" fill="#fff"/><ellipse cx="8" cy="-6" rx="6" ry="7" fill="#fff"/>
+    <circle cx="-6" cy="-5" r="3.2" fill="#1d1440"/><circle cx="10" cy="-5" r="3.2" fill="#1d1440"/>
+    <path d="M-15-16-4-12M15-16 4-12" stroke="#1d1440" stroke-width="2.6" stroke-linecap="round"/>
+    <path d="M-7 5a7 7 0 0 0 14 0Z" fill="#1d1440"/>
+  </g>
+  <!-- round yolk gloop -->
+  <g transform="translate(170 108)">
+    <ellipse cx="0" cy="3" rx="22" ry="20" fill="#c98f00"/>
+    <ellipse cx="0" cy="0" rx="22" ry="19" fill="#ffc83d"/>
+    <ellipse cx="-4" cy="-20" rx="5" ry="3" fill="#ffc83d" transform="rotate(-25 -4 -20)"/>
+    <ellipse cx="-7" cy="-3" rx="5.5" ry="6.5" fill="#fff"/><ellipse cx="7" cy="-3" rx="5.5" ry="6.5" fill="#fff"/>
+    <circle cx="-6" cy="-1" r="3" fill="#1d1440"/><circle cx="8" cy="-1" r="3" fill="#1d1440"/>
+    <path d="M-6 6a6 6 0 0 0 12 0Z" fill="#1d1440"/>
+  </g>
+  <!-- boxy sky gloop -->
+  <g transform="translate(128 98)">
+    <path d="M0-16Q4-26 8-28" stroke="#2d7fc4" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <circle cx="8" cy="-29" r="3.5" fill="#5ab8ff"/>
+    <rect x="-18" y="-14" width="36" height="34" rx="9" fill="#2d7fc4"/>
+    <rect x="-18" y="-16" width="36" height="33" rx="9" fill="#5ab8ff"/>
+    <ellipse cx="-7" cy="-4" rx="5" ry="6" fill="#fff"/><ellipse cx="7" cy="-4" rx="5" ry="6" fill="#fff"/>
+    <circle cx="-5" cy="-3" r="2.8" fill="#1d1440"/><circle cx="9" cy="-3" r="2.8" fill="#1d1440"/>
+    <path d="M-5 6a5 5 0 0 0 10 0Z" fill="#1d1440"/>
+  </g>
+  <!-- pop burst -->
+  <g fill="#ff6fb5">
+    <circle cx="76" cy="84" r="4"/><circle cx="62" cy="96" r="3"/><circle cx="84" cy="102" r="2.5"/>
+    <circle cx="244" cy="118" r="4"/><circle cx="258" cy="104" r="3"/><circle cx="236" cy="100" r="2.5"/>
+  </g>
+</svg>

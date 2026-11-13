@@ -33,6 +33,7 @@ const SAME_EVERYWHERE = [
   'Brickstorm',
   'Caro',
   'Fuse',
+  'Gloop Pop',
   'Phantom Drift',
   'Shuttle Pop',
   'Snake',

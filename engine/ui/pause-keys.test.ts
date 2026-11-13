@@ -29,4 +29,12 @@ describe('pauseAction', () => {
       pauseAction({ key: 'Escape', pauseKeys, offline: false, phase: 'playing', hostLost: true }),
     ).toBeNull()
   })
+  it('online: nothing when the game already used the key (e.g. Fuse: Esc cancels an armed blast)', () => {
+    expect(
+      pauseAction({ key: 'Escape', pauseKeys, offline: false, phase: 'playing', consumed: true }),
+    ).toBeNull()
+    expect(pauseAction({ key: 'Escape', pauseKeys, offline: false, phase: 'playing', consumed: false })).toBe(
+      'toggle-menu',
+    )
+  })
 })

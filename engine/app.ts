@@ -628,18 +628,29 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
 
   // Solo games pause when the tab is hidden, and on Esc / P. Online, those keys toggle a local menu
   // (never a pause: the other players keep playing). Bubbling phase: an open deck / guide swallows Esc first.
+  // The online menu waits a task, so the game's own key listeners (registered after this one) run first
+  // and can claim the key with preventDefault (Fuse: Esc cancels an armed blast).
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) session?.setPaused(true)
   })
+  const pauseFor = (e: KeyboardEvent, consumed = false) => {
+    const s = session
+    if (!s) return null
+    const hostLost = !s.offline && !s.isHost && !s.hostConnected
+    return pauseAction({ key: e.code, pauseKeys, offline: s.offline, phase: s.phase, hostLost, consumed })
+  }
   window.addEventListener('keydown', (e) => {
     const s = session
     if (!s || e.repeat || isTyping(e.target)) return
-    const hostLost = !s.offline && !s.isHost && !s.hostConnected
-    const action = pauseAction({ key: e.code, pauseKeys, offline: s.offline, phase: s.phase, hostLost })
+    const action = pauseFor(e)
     if (action === 'toggle-solo') s.setPaused(!s.lobby.paused)
     else if (action === 'toggle-menu') {
-      onlineMenu = !onlineMenu
-      render()
+      // queueMicrotask would run before the next listener; a timeout runs after the whole dispatch.
+      setTimeout(() => {
+        if (session !== s || pauseFor(e, e.defaultPrevented) !== 'toggle-menu') return
+        onlineMenu = !onlineMenu
+        render()
+      })
     }
   })
   window.addEventListener('offline', () => {

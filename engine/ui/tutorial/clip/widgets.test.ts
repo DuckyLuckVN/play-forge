@@ -64,6 +64,48 @@ describe('keyPad', () => {
   })
 })
 
+describe('keyPad reduced motion', () => {
+  it('is static when reducedMotion', () => {
+    const c = clipRoot({ w: 10, h: 10 })
+    const lit = [{ id: 'w', beat: { at: 1, dur: 2 }, color: '#f36' }]
+    expect(keyPad(c, WASD, lit, 12, true).classList.contains('pf-clip-still')).toBe(true)
+    expect(keyPad(c, WASD, lit, 12).classList.contains('pf-clip-still')).toBe(false)
+  })
+})
+
+describe('short and edge beats', () => {
+  const stops = (css: string) =>
+    [...css.replace(/^@keyframes \S+?\{/, '').matchAll(/([\d.,%]+)\{[^}]*\}/g)].flatMap((m) =>
+      m[1].split(',').map((x) => parseFloat(x)),
+    )
+  const mono = (css: string) => {
+    const p = stops(css)
+    expect(p.length).toBeGreaterThan(0)
+    expect(p.every((n) => n >= 0 && n <= 100)).toBe(true)
+    expect([...p].sort((x, y) => x - y)).toEqual(p)
+  }
+  it.each([
+    { at: 5, dur: 0.01 },
+    { at: 2, dur: 8 },
+    { at: 0, dur: 0 },
+  ])('keyframes of every widget are monotonic in 0-100: %o', (beat) => {
+    const c = clipRoot({ w: 10, h: 10 })
+    flyAlong(c, 'M0,0 L1,1', 10, beat, { shadow: 'M0,0 L1,1' })
+    chargeRing(c, { x: 1, y: 1 }, 10, beat)
+    popText(c, 'x', { x: 1, y: 1 }, 10, beat)
+    showDuring(c, s('g'), 10, beat)
+    keyPad(c, WASD, [{ id: 'w', beat, color: '#f36' }], 10)
+    const blocks = c.css.filter((x) => x.startsWith('@keyframes'))
+    expect(blocks).toHaveLength(5)
+    blocks.forEach(mono)
+  })
+  it('throws on bad loop or negative dur', () => {
+    const c = clipRoot({ w: 10, h: 10 })
+    expect(() => showDuring(c, s('g'), 0, { at: 1, dur: 1 })).toThrow(RangeError)
+    expect(() => showDuring(c, s('g'), 10, { at: 1, dur: -1 })).toThrow(RangeError)
+  })
+})
+
 describe('badge', () => {
   it('contains key, name, desc', () => {
     const b = badge({ key: 'W', name: 'SMASH', desc: 'fast', color: '#f36', x: 220, y: 236 })

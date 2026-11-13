@@ -8,15 +8,25 @@ export interface Beat {
 }
 
 const RAMP = 0.3 // % of the loop to fade in / out, so edges don't pop
-const pct = (n: number) => +n.toFixed(2)
+
+/** Percent stop, clamped to 0-100, 2 decimals. */
+export const pct = (n: number) => +Math.min(Math.max(n, 0), 100).toFixed(2)
+
+/**
+ * A beat as loop percentages: `a`..`b` is the window; `on` / `off` are the ends of the fade-in /
+ * fade-out ramps. Always 0 <= a <= on <= b <= off <= 100. Throws on loop <= 0 or dur < 0.
+ */
+export function beatPct(beat: Beat, loop: number): { a: number; on: number; b: number; off: number } {
+  if (!(loop > 0)) throw new RangeError(`loop must be > 0, got ${loop}`)
+  if (!(beat.dur >= 0)) throw new RangeError(`beat.dur must be >= 0, got ${beat.dur}`)
+  const a = Math.min(Math.max((beat.at / loop) * 100, 0), 100)
+  const b = Math.min(((beat.at + beat.dur) / loop) * 100, 100)
+  return { a, on: Math.min(a + RAMP, b), b, off: Math.min(b + RAMP, 100) }
+}
 
 /** `@keyframes name{...}`: `off` until the beat, `on` during it, `off` again after. */
 export function keyframes(name: string, loop: number, beat: Beat, on: string, off: string): string {
-  const a = Math.min((beat.at / loop) * 100, 100)
-  const b = Math.min(((beat.at + beat.dur) / loop) * 100, 100)
-  // ramp stops stay inside [0,100] and never pass the next stop, so the order is always monotonic
-  const aOn = Math.min(a + RAMP, b)
-  const bOff = Math.min(b + RAMP, 100)
+  const { a, on: aOn, b, off: bOff } = beatPct(beat, loop)
   return `@keyframes ${name}{0%,${pct(a)}%{${off}}${pct(aOn)}%,${pct(b)}%{${on}}${pct(bOff)}%,100%{${off}}}`
 }
 

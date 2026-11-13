@@ -3,7 +3,7 @@
 
 import { h } from '../../dom'
 import { s } from './svg'
-import { animation, keyframes, uid, type Beat } from './timeline'
+import { animation, beatPct, keyframes, pct, uid, type Beat } from './timeline'
 import type { Vec2 } from './projection'
 
 export interface Clip {
@@ -71,9 +71,6 @@ export function showDuring(c: Clip, el: Element, loop: number, beat: Beat): void
   )
 }
 
-const clamp100 = (n: number) => Math.min(Math.max(n, 0), 100)
-const pct = (n: number) => +clamp100(n).toFixed(2)
-
 /**
  * A ball (and optional ground shadow) that travels along path `d` during the beat: appears at the
  * start, flies over the first 55% of the beat, rests at the end, then fades.
@@ -86,11 +83,9 @@ export function flyAlong(
   o: { shadow?: string; r?: number } = {},
 ): void {
   const k = uid('fl')
-  const a = (beat.at / loop) * 100
-  const b = a + (beat.dur / loop) * 100
+  const { a, on, b, off: bOff } = beatPct(beat, loop)
   const fly = a + (b - a) * 0.55
-  const aOn = Math.min(a + 0.3, fly)
-  const bOff = b + 0.5
+  const aOn = Math.min(on, fly)
   const st = (dist: number, op: number) => `offset-distance:${dist}%;opacity:${op}`
   c.css.push(
     `@keyframes ${k}{0%,${pct(a)}%{${st(0, 0)}}${pct(aOn)}%{${st(0, 1)}}${pct(fly)}%,${pct(b)}%{${st(100, 1)}}${pct(bOff)}%,100%{${st(100, 0)}}}`,
@@ -118,8 +113,9 @@ export function keyPad(
   keys: { id: string; label: string; col: number; row: number }[],
   lit: { id: string; beat: Beat; color: string }[],
   loop: number,
+  reducedMotion = false,
 ): HTMLElement {
-  const pad = h('div', { class: 'pf-pad' })
+  const pad = h('div', { class: reducedMotion ? 'pf-pad pf-clip-still' : 'pf-pad' })
   for (const key of keys) {
     const el = h(
       'span',
@@ -174,11 +170,10 @@ export function landingRing(at: Vec2, color: string): SVGEllipseElement {
 /** A ring that grows while the shot charges, during the beat. */
 export function chargeRing(c: Clip, at: Vec2, loop: number, beat: Beat): SVGGElement {
   const k = uid('cr')
-  const a = (beat.at / loop) * 100
-  const b = a + (beat.dur / loop) * 100
+  const { a, on, b } = beatPct(beat, loop)
   c.css.push(
     `.${k}{transform-box:fill-box;transform-origin:center;opacity:0;animation:${animation(k, loop)}}`,
-    `@keyframes ${k}{0%,${pct(a)}%{transform:scale(0.3);opacity:0}${pct(a + 0.3)}%{transform:scale(0.3);opacity:1}${pct(b)}%{transform:scale(1.3);opacity:0}100%{transform:scale(1.3);opacity:0}}`,
+    `@keyframes ${k}{0%,${pct(a)}%{transform:scale(0.3);opacity:0}${pct(on)}%{transform:scale(0.3);opacity:1}${pct(b)}%{transform:scale(1.3);opacity:0}100%{transform:scale(1.3);opacity:0}}`,
   )
   const ring = s('ellipse', {
     class: k,
@@ -195,11 +190,10 @@ export function chargeRing(c: Clip, at: Vec2, loop: number, beat: Beat): SVGGEle
 /** A short word that pops up and drifts during the beat (e.g. "SMASH!"). */
 export function popText(c: Clip, text: string, at: Vec2, loop: number, beat: Beat): SVGTextElement {
   const k = uid('pt')
-  const a = (beat.at / loop) * 100
-  const b = a + (beat.dur / loop) * 100
+  const { a, on, b, off } = beatPct(beat, loop)
   c.css.push(
     `.${k}{opacity:0;animation:${animation(k, loop)}}`,
-    `@keyframes ${k}{0%,${pct(a)}%{opacity:0;transform:translateY(6px)}${pct(a + 0.5)}%{opacity:1;transform:translateY(0)}${pct(b)}%{opacity:1;transform:translateY(-8px)}${pct(b + 0.5)}%,100%{opacity:0;transform:translateY(-8px)}}`,
+    `@keyframes ${k}{0%,${pct(a)}%{opacity:0;transform:translateY(6px)}${pct(on)}%{opacity:1;transform:translateY(0)}${pct(b)}%{opacity:1;transform:translateY(-8px)}${pct(off)}%,100%{opacity:0;transform:translateY(-8px)}}`,
   )
   return s(
     'text',

@@ -38,6 +38,10 @@ export class TokenBucket {
     this.tokens -= cost
     return true
   }
+  /** Milliseconds since the bucket was last used. */
+  idleSince(now: number): number {
+    return now - this.at
+  }
 }
 
 interface Member {

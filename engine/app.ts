@@ -33,6 +33,7 @@ import { netLog } from './net/debug'
 import { createTrysteroTransport } from './net/trystero'
 import { createHybridTransport } from './net/hybrid'
 import { GAME_RELAY_URL, relayMode } from './net/net-config'
+import { prefetchTurn } from './net/turn'
 import { createRelayTransport } from './net/relay'
 import { avatarEl, avatarPicker } from './social/avatar-ui'
 import { avatarFor, storedAvatar } from './social/avatars'
@@ -180,11 +181,19 @@ function createTransport(appId: string, room: string): Transport {
   const local = new URLSearchParams(location.search).get('net') === 'local'
   if (local) return createBroadcastTransport(appId, room)
   const direct = createTrysteroTransport(appId, room)
+  // Keep a fresh login for the next room (a long session can outlive one).
+  void prefetchTurnFor()
   const mode = relayMode()
   if (mode === 'off') return direct
   // Same peer id on both paths, so a peer is one peer whichever way it's reached.
   const relay = createRelayTransport(GAME_RELAY_URL, { app: appId, room, id: direct.selfId })
   return createHybridTransport(direct, relay, { relayOnly: mode === 'only' })
+}
+
+/** TURN logins come from our game relay; none for local tabs or with the relay off. */
+function prefetchTurnFor(): Promise<void> {
+  const local = new URLSearchParams(location.search).get('net') === 'local'
+  return local || relayMode() === 'off' ? Promise.resolve() : prefetchTurn(GAME_RELAY_URL)
 }
 
 function storedName(value?: string): string {
@@ -250,6 +259,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   const store = roomStore(def.id)
   applyTheme()
   document.title = `${opts.title} · Play Forge`
+  // A TURN login for online rooms, fetched in the background so joining never waits (net/turn.ts).
+  if (def.maxPlayers > 1) void prefetchTurnFor()
 
   // ---------- Shell ----------
   const scoresEl = h('div', { class: 'pf-bar-scores' })

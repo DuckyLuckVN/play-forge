@@ -2,6 +2,7 @@ import { getRelaySockets, joinRoom, selfId, type DataPayload, type MessageAction
 import { Emitter } from '../core/emitter'
 import { netLog } from './debug'
 import { RELAY_URLS, roomConfig } from './net-config'
+import { turnMode, turnServers } from './turn'
 import {
   FailureLog,
   type LinkState,
@@ -21,18 +22,24 @@ import type { Transport } from './transport'
 export function createTrysteroTransport(appId: string, roomId: string): Transport {
   const failures = new FailureLog()
   const pcs = createPcTracker(() => failures.add(performance.now()))
-  const room = joinRoom({ ...roomConfig(appId), rtcPolyfill: pcs.ctor }, roomId, {
-    // A peer we exchanged offers with but could not connect to.
-    onJoinError({ peerId, error }) {
-      failures.add(performance.now(), peerId || undefined)
-      netLog('join error', peerId, error)
+  const turn = turnServers()
+  netLog('turn:', turn.length ? 'on' : 'off')
+  const room = joinRoom(
+    { ...roomConfig(appId, turn, turnMode() === 'only'), rtcPolyfill: pcs.ctor },
+    roomId,
+    {
+      // A peer we exchanged offers with but could not connect to.
+      onJoinError({ peerId, error }) {
+        failures.add(performance.now(), peerId || undefined)
+        netLog('join error', peerId, error)
+      },
     },
-  })
+  )
   const events = new Emitter<{ join: [string]; leave: [string]; stream: [MediaStream, string] }>()
   const channels = new Emitter<Record<string, [unknown, string]>>()
   const actions = new Map<string, MessageAction>()
-  // Round trip per peer, refreshed by diagnostics.measure().
-  const measured = new Map<string, { rttMs?: number }>()
+  // Round trip and TURN use per peer, refreshed by diagnostics.measure().
+  const measured = new Map<string, { rttMs?: number; turn?: boolean }>()
 
   room.onPeerJoin = (id) => {
     failures.resolve(id)
@@ -77,10 +84,14 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
     async measure() {
       await Promise.all(
         Object.entries(room.getPeers()).map(async ([id, pc]) => {
-          let rttMs = await roundTrip(pc).catch(() => undefined)
+          const pair = await selectedPair(pc).catch(() => ({}) as PairInfo)
+          let rttMs = pair.rttMs
           if (rttMs === undefined && pc.connectionState === 'connected')
             rttMs = await room.ping(id).catch(() => undefined)
-          measured.set(id, rttMs === undefined ? {} : { rttMs })
+          measured.set(id, {
+            ...(rttMs === undefined ? {} : { rttMs }),
+            ...(pair.turn ? { turn: true } : {}),
+          })
         }),
       )
     },
@@ -137,7 +148,14 @@ function linkState(pc: RTCPeerConnection): LinkState {
 }
 
 /** Round trip (ms) of the connection's active candidate pair, if the browser reports it. */
-async function roundTrip(pc: RTCPeerConnection): Promise<number | undefined> {
+interface PairInfo {
+  rttMs?: number
+  /** Either end of the active candidate pair is a TURN relay candidate. */
+  turn?: boolean
+}
+
+/** Round trip and TURN use of the connection's active candidate pair. */
+async function selectedPair(pc: RTCPeerConnection): Promise<PairInfo> {
   const report = await pc.getStats()
   let pair: any
   report.forEach((s: any) => {
@@ -149,7 +167,13 @@ async function roundTrip(pc: RTCPeerConnection): Promise<number | undefined> {
       if (s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded') pair ??= s
     })
   const rtt = pair?.currentRoundTripTime
-  return typeof rtt === 'number' ? Math.round(rtt * 1000) : undefined
+  const type = (id: unknown) => (typeof id === 'string' ? report.get(id)?.candidateType : undefined)
+  return {
+    ...(typeof rtt === 'number' ? { rttMs: Math.round(rtt * 1000) } : {}),
+    ...(pair && (type(pair.localCandidateId) === 'relay' || type(pair.remoteCandidateId) === 'relay')
+      ? { turn: true }
+      : {}),
+  }
 }
 
 /**

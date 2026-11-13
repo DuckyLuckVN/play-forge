@@ -18,6 +18,8 @@ export interface PeerLink {
   rttMs?: number
   /** Which way messages go once connected. Absent for transports without a relay. */
   route?: Route
+  /** The WebRTC link goes through a TURN server (still WebRTC, so voice works), from the last measure. */
+  turn?: boolean
 }
 
 export interface NetStatus {
@@ -170,12 +172,15 @@ export interface LinkedPlayer {
   connected: boolean
 }
 
+/** What the panel shows for a connected player: a Route, or 'turn' (WebRTC through our TURN server). */
+export type PanelRoute = Route | 'turn'
+
 export interface PanelRow {
   name: string
   state: LinkState
   rttMs: number | null
   /** Set once connected, when the transport reports it. */
-  route: Route | null
+  route: PanelRoute | null
 }
 
 export interface NetPanelView {
@@ -187,6 +192,13 @@ export interface NetPanelView {
   gameRelay: { ok: boolean; rttMs: number | null } | null
   rows: PanelRow[]
   hints: NetHint[]
+}
+
+/** A WebRTC link through TURN shows as 'turn'; the WebSocket relay stays 'relay'. */
+function panelRoute(link: PeerLink | undefined): PanelRoute | null {
+  if (!link) return null
+  if (link.turn && link.route !== 'relay') return 'turn'
+  return link.route ?? null
 }
 
 /** "wss://relay.example.com" → "relay.example.com". */
@@ -210,7 +222,7 @@ export function netPanelView(
       name: p.name,
       state,
       rttMs: link?.rttMs ?? null,
-      route: state === 'connected' ? (link?.route ?? null) : null,
+      route: state === 'connected' ? panelRoute(link) : null,
     }
   })
   const relaysOk = relaysOpen(status)

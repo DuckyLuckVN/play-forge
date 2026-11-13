@@ -224,6 +224,10 @@
   .pf-net-player.connected .pf-net-state.relay {
     color: var(--pf-sky);
   }
+  /* Through our TURN server: still WebRTC (voice works), just not browser to browser. */
+  .pf-net-player.connected .pf-net-state.turn {
+    color: var(--pf-violet);
+  }
   .pf-net-ping {
     grid-area: ping;
     min-width: 52px;

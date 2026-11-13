@@ -39,9 +39,10 @@ Fun mini-games to play with friends: solo, on one device, or online. No accounts
 ```
 
 - **Direct first:** players find each other through public relays, then talk directly, browser to browser. The relays are pinned in `engine/net/net-config.ts` (`RELAY_URLS`, with how to re-check them).
-- **Relay fallback:** every player also opens a WebSocket to our game relay server (`server/relay`). Messages to a player go directly when that link is up, otherwise through the relay (`engine/net/hybrid.ts`): while WebRTC is still connecting, when a strict network (corporate, some mobile carriers) blocks it, or when a direct link drops mid-game. The relay also lets players find the room if the Nostr relays are down. Voice stays direct only. The relay only forwards messages within a room; the host still runs the game.
+- **Relay fallback:** every player also opens a WebSocket to our game relay server (`server/relay`). Messages to a player go directly when that link is up, otherwise through the relay (`engine/net/hybrid.ts`): while WebRTC is still connecting, when a strict network (corporate, some mobile carriers) blocks it, or when a direct link drops mid-game. The relay also lets players find the room if the Nostr relays are down. The relay only forwards messages within a room; the host still runs the game.
+- **TURN (voice when direct is blocked):** the relay also hands out short-lived TURN logins (`GET /turn`, `server/relay/turn.ts`), fetched in the background when a game page loads (`engine/net/turn.ts`). WebRTC then has a TURN server (coturn) to fall back on, so voice and data channels work even when two browsers can't connect directly. The secret that signs the logins lives only on the server (`TURN_SECRET`); without it `/turn` answers 404 and games work as before.
   - URL: `VITE_GAME_RELAY_URL` at build time (default `wss://relay.haonguyen.dev`, none on the dev server; empty = no relay, direct only as before).
-  - Testing: `?relay=only` sends all game data through the relay, `?relay=off` skips it.
+  - Testing: `?relay=only` sends all game data through the relay, `?relay=off` skips it. `?turn=only` forces every WebRTC link (voice too) through TURN, `?turn=off` skips TURN.
 - **Network status:** in an online room, the signal-bars button in the top bar shows connection health (green / yellow / red) and opens a live panel: room code, your role, matchmaking servers, the backup (relay) server, and each player's link (**Direct** or **Via server**, ping). Joining shows each step (servers → room → host) and says which one failed, with **Try again**. Add `?netdebug=1` to log connection and route changes to the console.
 - **The host runs the game:** guests send their moves to the host, and the host sends the game state back to everyone.
 - **Reconnecting:**
@@ -51,7 +52,7 @@ Fun mini-games to play with friends: solo, on one device, or online. No accounts
 - **Limits:**
   - A host reload ends the current match (the room survives).
   - Keep the host's tab visible, because browsers slow down background tabs.
-  - Players who can't connect directly play through the relay: a bit more ping, and no voice between them.
+  - Players who can't connect directly play through TURN or the relay: a bit more ping. Voice needs TURN (no voice when only the WebSocket relay links them).
 
 ## Develop
 
@@ -111,7 +112,7 @@ The game relay (`server/relay`) is deployed separately, as a Docker container be
 docker build -f server/relay/Dockerfile -t play-forge-relay .   # from the repo root
 ```
 
-- Env: `PORT` (8080, WebSocket + `/healthz`), `METRICS_PORT` (9464, Prometheus `/metrics`; keep it off the tunnel), `ALLOWED_ORIGINS` (comma-separated page origins), `CLIENT_IP_HEADER` (default `cf-connecting-ip`; only trust it when the tunnel is the sole way in).
+- Env: `PORT` (8080, WebSocket + `/healthz`), `METRICS_PORT` (9464, Prometheus `/metrics`; keep it off the tunnel), `ALLOWED_ORIGINS` (comma-separated page origins), `CLIENT_IP_HEADER` (default `cf-connecting-ip`; only trust it when the tunnel is the sole way in). Optional TURN: `TURN_SECRET` (shared with coturn's `static-auth-secret`, 24+ characters, never committed), `TURN_URLS` (comma-separated `turn:` URLs), `TURN_TTL_S` (login lifetime, default 12 h).
 - Limits (per room, socket, address and message rate) are in `engine/net/relay-protocol.ts` (`RELAY_LIMITS`). Nothing is stored on disk.
 - Clients built before the relay keep working: they just use direct links only. Protocol changes get a new path (`/v2`).
 

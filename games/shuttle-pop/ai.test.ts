@@ -12,10 +12,9 @@ import {
   type BotLevel,
   type BotMemory,
 } from './ai'
-import type { InputEvent } from '@forge/net/session'
 import { MATCH_CAP, play, SLOW } from './ai.harness'
 import { COURT, predictLanding } from './physics'
-import { findContact, WINDOW } from './shots'
+import { findContact, launchFor, REACH, shotTarget, WINDOW } from './shots'
 import { COURT_SIZES, courtDims } from './courtsize'
 import { toWorld } from './court'
 import { STUN } from './stun'
@@ -24,6 +23,7 @@ import {
   serverPlayer,
   setupBots,
   setupDoubles,
+  SWING_COOLDOWN,
   shuttlePopGame as game,
   TICK_RATE,
   type SpEvent,
@@ -158,24 +158,75 @@ describe('line calls', () => {
 })
 
 describe('rolled whiff', () => {
-  it("a rolled whiff swings and emits 'whiff', never a hit", () => {
-    // a deep clear still travelling back: past the contact the shuttle moves away (contact is the closest point)
-    const s = incoming(0.5, 1.5, 4, { x: 0, y: 2, z: 3 })
+  it('a hard ball (a fast drive): a rolled whiff goes to the right spot and misses on timing, never a hit', () => {
+    const from = { x: 0, y: 2.4, z: -3.5 }
+    const s = incoming(from.x, from.z, from.y)
+    s.shuttle.vel = launchFor('drive', 'perfect', from, shotTarget('drive', 0, 1), () => 0, 0)
+    s.tick -= 30 - LEVELS.normal.reactTicks
     const mem = newBotMemory(1, 1)
-    // rng 0.999: grade roll → whiff (last bucket), no smash attempt
     const seen: SpEvent[] = []
+    let swingAt: number | null = null
+    let swings = 0
     let lastId = s.nextEventId - 1
-    while (s.phase === 'rally') {
-      const inputs: InputEvent<SpInput>[] = botStep(s, 1, 'normal', mem, () => 0.999).map((input) => ({
-        player: s.players[1].id,
-        input,
-      }))
-      game.tick(s, inputs)
+    while (s.phase === 'rally' && s.shuttle.lastHitter === 0) {
+      // rng 0.999: grade → whiff, no smash try; no ability.
+      const out = botStep(
+        s,
+        1,
+        'normal',
+        mem,
+        () => 0.999,
+        () => 0.99,
+      )
+      if (out.some((x) => x.t === 'swing')) swings++
+      if (out.some((x) => x.t === 'swing') && swingAt === null) swingAt = s.tick
+      game.tick(
+        s,
+        out.map((input) => ({ player: s.players[1].id, input })),
+      )
       for (const e of s.events) if (e.id > lastId) seen.push(e)
       lastId = s.nextEventId - 1
     }
+    expect(swingAt).not.toBeNull()
+    expect(swings).toBe(1) // one swing, not a press every tick
     expect(seen.some((e) => e.k === 'whiff' && e.side === 1)).toBe(true)
     expect(seen.some((e) => e.k === 'hit' && e.side === 1)).toBe(false)
+    // The right spot: the shuttle's path came within reach of where it planned to stand.
+    expect(Math.hypot(mem.target.x - s.players[1].x, mem.target.z - s.players[1].z)).toBeLessThan(0.5)
+  })
+})
+
+describe('easy balls are never whiffed', () => {
+  it('a whiff roll on a slow, high, steep drop (the captured rally) is returned from the right spot', () => {
+    const s = incoming(-1, 5.6, 7.2, { x: -0.15, y: 0, z: 0.6 })
+    const mem = newBotMemory(1, 1)
+    let swing: { d: number } | null = null
+    const seen: SpEvent[] = []
+    let lastId = s.nextEventId - 1
+    while (s.phase === 'rally' && s.shuttle.lastHitter === 0) {
+      // rng 0.999: grade → whiff (turned into a Late floater: an easy ball), no smash try; no ability.
+      const out = botStep(
+        s,
+        1,
+        'normal',
+        mem,
+        () => 0.999,
+        () => 0.99,
+      )
+      if (out.some((x) => x.t === 'swing') && !swing) {
+        const me = s.players[1]
+        swing = { d: Math.hypot(s.shuttle.pos.x - me.x, s.shuttle.pos.z - me.z) }
+      }
+      game.tick(
+        s,
+        out.map((input) => ({ player: s.players[1].id, input })),
+      )
+      for (const e of s.events) if (e.id > lastId) seen.push(e)
+      lastId = s.nextEventId - 1
+    }
+    expect(seen.some((e) => e.k === 'hit' && e.side === 1)).toBe(true)
+    expect(seen.some((e) => e.k === 'whiff' && e.side === 1)).toBe(false)
+    expect(swing!.d).toBeLessThanOrEqual(REACH.radius) // in reach when it swings: the right spot
   })
 })
 
@@ -234,6 +285,66 @@ describe('meet height', () => {
     expect(c).not.toBeNull()
     expect(c!.pos.y).toBeGreaterThanOrEqual(0.9) // MEET_Y − 0.5
     expect(Math.abs(c!.pos.y - 1.4)).toBeLessThan(0.3)
+  })
+})
+
+describe('shuttle near or behind the bot', () => {
+  /**
+   * Play side 1 (normal bot) until its first hit / whiff, the rolls forced to a clean Perfect, no smash try,
+   * no ability. `before(s, mem)` runs right after the plan is made. Returns side 1's first hit/whiff event.
+   */
+  function reply(s: SpState, before?: (s: SpState, mem: BotMemory) => void): SpEvent | undefined {
+    const mem = newBotMemory(1, 1)
+    // The scenarios land away from the lines: no misjudge draw. Grade 0.05 → Perfect, 0.99 → no smash try.
+    const rolls = [0.05, 0.99]
+    let i = 0
+    const rng = () => rolls[i++] ?? 0.5
+    let lastId = s.nextEventId - 1
+    for (let n = 0; n < 240 && s.phase === 'rally'; n++) {
+      const out = botStep(s, 1, 'normal', mem, rng, () => 0.99)
+      if (n === 0) before?.(s, mem)
+      game.tick(
+        s,
+        out.map((input) => ({ player: s.players[1].id, input })),
+      )
+      for (const e of s.events)
+        if (e.id > lastId && (e.k === 'hit' || e.k === 'whiff') && e.side === 1) return e
+      lastId = s.nextEventId - 1
+    }
+    return undefined
+  }
+
+  it('a shuttle passing just over its head: swings where it stands (no run to the landing)', () => {
+    // From 0.26 m in front at head height, drifting back over the bot (contact ~4 ticks away).
+    const s = incoming(0, 2.94, 2, { x: 0, y: 0.5, z: 4 })
+    expect(reply(s)?.k).toBe('hit')
+  })
+
+  it('a low shuttle arriving at its feet within a few ticks is returned', () => {
+    const s = incoming(0, 3.54, 1.2, { x: 0, y: 0.5, z: 4 })
+    expect(reply(s)?.k).toBe('hit')
+  })
+
+  it('a shuttle passing just behind its shoulder is returned', () => {
+    const s = incoming(0.5, 2.4, 1.8, { x: 0, y: 0.5, z: 6 })
+    expect(reply(s)?.k).toBe('hit')
+  })
+
+  it('a swing blocked on its planned tick (cooldown) is pressed on the next free tick', () => {
+    // A deep clear: plenty of time, the swing lands around MEET_Y. The button frees 2 ticks after the plan.
+    const s = incoming(0.5, 1.5, 4, { x: 0, y: 2, z: 3 })
+    const e = reply(s, (st, mem) => {
+      st.players[1].swingAt = mem.plannedSwingTick + 2 - SWING_COOLDOWN
+    })
+    expect(e?.k).toBe('hit')
+  })
+
+  it('while reacting it holds its ground (split step), not drifting off toward base', () => {
+    const s = incoming(0, 0, 2, { x: 0, y: 0.5, z: 6 })
+    s.tick -= 30 // the shot was just hit: inside every level's reactTicks
+    s.players[1].x = 1.2 // off base
+    const [move] = botStep(s, 1, 'normal', newBotMemory(1, 1), () => 0.5)
+    expect(move).toEqual({ t: 'move', x: 0, z: 0 })
   })
 })
 
@@ -368,6 +479,60 @@ describe('bot jump / lunge', () => {
     expect(seen).toContain('ability')
     expect(seen).not.toContain('swing')
     expect(seen).toContain('act:jump')
+  })
+
+  it('dive-save chance is its own knob and rises with the level', () => {
+    expect(LEVELS.easy.dive).toBeLessThan(LEVELS.normal.dive)
+    expect(LEVELS.normal.dive).toBeLessThan(LEVELS.hard.dive)
+    expect(LEVELS.normal.dive).toBeGreaterThan(LEVELS.normal.ability)
+  })
+
+  /** A tap smash from the left front court aimed wide to the bot's far side: out of reach on foot. */
+  function wideSmash(): SpState {
+    const from = { x: 1.5, y: 2.6, z: -1.5 }
+    const s = incoming(from.x, from.z, from.y)
+    s.shuttle.vel = launchFor('smash', 'perfect', from, shotTarget('smash', 0, -1), () => 0, 0)
+    s.tick -= 30 - LEVELS.normal.reactTicks // plan right at the reaction tick, as in a match
+    return s
+  }
+
+  it('a wide smash the run looks too slow for: Normal plans a dive (roll under dive, over ability) and returns it', () => {
+    const s = wideSmash()
+    const mem = newBotMemory(1, 1)
+    // Grade 0.4 → Good, no smash try (0.9); ability stream 0.3: under dive (0.5), over ability (0.25).
+    const rolls = [0.4, 0.9]
+    let i = 0
+    const rng = () => rolls[i++] ?? 0.5
+    const seen: SpEvent[] = []
+    let lastId = s.nextEventId - 1
+    let planned: string | null = null
+    while (s.phase === 'rally' && s.shuttle.lastHitter === 0) {
+      const out = botStep(s, 1, 'normal', mem, rng, () => 0.3)
+      planned ??= mem.plannedAct
+      game.tick(
+        s,
+        out.map((input) => ({ player: s.players[1].id, input })),
+      )
+      for (const e of s.events) if (e.id > lastId) seen.push(e)
+      lastId = s.nextEventId - 1
+    }
+    // Planned as a dive; pressed as one only if the run is still short (else a plain swing: actNow).
+    expect(planned).toBe('lunge')
+    expect(seen.some((e) => e.k === 'hit' && e.side === 1)).toBe(true)
+  })
+
+  it('a rolled whiff never dives (the miss stays a miss)', () => {
+    const s = wideSmash()
+    const mem = newBotMemory(1, 1)
+    botStep(
+      s,
+      1,
+      'normal',
+      mem,
+      () => 0.999,
+      () => 0,
+    )
+    expect(mem.plannedAct).toBeNull()
   })
 
   it('a failed ability roll plans a plain swing', () => {

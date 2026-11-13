@@ -60,11 +60,20 @@ export function finishClip(c: Clip, reducedMotion: boolean): SVGSVGElement {
   return c.el
 }
 
-/** Hidden except during `beat`. Also shown in the reduced-motion still frame. */
-export function showDuring(c: Clip, el: Element, loop: number, beat: Beat): void {
+/**
+ * Hidden except during `beat`. Also shown in the reduced-motion still frame unless `still: false`
+ * (a clip with several shots keeps one of them as its still frame).
+ */
+export function showDuring(
+  c: Clip,
+  el: Element,
+  loop: number,
+  beat: Beat,
+  o: { still?: boolean } = {},
+): void {
   const k = uid('sh')
   el.classList.add(k)
-  el.setAttribute('data-still', '')
+  if (o.still !== false) el.setAttribute('data-still', '')
   c.css.push(
     `.${k}{opacity:0;animation:${animation(k, loop)}}`,
     keyframes(k, loop, beat, 'opacity:1', 'opacity:0'),
@@ -73,15 +82,17 @@ export function showDuring(c: Clip, el: Element, loop: number, beat: Beat): void
 
 /**
  * A ball (and optional ground shadow) that travels along path `d` during the beat: appears at the
- * start, flies over the first 55% of the beat, rests at the end, then fades.
+ * start, flies over the first 55% of the beat, rests at the end, then fades. In the reduced-motion
+ * still frame it rests at the end of its path, unless `still: false` (then it is hidden).
  */
 export function flyAlong(
   c: Clip,
   d: string,
   loop: number,
   beat: Beat,
-  o: { shadow?: string; r?: number } = {},
+  o: { shadow?: string; r?: number; still?: boolean } = {},
 ): void {
+  const still = o.still !== false
   const k = uid('fl')
   const { a, on, b, off: bOff } = beatPct(beat, loop)
   const fly = a + (b - a) * 0.55
@@ -93,25 +104,28 @@ export function flyAlong(
   const rule = (path: string) =>
     `offset-path:path("${path}");offset-rotate:0deg;opacity:0;animation:${animation(k, loop)}`
   if (o.shadow) {
-    const sh = s('ellipse', { class: `${k}s`, rx: 7, ry: 3.5, fill: '#0008' })
-    sh.setAttribute('data-still', '')
+    const sh = s('ellipse', { class: `${k}s`, rx: 7, ry: 3.5, fill: '#0008', 'data-still': still && '' })
     c.el.append(sh)
     c.css.push(`.${k}s{${rule(o.shadow)}}`)
   }
   const ball = s(
     'g',
-    { class: `${k}b`, 'data-still': '' },
+    { class: `${k}b`, 'data-still': still && '' },
     s('circle', { r: o.r ?? BALL_R, fill: '#fff', stroke: OUTLINE, 'stroke-width': 2.5 }),
   )
   c.el.append(ball)
   c.css.push(`.${k}b{${rule(d)}}`)
+  if (still) c.css.push(`.pf-clip-still .${k}b,.pf-clip-still .${k}s{offset-distance:100%}`)
 }
 
-/** Key pad as HTML (rendered under the clip). Lit keys press down in their colour during their beat. */
+/**
+ * Key pad as HTML (rendered under the clip). Lit keys press down in their colour during their beat;
+ * a lit entry with `still` stays pressed in the reduced-motion still frame.
+ */
 export function keyPad(
   c: Clip,
   keys: { id: string; label: string; col: number; row: number }[],
-  lit: { id: string; beat: Beat; color: string }[],
+  lit: { id: string; beat: Beat; color: string; still?: boolean }[],
   loop: number,
   reducedMotion = false,
 ): HTMLElement {
@@ -125,16 +139,12 @@ export function keyPad(
     for (const l of lit.filter((x) => x.id === key.id)) {
       const k = uid('kp')
       el.classList.add(k)
+      const on = `background:${l.color};color:#fff;transform:translateY(3px)`
       c.css.push(
         `.${k}{animation:${animation(k, loop)}}`,
-        keyframes(
-          k,
-          loop,
-          l.beat,
-          `background:${l.color};color:#fff;transform:translateY(3px)`,
-          'background:#fff;color:#222;transform:none',
-        ),
+        keyframes(k, loop, l.beat, on, 'background:#fff;color:#222;transform:none'),
       )
+      if (l.still) c.css.push(`.pf-clip-still .${k}{${on}}`)
     }
     pad.append(el)
   }

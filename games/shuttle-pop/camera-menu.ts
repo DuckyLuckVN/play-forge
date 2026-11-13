@@ -9,6 +9,13 @@ import { GRAPHICS_PREFS, type GraphicsPref } from './look'
 import { fromStep, prefs, stepLabel, toStep, TWEAK_STEPS, type SpPrefs } from './prefs'
 import { NO_TWEAK } from './world'
 
+/** Names of the view settings (English keys), shared with the tutorial's "Make it yours" card. */
+export const SETTING_LABELS = {
+  ring: 'Landing ring',
+  autoSwing: 'Auto swing (Jump / Dive)',
+  graphics: 'Graphics',
+} as const
+
 const RING_LABELS: Record<RingMode, string> = { hidden: 'Hidden', near: 'Near drop', always: 'Always' }
 const PATH_LABELS: Record<RingMode, string> = { hidden: 'Off', near: 'Near drop', always: 'Always' }
 const GRAPHICS_LABELS: Record<GraphicsPref, string> = {
@@ -57,7 +64,7 @@ function segmentedPref<K extends keyof SpPrefs>(
 const ringPicker = (): HTMLElement =>
   segmentedPref(
     'ring',
-    t('Landing ring'),
+    t(SETTING_LABELS.ring),
     RING_MODES.map((mode) => ({ value: mode, text: t(RING_LABELS[mode]) })),
     'sp-ring-row',
   )
@@ -75,7 +82,7 @@ const pathPicker = (): HTMLElement =>
 const autoSwingPicker = (): HTMLElement =>
   segmentedPref(
     'autoSwing',
-    t('Auto swing (Jump / Dive)'),
+    t(SETTING_LABELS.autoSwing),
     [
       { value: false, text: t('Off') },
       { value: true, text: t('On') },
@@ -99,7 +106,7 @@ const nameTagsPicker = (): HTMLElement =>
 const graphicsPicker = (): HTMLElement =>
   segmentedPref(
     'graphics',
-    t('Graphics'),
+    t(SETTING_LABELS.graphics),
     GRAPHICS_PREFS.map((g) => ({ value: g, text: t(GRAPHICS_LABELS[g]) })),
     'sp-graphics-row',
   )

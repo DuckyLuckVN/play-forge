@@ -1096,3 +1096,55 @@
     animation: none;
   }
 }
+
+/* ---------- How to play deck (tutorial/) ---------- */
+
+/* Aim card: W/A/S/D pad with the "no key" chip beside it. */
+.sp-tut-keys {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--pf-space-4);
+}
+.sp-tut-nokey {
+  height: 36px;
+  padding: 0 var(--pf-space-3);
+  font-size: var(--pf-fs-sm);
+  white-space: nowrap;
+}
+
+/* "Make it yours": where each setting lives, then what it does. */
+.sp-tut-settings {
+  display: grid;
+  gap: var(--pf-space-3);
+  text-align: left;
+}
+.sp-tut-set {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: var(--pf-space-2) var(--pf-space-3);
+  font-size: var(--pf-fs-sm);
+  overflow-wrap: anywhere;
+}
+.sp-tut-place {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pf-space-3);
+  font-weight: var(--pf-fw-bold);
+  white-space: nowrap;
+}
+.sp-tut-note {
+  margin: 0;
+  color: var(--pf-haze);
+  font-size: var(--pf-fs-xs);
+  overflow-wrap: anywhere;
+}
+.sp-tut-chip {
+  display: inline-block;
+  margin: 2px var(--pf-space-1) 0 0;
+  padding: 2px var(--pf-space-2);
+  border-radius: var(--pf-radius-pill);
+  background: color-mix(in srgb, var(--sp-pink) 18%, transparent);
+}

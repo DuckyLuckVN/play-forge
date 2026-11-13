@@ -135,3 +135,25 @@ describe('rings and text', () => {
     expect(c.css.join('')).not.toContain('NaN')
   })
 })
+
+describe('still frame choice', () => {
+  it('showDuring / flyAlong can opt out of the still frame', () => {
+    const c = clipRoot({ w: 10, h: 10 })
+    const g = s('g')
+    showDuring(c, g, 10, { at: 1, dur: 2 }, { still: false })
+    expect(g.hasAttribute('data-still')).toBe(false)
+    flyAlong(c, 'M0,0 L1,1', 10, { at: 1, dur: 2 }, { shadow: 'M0,0 L1,1', still: false })
+    expect(c.el.querySelectorAll('[data-still]')).toHaveLength(0)
+  })
+  it('flyAlong still frame rests the ball at the end of its path', () => {
+    const c = clipRoot({ w: 10, h: 10 })
+    flyAlong(c, 'M0,0 L1,1', 10, { at: 1, dur: 2 }, { shadow: 'M0,0 L1,1' })
+    expect(c.el.querySelectorAll('[data-still]')).toHaveLength(2)
+    expect(c.css.join('')).toMatch(/\.pf-clip-still \.fl\d+b[^{]*\{offset-distance:100%/)
+  })
+  it('keyPad: a still lit key stays lit in the still frame', () => {
+    const c = clipRoot({ w: 10, h: 10 })
+    keyPad(c, WASD, [{ id: 'w', beat: { at: 1, dur: 2 }, color: '#f36', still: true }], 10, true)
+    expect(c.css.join('')).toMatch(/\.pf-clip-still \.kp\d+\{background:#f36/)
+  })
+})

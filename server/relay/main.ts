@@ -1,7 +1,8 @@
-import { createServer, type IncomingMessage } from 'node:http'
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { CLOSE, RELAY_LIMITS, RELAY_PATH, parseJoin } from '../../engine/net/relay-protocol.ts'
 import { RelayHub, type HubSocket } from './hub.ts'
+import { TurnLimiter, turnLogin, turnSettings } from './turn.ts'
 
 /**
  * Game relay server: forwards room messages between browsers that have no
@@ -14,6 +15,11 @@ import { RelayHub, type HubSocket } from './hub.ts'
  *   ALLOW_LOCALHOST   "1": also allow http://localhost:* and 127.0.0.1 (development).
  *   CLIENT_IP_HEADER  Header with the real client address (default cf-connecting-ip). Only
  *                     trust it when the server is reachable through the tunnel alone.
+ *   TURN_SECRET       Shared secret with the TURN server (coturn `static-auth-secret`, 24+ chars).
+ *                     With TURN_URLS set, GET /turn hands allowed pages a short-lived TURN login.
+ *                     Never commit or log it. Unset: /turn answers 404 (TURN off).
+ *   TURN_URLS         Comma-separated, e.g. turn:turn.example.com:3478?transport=udp,turn:…?transport=tcp
+ *   TURN_TTL_S        Seconds a login stays valid (default 43200 = 12 h).
  */
 
 const PORT = Number(process.env.PORT ?? 8080)
@@ -36,6 +42,9 @@ const HEARTBEAT_MS = 30_000
 const hub = new RelayHub()
 const startedAt = Date.now()
 let slowDrops = 0
+const turn = turnSettings(process.env)
+const turnLimiter = new TurnLimiter()
+const turnCounts = { issued: 0, limited: 0, forbidden: 0 }
 
 function originAllowed(origin: string | undefined): boolean {
   if (!origin) return false
@@ -56,8 +65,39 @@ const http = createServer((req, res) => {
     res.end(JSON.stringify({ ok: true, rooms: s.rooms, sockets: s.sockets, uptimeS: uptime() }))
     return
   }
+  if (turn && req.url?.split('?')[0] === '/turn') return serveTurn(req, res)
   res.writeHead(404).end()
 })
+
+/** GET /turn: a short-lived TURN login, for allowed pages only, a few per address. */
+function serveTurn(req: IncomingMessage, res: ServerResponse) {
+  const origin = req.headers.origin
+  if (!originAllowed(origin)) {
+    turnCounts.forbidden++
+    res.writeHead(403).end()
+    return
+  }
+  const cors = { 'access-control-allow-origin': origin!, vary: 'Origin', 'cache-control': 'no-store' }
+  if (req.method === 'OPTIONS') {
+    res
+      .writeHead(204, { ...cors, 'access-control-allow-methods': 'GET', 'access-control-max-age': '600' })
+      .end()
+    return
+  }
+  if (req.method !== 'GET') {
+    res.writeHead(405, cors).end()
+    return
+  }
+  if (!turnLimiter.allow(clientAddress(req), Date.now())) {
+    turnCounts.limited++
+    res.writeHead(429, { ...cors, 'retry-after': '120' }).end()
+    return
+  }
+  turnCounts.issued++
+  res
+    .writeHead(200, { ...cors, 'content-type': 'application/json' })
+    .end(JSON.stringify(turnLogin(turn!, Date.now())))
+}
 
 const wss = new WebSocketServer({ noServer: true, maxPayload: RELAY_LIMITS.maxMessageBytes })
 const alive = new WeakMap<WebSocket, boolean>()
@@ -109,7 +149,10 @@ const heartbeat = setInterval(() => {
     ws.ping()
   }
 }, HEARTBEAT_MS)
-const sweeper = setInterval(() => hub.sweep(Date.now()), 60_000)
+const sweeper = setInterval(() => {
+  hub.sweep(Date.now())
+  turnLimiter.sweep(Date.now())
+}, 60_000)
 
 const uptime = () => Math.round((Date.now() - startedAt) / 1000)
 
@@ -139,13 +182,19 @@ const metrics = createServer((req, res) => {
     ...Object.entries(s.rejected).map(
       ([r, n]) => `relay_rejected_total{reason="${r.replace(/\W/g, '_')}"} ${n}`,
     ),
+    '# TYPE relay_turn_logins_total counter',
+    ...Object.entries(turnCounts).map(([r, n]) => `relay_turn_logins_total{result="${r}"} ${n}`),
     '# TYPE relay_uptime_seconds gauge',
     `relay_uptime_seconds ${uptime()}`,
   ]
   res.writeHead(200, { 'content-type': 'text/plain; version=0.0.4' }).end(lines.join('\n') + '\n')
 })
 
-http.listen(PORT, () => console.log(`relay: ws + /healthz on :${PORT}, origins: ${[...ORIGINS].join(' ')}`))
+http.listen(PORT, () => {
+  console.log(`relay: ws + /healthz on :${PORT}, origins: ${[...ORIGINS].join(' ')}`)
+  // Never print the secret: only whether TURN is on and where it points.
+  console.log(turn ? `relay: /turn on (${turn.urls.join(' ')}, ttl ${turn.ttl}s)` : 'relay: /turn off')
+})
 metrics.listen(METRICS_PORT, () => console.log(`relay: /metrics on :${METRICS_PORT}`))
 
 function shutdown() {

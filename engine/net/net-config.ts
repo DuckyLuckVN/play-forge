@@ -1,4 +1,5 @@
 import type { JoinRoomConfig } from 'trystero'
+import type { TurnServer } from './turn'
 
 /**
  * Nostr relays used for matchmaking (peers find each other here; game traffic
@@ -22,13 +23,19 @@ export const RELAY_URLS: readonly string[] = [
   'wss://nostr.stakey.net',
 ]
 
-/** Trystero room config for a game: the pinned relays. */
-export function roomConfig(appId: string): JoinRoomConfig {
+/**
+ * Trystero room config for a game: the pinned relays, plus TURN servers when we
+ * have a login (see turn.ts). `relayOnly` forces every WebRTC link through TURN
+ * (`?turn=only`, for testing that TURN works).
+ */
+export function roomConfig(appId: string, turn: TurnServer[] = [], relayOnly = false): JoinRoomConfig {
   return {
     appId,
     // With explicit urls Trystero connects to every one (redundancy only
     // applies when it picks from its defaults).
     relayConfig: { urls: [...RELAY_URLS] },
+    ...(turn.length ? { turnConfig: turn } : {}),
+    ...(turn.length && relayOnly ? { rtcConfig: { iceTransportPolicy: 'relay' as const } } : {}),
   }
 }
 

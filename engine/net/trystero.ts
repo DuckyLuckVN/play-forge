@@ -2,6 +2,7 @@ import { getRelaySockets, joinRoom, selfId, type DataPayload, type MessageAction
 import { Emitter } from '../core/emitter'
 import { netLog } from './debug'
 import { RELAY_URLS, roomConfig } from './net-config'
+import { turnMode, turnServers } from './turn'
 import {
   FailureLog,
   type LinkState,
@@ -21,13 +22,19 @@ import type { Transport } from './transport'
 export function createTrysteroTransport(appId: string, roomId: string): Transport {
   const failures = new FailureLog()
   const pcs = createPcTracker(() => failures.add(performance.now()))
-  const room = joinRoom({ ...roomConfig(appId), rtcPolyfill: pcs.ctor }, roomId, {
-    // A peer we exchanged offers with but could not connect to.
-    onJoinError({ peerId, error }) {
-      failures.add(performance.now(), peerId || undefined)
-      netLog('join error', peerId, error)
+  const turn = turnServers()
+  netLog('turn:', turn.length ? 'on' : 'off')
+  const room = joinRoom(
+    { ...roomConfig(appId, turn, turnMode() === 'only'), rtcPolyfill: pcs.ctor },
+    roomId,
+    {
+      // A peer we exchanged offers with but could not connect to.
+      onJoinError({ peerId, error }) {
+        failures.add(performance.now(), peerId || undefined)
+        netLog('join error', peerId, error)
+      },
     },
-  })
+  )
   const events = new Emitter<{ join: [string]; leave: [string]; stream: [MediaStream, string] }>()
   const channels = new Emitter<Record<string, [unknown, string]>>()
   const actions = new Map<string, MessageAction>()

@@ -5,7 +5,7 @@ WORKDIR /app/server/relay
 COPY server/relay/package.json ./
 RUN npm install --omit=dev --no-audit --no-fund && npm cache clean --force
 COPY engine/net/relay-protocol.ts /app/engine/net/relay-protocol.ts
-COPY server/relay/hub.ts server/relay/main.ts ./
+COPY server/relay/hub.ts server/relay/main.ts server/relay/turn.ts ./
 ENV NODE_ENV=production PORT=8080 METRICS_PORT=9464
 USER node
 EXPOSE 8080 9464

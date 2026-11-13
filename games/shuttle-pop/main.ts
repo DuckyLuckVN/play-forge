@@ -5,6 +5,7 @@ import './shuttle-pop.css'
 import { diveAllowed, freeSwing, slideEnd, type Strike } from './ability'
 import { prefs } from './prefs'
 import { toWorld } from './court'
+import { mountCameraButton } from './camera-menu'
 import { chargeOf } from './charge'
 import { mountEmotes } from './emotes'
 import { t } from './i18n'
@@ -362,6 +363,10 @@ createGameApp<SpState, SpInput>({
   mount,
   menuExtras: pickerStrip,
   roomExtras: pickerStrip,
+  // View settings in the stage's corner on every screen (menu, room, match, pause), same spot always.
+  stageExtras: (stage) => {
+    mountCameraButton(stage)
+  },
   // Humans' chips plus a computer chip for a side with no human (robot avatar, its seat's colour slot);
   // `name` labels the computer's chip, translated at display time (lobby players keep their lobby name).
   scores: scoreChips,

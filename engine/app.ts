@@ -178,6 +178,12 @@ export interface GameAppOptions<S, I> {
    * so it may hold its own state; save choices where `mount` can read them.
    */
   roomExtras?(): HTMLElement | null
+  /**
+   * Controls that stay on the stage over every screen (menu, room, match, pause), e.g. a settings button
+   * in a corner: called once at start with the stage element (position: relative) to append to. They
+   * sit above the menu / pause overlay, so they stay usable there.
+   */
+  stageExtras?(stage: HTMLElement): void
 }
 
 const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -336,6 +342,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   const countdownEl = h('div', { class: 'pf-countdown' })
   countdownEl.setAttribute('aria-live', 'assertive')
   document.body.append(h('div', { class: 'pf-shell' }, bar, stage), overlay, countdownEl)
+  opts.stageExtras?.(stage)
 
   // Every button clicks.
   document.addEventListener('click', (e) => {

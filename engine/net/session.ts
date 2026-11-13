@@ -1,6 +1,7 @@
 import { Emitter } from '../core/emitter'
 import { startTicker } from '../core/loop'
 import { randomSeed } from '../core/rng'
+import { PlayoutBuffer } from './playout'
 import type { Transport } from './transport'
 
 export interface PlayerInfo {
@@ -20,6 +21,13 @@ export interface PlayerInfo {
 export interface InputEvent<I> {
   player: string
   input: I
+  /**
+   * A guest input stamped by GameDefinition.inputStamp: its stamp, and how many ticks after its
+   * scheduled stamp + offset it was applied (0 = on schedule; > 0 = it came too late for the buffer).
+   * Absent on the host's own, unstamped and computer inputs.
+   */
+  stamp?: number
+  late?: number
 }
 
 /**
@@ -52,6 +60,14 @@ export interface GameDefinition<S, I> {
    * not need it. The host itself always keeps the full state.
    */
   netView?(state: S): unknown
+  /**
+   * Opt-in input playout buffer: the guest's own step counter an input was sent at (undefined =
+   * apply on arrival, as before). The host then applies a guest's stamped inputs at stamp + a
+   * per-player offset (fastest recent transit + jitter, engine/net/playout.ts) instead of on arrival,
+   * so network jitter no longer moves WHEN they take effect. Stamp every input of a player (or
+   * none): a stamped input waits, an unstamped one does not, so mixing them reorders.
+   */
+  inputStamp?(input: I): number | undefined
   /** Called on the host when a player is gone for good mid-game. */
   removePlayer?(state: S, playerId: string): void
   /** Called on the host mid-game when a player drops (grace window starts) or returns within it. */
@@ -240,6 +256,12 @@ export class Session<S, I> {
 
   private events = new Emitter<SessionEvents<S>>()
   private pending: InputEvent<I>[] = []
+  /** Host: stamped guest inputs waiting for their tick (inputStamp), per player. */
+  private playout = new Map<string, PlayoutBuffer<I>>()
+  /** Host: ticks simulated this match (the playout buffers' clock). */
+  private simTick = 0
+  private dueScratch: I[] = []
+  private lateScratch: number[] = []
   private stopTicker: (() => void) | null = null
   private countdownTimer: ReturnType<typeof setTimeout> | null = null
   private unsubs: (() => void)[] = []
@@ -289,7 +311,7 @@ export class Session<S, I> {
         }),
         t.on(CH.input, (input: I, peer) => {
           const id = this.playerOfPeer.get(peer)
-          if (id) this.queueInput(id, input)
+          if (id) this.queueInput(id, input, true)
         }),
         t.onPeerLeave((peer) => this.onPeerLeave(peer)),
         // Left on purpose: free the seat now instead of holding it.
@@ -491,6 +513,8 @@ export class Session<S, I> {
   start(): void {
     if (!this.canStart) return
     this.pending = []
+    this.playout.clear()
+    this.simTick = 0
     this.lobby.round++
     this.setState(this.def.setup(this.lobby.players, randomSeed(), this.lobby.options))
     this.broadcastState()
@@ -640,6 +664,7 @@ export class Session<S, I> {
   }
 
   private removePlayer(id: string) {
+    this.playout.delete(id)
     const before = this.lobby.players.length
     this.lobby.players = this.lobby.players.filter((p) => p.id !== id)
     if (this.lobby.players.length === before) return
@@ -679,6 +704,8 @@ export class Session<S, I> {
   }
 
   private step() {
+    this.simTick++
+    this.releaseDue()
     const state = this.def.tick(this.state!, this.pending.splice(0))
     this.setState(state)
     this.broadcastState()
@@ -690,8 +717,30 @@ export class Session<S, I> {
     }
   }
 
-  private queueInput(player: string, input: I) {
-    if (this.lobby.phase === 'playing') this.pending.push({ player, input })
+  private queueInput(player: string, input: I, remote = false) {
+    if (this.lobby.phase !== 'playing') return
+    const stamp = remote ? this.def.inputStamp?.(input) : undefined
+    if (typeof stamp !== 'number' || !Number.isFinite(stamp)) {
+      this.pending.push({ player, input })
+      return
+    }
+    let buf = this.playout.get(player)
+    if (!buf) this.playout.set(player, (buf = new PlayoutBuffer<I>()))
+    buf.push(stamp, input, this.simTick + 1)
+  }
+
+  /** Move the stamped inputs due this tick into `pending`. */
+  private releaseDue() {
+    const due = this.dueScratch
+    const late = this.lateScratch
+    for (const [player, buf] of this.playout) {
+      due.length = late.length = 0
+      buf.take(this.simTick, due, late)
+      for (let i = 0; i < due.length; i++) {
+        const input = due[i]
+        this.pending.push({ player, input, stamp: this.def.inputStamp!(input), late: late[i] })
+      }
+    }
   }
 
   private setPhase(phase: Phase) {

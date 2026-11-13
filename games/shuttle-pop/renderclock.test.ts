@@ -59,6 +59,56 @@ describe('RenderClock', () => {
     }
   })
 
+  it('jitter: the delay grows so the shown tick stays behind the newest state (interpolates, rarely guesses)', () => {
+    for (let seed = 1; seed <= 5; seed++) {
+      const rnd = seeded(seed)
+      const c = new RenderClock(60)
+      let next = 1
+      let nextAt = 0
+      let ahead = 0
+      let frames = 0
+      for (let f = 0; f < 600; f++) {
+        const now = f * DT * 1000
+        // 40–90 ms one way: ~3 ticks of jitter (Wi-Fi at ~100 ms ping).
+        while (nextAt <= now) {
+          c.onState(next++)
+          nextAt = Math.max(nextAt, (next * 1000) / 60 + 40 + rnd() * 50)
+        }
+        c.update(DT)
+        if (f < 180) continue
+        frames++
+        if (c.tick > c.newest + 0.25) ahead++
+      }
+      expect(ahead / frames).toBeLessThan(0.03)
+      expect(c.delay).toBeLessThanOrEqual(CLOCK.maxDelay)
+    }
+  })
+
+  it('a clean link keeps the minimum delay (no added latency)', () => {
+    const c = new RenderClock(60)
+    for (let f = 1; f <= 300; f++) {
+      c.onState(f)
+      c.update(DT)
+    }
+    expect(c.delay).toBe(CLOCK.delay)
+  })
+
+  it('the delay comes back down a while after the jitter stops', () => {
+    const c = new RenderClock(60)
+    let t = 1
+    // Bursts: 4 states every 4 frames.
+    for (let f = 1; f <= 240; f++) {
+      if (f % 4 === 0) for (let k = 0; k < 4; k++) c.onState(t++)
+      c.update(DT)
+    }
+    expect(c.delay).toBeGreaterThan(CLOCK.delay)
+    for (let f = 1; f <= 600; f++) {
+      c.onState(t++)
+      c.update(DT)
+    }
+    expect(c.delay).toBe(CLOCK.delay)
+  })
+
   it('resyncs after a long stall', () => {
     const c = new RenderClock(60)
     for (let f = 1; f <= 10; f++) {
@@ -69,6 +119,38 @@ describe('RenderClock', () => {
     c.onState(140)
     c.update(DT)
     expect(Math.abs(c.tick - (140 - 1))).toBeLessThanOrEqual(1)
+  })
+
+  it('after a long stall the delay comes back to the minimum within a few seconds', () => {
+    const c = new RenderClock(60)
+    let t = 1
+    for (let f = 1; f <= 60; f++) {
+      c.onState(t++)
+      c.update(DT)
+    }
+    for (let f = 0; f < 60; f++) c.update(DT) // 1 s with nothing
+    for (let k = 0; k < 60; k++) c.onState(t++) // the backlog in one burst
+    c.update(DT)
+    expect(c.delay).toBe(CLOCK.maxDelay)
+    for (let f = 0; f < 240; f++) {
+      c.onState(t++)
+      c.update(DT)
+    }
+    expect(c.delay).toBe(CLOCK.delay)
+  })
+
+  it('a grown delay never moves the shown tick backward', () => {
+    const c = new RenderClock(60)
+    let t = 1
+    let prev = -Infinity
+    for (let f = 1; f <= 300; f++) {
+      // Clean, then bursts of 4 every 4 frames.
+      if (f < 100) c.onState(t++)
+      else if (f % 4 === 0) for (let k = 0; k < 4; k++) c.onState(t++)
+      c.update(DT)
+      expect(c.tick).toBeGreaterThanOrEqual(prev)
+      prev = c.tick
+    }
   })
 
   it('never runs past maxAhead', () => {

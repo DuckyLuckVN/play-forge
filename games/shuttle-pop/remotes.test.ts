@@ -83,7 +83,7 @@ describe('RemoteTracks', () => {
     expect(out.x - 0.05).toBeLessThanOrEqual((3 * CLOCK.maxAhead) / 60 + 1e-9)
   })
 
-  it('ignores stale ticks and keeps at most 8 samples', () => {
+  it('ignores stale ticks and keeps at most 12 samples', () => {
     const { clock, tracks } = setup()
     for (let t = 1; t <= 20; t++) tracks.push(t, [P('a', t)])
     tracks.push(5, [P('a', 99)])
@@ -92,6 +92,6 @@ describe('RemoteTracks', () => {
     expect(out.x).toBeCloseTo(15.5)
     showAt(clock, 20, 3) // older than the ring: oldest kept sample
     tracks.sample('a', out)
-    expect(out.x).toBe(13)
+    expect(out.x).toBe(9)
   })
 })

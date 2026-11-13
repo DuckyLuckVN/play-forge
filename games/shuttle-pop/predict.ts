@@ -9,6 +9,10 @@
 // (or, with nothing queued, the one the host has) is not queued, so value-equal echoes (a tap shorter
 // than the round trip, a resync of a stop) can't fake a zero lag.
 // The error found there is closed with `correct` (keep / blend / snap) and shifts the whole prediction.
+// Newer hosts make the line-up exact instead: every input carries `stamp` (the step it was sent at),
+// the host's session applies it at stamp + a jitter offset (engine/net/playout.ts) and reports that
+// offset as the player's `inOff`, so the state of tick T is the prediction after step T − inOff + 1,
+// whatever the jitter. The echo-measured `lag` stays the fallback (older hosts, before the first input).
 import { actMoveMul, slideStep, type AbilityKind, type Act } from './ability'
 import { CHARGE, chargeOf } from './charge'
 import { COURT, DT, type CourtDims } from './physics'
@@ -19,7 +23,7 @@ import { correct, CORRECT } from './world'
 
 /** The fields of the authoritative player the predictor reads. */
 export type AuthPlayer = Pick<SpPlayer, 'side' | 'x' | 'z' | 'vx' | 'vz' | 'move'> &
-  Partial<Pick<SpPlayer, 'act' | 'stunAt'>>
+  Partial<Pick<SpPlayer, 'act' | 'stunAt' | 'inOff'>>
 
 /** Local steps of prediction kept (~1 s): the longest round trip it can line up. */
 const HIST = 64
@@ -106,6 +110,11 @@ export class GuestPredictor {
       ...(empty ? { empty: true } : {}),
       ...(free ? { free: true } : {}),
     }
+  }
+
+  /** The step an input sent now takes effect on (SpInput.at): the host applies it at this + its `inOff`. */
+  get stamp(): number {
+    return this.steps
   }
 
   /** Local step time now (steps run + the share of the next one): the clock `act.at` counts in. */
@@ -205,7 +214,7 @@ export class GuestPredictor {
     if (fresh) {
       this.authTick = tick
       this.echo(auth.move)
-      this.sampleStep = this.lag >= 0 ? this.steps - this.lag : -1
+      this.sampleStep = this.stepOf(tick, auth.inOff)
       this.sample.x = auth.x
       this.sample.z = auth.z
       this.adoptHostAct(auth.act, tick)
@@ -254,8 +263,16 @@ export class GuestPredictor {
     }
     if (stunAt === this.seenStun) return
     this.seenStun = stunAt
-    this.stunFrom = (this.lag >= 0 ? this.steps - this.lag : this.steps) + (stunAt - tick)
+    this.stunFrom = (this.sampleStep >= 0 ? this.sampleStep : this.steps) + (stunAt - tick)
     this.setCharging(false)
+  }
+
+  /** The local step the host's state of `tick` lines up with (−1 = not known yet). */
+  private stepOf(tick: number, inOff: number | undefined): number {
+    // Exact: the host applied the input of step s at tick s + inOff, so its tick T = after step T − inOff.
+    if (inOff !== undefined && Number.isFinite(inOff))
+      return Math.max(0, Math.min(this.steps, tick - inOff + 1))
+    return this.lag >= 0 ? this.steps - this.lag : -1
   }
 
   private echo(move: { x: number; z: number }) {

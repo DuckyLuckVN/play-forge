@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { InputEvent } from '@forge/net/session'
+import { PlayoutBuffer } from '@forge/net/playout'
 import { ABILITY, actMoveMul } from './ability'
 import { COURT, DT } from './physics'
 import { GuestPredictor, type AuthPlayer } from './predict'
@@ -495,5 +496,89 @@ describe('guest prediction of the stun lock', () => {
     expect(pred.stunned).toBe(true)
     pred.update(DT, auth(0, 3), 4, true)
     expect(pred.stunned).toBe(false)
+  })
+})
+
+describe('guest prediction under jitter (stamped inputs + host playout buffer)', () => {
+  /**
+   * A guest runs a zig-zag while its moves reach the host 3–6 ticks late (jitter) and the host's
+   * states come back 3–6 ticks late, plus one 8-tick stall (a lost packet on an ordered channel).
+   * `stamped`: inputs carry the predictor's step and the host applies them through PlayoutBuffer
+   * (the session's path); otherwise on arrival (the old path). Returns the metres the prediction
+   * was pulled by corrections after a 1 s warm-up (the rubber band; 0 = it ran its own path).
+   */
+  function jitterRun(stamped: boolean, stallAt = 200) {
+    let seed = 7
+    const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648
+    const transit = () => 3 + Math.floor(rnd() * 4)
+    const delayed = (h: number) => (h >= stallAt && h < stallAt + 8 ? stallAt + 8 : h)
+    const pred = new GuestPredictor()
+    const host: AuthPlayer & { inOff?: number } = { ...body(-1, 3) }
+    const local = body(-1, 3)
+    pred.update(DT, auth(-1, 3), 0, true)
+    const buf = new PlayoutBuffer<{ x: number; z: number; at: number }>()
+    const toHost: { arrive: number; m: { x: number; z: number; at: number } }[] = []
+    const toGuest: { arrive: number; s: AuthPlayer; tick: number }[] = []
+    const dirs = [
+      { x: 1, z: 0 },
+      { x: 0, z: -1 },
+      { x: -1, z: 0 },
+      { x: 0, z: 1 },
+      { x: 0, z: 0 },
+    ]
+    let lastUp = 0
+    let lastDown = 0
+    let shown: { s: AuthPlayer; tick: number } | null = null
+    let pulled = 0
+    let gapX = 0
+    let gapZ = 0
+    for (let h = 1; h < 420; h++) {
+      // Guest input (between frames), then its frame.
+      if (h % 11 === 0) {
+        const m = dirs[(h / 11) % dirs.length]
+        pred.setMove(m.x, m.z)
+        local.move = { ...m }
+        lastUp = Math.max(lastUp, delayed(h + transit()))
+        toHost.push({ arrive: lastUp, m: { ...m, at: pred.stamp } })
+      }
+      // Host tick h: arrivals, the buffer's due inputs, then the step.
+      const due: { x: number; z: number; at: number }[] = []
+      const late: number[] = []
+      while (toHost.length && toHost[0].arrive <= h) {
+        const { m } = toHost.shift()!
+        if (stamped) buf.push(m.at, m, h)
+        else due.push(m)
+      }
+      if (stamped) buf.take(h, due, late)
+      due.forEach((m, i) => {
+        host.move = { x: m.x, z: m.z }
+        if (stamped) host.inOff = h - m.at - late[i]
+      })
+      stepPlayer(host as never, DT)
+      lastDown = Math.max(lastDown, delayed(h + transit()))
+      toGuest.push({ arrive: lastDown, s: { ...host, move: { ...host.move } }, tick: h })
+      while (toGuest.length && toGuest[0].arrive <= h) shown = toGuest.shift()!
+      stepPlayer(local, DT)
+      pred.update(DT, shown ? shown.s : auth(-1, 3), shown ? shown.tick : 0, false)
+      // Both integrate the same moves: the gap between them only changes by a correction.
+      const gx = pred.x - local.x
+      const gz = pred.z - local.z
+      if (h > 60) pulled += Math.hypot(gx - gapX, gz - gapZ)
+      gapX = gx
+      gapZ = gz
+    }
+    return pulled
+  }
+
+  it('repro: applied on arrival, jitter alone keeps pulling the guest (rubber band)', () => {
+    expect(jitterRun(false, Infinity)).toBeGreaterThan(0.5)
+  })
+
+  it('stamped through the playout buffer, jitter no longer pulls the prediction at all', () => {
+    expect(jitterRun(true, Infinity)).toBeLessThan(0.01)
+  })
+
+  it('a stall longer than the buffer still corrects, but less than on arrival', () => {
+    expect(jitterRun(true)).toBeLessThan(jitterRun(false))
   })
 })

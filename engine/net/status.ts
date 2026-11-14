@@ -171,7 +171,7 @@ export type NetHint =
   | 'local'
   /** The browser hasn't been allowed to reach the local network (local-access.ts): offer to ask. */
   | 'allow-local'
-  /** The player refused it: the browser won't ask again, say where to change it. */
+  /** Refused, or Android's default: say where to change it (and still offer to ask). */
   | 'local-denied'
 
 /** Ms in a room before offering local network access (a direct link usually opens by then). */

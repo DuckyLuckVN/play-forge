@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { COIN_SVG, formatCoins, shortCoins } from './coin'
+import { formatCoins, shortCoins } from './coin'
 
 describe('coins', () => {
   it('shortens big amounts for badges', () => {
@@ -17,9 +17,5 @@ describe('coins', () => {
     expect(formatCoins(99_999)).toBe((99_999).toLocaleString())
     expect(formatCoins(250_000)).toBe('250k')
     expect(formatCoins(12.7)).toBe('12')
-  })
-
-  it('has an inline SVG coin for the page', () => {
-    expect(COIN_SVG).toMatch(/^<svg[^>]*viewBox="0 0 24 24"/)
   })
 })

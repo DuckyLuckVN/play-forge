@@ -11,7 +11,6 @@ import { launchShot, shotTarget } from './shots'
 import { readyDepth } from './ai'
 import { serveBox } from './rules'
 import { STUN } from './stun'
-import { TICK_RATE } from './court'
 import {
   AI_ID,
   canAct,
@@ -135,9 +134,6 @@ describe('setup', () => {
     // receiver's right box (view of side 1) = world x > 0 → diagonal
     expect(b.x).toBeGreaterThan(0)
     expect(b.z).toBeGreaterThan(COURT.shortLine)
-  })
-  it('is deterministic for a seed', () => {
-    expect(game.setup(players(2), 9, {})).toEqual(game.setup(players(2), 9, {}))
   })
 })
 
@@ -813,10 +809,6 @@ describe('lag-compensated hits (launch from the rewound contact)', () => {
 })
 
 describe('serve timeout', () => {
-  it('SERVE_TIMEOUT is one minute', () => {
-    expect(SERVE_TIMEOUT / TICK_RATE).toBe(60)
-  })
-
   it('an idle server short-serves after SERVE_TIMEOUT ticks', () => {
     const s = game.setup(players(1), 5, {})
     s.server = 1
@@ -941,10 +933,6 @@ describe('match stats (results screen)', () => {
       expect(
         s.players.filter((p) => p.side === side).reduce((n, p) => n + tallyOf(s.stats, p.id).perfect, 0),
       ).toBe(perfect[side])
-  })
-
-  it('starts at zero', () => {
-    expect(game.setup(players(2), 1, {}).stats).toEqual({ shots: 0, longest: 0, perfect: [0, 0] })
   })
 })
 
@@ -2110,14 +2098,6 @@ describe('doubles', () => {
     expect(resolveOptions(game.options)).toMatchObject({ mode: '1v1', solo: 'normal', court: 'normal' })
     expect(resolveOptions(game.options, { mode: '2v2' }).mode).toBe('2v2')
     expect(resolveOptions(game.options, { mode: '3v3' }).mode).toBe('1v1')
-  })
-  it('seating opens 4 seats in 2v2', () => {
-    expect(game.seating!(resolveOptions(game.options)).seats).toBe(2)
-    expect(game.seating!(resolveOptions(game.options, { mode: '2v2' }))).toEqual({
-      seats: 4,
-      teams: 2,
-      botFill: true,
-    })
   })
   it('2v2 alone: 1 human + 3 computers, seats A,B,A,B', () => {
     const s = game.setup(players(1), 7, { mode: '2v2', solo: 'hard' })

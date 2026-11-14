@@ -2,20 +2,19 @@ import { describe, expect, it, vi } from 'vitest'
 import { lockLandscape, needsRotate, unlockLandscape, watchPortrait, type PortraitWindow } from './landscape'
 
 describe('needsRotate', () => {
-  it('asks a touch phone held upright to rotate', () => {
-    expect(needsRotate(390, 844, true)).toBe(true)
-  })
-
-  it('lets a touch phone in landscape play', () => {
-    expect(needsRotate(844, 390, true)).toBe(false)
-  })
-
-  it('never blocks a mouse (a tall desktop window is fine)', () => {
-    expect(needsRotate(800, 1200, false)).toBe(false)
-  })
-
-  it('treats a square touch screen as landscape', () => {
-    expect(needsRotate(700, 700, true)).toBe(false)
+  it.each([
+    { name: 'asks a touch phone held upright to rotate', w: 390, h: 844, coarse: true, rotate: true },
+    { name: 'lets a touch phone in landscape play', w: 844, h: 390, coarse: true, rotate: false },
+    {
+      name: 'never blocks a mouse (a tall desktop window is fine)',
+      w: 800,
+      h: 1200,
+      coarse: false,
+      rotate: false,
+    },
+    { name: 'treats a square touch screen as landscape', w: 700, h: 700, coarse: true, rotate: false },
+  ])('$name', ({ w, h, coarse, rotate }) => {
+    expect(needsRotate(w, h, coarse)).toBe(rotate)
   })
 })
 
@@ -88,12 +87,6 @@ describe('lockLandscape', () => {
     expect(lock).toHaveBeenCalledWith('landscape')
   })
 
-  it('swallows a rejected lock (not fullscreen, desktop, iOS)', async () => {
-    const lock = vi.fn(() => Promise.reject(new Error('NotSupportedError')))
-    expect(() => lockLandscape({ lock })).not.toThrow()
-    await Promise.resolve()
-  })
-
   it('swallows a lock that throws, or none at all', () => {
     expect(() =>
       lockLandscape({
@@ -116,9 +109,11 @@ describe('lock bookkeeping + unlockLandscape', () => {
     expect(onLocked).toHaveBeenCalledTimes(1)
   })
 
-  it('does not report a refused lock', async () => {
+  it('swallows and does not report a refused lock (not fullscreen, desktop, iOS)', async () => {
     const onLocked = vi.fn()
-    lockLandscape({ lock: () => Promise.reject(new Error('NotSupportedError')) }, onLocked)
+    expect(() =>
+      lockLandscape({ lock: () => Promise.reject(new Error('NotSupportedError')) }, onLocked),
+    ).not.toThrow()
     await Promise.resolve()
     await Promise.resolve()
     expect(onLocked).not.toHaveBeenCalled()

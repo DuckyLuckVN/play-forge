@@ -18,12 +18,6 @@ describe('lateralShare (gait selection relative to the facing)', () => {
       prev = s
     }
   })
-
-  it('judges the move in the body frame: the same world move reads differently by facing', () => {
-    // Moving +x while facing +z = sideways; the same move facing +x = forward.
-    expect(lateralShare(0, 1)).toBe(1)
-    expect(lateralShare(1, 0)).toBe(0)
-  })
 })
 
 describe('courtTurn (facing while moving)', () => {

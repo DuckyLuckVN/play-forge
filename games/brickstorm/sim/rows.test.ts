@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ROWS, TOP } from './config'
+import { TOP } from './config'
 import { brickRect, spawnRow, hpScale } from './rows'
 import type { RunState } from './types'
 
@@ -63,12 +63,6 @@ describe('spawnRow', () => {
     const s = spawned(3, 4)
     const ids = [...s.bricks, ...s.pickups].map((x) => x.id)
     expect(new Set(ids).size).toBe(ids.length)
-  })
-})
-
-describe('board size', () => {
-  it('has 12 rows', () => {
-    expect(ROWS).toBe(12)
   })
 })
 

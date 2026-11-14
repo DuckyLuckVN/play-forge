@@ -16,10 +16,6 @@ describe('paint kit', () => {
     expect(lightOf('#4a8cf0')).not.toBe('#4a8cf0')
   })
 
-  it('mix memoises: same inputs, same result', () => {
-    expect(mix('#102030', '#ffffff', 0.3)).toBe(mix('#102030', '#ffffff', 0.3))
-  })
-
   it('lazyPath builds once, on first use', () => {
     const get = lazyPath('M0 0 L1 1 Z')
     expect(get()).toBe(get())

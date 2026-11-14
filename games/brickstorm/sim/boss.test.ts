@@ -273,16 +273,13 @@ describe('boss hitbox', () => {
   }
   const bottom = TOP + (2 + BOSS_SPAWN_ROW) * CELL - BRICK_INSET
 
-  it('stops a normal ball at the bottom of the body', () => {
-    expect(shootUp('normal', 0)).toBeGreaterThanOrEqual(bottom + 7 - 1)
-  })
-
-  it('is solid to piercing balls: they bounce off its outside instead of entering it', () => {
-    expect(shootUp('normal', 2)).toBeGreaterThanOrEqual(bottom + 7 - 1)
-  })
-
-  it('is solid to fire balls', () => {
-    expect(shootUp('fire', 0)).toBeGreaterThanOrEqual(bottom + 7 - 1)
+  // Piercing balls bounce off its outside instead of entering it.
+  it.each([
+    ['a normal ball', 'normal', 0],
+    ['a piercing ball', 'normal', 2],
+    ['a fire ball', 'fire', 0],
+  ] as const)('stops %s at the bottom of the body', (_name, kind, pierceLeft) => {
+    expect(shootUp(kind, pierceLeft)).toBeGreaterThanOrEqual(bottom + 7 - 1)
   })
 
   it('has no gaps on the seam between two parts', () => {

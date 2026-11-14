@@ -54,17 +54,13 @@ describe('matchPoint', () => {
 })
 
 describe('trackerAction (event replay on attach / rematch)', () => {
-  it('first state after attach → seed (old events are not replayed)', () => {
-    expect(trackerAction(false, 40, 0, 900, -1)).toBe('seed')
-  })
-  it('a new match started while hidden (event ids restarted) → seed', () => {
-    expect(trackerAction(true, 5, 30, 1200, 1000)).toBe('seed')
-  })
-  it('a rematch seen live (ticks went back) → reset', () => {
-    expect(trackerAction(true, 3, 2, 10, 900)).toBe('reset')
-  })
-  it('normal play → keep', () => {
-    expect(trackerAction(true, 41, 40, 901, 900)).toBe('keep')
+  it.each([
+    ['first state after attach (old events are not replayed)', false, 40, 0, 900, -1, 'seed'],
+    ['a new match started while hidden (event ids restarted)', true, 5, 30, 1200, 1000, 'seed'],
+    ['a rematch seen live (ticks went back)', true, 3, 2, 10, 900, 'reset'],
+    ['normal play', true, 41, 40, 901, 900, 'keep'],
+  ] as const)('%s → %s', (_, seen, id, lastId, tick, lastTick, want) => {
+    expect(trackerAction(seen, id, lastId, tick, lastTick)).toBe(want)
   })
 })
 

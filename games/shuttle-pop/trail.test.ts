@@ -60,6 +60,8 @@ describe('trailStyle (kind × grade × power × speed)', () => {
     expect(trailKind('serveShort')).toBe('drop')
     expect(trailKind('serveLong')).toBe('clear')
     expect(trailKind(null)).toBe('clear')
+    expect(style('serveShort', null).width).toBe(style('drop', 'good').width)
+    expect(style('serveLong', null).width).toBe(style('clear', 'good').width)
   })
 
   it('late: thinner, shorter, duller; good = the base; perfect: gold + sparkle', () => {
@@ -136,11 +138,6 @@ describe('trailStyle contrast + precomputed colours', () => {
       for (const p of [0, BIG]) trailStyle('smash', g, p, 20, out)
     expect(set).not.toHaveBeenCalled()
     set.mockRestore()
-  })
-
-  it('a short serve gets the drop trail (shape), a long serve the clear', () => {
-    expect(style('serveShort', null).width).toBe(style('drop', 'good').width)
-    expect(style('serveLong', null).width).toBe(style('clear', 'good').width)
   })
 })
 

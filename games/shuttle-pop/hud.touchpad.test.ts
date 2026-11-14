@@ -31,17 +31,15 @@ describe('TouchPad.setAbility (every frame)', () => {
 
 describe('touchFirst (touch pad vs key chips)', () => {
   const media = (on: string[]) => (q: string) => on.includes(q)
-  it('phones: a coarse primary pointer', () => {
-    expect(touchFirst(media(['(pointer: coarse)']), 5)).toBe(true)
-  })
-  it('touch screens reporting a fine primary pointer but nothing that hovers', () => {
-    expect(touchFirst(media([]), 5)).toBe(true)
-    expect(touchFirst(media(['(any-pointer: coarse)']), 0)).toBe(true)
-  })
-  it('desktops and touch laptops (a mouse / trackpad hovers) keep the key chips', () => {
-    expect(touchFirst(media(['(any-hover: hover)']), 0)).toBe(false)
-    expect(touchFirst(media(['(any-hover: hover)', '(any-pointer: coarse)']), 10)).toBe(false)
-    expect(touchFirst(media([]), 0)).toBe(false)
+  it.each([
+    ['phones: a coarse primary pointer', ['(pointer: coarse)'], 5, true],
+    ['a fine primary pointer, touch points, nothing that hovers', [], 5, true],
+    ['a coarse extra pointer, nothing that hovers', ['(any-pointer: coarse)'], 0, true],
+    ['desktop (a mouse hovers)', ['(any-hover: hover)'], 0, false],
+    ['touch laptop (a trackpad hovers)', ['(any-hover: hover)', '(any-pointer: coarse)'], 10, false],
+    ['no touch, no hover info', [], 0, false],
+  ])('%s → %s', (_, on, touches, want) => {
+    expect(touchFirst(media(on), touches)).toBe(want)
   })
   it('the pad starts shown on a touch-first device, hidden otherwise (first touch enables it)', () => {
     expect(new TouchPad(true).root.hidden).toBe(false)

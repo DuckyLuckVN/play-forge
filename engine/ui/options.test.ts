@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 import type { OptionDef } from '../net/session'
-import { optionPickers, optionsFold, optionSummary } from './options'
+import { optionPickers, optionsFold, optionSpecs } from './options'
 
 const mode: OptionDef = {
   id: 'mode',
@@ -52,28 +52,36 @@ const court: OptionDef = {
   ],
 }
 
-describe('optionSummary', () => {
-  it('joins each option\'s current choice with " · "', () => {
-    expect(optionSummary([mode, court], { mode: 'b', court: 's' })).toBe('Two · Small')
+/** [name, value, is-off] for each spec in a summary grid. */
+const specsOf = (el: HTMLElement) =>
+  [...el.querySelectorAll('.pf-spec')].map((sp) => [
+    sp.querySelector('.pf-spec-k')!.textContent,
+    sp.querySelector('.pf-spec-v')!.textContent,
+    sp.querySelector('.pf-spec-v')!.classList.contains('off'),
+  ])
+
+describe('optionSpecs', () => {
+  it('names every option with its current choice under it', () => {
+    expect(specsOf(optionSpecs([mode, court], { mode: 'b', court: 's' }))).toEqual([
+      ['Match', 'Two', false],
+      ['Court', 'Small', false],
+    ])
   })
 
-  it('names the option when its choice is a bare on / off ("Off · On" alone says nothing)', () => {
-    const toggle = (id: string, label: string): OptionDef => ({
-      id,
-      label,
+  it('an "off" choice is shown faded, so what is on stands out', () => {
+    const timer: OptionDef = {
+      id: 'timer',
+      label: 'Turn timer',
       default: 'off',
       choices: [
         { value: 'off', label: 'Off' },
         { value: 'on', label: 'On' },
       ],
-    })
-    expect(
-      optionSummary([mode, toggle('timer', 'Turn timer'), toggle('warn', 'Warnings')], {
-        mode: 'a',
-        timer: 'off',
-        warn: 'on',
-      }),
-    ).toBe('One · Turn timer: Off · Warnings: On')
+    }
+    expect(specsOf(optionSpecs([mode, timer], { mode: 'a', timer: 'off' }))).toEqual([
+      ['Match', 'One', false],
+      ['Turn timer', 'Off', true],
+    ])
   })
 })
 
@@ -93,7 +101,10 @@ describe('optionsFold', () => {
     const seen: boolean[] = []
     const el = fold(true, false, (o) => seen.push(o))
     const toggle = el.querySelector<HTMLButtonElement>('.pf-options-toggle')!
-    expect(toggle.textContent).toContain('One · Large')
+    expect(specsOf(toggle)).toEqual([
+      ['Match', 'One', false],
+      ['Court', 'Large', false],
+    ])
     expect(toggle.getAttribute('aria-expanded')).toBe('false')
     expect(el.querySelector<HTMLElement>('.pf-options')!.hidden).toBe(true)
     toggle.click()
@@ -112,7 +123,10 @@ describe('optionsFold', () => {
     const el = fold(false, true)
     expect(el.querySelector('.pf-options-toggle')).toBeNull()
     expect(el.querySelector('.pf-options')).toBeNull()
-    expect(el.textContent).toContain('One · Large')
+    expect(specsOf(el)).toEqual([
+      ['Match', 'One', false],
+      ['Court', 'Large', false],
+    ])
   })
 
   it('a single option is not folded', () => {

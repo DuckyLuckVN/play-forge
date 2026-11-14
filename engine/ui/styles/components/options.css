@@ -63,7 +63,7 @@
     gap: var(--pf-space-4);
   }
   .pf-options-toggle,
-  .pf-options-fold > .pf-options-summary {
+  .pf-options-fold > .pf-specs {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -96,5 +96,45 @@
   }
   .pf-options-toggle.open .pf-options-edit .pf-icon {
     transform: rotate(180deg);
+  }
+
+  /* The summary: names small and grey, choices under them; 3 across, 2 on phones. */
+  .pf-specs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px 14px;
+    min-width: 0;
+  }
+  .pf-options-toggle > .pf-specs {
+    flex: 1;
+  }
+  /* Guests: the summary is the box itself, still a grid. */
+  .pf-options-fold > .pf-specs {
+    display: grid;
+  }
+  /* A long name may wrap: the choice sits at the bottom, so the choices in a row line up. */
+  .pf-spec {
+    display: grid;
+    align-content: space-between;
+    gap: 3px;
+    min-width: 0;
+  }
+  .pf-spec-k {
+    font: var(--pf-fw-bold) 10px/1.1 var(--pf-font);
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--pf-haze);
+  }
+  .pf-spec-v {
+    font: var(--pf-fw-semi) 14px/1.2 var(--pf-font);
+    color: var(--pf-chalk);
+  }
+  .pf-spec-v.off {
+    color: var(--pf-haze);
+  }
+  @media (max-width: 520px) {
+    .pf-specs {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
 }

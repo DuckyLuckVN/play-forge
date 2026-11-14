@@ -52,23 +52,31 @@ export function optionPickers(
   )
 }
 
-/** Choices that mean nothing without their option's name. */
-const BARE = new Set(['on', 'off'])
-
-/** "Duel · Small court · Turn timer: Off": each option's current choice, in order. */
-export function optionSummary(defs: OptionDef[], values: GameOptions): string {
-  return defs
-    .map((def) => {
+/**
+ * Each option's name, small, with its current choice under it: what a player needs to know before
+ * playing, at a glance. An "off" choice is faded so what is on stands out.
+ */
+export function optionSpecs(defs: OptionDef[], values: GameOptions): HTMLElement {
+  return h(
+    'span',
+    { class: 'pf-specs' },
+    ...defs.map((def) => {
       const choice = def.choices.find((c) => c.value === values[def.id])
-      if (!choice) return null
-      return BARE.has(choice.value) ? `${def.label}: ${choice.label}` : choice.label
-    })
-    .filter((part): part is string => !!part)
-    .join(' · ')
+      return h(
+        'span',
+        { class: 'pf-spec' },
+        h('span', { class: 'pf-spec-k', textContent: def.label }),
+        h('span', {
+          class: choice?.value === 'off' ? 'pf-spec-v off' : 'pf-spec-v',
+          textContent: choice?.label ?? '',
+        }),
+      )
+    }),
+  )
 }
 
 /**
- * A game's options folded into one summary line, so the room stays short. The host presses it to show
+ * A game's options folded into a small summary (each name with its choice), so the room stays short. The host presses it to show
  * the pickers (`open` is kept by the caller across redraws); guests just read it. A single option is
  * short enough already: its pickers come back as they are.
  */
@@ -81,7 +89,7 @@ export function optionsFold(o: {
   onToggle(open: boolean): void
 }): HTMLElement {
   if (o.defs.length <= 1) return o.pickers
-  const summary = h('span', { class: 'pf-options-summary', textContent: optionSummary(o.defs, o.values) })
+  const summary = optionSpecs(o.defs, o.values)
   if (!o.editable) return h('div', { class: 'pf-options-fold' }, summary)
   const toggle = h(
     'button',

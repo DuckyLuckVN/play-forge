@@ -404,10 +404,10 @@ describe("hybrid transport: each player's link attempt, for the Network panel", 
     return { direct, retryDirect, t, attempt }
   }
 
-  it('trying direct, then TURN, while a connection is being set up', () => {
+  it('trying (without / with our TURN) while an attempt is under way', () => {
     vi.useFakeTimers()
     const { direct, t, attempt } = make('zed')
-    direct.status.negotiating = 1
+    direct.status.trying = true
     expect(attempt()).toEqual({ phase: 'direct' })
     direct.status.turnOffered = true
     expect(attempt()).toEqual({ phase: 'turn' })
@@ -444,6 +444,35 @@ describe("hybrid transport: each player's link attempt, for the Network panel", 
     vi.advanceTimersByTime(1000)
     expect(attempt()?.phase).toBe('waiting')
     direct.up('zed')
+    expect(attempt()).toBeUndefined()
+    t.leave()
+    vi.useRealTimers()
+  })
+})
+
+describe('hybrid transport: upgrading a TURN link', () => {
+  it('a player linked through TURN can try direct again (no TURN on our side this time)', async () => {
+    vi.useFakeTimers()
+    const direct = fakeDirect()
+    const relayT = fakeRelay()
+    const retryDirect = vi.fn(async () => {})
+    const t = createHybridTransport(
+      Object.assign(direct, { retryDirect }) as unknown as Transport,
+      relayT as unknown as RelayTransport,
+      { relayGraceMs: 0 },
+    )
+    relayT.up('zed')
+    direct.up('zed')
+    direct.status.peers = [{ id: 'zed', state: 'connected', turn: true }]
+    const attempt = () => t.diagnostics!.snapshot().peers.find((p) => p.id === 'zed')?.attempt
+    expect(attempt()).toEqual({ phase: 'on-turn' })
+    await t.retryDirect!({ turn: false })
+    expect(retryDirect).toHaveBeenCalledWith({ turn: false })
+    direct.status.trying = true
+    expect(attempt()).toEqual({ phase: 'direct' })
+    // A link that is direct already has nothing to try.
+    direct.status.trying = false
+    direct.status.peers = [{ id: 'zed', state: 'connected' }]
     expect(attempt()).toBeUndefined()
     t.leave()
     vi.useRealTimers()

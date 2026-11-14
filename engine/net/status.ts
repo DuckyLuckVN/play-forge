@@ -26,11 +26,13 @@ export interface PeerLink {
 }
 
 /**
- * Getting a WebRTC link to a player: trying direct routes, trying with TURN, waiting `nextInMs` for
- * our next try, waiting for theirs (the lower peer id retries), or out of tries (the relay carries on).
+ * Getting a WebRTC link to a player: trying (without / with our TURN), waiting `nextInMs` for our next
+ * try, waiting for theirs (the lower peer id retries), out of tries (the relay carries on), or linked
+ * through TURN ('on-turn': a direct link may still be tried).
  */
 export type LinkAttempt =
-  { phase: 'direct' | 'turn' | 'their-retry' | 'gave-up' } | { phase: 'waiting'; nextInMs: number }
+  | { phase: 'direct' | 'turn' | 'their-retry' | 'gave-up' | 'on-turn' }
+  | { phase: 'waiting'; nextInMs: number }
 
 export interface NetStatus {
   /** 'internet': WebRTC over public relays; 'local': same-browser tabs (`?net=local`). */
@@ -50,8 +52,10 @@ export interface NetStatus {
   peers: PeerLink[]
   /** Peers reached only through the relay, still giving WebRTC its head start (hybrid.ts RELAY_GRACE_MS). */
   waiting?: number
-  /** The current WebRTC attempt also offers TURN (trystero.ts: direct routes first, TURN from the first retry). */
+  /** The current WebRTC attempt also offers our TURN (trystero.ts). */
   turnOffered?: boolean
+  /** A WebRTC attempt is under way: a retry rejoining, a fresh room setting up, or a link negotiating. */
+  trying?: boolean
   /** Our game relay server (fallback path), when the transport uses one. */
   gameRelay?: { state: GameRelayState; rttMs?: number }
 }

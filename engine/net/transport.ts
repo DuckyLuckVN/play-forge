@@ -25,7 +25,7 @@ export interface Transport {
    * Try the direct (WebRTC) links again from scratch, e.g. once the browser allows local network
    * access. Optional: only the internet transport has it. Peers stay reachable through the relay.
    */
-  retryDirect?(): Promise<void>
+  retryDirect?(opts?: { turn?: boolean }): Promise<void>
 }
 
 /** Sends live media (e.g. voice) to peers. Used by voice chat. */

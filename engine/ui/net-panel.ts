@@ -27,7 +27,7 @@ export interface NetPanelSource {
   /** People we have a direct link with (see LinkedPlayer). */
   linked(): LinkedPlayer[]
   /** Try the direct links again (once the browser allows local network access). */
-  retryDirect?(): void
+  retryDirect?(opts?: { turn?: boolean }): void
 }
 
 /** While the panel is open it refreshes this often; the button's colour, less often. */
@@ -141,9 +141,12 @@ export function netStatusButton() {
   })
   const actions: LocalActions = {
     allow: () => requestLocalAccess(),
-    retry: () => {
-      netLog('direct: retry by hand')
-      source?.retryDirect?.()
+    retry: (turn) => {
+      netLog('direct: retry by hand', turn ? '(with TURN)' : '(direct only)')
+      source?.retryDirect?.({ turn })
+      // Show the new attempt now, not at the next 1 s refresh.
+      const view = viewNow()
+      if (view && pop.isOpen) drawBody(body, view, actions, ui(), access)
     },
     howTo: () => {
       // Ask anyway (a browser that can still prompt will), and show the steps.
@@ -160,7 +163,8 @@ export function netStatusButton() {
     // Just allowed (not already allowed when the room opened): link again now, no reload needed.
     if (was !== 'granted' && was !== 'unsupported' && state === 'granted') {
       toast(t('Allowed: linking directly…'))
-      source?.retryDirect?.()
+      // Local access just allowed: a same-Wi-Fi direct link should work now.
+      source?.retryDirect?.({ turn: false })
     }
     refreshHealth()
     if (pop.isOpen) {
@@ -260,33 +264,42 @@ function drawHead(head: HTMLElement, src: NetPanelSource) {
 interface LocalActions {
   allow(): void
   howTo(): void
-  retry(): void
+  /** A fresh attempt; `turn: false` tries without our TURN (upgrading a TURN link). */
+  retry(turn: boolean): void
 }
 
 const ATTEMPT_TEXT: Record<LinkAttempt['phase'], (a: LinkAttempt) => string> = {
   direct: () => t('Trying direct…'),
-  turn: () => t('Trying TURN…'),
+  turn: () => t('Trying direct, then TURN…'),
   waiting: (a) => t('Next try in {s} s', { s: a.phase === 'waiting' ? Math.ceil(a.nextInMs / 1000) : 0 }),
   'their-retry': () => t('Waiting for their next try'),
   'gave-up': () => t('No direct link: staying on the relay'),
+  // Linked through TURN: the tag says so; only the button shows.
+  'on-turn': () => '',
 }
 
 /**
- * A player not linked by WebRTC: a line under the row on where getting a link stands, and Retry
- * (a fresh direct + TURN attempt now; it waits while one is under way).
+ * A player not linked directly: a line under the row on where getting a link stands, and a button.
+ * On the relay, Retry: a fresh attempt now (with TURN). Through TURN, Try direct: a fresh attempt
+ * without our TURN, so a direct route that works can win. Both wait while an attempt is under way.
  */
-function attemptCells(r: PanelRow, retry: () => void) {
+function attemptCells(r: PanelRow, retry: (turn: boolean) => void) {
   const a = r.attempt
   if (!a) return []
   const busy = a.phase === 'direct' || a.phase === 'turn'
+  const upgrade = r.route === 'turn'
   const button = h('button', {
     class: 'pf-btn pf-net-retry',
     type: 'button',
-    textContent: t('Retry'),
+    textContent: upgrade ? t('Try direct') : t('Retry'),
     disabled: busy,
-    onclick: retry,
+    onclick: () => retry(!upgrade),
   })
-  button.title = busy ? t('Already trying') : t('Try a direct link again now')
+  button.title = busy
+    ? t('Already trying')
+    : upgrade
+      ? t('Try a direct link instead of TURN')
+      : t('Try a direct link again now')
   return [h('span', { class: `pf-net-attempt ${a.phase}`, textContent: ATTEMPT_TEXT[a.phase](a) }), button]
 }
 

@@ -256,7 +256,7 @@ describe("Network panel: each player's link attempt and Retry", () => {
   it('says where getting a link stands, under the player', async () => {
     for (const [attempt, text] of [
       [{ phase: 'direct' }, 'Trying direct…'],
-      [{ phase: 'turn' }, 'Trying TURN…'],
+      [{ phase: 'turn' }, 'Trying direct, then TURN…'],
       [{ phase: 'waiting', nextInMs: 11_200 }, 'Next try in 12 s'],
       [{ phase: 'their-retry' }, 'Waiting for their next try'],
       [{ phase: 'gave-up' }, 'No direct link: staying on the relay'],
@@ -289,6 +289,73 @@ describe("Network panel: each player's link attempt and Retry", () => {
     const { net } = await open(direct)
     expect(net.root.querySelector('.pf-net-attempt')).toBeNull()
     expect(net.root.querySelector('.pf-net-retry')).toBeNull()
+    net.attach(null)
+  })
+})
+
+describe('Network panel: Retry feedback and upgrading TURN', () => {
+  it('a TURN row offers "Try direct" (without our TURN), and the row updates at once', async () => {
+    vi.stubGlobal('navigator', { ...navigator, permissions: undefined })
+    let trying = false
+    const status = (): NetStatus => ({
+      ...relayed,
+      peers: [
+        {
+          id: 'p1',
+          state: 'connected',
+          rttMs: 120,
+          turn: true,
+          route: 'direct',
+          attempt: trying ? { phase: 'direct' } : { phase: 'on-turn' },
+        },
+      ],
+    })
+    const retryDirect = vi.fn(() => {
+      trying = true
+    })
+    const net = netStatusButton()
+    document.body.append(net.root)
+    net.attach({ ...source, status, retryDirect })
+    await new Promise((r) => setTimeout(r, 0))
+    net.root.querySelector<HTMLButtonElement>('.pf-net-btn')!.click()
+    const button = net.root.querySelector<HTMLButtonElement>('.pf-net-retry')!
+    expect(button.textContent).toBe('Try direct')
+    expect(net.root.querySelector('.pf-net-attempt')?.textContent ?? '').toBe('')
+    button.click()
+    expect(retryDirect).toHaveBeenCalledWith({ turn: false })
+    // No waiting for the next 1 s refresh: the click redraws.
+    expect(net.root.querySelector('.pf-net-attempt')?.textContent).toBe('Trying direct…')
+    expect(net.root.querySelector<HTMLButtonElement>('.pf-net-retry')!.disabled).toBe(true)
+    net.attach(null)
+  })
+
+  it('Retry on a relayed row starts a full attempt (with TURN) and shows it at once', async () => {
+    vi.stubGlobal('navigator', { ...navigator, permissions: undefined })
+    let trying = false
+    const status = (): NetStatus => ({
+      ...relayed,
+      turnOffered: true,
+      peers: [
+        {
+          id: 'p1',
+          state: 'connected',
+          rttMs: 230,
+          route: 'relay',
+          attempt: trying ? { phase: 'turn' } : { phase: 'gave-up' },
+        },
+      ],
+    })
+    const retryDirect = vi.fn(() => {
+      trying = true
+    })
+    const net = netStatusButton()
+    document.body.append(net.root)
+    net.attach({ ...source, status, retryDirect })
+    await new Promise((r) => setTimeout(r, 0))
+    net.root.querySelector<HTMLButtonElement>('.pf-net-btn')!.click()
+    net.root.querySelector<HTMLButtonElement>('.pf-net-retry')!.click()
+    expect(retryDirect).toHaveBeenCalledWith({ turn: true })
+    expect(net.root.querySelector('.pf-net-attempt')?.textContent).toBe('Trying direct, then TURN…')
     net.attach(null)
   })
 })

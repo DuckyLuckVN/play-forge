@@ -21,6 +21,9 @@ import {
 } from './status'
 import { randomId, type Transport } from './transport'
 
+/** Ms after a (re)join the attempt counts as "trying" (setting up, before any connection negotiates). */
+const TRYING_MS = 6000
+
 /** Each side's own peer id, sent once over a new direct link (Trystero's own ids are async and change on a rejoin). */
 const HELLO = 'pf-id'
 
@@ -69,11 +72,14 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
   }
 
   /**
-   * Direct routes first: offered alongside, a TURN route often answers first and the link settles
-   * on it although a direct one would work (e.g. a phone on mobile data). So the first attempt goes
-   * without TURN; retryDirect (the watchdog's, after a few seconds still on the relay) adds it.
+   * TURN is offered from the first attempt, on both sides: WebRTC still prefers a direct route that
+   * works (host / srflx pairs rank above relayed ones), and TURN offered by only one side (the one
+   * that retried) failed to link a phone on mobile data. retryDirect({ turn: false }) tries without
+   * our TURN (upgrading a TURN link, or after allowing local network access).
    */
-  let withTurn = turnMode() === 'only'
+  let withTurn = turnMode() !== 'off'
+  /** When the current room started (a fresh attempt counts as trying for a few seconds). */
+  let startedAt = performance.now()
 
   const open = (): Room => {
     const turn = withTurn ? turnServers() : []
@@ -122,6 +128,7 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
   }
 
   const start = () => {
+    startedAt = performance.now()
     room = open()
     for (const channel of subscribed) action(channel)
   }
@@ -179,6 +186,8 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
         kind: 'internet',
         relays: RELAY_URLS.map((url) => ({ url, state: relayState(sockets[url]) })),
         negotiating: pcs.negotiating(),
+        // A retry leaving / rejoining, a fresh room setting up, or a connection negotiating.
+        trying: retrying || pcs.negotiating() > 0 || performance.now() - startedAt < TRYING_MS,
         turnOffered: withTurn,
         failures: failures.total,
         openFailures: open.count,
@@ -242,14 +251,14 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
       onPeerStream: (h) => events.on('stream', h),
     },
     diagnostics,
-    async retryDirect() {
-      // A fresh attempt (e.g. once the browser allows local network access): the old room's
+    async retryDirect(opts) {
+      // A fresh attempt (the watchdog, Retry, allowing local network access): the old room's
       // links are gone (the relay carries those peers meanwhile), the new one negotiates again.
       const old = room
       if (retrying || !old || closed) return
       retrying = true
-      // Direct alone didn't do it (or a new start after allowing local access): TURN may help now.
-      withTurn = true
+      // `turn: false`: without our TURN this time (the other side's may still carry it).
+      withTurn = turnMode() !== 'off' && opts?.turn !== false
       for (const peerId of [...idOf.keys()]) unlink(peerId)
       actions.clear()
       measured.clear()

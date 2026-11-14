@@ -176,9 +176,13 @@ export function createHybridTransport(
         const s = mergeStatus(direct, relay, routeOf)
         const now = performance.now()
         // Each player not linked by WebRTC: where getting a link stands.
-        const attemptOf = (id: string): LinkAttempt | undefined => {
-          if (relayOnly || viaDirect.has(id) || !viaRelay.has(id) || !direct.retryDirect) return undefined
-          if (s.negotiating > 0) return { phase: s.turnOffered ? 'turn' : 'direct' }
+        const trying: LinkAttempt = { phase: s.turnOffered ? 'turn' : 'direct' }
+        const attemptOf = (id: string, viaTurn: boolean): LinkAttempt | undefined => {
+          if (relayOnly || !direct.retryDirect) return undefined
+          // Linked through TURN: it may go direct (Retry tries without our TURN).
+          if (viaDirect.has(id)) return viaTurn ? (s.trying ? trying : { phase: 'on-turn' }) : undefined
+          if (!viaRelay.has(id)) return undefined
+          if (s.trying) return trying
           if (direct.selfId >= id) return { phase: 'their-retry' }
           const next = watchdog.nextInMs(now)
           return watchdog.exhausted || next === null
@@ -188,7 +192,7 @@ export function createHybridTransport(
         return {
           ...s,
           peers: s.peers.map((p) => {
-            const attempt = attemptOf(p.id)
+            const attempt = attemptOf(p.id, p.turn === true)
             return attempt ? { ...p, attempt } : p
           }),
           waiting: graceTimers.size,
@@ -201,9 +205,9 @@ export function createHybridTransport(
     // By hand (the Network panel's Retry, allowing local network access): the automatic ones start over.
     retryDirect:
       direct.retryDirect &&
-      (() => {
+      ((opts?: { turn?: boolean }) => {
         watchdog.restart(performance.now())
-        return direct.retryDirect!()
+        return direct.retryDirect!(opts)
       }),
     leave() {
       if (watchTimer) clearInterval(watchTimer)

@@ -8,9 +8,9 @@
   /* A big choice: icon on the left, title with a line under it. */
   .pf-btn.pf-action {
     justify-content: flex-start;
-    gap: 14px;
+    gap: 12px;
     width: 100%;
-    padding: 14px 18px 13px;
+    padding: 10px 14px 9px;
     text-align: left;
     white-space: normal;
   }
@@ -18,24 +18,24 @@
     display: grid;
     place-items: center;
     flex: none;
-    width: 44px;
-    height: 44px;
+    width: 34px;
+    height: 34px;
     border-radius: 50%;
     background: rgb(0 0 0 / 0.18);
   }
   .pf-action-icon svg {
-    width: 20px;
-    height: 20px;
+    width: 16px;
+    height: 16px;
   }
   .pf-action-text {
     display: grid;
-    gap: 4px;
+    gap: 2px;
   }
   .pf-action-title {
-    font: var(--pf-fw-bold) 18px/1.15 var(--pf-font);
+    font: var(--pf-fw-bold) 16px/1.15 var(--pf-font);
   }
   .pf-action-sub {
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
     line-height: 1.25;
     opacity: 0.75;

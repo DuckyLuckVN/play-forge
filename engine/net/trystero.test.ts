@@ -7,6 +7,7 @@ interface FakeAction {
 }
 interface FakeRoom {
   roomId: string
+  config: { turnConfig?: unknown[] }
   actions: Map<string, FakeAction>
   peers: Record<string, { userId: string; connection: null }>
   on: Record<string, Handler[]>
@@ -21,8 +22,8 @@ let holdLeave = false
 vi.mock('trystero', () => ({
   createUserIdentity: async () => ({}),
   getRelaySockets: () => ({}),
-  joinRoom: (_config: unknown, roomId: string) => {
-    const r: FakeRoom = { roomId, actions: new Map(), peers: {}, on: {}, left: false }
+  joinRoom: (config: FakeRoom['config'], roomId: string) => {
+    const r: FakeRoom = { roomId, config, actions: new Map(), peers: {}, on: {}, left: false }
     rooms.push(r)
     const listen = (name: string) => (h: Handler) => {
       ;(r.on[name] ??= []).push(h)
@@ -61,6 +62,12 @@ vi.mock('trystero', () => ({
   },
 }))
 
+let turnModeNow: 'auto' | 'off' | 'only' = 'auto'
+vi.mock('./turn', () => ({
+  turnServers: () => [{ urls: 'turn:turn.example:3478', username: 'u', credential: 'c' }],
+  turnMode: () => turnModeNow,
+}))
+
 import { createTrysteroTransport } from './trystero'
 
 /** Trystero says peer `peerId` linked, and its hello carries our-style id `id`. */
@@ -79,6 +86,24 @@ describe('trystero transport', () => {
     rooms.length = 0
     sendResult = () => Promise.resolve()
     holdLeave = false
+    turnModeNow = 'auto'
+  })
+
+  it('tries direct routes first: no TURN on the first attempt, TURN from the first retry on', async () => {
+    const t = createTrysteroTransport('app', 'room')
+    expect(rooms[0].config.turnConfig).toBeUndefined()
+    await t.retryDirect!()
+    expect(rooms[1].config.turnConfig).toHaveLength(1)
+    await t.retryDirect!()
+    expect(rooms[2].config.turnConfig).toHaveLength(1)
+    t.leave()
+  })
+
+  it('?turn=only still goes through TURN from the start (testing TURN)', () => {
+    turnModeNow = 'only'
+    const t = createTrysteroTransport('app', 'room')
+    expect(rooms[0].config.turnConfig).toHaveLength(1)
+    t.leave()
   })
 
   it('a send that rejects (peer gone, channel stopped) is swallowed, not unhandled', async () => {

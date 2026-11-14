@@ -68,9 +68,16 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
     events.emit('leave', id)
   }
 
+  /**
+   * Direct routes first: offered alongside, a TURN route often answers first and the link settles
+   * on it although a direct one would work (e.g. a phone on mobile data). So the first attempt goes
+   * without TURN; retryDirect (the watchdog's, after a few seconds still on the relay) adds it.
+   */
+  let withTurn = turnMode() === 'only'
+
   const open = (): Room => {
-    const turn = turnServers()
-    netLog('turn:', turn.length ? 'on' : 'off')
+    const turn = withTurn ? turnServers() : []
+    netLog('turn:', turn.length ? 'on' : withTurn ? 'none available' : 'not yet (direct first)')
     const r = joinRoom(
       {
         ...roomConfig(appId, turn, turnMode() === 'only'),
@@ -240,6 +247,8 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
       const old = room
       if (retrying || !old || closed) return
       retrying = true
+      // Direct alone didn't do it (or a new start after allowing local access): TURN may help now.
+      withTurn = true
       for (const peerId of [...idOf.keys()]) unlink(peerId)
       actions.clear()
       measured.clear()

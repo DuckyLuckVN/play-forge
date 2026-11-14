@@ -29,6 +29,7 @@ import {
   type LinkedPlayer,
 } from './net/status'
 import { createOfflineTransport, randomId, type Transport } from './net/transport'
+import { startTurnRetry } from './net/turn-retry'
 import { netLog } from './net/debug'
 import { createTrysteroTransport } from './net/trystero'
 import { createHybridTransport } from './net/hybrid'
@@ -518,6 +519,10 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         linked: () => linkedPlayers(s),
         retryDirect: () => void transport.retryDirect?.(),
       })
+    // A link stuck on TURN for no known reason gets a fresh direct attempt, between matches only.
+    const stopTurnRetry = extra.offline
+      ? null
+      : startTurnRetry(transport, () => s.phase === 'lobby' || s.phase === 'finished')
     // Guest: follow the connection until the host answers, so the joining
     // screen can say which step is slow or failed.
     joinTrack = host || extra.offline ? null : startJoin(performance.now())
@@ -527,6 +532,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         if (!followJoin(s)) clearInterval(joinTimer!)
       }, JOIN_POLL_MS)
     cleanup = () => {
+      stopTurnRetry?.()
       if (joinTimer) clearInterval(joinTimer)
       joinTrack = null
       netBtn.attach(null)

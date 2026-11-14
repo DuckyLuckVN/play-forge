@@ -8,6 +8,13 @@ import {
 } from 'trystero'
 import { Emitter } from '../core/emitter'
 import { netLog } from './debug'
+import {
+  candidateCounts,
+  parseCandidate,
+  whyNotDirect,
+  type Candidate,
+  type WhyNotDirect,
+} from './ice-diagnosis'
 import { RELAY_URLS, roomConfig } from './net-config'
 import { isPeerId } from './relay-protocol'
 import { turnMode, turnServers } from './turn'
@@ -51,7 +58,7 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
   /** Channels someone listens on: a rejoined room opens them again. */
   const subscribed = new Set<string>()
   // Round trip and TURN use per peer (our ids), refreshed by diagnostics.measure().
-  const measured = new Map<string, { rttMs?: number; turn?: boolean }>()
+  const measured = new Map<string, { rttMs?: number; turn?: boolean; why?: WhyNotDirect }>()
   /** Trystero peer id ↔ our peer id, for the links of the current room. */
   const idOf = new Map<string, string>()
   const peerOf = new Map<string, string>()
@@ -204,9 +211,12 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
           let rttMs = pair.rttMs
           if (rttMs === undefined && pc.connectionState === 'connected')
             rttMs = await r.ping(peerId).catch(() => undefined)
+          const why = pair.turn ? pcs.why(pc) : undefined
+          if (why && why !== measured.get(id)?.why) netLog('turn: why not direct', id, why, pcs.counts(pc))
           measured.set(id, {
             ...(rttMs === undefined ? {} : { rttMs }),
             ...(pair.turn ? { turn: true } : {}),
+            ...(why ? { why } : {}),
           })
         }),
       )
@@ -329,7 +339,16 @@ async function selectedPair(pc: RTCPeerConnection): Promise<PairInfo> {
  */
 function createPcTracker(onFailed: () => void) {
   const live = new Set<RTCPeerConnection>()
+  /** ICE candidates seen per connection: ours as gathered, the peer's as Trystero adds them. */
+  const ice = new WeakMap<RTCPeerConnection, { local: Candidate[]; remote: Candidate[] }>()
+  const log = (pc: RTCPeerConnection) => ice.get(pc) ?? { local: [], remote: [] }
   const tracker = {
+    /** Why this connection isn't direct, from its candidates (ice-diagnosis.ts). */
+    why: (pc: RTCPeerConnection) =>
+      whyNotDirect(log(pc).local, log(pc).remote, pc.iceGatheringState === 'complete'),
+    /** Candidate types per side, for the debug log. */
+    counts: (pc: RTCPeerConnection) =>
+      `ours ${candidateCounts(log(pc).local)}, theirs ${candidateCounts(log(pc).remote)}`,
     ctor: undefined as typeof RTCPeerConnection | undefined,
     negotiating() {
       let n = 0
@@ -344,6 +363,12 @@ function createPcTracker(onFailed: () => void) {
     constructor(config?: RTCConfiguration) {
       super(config)
       live.add(this)
+      const seen = { local: [] as Candidate[], remote: [] as Candidate[] }
+      ice.set(this, seen)
+      this.addEventListener('icecandidate', (e) => {
+        const c = e.candidate && parseCandidate(e.candidate.candidate)
+        if (c) seen.local.push(c)
+      })
       let failed = false
       const check = () => {
         const isFailed = this.connectionState === 'failed' || this.iceConnectionState === 'failed'
@@ -356,6 +381,11 @@ function createPcTracker(onFailed: () => void) {
       }
       this.addEventListener('connectionstatechange', check)
       this.addEventListener('iceconnectionstatechange', check)
+    }
+    override addIceCandidate(candidate?: RTCIceCandidateInit | null): Promise<void> {
+      const c = candidate?.candidate ? parseCandidate(candidate.candidate) : null
+      if (c) log(this).remote.push(c)
+      return super.addIceCandidate(candidate ?? undefined)
     }
     override close() {
       live.delete(this)

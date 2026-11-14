@@ -467,3 +467,34 @@ describe('joining while a relay fallback is pending', () => {
     expect(stepJoin(track, failedDirect, 2000).phase).toBe('blocked')
   })
 })
+
+describe('why a player is on TURN', () => {
+  const host = { name: 'Ann', peer: 'p1', connected: true }
+  const onTurn = (why?: PeerLink['why']) =>
+    net({
+      peers: [{ id: 'p1', state: 'connected', rttMs: 40, route: 'direct', turn: true, ...(why && { why }) }],
+    })
+
+  it('puts the reason on the TURN row', () => {
+    expect(netPanelView(onTurn('strict-peer'), [host]).rows[0]).toMatchObject({
+      route: 'turn',
+      why: 'strict-peer',
+    })
+    expect(netPanelView(onTurn(), [host]).rows[0].why).toBeUndefined()
+  })
+
+  it('same Wi-Fi: says so, and offers local network access like a relayed player', () => {
+    const v = netPanelView(onTurn('same-network'), [host], LOCAL_ASK_AFTER_MS, 'prompt')
+    expect(v.hints).toContain('same-wifi')
+    expect(v.hints).toContain('allow-local')
+  })
+
+  it('strict NAT on either side: explains it; unknown causes stay quiet', () => {
+    expect(netPanelView(onTurn('strict-self'), [host]).hints).toContain('strict-nat')
+    expect(netPanelView(onTurn('strict-peer'), [host]).hints).toContain('strict-nat')
+    const quiet = netPanelView(onTurn('unknown'), [host], LOCAL_ASK_AFTER_MS, 'prompt').hints
+    expect(quiet).not.toContain('same-wifi')
+    expect(quiet).not.toContain('strict-nat')
+    expect(quiet).not.toContain('allow-local')
+  })
+})

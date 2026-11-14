@@ -1,4 +1,5 @@
 import { netLog } from '../net/debug'
+import type { WhyNotDirect } from '../net/ice-diagnosis'
 import { requestLocalAccess, watchLocalAccess, type LocalAccess } from '../net/local-access'
 import {
   LAG_MS,
@@ -52,6 +53,14 @@ const HINT_TEXT: Record<NetHint, () => string> = {
     ),
   connecting: () => t('Still connecting to someone. This usually takes a few seconds.'),
   lag: () => t('High ping: moves may feel delayed. A stronger or wired connection helps.'),
+  'same-wifi': () =>
+    t(
+      "You're on the same Wi-Fi as someone, but the router won't link you directly, so you play through TURN. Allow local network access, or turn on voice, then tap Retry.",
+    ),
+  'strict-nat': () =>
+    t(
+      "Someone's network (often mobile data) blocks direct links, so you play through TURN. That's normal: ping may be a little higher.",
+    ),
   'allow-local': () =>
     t('Playing on the same Wi-Fi? Your browser is blocking a direct link. Allow it for a much lower ping.'),
   'local-denied': () =>
@@ -72,12 +81,22 @@ const ROUTE_TITLE: Record<PanelRoute, () => string> = {
   relay: () => t('Connected through our backup server (no voice)'),
 }
 
+/** A TURN row's tooltip: why the link isn't direct. */
+const WHY_TITLE: Record<WhyNotDirect, () => string> = {
+  'same-network': () => t('Same network, but the router blocks a direct link'),
+  'strict-self': () => t('Your network blocks direct links (strict NAT)'),
+  'strict-peer': () => t('Their network blocks direct links (strict NAT)'),
+  'no-public-self': () => t('Your network blocks direct links (UDP blocked)'),
+  unknown: () => t("A direct link didn't get through. Retry may help"),
+}
+
 function stateCell(r: PanelRow) {
   const cell = h('span', {
     class: `pf-net-state${r.route ? ` ${r.route}` : ''}`,
     textContent: r.route ? ROUTE_TEXT[r.route]() : STATE_TEXT[r.state](),
   })
-  if (r.route) cell.title = ROUTE_TITLE[r.route]()
+  if (r.route)
+    cell.title = r.why ? `${ROUTE_TITLE[r.route]()}. ${WHY_TITLE[r.why]()}` : ROUTE_TITLE[r.route]()
   return cell
 }
 

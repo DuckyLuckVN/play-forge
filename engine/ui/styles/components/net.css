@@ -260,4 +260,10 @@
     display: block;
     margin-top: var(--pf-space-3);
   }
+  .pf-net-steps {
+    margin: var(--pf-space-3) 0 0;
+    padding-left: 1.3em;
+    display: grid;
+    gap: var(--pf-space-2);
+  }
 }

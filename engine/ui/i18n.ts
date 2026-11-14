@@ -156,13 +156,20 @@ export const VI: Dictionary = {
     'Chuyển dữ liệu trò chơi khi kết nối trực tiếp giữa người chơi bị chặn.',
   'Playing on the same Wi-Fi? Your browser is blocking a direct link. Allow it for a much lower ping.':
     'Đang chơi chung Wi-Fi? Trình duyệt đang chặn kết nối trực tiếp. Cho phép để ping thấp hơn nhiều.',
-  'Playing on the same Wi-Fi? Your browser blocks links to devices on it. Tap Allow, or allow "Local network access" in this site\'s settings (on Android, also Chrome\'s "Nearby devices" permission).':
-    'Đang chơi chung Wi-Fi? Trình duyệt đang chặn kết nối tới các thiết bị trong đó. Bấm Cho phép, hoặc bật "Truy cập mạng cục bộ" (Local network access) trong cài đặt trang này (trên Android, bật thêm quyền "Thiết bị ở gần" (Nearby devices) của Chrome).',
+  'Playing on the same Wi-Fi? Your browser blocks links to devices on it. Tap How to allow to turn it on.':
+    'Đang chơi chung Wi-Fi? Trình duyệt đang chặn kết nối tới các thiết bị trong đó. Bấm Cách cho phép để bật lại.',
   'Same Wi-Fi as your friends? Open Network to allow a direct link.':
     'Chơi chung Wi-Fi với bạn bè? Mở mục Mạng để cho phép kết nối trực tiếp.',
   'Allowed: the direct link opens on the next try.':
     'Đã cho phép: kết nối trực tiếp sẽ mở ở lần thử tiếp theo.',
   Allow: 'Cho phép',
+  'How to allow': 'Cách cho phép',
+  'Tap the icon left of the address, then Permissions (Site settings).':
+    'Bấm vào biểu tượng bên trái địa chỉ trang, rồi chọn Quyền (Cài đặt trang web).',
+  'Set "Local network access" to Allow.': 'Đặt "Truy cập mạng cục bộ" (Local network access) thành Cho phép.',
+  'Android: Settings → Apps → Chrome → Permissions → "Nearby devices" → Allow.':
+    'Android: Cài đặt → Ứng dụng → Chrome → Quyền → "Thiết bị ở gần" (Nearby devices) → Cho phép.',
+  'Reload the game.': 'Tải lại trò chơi.',
 
   // Countdown, pause, results
   'Go!': 'Chiến!',

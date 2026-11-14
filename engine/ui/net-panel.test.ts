@@ -70,6 +70,30 @@ describe('Network panel: same-Wi-Fi local network access', () => {
 })
 
 describe('Network panel: a denied permission (Android Chrome starts there)', () => {
+  it('a "How to allow" button shows the steps (Chrome never prompts for a denied permission)', async () => {
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      permissions: { query: async () => ({ state: 'denied', onchange: null }) },
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => {})),
+    )
+    let now = 0
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
+    const net = netStatusButton()
+    document.body.append(net.root)
+    net.attach(source)
+    await new Promise((r) => setTimeout(r, 0))
+    now = 10_000
+    net.root.querySelector<HTMLButtonElement>('.pf-net-btn')!.click()
+    expect(net.root.querySelector('.pf-net-steps')).toBeNull()
+    net.root.querySelector<HTMLButtonElement>('.pf-net-allow')!.click()
+    const steps = net.root.querySelectorAll('.pf-net-steps li')
+    expect(steps.length).toBeGreaterThanOrEqual(3)
+    net.attach(null)
+  })
+
   it('still offers the Allow button, with where to change it', async () => {
     vi.stubGlobal('navigator', {
       ...navigator,

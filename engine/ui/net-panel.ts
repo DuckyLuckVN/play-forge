@@ -53,7 +53,7 @@ const HINT_TEXT: Record<NetHint, () => string> = {
     t('Playing on the same Wi-Fi? Your browser is blocking a direct link. Allow it for a much lower ping.'),
   'local-denied': () =>
     t(
-      'Playing on the same Wi-Fi? Your browser blocks links to devices on it. Tap Allow, or allow "Local network access" in this site\'s settings (on Android, also Chrome\'s "Nearby devices" permission).',
+      'Playing on the same Wi-Fi? Your browser blocks links to devices on it. Tap How to allow to turn it on.',
     ),
 }
 
@@ -126,7 +126,18 @@ export function netStatusButton() {
       toast(t('Same Wi-Fi as your friends? Open Network to allow a direct link.'))
     }
   }
-  const allow = () => requestLocalAccess()
+  /** The "How to allow" steps are open (a denied permission: Chrome won't prompt for it). */
+  let showSteps = false
+  const actions: LocalActions = {
+    allow: () => requestLocalAccess(),
+    howTo: () => {
+      // Ask anyway (a browser that can still prompt will), and show the steps.
+      requestLocalAccess()
+      showSteps = !showSteps
+      const view = viewNow()
+      if (view && pop.isOpen) drawBody(body, view, actions, showSteps)
+    },
+  }
   const onAccess = (state: LocalAccess) => {
     const was = access
     access = state
@@ -136,7 +147,7 @@ export function netStatusButton() {
     refreshHealth()
     if (pop.isOpen) {
       const view = viewNow()
-      if (view) drawBody(body, view, allow)
+      if (view) drawBody(body, view, actions, showSteps)
     }
   }
 
@@ -151,14 +162,14 @@ export function netStatusButton() {
     if (gen !== generation || src !== source || !pop.isOpen) return
     const view = viewNow()!
     setHealth(view)
-    drawBody(body, view, allow)
+    drawBody(body, view, actions, showSteps)
     liveTimer = setTimeout(() => void tick(gen), OPEN_REFRESH_MS)
   }
   function startLive() {
     if (!source) return
     stopLive()
     const view = viewNow()!
-    drawBody(body, view, allow)
+    drawBody(body, view, actions, showSteps)
     setHealth(view)
     void tick(generation)
   }
@@ -181,6 +192,7 @@ export function netStatusButton() {
       stopAccess = null
       access = 'unsupported'
       askedToast = false
+      showSteps = false
       pop.root.hidden = !src
       if (!src) return
       let stopped = false
@@ -225,7 +237,21 @@ function drawHead(head: HTMLElement, src: NetPanelSource) {
   )
 }
 
-function drawBody(body: HTMLElement, view: NetPanelView, onAllow: () => void) {
+/** The local network access buttons: ask the browser, or (denied) show how to allow it. */
+interface LocalActions {
+  allow(): void
+  howTo(): void
+}
+
+/** Where to turn local network access on: Chrome won't ask again once it says "denied". */
+const STEPS = () => [
+  t('Tap the icon left of the address, then Permissions (Site settings).'),
+  t('Set "Local network access" to Allow.'),
+  t('Android: Settings → Apps → Chrome → Permissions → "Nearby devices" → Allow.'),
+  t('Reload the game.'),
+]
+
+function drawBody(body: HTMLElement, view: NetPanelView, local: LocalActions, showSteps = false) {
   body.replaceChildren(
     ...(view.local ? [] : [servers(view)]),
     ...(view.gameRelay ? [backupServer(view.gameRelay)] : []),
@@ -250,9 +276,22 @@ function drawBody(body: HTMLElement, view: NetPanelView, onAllow: () => void) {
       : h('p', { class: 'pf-net-empty', textContent: t('No one else is here yet.') }),
     ...view.hints.map((hint) => {
       const p = h('p', { class: `pf-net-hint ${hint}`, textContent: HINT_TEXT[hint]() })
-      // A refused permission may still prompt again (Android starts at "denied"): offer it both ways.
-      if (hint === 'allow-local' || hint === 'local-denied')
-        p.append(h('button', { class: 'pf-btn pf-net-allow', textContent: t('Allow'), onclick: onAllow }))
+      if (hint === 'allow-local')
+        p.append(h('button', { class: 'pf-btn pf-net-allow', textContent: t('Allow'), onclick: local.allow }))
+      // Denied (Android Chrome starts there): Chrome won't prompt, so the button shows the steps.
+      if (hint === 'local-denied') {
+        const btn = h('button', {
+          class: 'pf-btn pf-net-allow',
+          textContent: t('How to allow'),
+          onclick: local.howTo,
+        })
+        btn.setAttribute('aria-expanded', String(showSteps))
+        p.append(btn)
+        if (showSteps)
+          p.append(
+            h('ol', { class: 'pf-net-steps' }, ...STEPS().map((text) => h('li', { textContent: text }))),
+          )
+      }
       return p
     }),
   )

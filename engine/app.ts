@@ -592,13 +592,13 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         const before = prev.players.find((q) => q.id === p.id)
         if (!before) {
           playSound(UI_SOUNDS.join)
-          toast(t('{name} joined', { name: p.name }), playerColor(p.slot))
+          toast(t('{name} joined', { name: p.name }), playerColor(p.slot), { highlight: p.name })
         } else if (before.connected && !p.connected) {
           playSound(UI_SOUNDS.leave)
-          toast(t('{name} lost connection', { name: p.name }), playerColor(p.slot))
+          toast(t('{name} lost connection', { name: p.name }), playerColor(p.slot), { highlight: p.name })
         } else if (!before.connected && p.connected) {
           playSound(UI_SOUNDS.join)
-          toast(t('{name} is back', { name: p.name }), playerColor(p.slot))
+          toast(t('{name} is back', { name: p.name }), playerColor(p.slot), { highlight: p.name })
         } else if (!before.ready && p.ready) {
           playSound(UI_SOUNDS.ready)
         }
@@ -606,7 +606,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       for (const p of prev.players)
         if (p.id !== s.selfId && !lobby.players.some((q) => q.id === p.id)) {
           playSound(UI_SOUNDS.leave)
-          toast(t('{name} left', { name: p.name }), playerColor(p.slot))
+          toast(t('{name} left', { name: p.name }), playerColor(p.slot), { highlight: p.name })
         }
     }
 

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { LOCAL_PROBE_URL } from '../net/local-access'
+import { LOCAL_PROBE_URLS } from '../net/local-access'
 import type { NetStatus } from '../net/status'
 import { netStatusButton, type NetPanelSource } from './net-panel'
 
@@ -48,7 +48,7 @@ describe('Network panel: same-Wi-Fi local network access', () => {
     expect(net.root.querySelector('.pf-net-hint.allow-local')).not.toBeNull()
     allow!.click()
     expect(fetch).toHaveBeenCalledWith(
-      LOCAL_PROBE_URL,
+      LOCAL_PROBE_URLS[0],
       expect.objectContaining({ targetAddressSpace: 'local' }),
     )
     net.attach(null)
@@ -70,6 +70,30 @@ describe('Network panel: same-Wi-Fi local network access', () => {
 })
 
 describe('Network panel: a denied permission (Android Chrome starts there)', () => {
+  it('a "How to allow" button shows the steps (Chrome never prompts for a denied permission)', async () => {
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      permissions: { query: async () => ({ state: 'denied', onchange: null }) },
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => {})),
+    )
+    let now = 0
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
+    const net = netStatusButton()
+    document.body.append(net.root)
+    net.attach(source)
+    await new Promise((r) => setTimeout(r, 0))
+    now = 10_000
+    net.root.querySelector<HTMLButtonElement>('.pf-net-btn')!.click()
+    expect(net.root.querySelector('.pf-net-steps')).toBeNull()
+    net.root.querySelector<HTMLButtonElement>('.pf-net-allow')!.click()
+    const steps = net.root.querySelectorAll('.pf-net-steps li')
+    expect(steps.length).toBeGreaterThanOrEqual(3)
+    net.attach(null)
+  })
+
   it('still offers the Allow button, with where to change it', async () => {
     vi.stubGlobal('navigator', {
       ...navigator,
@@ -87,7 +111,7 @@ describe('Network panel: a denied permission (Android Chrome starts there)', () 
     net.root.querySelector<HTMLButtonElement>('.pf-net-btn')!.click()
     expect(net.root.querySelector('.pf-net-hint.local-denied')).not.toBeNull()
     net.root.querySelector<HTMLButtonElement>('.pf-net-allow')!.click()
-    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch).toHaveBeenCalled()
     net.attach(null)
   })
 })

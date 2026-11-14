@@ -24,6 +24,8 @@ export interface ChatControls {
 }
 
 const TOAST_MAX = 80
+/** A chat toast stays this long (ms): longer than a status toast, it has words to read. */
+const CHAT_TOAST_MS = 4500
 
 /**
  * Top-bar chat: a button with an unread count, opening a message list and a
@@ -128,7 +130,8 @@ export function chatControls(hub: ChatHub, sender: (msg: ChatMessage) => ChatSen
     renderButton()
     const who = sender(m)
     const text = m.text.length > TOAST_MAX ? `${m.text.slice(0, TOAST_MAX - 1)}…` : m.text
-    toast(`${who.name}: ${text}`, who.color)
+    // The sender stands out (their name in their colour); a chat line gets a moment longer to read.
+    toast(text, who.color, { name: who.name, ms: CHAT_TOAST_MS })
   })
 
   renderButton()

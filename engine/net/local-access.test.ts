@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { LOCAL_PROBE_URL, requestLocalAccess, watchLocalAccess } from './local-access'
+import { LOCAL_PROBE_URLS, requestLocalAccess, watchLocalAccess } from './local-access'
 
 type Listener = () => void
 function stubPermissions(states: Record<string, PermissionState | Error>) {
@@ -22,7 +22,7 @@ afterEach(() => {
 
 describe('watchLocalAccess', () => {
   it('reports the Local Network Access permission and its changes', async () => {
-    const { statuses } = stubPermissions({ 'local-network-access': 'prompt' })
+    const { statuses } = stubPermissions({ 'local-network': 'prompt' })
     const seen: string[] = []
     const stop = await watchLocalAccess((s) => seen.push(s))
     expect(seen).toEqual(['prompt'])
@@ -36,7 +36,7 @@ describe('watchLocalAccess', () => {
   })
 
   it('falls back to the older permission name', async () => {
-    stubPermissions({ 'local-network': 'denied' })
+    stubPermissions({ 'local-network-access': 'denied' })
     const seen: string[] = []
     await watchLocalAccess((s) => seen.push(s))
     expect(seen).toEqual(['denied'])
@@ -54,18 +54,20 @@ describe('watchLocalAccess', () => {
 })
 
 describe('requestLocalAccess', () => {
-  it('makes a local-network request so the browser shows its prompt (no data needed back)', () => {
+  it('asks the usual router addresses on their web port (Chrome prompts only once one connects)', () => {
     const fetch = vi.fn(() => new Promise<Response>(() => {}))
     vi.stubGlobal('fetch', fetch)
     requestLocalAccess()
-    expect(fetch).toHaveBeenCalledTimes(1)
-    const [url, init] = fetch.mock.calls[0] as unknown as [
-      string,
-      RequestInit & { targetAddressSpace?: string },
-    ]
-    expect(url).toBe(LOCAL_PROBE_URL)
-    expect(new URL(url).hostname).toMatch(/^(10|192\.168)\./)
-    expect(init).toMatchObject({ mode: 'no-cors', targetAddressSpace: 'local' })
+    expect(fetch).toHaveBeenCalledTimes(LOCAL_PROBE_URLS.length)
+    const calls = fetch.mock.calls as unknown as [string, RequestInit & { targetAddressSpace?: string }][]
+    for (const [url, init] of calls) {
+      const u = new URL(url)
+      expect(u.hostname).toMatch(/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/)
+      // Port 80: a closed port (e.g. 9) fails at once and Chrome never prompts.
+      expect(u.port).toBe('')
+      expect(init).toMatchObject({ mode: 'no-cors', targetAddressSpace: 'local' })
+    }
+    expect(LOCAL_PROBE_URLS).toContain('http://192.168.1.1/')
   })
 
   it('never throws (a refused or failed request is fine)', async () => {

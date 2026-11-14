@@ -1,6 +1,7 @@
 import { netLog } from '../net/debug'
 import { requestLocalAccess, watchLocalAccess, type LocalAccess } from '../net/local-access'
 import {
+  LAG_MS,
   netPanelView,
   type LinkState,
   type LinkedPlayer,
@@ -130,6 +131,13 @@ export function netStatusButton() {
   }
   /** The "How to allow" steps are open (a denied permission: Chrome won't prompt for it). */
   let showSteps = false
+  /** The matchmaking server list is unfolded (kept across the 1 s redraws). */
+  let serversOpen = false
+  const ui = (): PanelUi => ({
+    showSteps,
+    serversOpen,
+    onServersToggle: (open) => (serversOpen = open),
+  })
   const actions: LocalActions = {
     allow: () => requestLocalAccess(),
     howTo: () => {
@@ -137,7 +145,7 @@ export function netStatusButton() {
       requestLocalAccess()
       showSteps = !showSteps
       const view = viewNow()
-      if (view && pop.isOpen) drawBody(body, view, actions, showSteps, access)
+      if (view && pop.isOpen) drawBody(body, view, actions, ui(), access)
     },
   }
   const onAccess = (state: LocalAccess) => {
@@ -152,7 +160,7 @@ export function netStatusButton() {
     refreshHealth()
     if (pop.isOpen) {
       const view = viewNow()
-      if (view) drawBody(body, view, actions, showSteps, access)
+      if (view) drawBody(body, view, actions, ui(), access)
     }
   }
 
@@ -167,14 +175,14 @@ export function netStatusButton() {
     if (gen !== generation || src !== source || !pop.isOpen) return
     const view = viewNow()!
     setHealth(view)
-    drawBody(body, view, actions, showSteps, access)
+    drawBody(body, view, actions, ui(), access)
     liveTimer = setTimeout(() => void tick(gen), OPEN_REFRESH_MS)
   }
   function startLive() {
     if (!source) return
     stopLive()
     const view = viewNow()!
-    drawBody(body, view, actions, showSteps, access)
+    drawBody(body, view, actions, ui(), access)
     setHealth(view)
     void tick(generation)
   }
@@ -198,6 +206,7 @@ export function netStatusButton() {
       access = 'unsupported'
       askedToast = false
       showSteps = false
+      serversOpen = false
       pop.root.hidden = !src
       if (!src) return
       let stopped = false
@@ -269,22 +278,54 @@ function accessLine(access: LocalAccess) {
     'div',
     { class: `pf-net-servers-head pf-net-lna ${access}` },
     h('span', { class: 'pf-net-label', textContent: t('Same Wi-Fi link (this device)') }),
-    h('strong', { class: access === 'granted' ? 'ok' : 'bad', textContent: ACCESS_TEXT[access]() }),
+    // Not asked yet is a to-do, not a failure: yellow; blocked: red.
+    h('strong', {
+      class: access === 'granted' ? 'ok' : access === 'prompt' ? 'warn' : 'bad',
+      textContent: ACCESS_TEXT[access](),
+    }),
   )
-  return [h('div', { class: 'pf-net-servers pf-net-backup' }, row)]
+  return [h('div', { class: 'pf-net-servers pf-net-lna-row' }, row)]
 }
 
+/** Panel bits that outlive a redraw. */
+interface PanelUi {
+  showSteps: boolean
+  serversOpen: boolean
+  onServersToggle(open: boolean): void
+}
+
+/** How a round trip plays: good, playable, or laggy (LAG_MS, the same line as the lag hint). */
+const GOOD_PING_MS = 80
+function pingQuality(ms: number): 'good' | 'ok' | 'bad' {
+  return ms <= GOOD_PING_MS ? 'good' : ms <= LAG_MS ? 'ok' : 'bad'
+}
+const PING_TITLE = { good: () => t('Smooth'), ok: () => t('Playable'), bad: () => t('Laggy') }
+
+function pingCell(rttMs: number | null) {
+  if (rttMs === null) return h('span', { class: 'pf-net-ping', textContent: '–' })
+  const q = pingQuality(rttMs)
+  const cell = h('span', { class: `pf-net-ping ${q}`, textContent: t('{ms} ms', { ms: rttMs }) })
+  cell.title = PING_TITLE[q]()
+  return cell
+}
+
+/**
+ * Players first (what the panel is opened for), then what to do about them (hints),
+ * then the plumbing: this device's same-Wi-Fi access, the backup server, the matchmaking servers.
+ */
 function drawBody(
   body: HTMLElement,
   view: NetPanelView,
   local: LocalActions,
-  showSteps = false,
+  ui: PanelUi = { showSteps: false, serversOpen: false, onServersToggle: () => {} },
   access: LocalAccess = 'unsupported',
 ) {
-  body.replaceChildren(
-    ...(view.local ? [] : [servers(view)]),
-    ...(view.gameRelay ? [backupServer(view.gameRelay)] : []),
+  const details = [
     ...(view.local ? [] : accessLine(access)),
+    ...(view.gameRelay ? [backupServer(view.gameRelay)] : []),
+    ...(view.local ? [] : [servers(view, ui)]),
+  ]
+  body.replaceChildren(
     h('div', { class: 'pf-net-label', textContent: t('Players') }),
     view.rows.length
       ? h(
@@ -296,10 +337,7 @@ function drawBody(
               { class: `pf-net-player ${r.state}` },
               h('span', { class: 'pf-net-name', textContent: r.name }),
               stateCell(r),
-              h('span', {
-                class: 'pf-net-ping',
-                textContent: r.rttMs !== null ? t('{ms} ms', { ms: r.rttMs }) : '–',
-              }),
+              pingCell(r.rttMs),
             ),
           ),
         )
@@ -315,22 +353,33 @@ function drawBody(
           textContent: t('How to allow'),
           onclick: local.howTo,
         })
-        btn.setAttribute('aria-expanded', String(showSteps))
+        btn.setAttribute('aria-expanded', String(ui.showSteps))
         p.append(btn)
-        if (showSteps)
+        if (ui.showSteps)
           p.append(
             h('ol', { class: 'pf-net-steps' }, ...STEPS().map((text) => h('li', { textContent: text }))),
           )
       }
       return p
     }),
+    ...(details.length
+      ? [
+          h(
+            'div',
+            { class: 'pf-net-details' },
+            h('div', { class: 'pf-net-label', textContent: t('Connection details') }),
+            ...details,
+          ),
+        ]
+      : []),
   )
 }
 
-function servers(view: NetPanelView) {
+/** The matchmaking servers, folded to their count (unfold for the list). */
+function servers(view: NetPanelView, ui: PanelUi) {
   const total = view.relays.length
   const summary = h(
-    'div',
+    'summary',
     { class: 'pf-net-servers-head' },
     h('span', { class: 'pf-net-label', textContent: t('Matchmaking servers') }),
     h('strong', {
@@ -347,21 +396,31 @@ function servers(view: NetPanelView) {
       return li
     }),
   )
-  return h('div', { class: 'pf-net-servers' }, summary, list)
+  const fold = h('details', { class: 'pf-net-servers pf-net-fold', open: ui.serversOpen }, summary, list)
+  fold.addEventListener('toggle', () => ui.onServersToggle(fold.open))
+  return fold
 }
 
-/** Our relay server: the way through when a direct link can't be made. */
+/**
+ * Our relay server: the way through when a direct link can't be made. "In use" only while some
+ * player is actually reached through it; reachable but unused is "Available".
+ */
 function backupServer(relay: NonNullable<NetPanelView['gameRelay']>) {
-  const status = relay.ok
-    ? relay.rttMs !== null
-      ? t('Connected · {ms} ms', { ms: relay.rttMs })
-      : t('Connected')
-    : t('Not connected')
+  const ms = relay.rttMs
+  const status = !relay.ok
+    ? t('Not connected')
+    : relay.inUse
+      ? ms !== null
+        ? t('In use · {ms} ms', { ms })
+        : t('In use')
+      : ms !== null
+        ? t('Available · {ms} ms', { ms })
+        : t('Available')
   const head = h(
     'div',
     { class: 'pf-net-servers-head' },
     h('span', { class: 'pf-net-label', textContent: t('Backup server') }),
-    h('strong', { class: relay.ok ? 'ok' : 'bad', textContent: status }),
+    h('strong', { class: !relay.ok ? 'bad' : relay.inUse ? 'busy' : 'ok', textContent: status }),
   )
   head.title = t('Carries the game when a direct link between players is blocked.')
   return h('div', { class: 'pf-net-servers pf-net-backup' }, head)

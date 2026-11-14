@@ -39,6 +39,8 @@ export interface NetStatus {
    */
   openFailures: number
   peers: PeerLink[]
+  /** Peers reached only through the relay, still giving WebRTC its head start (hybrid.ts RELAY_GRACE_MS). */
+  waiting?: number
   /** Our game relay server (fallback path), when the transport uses one. */
   gameRelay?: { state: GameRelayState; rttMs?: number }
 }
@@ -110,7 +112,8 @@ const gameRelayOpen = (s: NetStatus): boolean => s.gameRelay?.state === 'open'
 export type JoinPhase = 'servers' | 'servers-failed' | 'looking' | 'not-found' | 'connecting' | 'blocked'
 
 /** How long each step may take before the joining screen says what went wrong. */
-export const JOIN_TIMEOUTS = { servers: 10_000, room: 20_000, connect: 15_000 } as const
+/** `connect` outlasts the relay grace (hybrid.ts RELAY_GRACE_MS, 14 s): a relayed join isn't "blocked". */
+export const JOIN_TIMEOUTS = { servers: 10_000, room: 20_000, connect: 20_000 } as const
 
 export interface JoinTrack {
   startedAt: number
@@ -130,6 +133,8 @@ export function stepJoin(track: JoinTrack, status: NetStatus, now: number): Join
   // Either way of finding the room will do: the matchmaking servers or our relay.
   const relaysOk = status.kind === 'local' || relaysOpen(status) > 0 || gameRelayOpen(status)
   const seen = status.negotiating > 0 || status.peers.length > 0 || status.failures > 0
+  // A relay fallback still pending (hybrid.ts RELAY_GRACE_MS): not blocked, just slower.
+  const waiting = (status.waiting ?? 0) > 0
   const relaysAt = track.relaysAt ?? (relaysOk || seen ? now : null)
   const seenAt = track.seenAt ?? (seen ? now : null)
   let phase: JoinPhase
@@ -137,7 +142,7 @@ export function stepJoin(track: JoinTrack, status: NetStatus, now: number): Join
     const connected = status.peers.some((p) => p.state === 'connected')
     // A failure only means blocked once nothing else is still connecting: the
     // failed link may be with another guest while the host's is in progress.
-    if (status.failures > 0 && !connected && status.negotiating === 0) phase = 'blocked'
+    if (status.failures > 0 && !connected && status.negotiating === 0 && !waiting) phase = 'blocked'
     // Connected to someone who never sent the room (another guest, no host): the room's host is missing.
     else if (now - seenAt >= JOIN_TIMEOUTS.connect) phase = connected ? 'not-found' : 'blocked'
     else phase = 'connecting'
@@ -202,8 +207,8 @@ export interface NetPanelView {
   local: boolean
   relays: { host: string; ok: boolean }[]
   relaysOk: number
-  /** Our backup (relay) server; null when not used. */
-  gameRelay: { ok: boolean; rttMs: number | null } | null
+  /** Our backup (relay) server; null when off. `inUse`: some player is reached through it now. */
+  gameRelay: { ok: boolean; rttMs: number | null; inUse: boolean } | null
   rows: PanelRow[]
   hints: NetHint[]
 }
@@ -281,7 +286,11 @@ export function netPanelView(
     relaysOk,
     gameRelay:
       status.gameRelay && status.gameRelay.state !== 'off'
-        ? { ok: relayUp, rttMs: status.gameRelay.rttMs ?? null }
+        ? {
+            ok: relayUp,
+            rttMs: status.gameRelay.rttMs ?? null,
+            inUse: rows.some((r) => r.route === 'relay'),
+          }
         : null,
     rows,
     hints,

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Emitter } from '../core/emitter'
+import { WATCHDOG } from './direct-watchdog'
 import { createHybridTransport } from './hybrid'
 import type { RelayTransport } from './relay'
 import type { NetStatus } from './status'
@@ -225,5 +226,59 @@ describe('hybrid transport', () => {
       expect(direct.media.addStream).toHaveBeenCalledTimes(1)
       expect(direct.media.removeStream).toHaveBeenCalledTimes(1)
     })
+  })
+})
+
+describe('hybrid transport: stuck direct links', () => {
+  it('retries the direct links while a peer stays on the relay, and stops on leave', () => {
+    vi.useFakeTimers()
+    const direct = fakeDirect()
+    const retryDirect = vi.fn(async () => {})
+    const t = createHybridTransport(
+      Object.assign(direct, { retryDirect }) as unknown as Transport,
+      fakeRelay() as unknown as RelayTransport,
+    )
+    vi.advanceTimersByTime(60_000)
+    expect(retryDirect).not.toHaveBeenCalled() // nobody here yet
+    t.leave()
+    vi.useRealTimers()
+  })
+
+  it('a peer reached only through the relay gets a fresh direct attempt after WATCHDOG.firstMs', () => {
+    vi.useFakeTimers()
+    const direct = fakeDirect()
+    const relayT = fakeRelay()
+    const retryDirect = vi.fn(async () => {})
+    const t = createHybridTransport(
+      Object.assign(direct, { retryDirect }) as unknown as Transport,
+      relayT as unknown as RelayTransport,
+    )
+    relayT.up('bob')
+    vi.advanceTimersByTime(WATCHDOG.firstMs + WATCHDOG.jitterMs + 1000)
+    expect(retryDirect).toHaveBeenCalledTimes(1)
+    direct.up('bob') // the fresh attempt linked
+    vi.advanceTimersByTime(120_000)
+    expect(retryDirect).toHaveBeenCalledTimes(1)
+    t.leave()
+    vi.advanceTimersByTime(120_000)
+    expect(retryDirect).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
+
+  it('never retries in relay-only debug mode', () => {
+    vi.useFakeTimers()
+    const direct = fakeDirect()
+    const relayT = fakeRelay()
+    const retryDirect = vi.fn(async () => {})
+    const t = createHybridTransport(
+      Object.assign(direct, { retryDirect }) as unknown as Transport,
+      relayT as unknown as RelayTransport,
+      { relayOnly: true },
+    )
+    relayT.up('bob')
+    vi.advanceTimersByTime(120_000)
+    expect(retryDirect).not.toHaveBeenCalled()
+    t.leave()
+    vi.useRealTimers()
   })
 })

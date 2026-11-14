@@ -1,4 +1,5 @@
 import { netLog } from '../net/debug'
+import { requestLocalAccess, watchLocalAccess, type LocalAccess } from '../net/local-access'
 import {
   netPanelView,
   type LinkState,
@@ -48,6 +49,12 @@ const HINT_TEXT: Record<NetHint, () => string> = {
     ),
   connecting: () => t('Still connecting to someone. This usually takes a few seconds.'),
   lag: () => t('High ping: moves may feel delayed. A stronger or wired connection helps.'),
+  'allow-local': () =>
+    t('Playing on the same Wi-Fi? Your browser is blocking a direct link. Allow it for a much lower ping.'),
+  'local-denied': () =>
+    t(
+      'Your browser blocks links to devices on your Wi-Fi. To link directly, allow "Local network access" in this site\'s settings.',
+    ),
 }
 
 /** A connected player's state says which way the game data goes. */
@@ -95,6 +102,11 @@ export function netStatusButton() {
   let liveTimer: ReturnType<typeof setTimeout> | null = null
   let health = ''
   let attachedAt = 0
+  /** The browser's Local Network Access permission (same-Wi-Fi direct links), while attached. */
+  let access: LocalAccess = 'unsupported'
+  let stopAccess: (() => void) | null = null
+  /** The "allow it" toast shows once per room. */
+  let askedToast = false
 
   const setHealth = (view: NetPanelView) => {
     if (view.health === health) return
@@ -103,10 +115,27 @@ export function netStatusButton() {
     button.dataset.health = health
   }
   const viewNow = () =>
-    source && netPanelView(source.status(), source.linked(), performance.now() - attachedAt)
+    source && netPanelView(source.status(), source.linked(), performance.now() - attachedAt, access)
   const refreshHealth = () => {
     const view = viewNow()
-    if (view) setHealth(view)
+    if (!view) return
+    setHealth(view)
+    if (view.hints.includes('allow-local') && !askedToast && !pop.isOpen) {
+      askedToast = true
+      toast(t('Same Wi-Fi as your friends? Open Network to allow a direct link.'))
+    }
+  }
+  const allow = () => requestLocalAccess()
+  const onAccess = (state: LocalAccess) => {
+    const was = access
+    access = state
+    netLog('local network access:', state)
+    if (was === 'prompt' && state === 'granted') toast(t('Allowed: the direct link opens on the next try.'))
+    refreshHealth()
+    if (pop.isOpen) {
+      const view = viewNow()
+      if (view) drawBody(body, view, allow)
+    }
   }
 
   // Measure, draw, wait, repeat: no overlapping stats calls on a slow device.
@@ -120,14 +149,14 @@ export function netStatusButton() {
     if (gen !== generation || src !== source || !pop.isOpen) return
     const view = viewNow()!
     setHealth(view)
-    drawBody(body, view)
+    drawBody(body, view, allow)
     liveTimer = setTimeout(() => void tick(gen), OPEN_REFRESH_MS)
   }
   function startLive() {
     if (!source) return
     stopLive()
     const view = viewNow()!
-    drawBody(body, view)
+    drawBody(body, view, allow)
     setHealth(view)
     void tick(generation)
   }
@@ -146,8 +175,18 @@ export function netStatusButton() {
       stopLive()
       if (healthTimer) clearInterval(healthTimer)
       healthTimer = null
+      stopAccess?.()
+      stopAccess = null
+      access = 'unsupported'
+      askedToast = false
       pop.root.hidden = !src
       if (!src) return
+      let stopped = false
+      stopAccess = () => (stopped = true)
+      void watchLocalAccess((state) => !stopped && onAccess(state)).then((stop) => {
+        if (stopped) stop()
+        else stopAccess = stop
+      })
       drawHead(head, src)
       body.replaceChildren()
       health = ''
@@ -184,7 +223,7 @@ function drawHead(head: HTMLElement, src: NetPanelSource) {
   )
 }
 
-function drawBody(body: HTMLElement, view: NetPanelView) {
+function drawBody(body: HTMLElement, view: NetPanelView, onAllow: () => void) {
   body.replaceChildren(
     ...(view.local ? [] : [servers(view)]),
     ...(view.gameRelay ? [backupServer(view.gameRelay)] : []),
@@ -207,7 +246,12 @@ function drawBody(body: HTMLElement, view: NetPanelView) {
           ),
         )
       : h('p', { class: 'pf-net-empty', textContent: t('No one else is here yet.') }),
-    ...view.hints.map((hint) => h('p', { class: `pf-net-hint ${hint}`, textContent: HINT_TEXT[hint]() })),
+    ...view.hints.map((hint) => {
+      const p = h('p', { class: `pf-net-hint ${hint}`, textContent: HINT_TEXT[hint]() })
+      if (hint === 'allow-local')
+        p.append(h('button', { class: 'pf-btn pf-net-allow', textContent: t('Allow'), onclick: onAllow }))
+      return p
+    }),
   )
 }
 

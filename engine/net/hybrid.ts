@@ -1,7 +1,7 @@
 import { netLog } from './debug'
 import { DirectWatchdog } from './direct-watchdog'
 import type { RelayTransport } from './relay'
-import type { LinkAttempt, NetStatus, PeerLink, Route } from './status'
+import type { NetStatus, PeerLink, Route } from './status'
 import type { MediaChannel, Transport } from './transport'
 
 /**
@@ -26,8 +26,8 @@ export interface HybridOptions {
 
 /**
  * Direct first, then TURN, then the relay: a new peer reached only through the relay waits this
- * long for WebRTC (the first attempt is direct only; the watchdog's retry after ~8–11 s adds TURN)
- * before the relay carries the game. Once a peer was linked, a dropped link falls back at once.
+ * long for WebRTC (direct and TURN, with retries) before the relay carries the game. Once a peer was
+ * linked, a dropped link falls back at once.
  */
 export const RELAY_GRACE_MS = 14_000
 
@@ -174,27 +174,16 @@ export function createHybridTransport(
     diagnostics: {
       snapshot: () => {
         const s = mergeStatus(direct, relay, routeOf)
-        const now = performance.now()
-        // Each player not linked by WebRTC: where getting a link stands.
-        const trying: LinkAttempt = { phase: s.turnOffered ? 'turn' : 'direct' }
-        const attemptOf = (id: string, viaTurn: boolean): LinkAttempt | undefined => {
-          if (relayOnly || !direct.retryDirect) return undefined
-          // Linked through TURN: it may go direct (Retry tries without our TURN).
-          if (viaDirect.has(id)) return viaTurn ? (s.trying ? trying : { phase: 'on-turn' }) : undefined
-          if (!viaRelay.has(id)) return undefined
-          if (s.trying) return trying
-          if (direct.selfId >= id) return { phase: 'their-retry' }
-          const next = watchdog.nextInMs(now)
-          return watchdog.exhausted || next === null
-            ? { phase: 'gave-up' }
-            : { phase: 'waiting', nextInMs: next }
-        }
+        // Each player not linked directly (on TURN or the relay): trying, or not (Retry may help).
+        const linkedDirectly = (p: PeerLink) => viaDirect.has(p.id) && !p.turn
+        const retryable = !relayOnly && !!direct.retryDirect
         return {
           ...s,
-          peers: s.peers.map((p) => {
-            const attempt = attemptOf(p.id, p.turn === true)
-            return attempt ? { ...p, attempt } : p
-          }),
+          peers: s.peers.map((p) =>
+            retryable && !linkedDirectly(p) && (viaDirect.has(p.id) || viaRelay.has(p.id))
+              ? { ...p, attempt: s.trying ? ('trying' as const) : ('idle' as const) }
+              : p,
+          ),
           waiting: graceTimers.size,
         }
       },
@@ -205,9 +194,9 @@ export function createHybridTransport(
     // By hand (the Network panel's Retry, allowing local network access): the automatic ones start over.
     retryDirect:
       direct.retryDirect &&
-      ((opts?: { turn?: boolean }) => {
+      (() => {
         watchdog.restart(performance.now())
-        return direct.retryDirect!(opts)
+        return direct.retryDirect!()
       }),
     leave() {
       if (watchTimer) clearInterval(watchTimer)

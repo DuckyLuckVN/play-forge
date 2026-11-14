@@ -104,15 +104,6 @@ describe('trystero transport', () => {
     t.leave()
   })
 
-  it('retryDirect({ turn: false }) tries direct routes only (upgrading from TURN, or after allowing local access)', async () => {
-    const t = createTrysteroTransport('app', 'room')
-    await t.retryDirect!() // the automatic one: with TURN
-    expect(rooms[1].config.turnConfig).toHaveLength(1)
-    await t.retryDirect!({ turn: false })
-    expect(rooms[2].config.turnConfig).toBeUndefined()
-    t.leave()
-  })
-
   it('counts as trying from the moment a retry starts (the panel shows it at once)', async () => {
     vi.useFakeTimers()
     const t = createTrysteroTransport('app', 'room')

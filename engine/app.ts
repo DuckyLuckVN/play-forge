@@ -496,7 +496,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         status: () => statusOf(transport),
         measure: () => transport.diagnostics?.measure() ?? Promise.resolve(),
         linked: () => linkedPlayers(s),
-        retryDirect: (opts) => void transport.retryDirect?.(opts),
+        retryDirect: () => void transport.retryDirect?.(),
       })
     // Guest: follow the connection until the host answers, so the joining
     // screen can say which step is slow or failed.

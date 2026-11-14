@@ -72,12 +72,11 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
   }
 
   /**
-   * TURN is offered from the first attempt, on both sides: WebRTC still prefers a direct route that
-   * works (host / srflx pairs rank above relayed ones), and TURN offered by only one side (the one
-   * that retried) failed to link a phone on mobile data. retryDirect({ turn: false }) tries without
-   * our TURN (upgrading a TURN link, or after allowing local network access).
+   * TURN is offered from the first attempt, on both sides (TURN offered by one side only failed to
+   * link a phone on mobile data). Direct still comes first: WebRTC ranks direct pairs (host / srflx)
+   * above relayed ones and switches to a direct pair whenever one works.
    */
-  let withTurn = turnMode() !== 'off'
+  const withTurn = turnMode() !== 'off'
   /** When the current room started (a fresh attempt counts as trying for a few seconds). */
   let startedAt = performance.now()
 
@@ -188,7 +187,6 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
         negotiating: pcs.negotiating(),
         // A retry leaving / rejoining, a fresh room setting up, or a connection negotiating.
         trying: retrying || pcs.negotiating() > 0 || performance.now() - startedAt < TRYING_MS,
-        turnOffered: withTurn,
         failures: failures.total,
         openFailures: open.count,
         peers,
@@ -251,14 +249,12 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
       onPeerStream: (h) => events.on('stream', h),
     },
     diagnostics,
-    async retryDirect(opts) {
+    async retryDirect() {
       // A fresh attempt (the watchdog, Retry, allowing local network access): the old room's
       // links are gone (the relay carries those peers meanwhile), the new one negotiates again.
       const old = room
       if (retrying || !old || closed) return
       retrying = true
-      // `turn: false`: without our TURN this time (the other side's may still carry it).
-      withTurn = turnMode() !== 'off' && opts?.turn !== false
       for (const peerId of [...idOf.keys()]) unlink(peerId)
       actions.clear()
       measured.clear()

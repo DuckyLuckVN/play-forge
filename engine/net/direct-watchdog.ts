@@ -5,8 +5,11 @@
  * (Transport.retryDirect) almost always settles it. Pure: the owner ticks it with the time.
  */
 export const WATCHDOG = {
-  /** Ms on the relay before the first retry (a direct link normally opens well within this). */
-  firstMs: 12_000,
+  /**
+   * Ms on the relay before the first retry (a direct link normally opens well within this). The first
+   * attempt has no TURN (trystero.ts), so this is also how long a TURN-only pair waits for TURN.
+   */
+  firstMs: 8_000,
   /** Retries per stuck spell; each waits twice as long as the one before. */
   maxRetries: 3,
   /** Up to this many ms added at random: both peers' watchdogs start together, retrying in step could collide again. */

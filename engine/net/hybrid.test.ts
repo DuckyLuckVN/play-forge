@@ -257,10 +257,10 @@ describe('hybrid transport: stuck direct links', () => {
       Object.assign(direct, { retryDirect }) as unknown as Transport,
       relayT as unknown as RelayTransport,
     )
-    relayT.up('bob')
+    relayT.up('zed') // a higher id than ours ('me'): this side does the retrying
     vi.advanceTimersByTime(WATCHDOG.firstMs + WATCHDOG.jitterMs + 1000)
     expect(retryDirect).toHaveBeenCalledTimes(1)
-    direct.up('bob') // the fresh attempt linked
+    direct.up('zed') // the fresh attempt linked
     vi.advanceTimersByTime(120_000)
     expect(retryDirect).toHaveBeenCalledTimes(1)
     t.leave()
@@ -363,6 +363,28 @@ describe('hybrid transport: direct first, then TURN, then the relay', () => {
     vi.advanceTimersByTime(RELAY_GRACE_MS + 100)
     expect(t.diagnostics!.snapshot().waiting).toBe(0)
     t.leave()
+    vi.useRealTimers()
+  })
+})
+
+describe('hybrid transport: one side retries', () => {
+  it('only the side with the lower id retries a stuck link, so two retries never cancel each other', () => {
+    vi.useFakeTimers()
+    const run = (peer: string) => {
+      const direct = fakeDirect() // selfId 'me'
+      const relayT = fakeRelay()
+      const retryDirect = vi.fn(async () => {})
+      const t = createHybridTransport(
+        Object.assign(direct, { retryDirect }) as unknown as Transport,
+        relayT as unknown as RelayTransport,
+      )
+      relayT.up(peer)
+      vi.advanceTimersByTime(WATCHDOG.firstMs + WATCHDOG.jitterMs + 1000)
+      t.leave()
+      return retryDirect.mock.calls.length
+    }
+    expect(run('zed')).toBe(1) // 'me' < 'zed': we retry
+    expect(run('abe')).toBe(0) // 'abe' < 'me': they retry, we wait
     vi.useRealTimers()
   })
 })

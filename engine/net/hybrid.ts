@@ -112,7 +112,9 @@ export function createHybridTransport(
   const watchTimer =
     !relayOnly && direct.retryDirect
       ? setInterval(() => {
-          const stuck = [...viaRelay].some((id) => !viaDirect.has(id))
+          // One side per pair retries (the lower id): a retry rejoins the room, so two at once
+          // would each tear down the attempt the other just started.
+          const stuck = [...viaRelay].some((id) => !viaDirect.has(id) && direct.selfId < id)
           if (watchdog.tick(performance.now(), stuck)) {
             netLog('direct: still on the relay, trying a fresh direct link')
             void direct.retryDirect!().catch(() => {})

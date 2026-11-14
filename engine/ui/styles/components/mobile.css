@@ -1,29 +1,128 @@
 @layer pf.components {
-  /* ---------- Top-bar groups: everyday controls (fan) and settings (⋯) ----------
-   Desktop: both groups sit inline in the bar and their toggle buttons hide.
-   Phones: the fan becomes a floating button bottom-right, settings go behind
-   ⋯, and every other popover opens as a bottom sheet. */
+  /* ---------- Room controls (fan) and the ⋯ menu ----------
+   Every screen: voice, chat and reactions live behind one floating button
+   bottom-right (the fan), keeping the top bar short.
+   Desktop: ⋯'s items (Leave) sit inline in the bar and its toggle hides.
+   Phones: ⋯ is a menu, and every other popover opens as a bottom sheet. */
 
-  .pf-fan-anchor,
   .pf-more-anchor,
-  .pf-popover.pf-fan,
   .pf-popover.pf-overflow,
   .pf-slot {
     display: contents;
   }
-  .pf-fan-anchor[hidden],
   .pf-slot[hidden] {
     display: none;
   }
-  /* Desktop: the groups' panels are always shown inline, even while their
-   (hidden) toggle says closed. Beats the global [hidden] !important rule. */
-  .pf-popover.pf-fan[hidden],
+  /* Desktop: ⋯'s panel is always shown inline, even while its (hidden) toggle
+   says closed. Beats the global [hidden] !important rule. */
   .pf-popover.pf-overflow[hidden] {
     display: contents !important;
   }
-  .pf-fab,
   .pf-more-btn {
     display: none;
+  }
+
+  /* Floating button bottom-right; the fan opens as a column above it. */
+  .pf-fan-anchor {
+    display: block;
+    position: fixed;
+    right: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    z-index: var(--pf-z-fab);
+  }
+  .pf-fan-anchor[hidden] {
+    display: none;
+  }
+  .pf-btn.icon.pf-fab {
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 56px;
+    margin: 0;
+    border-radius: 50%;
+    --face: var(--pf-yolk);
+    --edge: var(--pf-yolk-edge);
+    --text: var(--pf-ink);
+    box-shadow:
+      0 4px 0 var(--edge),
+      0 10px 24px rgb(0 0 0 / 0.45);
+  }
+  .pf-popover.pf-fan {
+    display: flex;
+    flex-direction: column-reverse;
+    align-items: center;
+    gap: 12px;
+    position: absolute;
+    top: auto;
+    bottom: calc(100% + 12px);
+    right: 4px;
+    width: auto;
+    padding: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
+    transform-origin: bottom center;
+  }
+  .pf-popover.pf-fan[hidden] {
+    display: none !important;
+  }
+  .pf-fan .pf-slot {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 12px;
+  }
+  /* Only the fan's own buttons, not those inside the sheets they open. */
+  .pf-fan > .pf-slot > .pf-btn.icon,
+  .pf-fan :is(.pf-slot, .pf-fan) > .pf-popover-anchor > .pf-btn.icon {
+    width: 48px;
+    height: 48px;
+    margin: 0;
+    border-radius: 50%;
+    box-shadow:
+      0 3px 0 var(--edge),
+      0 8px 18px rgb(0 0 0 / 0.4);
+  }
+  /* Let room screens scroll clear of the floating button. */
+  body:has(.pf-fan-anchor:not([hidden])) .pf-overlay {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+  /* While the fan is closed, the button still tells you what matters. */
+  .pf-fan-anchor:has(.pf-voice-mic.live) > .pf-fab {
+    box-shadow:
+      0 4px 0 var(--edge),
+      0 0 0 4px var(--pf-mint),
+      0 0 18px 6px rgb(75 227 160 / 0.55);
+  }
+  .pf-fan-anchor:has(.pf-voice-mic.muted) > .pf-fab::before,
+  .pf-fan-anchor:has(.pf-count:not([hidden])) > .pf-fab::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 3px solid var(--pf-night);
+  }
+  .pf-fan-anchor:has(.pf-voice-mic.muted) > .pf-fab::before {
+    left: -2px;
+    background: var(--pf-coral);
+  }
+  .pf-fan-anchor:has(.pf-count:not([hidden])) > .pf-fab::after {
+    right: -2px;
+    background: var(--pf-mint);
+  }
+
+  /* Desktop: what the fan's buttons open (chat, reactions) unfolds to its left. */
+  @media (min-width: 521px) {
+    .pf-fan .pf-popover-anchor {
+      position: relative;
+    }
+    .pf-fan .pf-popover-anchor > .pf-popover {
+      top: auto;
+      bottom: 0;
+      right: calc(100% + 14px);
+      transform-origin: bottom right;
+    }
   }
 
   @media (max-width: 520px) {
@@ -83,66 +182,6 @@
       order: 2;
     }
 
-    /* Floating button bottom-right; the fan opens as a column above it. */
-    .pf-fan-anchor {
-      display: block;
-      position: fixed;
-      right: 16px;
-      bottom: calc(16px + env(safe-area-inset-bottom));
-      z-index: var(--pf-z-fab);
-    }
-    .pf-fan-anchor[hidden] {
-      display: none;
-    }
-    .pf-btn.icon.pf-fab {
-      display: grid;
-      place-items: center;
-      width: 56px;
-      height: 56px;
-      margin: 0;
-      border-radius: 50%;
-      --face: var(--pf-yolk);
-      --edge: var(--pf-yolk-edge);
-      --text: var(--pf-ink);
-      box-shadow:
-        0 4px 0 var(--edge),
-        0 10px 24px rgb(0 0 0 / 0.45);
-    }
-    .pf-popover.pf-fan {
-      display: flex;
-      flex-direction: column-reverse;
-      align-items: center;
-      gap: 12px;
-      position: absolute;
-      top: auto;
-      bottom: calc(100% + 12px);
-      right: 4px;
-      width: auto;
-      padding: 0;
-      background: none;
-      border: 0;
-      box-shadow: none;
-      transform-origin: bottom center;
-    }
-    .pf-popover.pf-fan[hidden] {
-      display: none !important;
-    }
-    .pf-fan .pf-slot {
-      display: flex;
-      flex-direction: column-reverse;
-      gap: 12px;
-    }
-    /* Only the fan's own buttons, not those inside the sheets they open. */
-    .pf-fan > .pf-slot > .pf-btn.icon,
-    .pf-fan :is(.pf-slot, .pf-fan) > .pf-popover-anchor > .pf-btn.icon {
-      width: 48px;
-      height: 48px;
-      margin: 0;
-      border-radius: 50%;
-      box-shadow:
-        0 3px 0 var(--edge),
-        0 8px 18px rgb(0 0 0 / 0.4);
-    }
     /* A settings sheet opened from ⋯ takes over: hide the menu rows behind it
      and the floating button over it. */
     .pf-overflow:has(.pf-popover:not([hidden])) {
@@ -162,36 +201,6 @@
     body:has(.pf-overflow .pf-popover:not([hidden])) .pf-fan-anchor {
       visibility: hidden;
     }
-    /* Let room screens scroll clear of the floating button. */
-    body:has(.pf-fan-anchor:not([hidden])) .pf-overlay {
-      padding-bottom: calc(96px + env(safe-area-inset-bottom));
-    }
-    /* While the fan is closed, the button still tells you what matters. */
-    .pf-fan-anchor:has(.pf-voice-mic.live) > .pf-fab {
-      box-shadow:
-        0 4px 0 var(--edge),
-        0 0 0 4px var(--pf-mint),
-        0 0 18px 6px rgb(75 227 160 / 0.55);
-    }
-    .pf-fan-anchor:has(.pf-voice-mic.muted) > .pf-fab::before,
-    .pf-fan-anchor:has(.pf-count:not([hidden])) > .pf-fab::after {
-      content: '';
-      position: absolute;
-      top: -2px;
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      border: 3px solid var(--pf-night);
-    }
-    .pf-fan-anchor:has(.pf-voice-mic.muted) > .pf-fab::before {
-      left: -2px;
-      background: var(--pf-coral);
-    }
-    .pf-fan-anchor:has(.pf-count:not([hidden])) > .pf-fab::after {
-      right: -2px;
-      background: var(--pf-mint);
-    }
-
     /* Every other popover (sound, language, voice, chat, reactions) is a bottom
      sheet, lifted above the on-screen keyboard (see ui/popover.ts). `body`
      outranks the fixed widths that feature styles give their popovers. */

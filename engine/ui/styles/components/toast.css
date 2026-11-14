@@ -42,13 +42,15 @@
   }
   .pf-toast-text .pf-toast-name {
     display: inline-block;
-    vertical-align: baseline;
-    margin: 0 2px;
-    padding: 1px 8px;
+    vertical-align: middle;
+    margin: -2px 3px 0;
+    padding: 2px 9px;
+    line-height: 1.25;
   }
   .pf-toast-name {
     flex: none;
-    max-width: 40%;
+    /* In em: a % of a short sentence is tiny ("Hèo haha" showed as "Hè…"). */
+    max-width: 14em;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

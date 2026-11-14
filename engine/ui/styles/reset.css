@@ -14,6 +14,8 @@
     color: var(--pf-chalk);
     font: 400 16px/1.45 var(--pf-font);
     -webkit-font-smoothing: antialiased;
+    /* Phones flash a grey square on every tapped button, even round ones; buttons have their own press look. */
+    -webkit-tap-highlight-color: transparent;
   }
 
   :focus-visible {

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
 
 test('launcher lists games and opens Snake', async ({ page }) => {
   await page.goto('/')

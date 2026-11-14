@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
 import { hostAndGuest, openSnake, seat, waitForGo } from './helpers'
 
 test('lobby: seats, ready-up, start, and guest input reaching the host', async ({ context }) => {

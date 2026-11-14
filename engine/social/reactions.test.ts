@@ -119,8 +119,22 @@ describe('WHEEL_REACTIONS', () => {
 describe('TRAY_REACTIONS', () => {
   it('lists the visible reactions: thumbs and love first, faces next, voice helpers last', () => {
     expect(TRAY_REACTIONS).toEqual([
-      'like', 'dislike', 'heart', 'fire', 'laugh', 'haha', 'thinking', 'gg',
-      'rage', 'cry', 'skull', 'eyes', 'sweat', 'mic-on', 'hear-me', 'cant-hear',
+      'like',
+      'dislike',
+      'heart',
+      'fire',
+      'laugh',
+      'haha',
+      'thinking',
+      'gg',
+      'rage',
+      'cry',
+      'skull',
+      'eyes',
+      'sweat',
+      'mic-on',
+      'hear-me',
+      'cant-hear',
     ])
   })
 

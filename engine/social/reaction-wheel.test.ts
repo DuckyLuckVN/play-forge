@@ -203,7 +203,9 @@ describe('reactionWheel under the settings sheet', () => {
     const sheet = document.createElement('div')
     sheet.className = 'pf-sheet-backdrop'
     document.body.append(sheet)
-    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyT', key: 't', bubbles: true, cancelable: true }))
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', { code: 'KeyT', key: 't', bubbles: true, cancelable: true }),
+    )
     expect(w2.isOpen).toBe(false)
     sheet.remove()
     w2.destroy?.()

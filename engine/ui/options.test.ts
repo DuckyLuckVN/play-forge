@@ -80,7 +80,14 @@ describe('optionSummary', () => {
 describe('optionsFold', () => {
   const pickers = () => optionPickers([mode, court], { mode: 'a', court: 'l' }, () => {})!
   const fold = (editable: boolean, open: boolean, onToggle = (_: boolean) => {}) =>
-    optionsFold({ defs: [mode, court], values: { mode: 'a', court: 'l' }, pickers: pickers(), editable, open, onToggle })
+    optionsFold({
+      defs: [mode, court],
+      values: { mode: 'a', court: 'l' },
+      pickers: pickers(),
+      editable,
+      open,
+      onToggle,
+    })
 
   it('host, closed: a summary button; the pickers stay hidden until it is pressed', () => {
     const seen: boolean[] = []
@@ -110,6 +117,15 @@ describe('optionsFold', () => {
 
   it('a single option is not folded', () => {
     const one = optionPickers([mode], { mode: 'a' }, () => {})!
-    expect(optionsFold({ defs: [mode], values: { mode: 'a' }, pickers: one, editable: true, open: false, onToggle: () => {} })).toBe(one)
+    expect(
+      optionsFold({
+        defs: [mode],
+        values: { mode: 'a' },
+        pickers: one,
+        editable: true,
+        open: false,
+        onToggle: () => {},
+      }),
+    ).toBe(one)
   })
 })

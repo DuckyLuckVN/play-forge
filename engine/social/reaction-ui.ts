@@ -2,7 +2,9 @@ import './social.css'
 import { playSound } from '../audio/sound'
 import { h, iconButton } from '../ui/dom'
 import { icons } from '../ui/icons'
+import { isTyping } from '../ui/key-guard'
 import { popover } from '../ui/popover'
+import { setShortcut } from '../ui/tooltip'
 import { avatarEl } from './avatar-ui'
 import { t } from './i18n'
 import { reactionSvg } from './reaction-art'
@@ -13,6 +15,13 @@ export function reactionEl(id: string, cls = 'pf-rx-art'): HTMLSpanElement {
   const el = h('span', { class: cls })
   el.innerHTML = reactionSvg(id) // trusted: our own constant markup
   return el
+}
+
+/** Hidden by something other than a folded menu (the fan unfolds when the tray opens): not in a room. */
+function offScreen(el: HTMLElement): boolean {
+  for (let n = el.parentElement; n; n = n.parentElement)
+    if (n.hidden && !n.classList.contains('pf-popover')) return true
+  return false
 }
 
 /**
@@ -44,6 +53,15 @@ export function reactionPicker(onPick: (id: string) => boolean): HTMLElement {
     },
     ...options,
   )
+  const button = menu.root.querySelector('button')!
+  setShortcut(button, '`')
+  // ` opens the tray (or closes it), wherever the game is, as long as the tray is on screen (in a room).
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'Backquote' || e.repeat || isTyping(e.target) || offScreen(menu.root)) return
+    e.preventDefault()
+    if (menu.isOpen) menu.close()
+    else menu.open()
+  })
   menu.panel.addEventListener('animationend', (e) => {
     if (e.target !== menu.panel) return
     menu.panel.classList.remove('nope')

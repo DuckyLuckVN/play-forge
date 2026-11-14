@@ -137,7 +137,10 @@ describe('shellTabs', () => {
   it('Sound and Language always; Voice only in a room with voice; the game tab last when the game has one', () => {
     expect(shellTabs({ sound: el, lang: el }).map((x) => x.id)).toEqual(['sound', 'lang'])
     expect(
-      shellTabs({ sound: el, lang: el, voice: el, game: { label: 'View', body: el } }).map((x) => [x.id, x.label]),
+      shellTabs({ sound: el, lang: el, voice: el, game: { label: 'View', body: el } }).map((x) => [
+        x.id,
+        x.label,
+      ]),
     ).toEqual([
       ['sound', 'Sound'],
       ['lang', 'Language'],

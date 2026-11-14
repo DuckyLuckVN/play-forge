@@ -85,7 +85,11 @@ export function optionsFold(o: {
   if (!o.editable) return h('div', { class: 'pf-options-fold' }, summary)
   const toggle = h(
     'button',
-    { class: `pf-options-toggle${o.open ? ' open' : ''}`, type: 'button', onclick: () => o.onToggle(!o.open) },
+    {
+      class: `pf-options-toggle${o.open ? ' open' : ''}`,
+      type: 'button',
+      onclick: () => o.onToggle(!o.open),
+    },
     summary,
     h('span', { class: 'pf-options-edit' }, icon(icons.chevronDown), o.open ? t('Done') : t('Change')),
   )

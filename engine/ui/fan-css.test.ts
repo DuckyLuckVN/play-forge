@@ -23,4 +23,10 @@ describe('mobile.css: voice, chat and reactions behind one floating button', () 
       /@media \(min-width: 521px\)[\s\S]*\.pf-fan \.pf-popover-anchor > \.pf-popover \{[^}]*right: calc\(100% \+ \d+px\)/,
     )
   })
+
+  it('a shortcut that opens chat or the emoji tray unfolds the fan, so the panel is not hidden in it', () => {
+    expect(css).toMatch(
+      /\.pf-popover\.pf-fan\[hidden\]:has\(\.pf-popover:not\(\[hidden\]\)\)\s*\{[^}]*display: flex !important/,
+    )
+  })
 })

@@ -66,6 +66,10 @@
   .pf-popover.pf-fan[hidden] {
     display: none !important;
   }
+  /* Something inside opened by a shortcut (Enter: chat, `: emoji tray) unfolds the fan with it. */
+  .pf-popover.pf-fan[hidden]:has(.pf-popover:not([hidden])) {
+    display: flex !important;
+  }
   .pf-fan .pf-slot {
     display: flex;
     flex-direction: column-reverse;

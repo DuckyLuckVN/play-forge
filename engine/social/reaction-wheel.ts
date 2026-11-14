@@ -1,5 +1,6 @@
 import { fitCenter, pickSlot, slotOffset, type Point } from '../ui/radial'
 import { h, setLabel } from '../ui/dom'
+import { setShortcut } from '../ui/tooltip'
 import { guardGameKeys, isTyping } from '../ui/key-guard'
 import { t } from './i18n'
 import { reactionEl } from './reaction-ui'
@@ -40,7 +41,8 @@ export function reactionWheel(opts: ReactionWheelOptions): ReactionWheel {
   const holdKey = opts.holdKey ?? 'KeyT'
 
   const button = h('button', { class: 'pf-rxw-btn', type: 'button' }, reactionEl('laugh'))
-  setLabel(button, t('Reactions (hold T)'))
+  setLabel(button, t('Reactions'))
+  setShortcut(button, holdKey.replace(/^Key/, ''), { hold: true })
   button.hidden = true
 
   const slots = ids.map((id) => {
@@ -168,7 +170,7 @@ export function reactionWheel(opts: ReactionWheelOptions): ReactionWheel {
   button.addEventListener('animationend', (e) => {
     if (e.target !== button) return
     button.classList.remove('nope')
-    button.title = t('Reactions (hold T)')
+    button.title = t('Reactions')
   })
 
   return {

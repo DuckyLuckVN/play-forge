@@ -130,3 +130,61 @@
     }
   }
 }
+
+@layer pf.components {
+  /* ---------- Tooltips (engine/ui/tooltip.ts): mouse only, label + shortcut key cap ---------- */
+
+  .pf-tip {
+    position: fixed;
+    z-index: var(--pf-z-tip);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: min(280px, calc(100vw - 16px));
+    padding: 6px 8px 6px 12px;
+    background: var(--pf-pit);
+    border: 2px solid var(--pf-rim);
+    border-radius: var(--pf-radius-sm);
+    box-shadow: var(--pf-drop);
+    color: var(--pf-chalk);
+    font: var(--pf-fw-semi) 13px/1.3 var(--pf-font);
+    pointer-events: none;
+    animation: pf-tip-in 120ms ease-out;
+  }
+  .pf-tip-keys {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex: none;
+    color: var(--pf-haze);
+    font-size: 12px;
+  }
+  /* The guide's key cap, a size down to sit in a one-line tip. */
+  .pf-tip .pf-key {
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    font-size: 12px;
+    color: var(--pf-yolk);
+    background: var(--pf-felt);
+    border-width: 1.5px 1.5px 3px;
+  }
+  .pf-tip .pf-key.wide {
+    padding: 0 8px;
+  }
+  /* A symbol key (` shown as its printed marks): a monospace face reads them best. */
+  .pf-tip .pf-key.sym {
+    font:
+      800 14px/1 ui-monospace,
+      'SF Mono',
+      Menlo,
+      monospace;
+    letter-spacing: 1px;
+  }
+  @keyframes pf-tip-in {
+    from {
+      opacity: 0;
+      transform: translateY(3px);
+    }
+  }
+}

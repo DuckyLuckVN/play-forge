@@ -47,12 +47,14 @@ import { audioPanel } from './ui/audio-menu'
 import { button } from './ui/components'
 import { langPanel } from './ui/lang-menu'
 import { settingsSheet, shellTabs } from './ui/settings-sheet'
+import { installTooltips, setShortcut } from './ui/tooltip'
 import { netStatusButton } from './ui/net-panel'
 import { h, icon, iconButton, toast } from './ui/dom'
 import { leaderboardTable, type Leaderboard } from './ui/leaderboard'
 import { fullscreenButton } from './ui/fullscreen'
 import {
   guideButton,
+  keyLabel,
   howToPlayMode,
   markGuideSeen,
   openGuide,
@@ -293,6 +295,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   const appId = `play-forge/${def.id}`
   const store = roomStore(def.id)
   applyTheme()
+  // Styled tooltips with shortcut key caps for mouse users (engine/ui/tooltip.ts).
+  installTooltips()
   document.title = `${opts.title} · Play Forge`
   // A TURN login for online rooms, fetched in the background so joining never waits (net/turn.ts).
   if (def.maxPlayers > 1) void prefetchTurnFor()
@@ -337,6 +341,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     reactBtn,
   )
   fan.root.classList.add('pf-fan-anchor')
+  fan.root.dataset.tipSide = 'left' // tips beside the column, not over the next button
   fan.root.querySelector('button')!.classList.add('pf-fab')
   const more = popover(
     { button: iconButton(icons.more, ts('More')), label: ts('More'), class: 'pf-overflow' },
@@ -355,7 +360,16 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     home,
     h('h1', { class: 'pf-bar-title', textContent: opts.title }),
     scoresEl,
-    h('div', { class: 'pf-bar-actions' }, fan.root, pauseBtn, netBtn.root, fullscreenButton(), sheet.button, more.root),
+    h(
+      'div',
+      { class: 'pf-bar-actions' },
+      fan.root,
+      pauseBtn,
+      netBtn.root,
+      fullscreenButton(),
+      sheet.button,
+      more.root,
+    ),
   )
   const stage = h('main', { class: 'pf-stage' })
   const overlay = h('div', { class: 'pf-overlay' })
@@ -374,6 +388,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   // ---------- Control guide ----------
   const mode = howToPlayMode(opts.guide, opts.controls)
   const pauseKeys = opts.pauseKeys ?? PAUSE_KEYS
+  setShortcut(pauseBtn, pauseKeys[0] ? keyLabel(pauseKeys[0]) : null)
   const guide = mode === 'guide' ? withPauseRow(opts.guide!, pauseKeys) : null
   const tutorial = opts.tutorial?.length ? opts.tutorial : null
   /** Closes the first-play help (deck or guide) while it holds back a solo match or sits over a room. */
@@ -1470,7 +1485,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     )
       // After this redraw: starting changes the phase, which redraws again.
       queueMicrotask(() => {
-        if (session === s && s.phase === 'finished' && !closedResults(resultsClosed, s, s.lobby.round)) s.start()
+        if (session === s && s.phase === 'finished' && !closedResults(resultsClosed, s, s.lobby.round))
+          s.start()
       })
   }
 

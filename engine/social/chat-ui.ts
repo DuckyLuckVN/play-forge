@@ -1,6 +1,7 @@
 import './social.css'
 import { countBadge } from '../ui/badge'
 import { h, iconButton, setLabel, toast } from '../ui/dom'
+import { setShortcut } from '../ui/tooltip'
 import { icons } from '../ui/icons'
 import { popover } from '../ui/popover'
 import { avatarEl } from './avatar-ui'
@@ -33,6 +34,7 @@ const CHAT_TOAST_MS = 4500
  */
 export function chatControls(hub: ChatHub, sender: (msg: ChatMessage) => ChatSender): ChatControls {
   const button = iconButton(icons.chat, t('Chat'))
+  setShortcut(button, 'Enter')
   const badge = countBadge(button)
   let unread = 0
 
@@ -113,7 +115,7 @@ export function chatControls(hub: ChatHub, sender: (msg: ChatMessage) => ChatSen
 
   const renderButton = () => {
     badge.set(unread)
-    setLabel(button, unread ? t('Chat ({n} unread)', { n: unread }) : t('Chat (Enter)'))
+    setLabel(button, unread ? t('Chat ({n} unread)', { n: unread }) : t('Chat'))
   }
 
   const off = hub.on((m, fromHistory) => {

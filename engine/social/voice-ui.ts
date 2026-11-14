@@ -1,6 +1,7 @@
 import './social.css'
 import { h, icon, iconButton, setLabel, toast, type Child } from '../ui/dom'
 import { countBadge } from '../ui/badge'
+import { setShortcut } from '../ui/tooltip'
 import { icons } from '../ui/icons'
 import { isTyping } from '../ui/key-guard'
 import { optionPickers } from '../ui/options'
@@ -34,6 +35,8 @@ export interface VoiceControls {
 }
 
 const PTT_KEY = 'KeyV'
+/** Mute / unmute an open mic. Only once in voice: a key never triggers the browser's mic prompt. */
+const MUTE_KEY = 'KeyM'
 
 const JOIN_ERRORS: Record<Exclude<JoinResult, 'ok'>, string> = {
   denied: 'Microphone blocked. Allow it in your browser settings to talk.',
@@ -76,8 +79,9 @@ export function voiceControls(chat: VoiceChat, players: () => VoicePlayer[]): Vo
   mic.oncontextmenu = (e) => e.preventDefault() // long-press menu on phones
 
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.code !== PTT_KEY || e.repeat || isTyping(e.target) || !chat.joined || chat.mode !== 'ptt') return
-    chat.setHolding(true)
+    if (e.repeat || isTyping(e.target) || !chat.joined) return
+    if (e.code === PTT_KEY && chat.mode === 'ptt') chat.setHolding(true)
+    else if (e.code === MUTE_KEY && chat.mode === 'open') chat.setMuted(!chat.isMuted)
   }
   const onKeyUp = (e: KeyboardEvent) => {
     if (e.code === PTT_KEY) chat.setHolding(false)
@@ -100,8 +104,9 @@ export function voiceControls(chat: VoiceChat, players: () => VoicePlayer[]): Vo
     const action = !chat.joined
       ? t('Join voice chat')
       : chat.mode === 'ptt'
-        ? t('Hold to talk (V)')
+        ? t('Hold to talk')
         : t(chat.isMuted ? 'Unmute microphone' : 'Mute microphone')
+    setShortcut(mic, !chat.joined ? null : chat.mode === 'ptt' ? 'V' : 'M', { hold: chat.mode === 'ptt' })
     setLabel(mic, inVoice ? `${action} (${t('{n} in voice', { n: inVoice })})` : action)
     mic.setAttribute('aria-pressed', String(chat.joined && chat.live))
   }

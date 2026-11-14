@@ -35,7 +35,6 @@ export const VI: Dictionary = {
   Reactions: 'Biểu cảm',
   'Send a reaction': 'Gửi biểu cảm',
   'Reaction wheel': 'Vòng biểu cảm',
-  'Reactions (hold T)': 'Biểu cảm (giữ T)',
   'Close reactions': 'Đóng biểu cảm',
   'Slow down a little': 'Chậm lại chút nhé',
   Laugh: 'Cười lăn',
@@ -65,7 +64,6 @@ export const VI: Dictionary = {
 
   // Text chat
   Chat: 'Trò chuyện',
-  'Chat (Enter)': 'Trò chuyện (Enter)',
   'Chat ({n} unread)': 'Trò chuyện ({n} tin chưa đọc)',
   'No messages yet. Say hi!': 'Chưa có tin nhắn. Chào mọi người đi!',
   'Type a message…': 'Nhập tin nhắn…',
@@ -80,7 +78,7 @@ export const VI: Dictionary = {
   'Leave voice chat': 'Rời kênh thoại',
   'Mute microphone': 'Tắt mic',
   'Unmute microphone': 'Bật mic',
-  'Hold to talk (V)': 'Giữ để nói (V)',
+  'Hold to talk': 'Giữ để nói',
   Microphone: 'Micro',
   'Open mic': 'Mic mở',
   'Push to talk': 'Giữ để nói',

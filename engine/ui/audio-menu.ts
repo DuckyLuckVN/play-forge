@@ -57,8 +57,5 @@ export function audioMenu(): HTMLElement {
   const button = h('button', { class: 'pf-btn icon', type: 'button' })
   setLabel(button, t('Sound settings'))
   const c = audioControls((silent) => button.replaceChildren(icon(silent ? icons.soundOff : icons.soundOn)))
-  return popover(
-    { button, label: t('Sound settings'), onOpen: () => c.music.input.focus() },
-    ...c.nodes,
-  ).root
+  return popover({ button, label: t('Sound settings'), onOpen: () => c.music.input.focus() }, ...c.nodes).root
 }

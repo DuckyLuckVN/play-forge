@@ -58,3 +58,48 @@ describe('who is in voice', () => {
     v.destroy()
   })
 })
+
+describe('M mutes', () => {
+  const press = (code: string, target: EventTarget = window) =>
+    target.dispatchEvent(new KeyboardEvent('keydown', { code, bubbles: true, cancelable: true }))
+
+  it('in voice with an open mic, M mutes and unmutes; the mic button shows [M]', () => {
+    const chat = fakeChat(true)
+    const setMuted = vi.fn((m: boolean) => ((chat as unknown as { isMuted: boolean }).isMuted = m))
+    Object.assign(chat, { setMuted })
+    const v = voiceControls(chat, players)
+    expect(v.mic.dataset.key).toBe('M')
+    press('KeyM')
+    expect(setMuted).toHaveBeenLastCalledWith(true)
+    press('KeyM')
+    expect(setMuted).toHaveBeenLastCalledWith(false)
+    v.destroy()
+  })
+
+  it('does nothing out of voice (no surprise mic prompt), in push to talk, or while typing', () => {
+    const out = fakeChat(false)
+    const setMuted = vi.fn()
+    Object.assign(out, { setMuted })
+    const a = voiceControls(out, players)
+    press('KeyM')
+    expect(a.mic.dataset.key).toBeUndefined()
+    a.destroy()
+
+    const ptt = fakeChat(true)
+    Object.assign(ptt, { mode: 'ptt', setMuted })
+    const b = voiceControls(ptt, players)
+    press('KeyM')
+    expect(b.mic.dataset.key).toBe('V')
+    expect(b.mic.dataset.keyHold).toBe('')
+    b.destroy()
+
+    const typing = fakeChat(true)
+    Object.assign(typing, { setMuted })
+    const c = voiceControls(typing, players)
+    const input = document.createElement('input')
+    document.body.append(input)
+    press('KeyM', input)
+    c.destroy()
+    expect(setMuted).not.toHaveBeenCalled()
+  })
+})

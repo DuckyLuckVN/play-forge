@@ -15,3 +15,13 @@ export interface RematchState {
 export function shouldAutoRematch(s: RematchState): boolean {
   return s.isHost && s.phase === 'finished' && s.onResults && s.selfReady && s.canStart
 }
+
+/** The results the local player closed: one room's one round (a new room starts again at round 1). */
+export interface ClosedResults {
+  session: unknown
+  round: number
+}
+
+export function closedResults(closed: ClosedResults | null, session: unknown, round: number): boolean {
+  return !!closed && closed.session === session && closed.round === round
+}

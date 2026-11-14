@@ -11,7 +11,7 @@ export interface PlayerInfo {
   name: string
   /** Stable 0-based seat number, used for colours and spawn points. */
   slot: number
-  /** Ready for the next match. The host is always ready. */
+  /** Ready for the next match. The host never gates Start; after a match it readies up for the rematch too. */
   ready: boolean
   /** False while the player is dropped and may still come back. */
   connected: boolean

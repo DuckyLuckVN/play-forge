@@ -193,3 +193,20 @@ describe('reactionWheel', () => {
     expect(host.querySelector('.pf-rxw, .pf-rxw-btn')).toBeNull()
   })
 })
+
+describe('reactionWheel under the settings sheet', () => {
+  it('T does not open the wheel while the settings sheet is open', () => {
+    const host2 = document.createElement('div')
+    document.body.append(host2)
+    const w2 = reactionWheel({ host: host2, send: () => true })
+    w2.setEnabled(true)
+    const sheet = document.createElement('div')
+    sheet.className = 'pf-sheet-backdrop'
+    document.body.append(sheet)
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyT', key: 't', bubbles: true, cancelable: true }))
+    expect(w2.isOpen).toBe(false)
+    sheet.remove()
+    w2.destroy?.()
+    host2.remove()
+  })
+})

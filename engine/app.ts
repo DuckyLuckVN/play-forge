@@ -74,7 +74,7 @@ import {
 import { chipLook, scoreLabel } from './ui/scoreline'
 import { icons } from './ui/icons'
 import { optionPickers, optionsFold } from './ui/options'
-import { shouldAutoRematch } from './rematch'
+import { closedResults, shouldAutoRematch, type ClosedResults } from './rematch'
 import { popover } from './ui/popover'
 import { applyTheme, playerColor } from './ui/theme'
 
@@ -421,8 +421,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   let roomSelf: { session: Session<S, I>; el: HTMLElement } | null = null
   /** The room whose folded game settings the host has opened (kept across redraws). */
   let optionsOpen: Session<S, I> | null = null
-  /** The round whose results the local player closed: back to the normal room view until the next one. */
-  let resultsClosed = -1
+  /** The results the local player closed: back to the normal room view until the next match ends. */
+  let resultsClosed: ClosedResults | null = null
   let room = ''
   /** Guest: progress of joining the room, until the host's lobby arrives. */
   let joinTrack: JoinTrack | null = null
@@ -733,6 +733,9 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     if (!s || s.offline || s.phase !== 'playing') onlineMenu = false
     pauseBtn.hidden = !(s?.phase === 'playing' && (s.offline ? !s.lobby.paused : !onlineMenu))
     leaveBtn.hidden = !s
+    // ⋯ holds only Leave now: no session, nothing to show (phones would open an empty menu).
+    more.root.hidden = !s
+    if (!s) more.close()
     // Reactions need someone to see them: online rooms we're seated or watching in.
     fan.root.hidden = !s || s.offline || (!s.isHost && !s.lobby.hostId)
     if (fan.root.hidden) fan.close()
@@ -755,7 +758,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         return onlineMenu ? showPaused(s) : show(null)
       case 'finished':
         if (s.offline) return showSoloResult(s)
-        return resultsClosed === s.lobby.round ? showRoom(s) : showResults(s)
+        return closedResults(resultsClosed, s, s.lobby.round) ? showRoom(s) : showResults(s)
       case 'lobby':
         // Solo waits in 'lobby' only while the first-play guide is open (over the stage).
         return s.offline ? show(null) : showRoom(s)
@@ -1421,7 +1424,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     const close = button(
       t('Close'),
       () => {
-        resultsClosed = s.lobby.round
+        resultsClosed = { session: s, round: s.lobby.round }
         if (self?.ready) s.setReady(false)
         render()
       },
@@ -1437,7 +1440,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         },
         self.ready ? 'wide' : 'go wide',
       )
-    if (ready) ready.autofocus = true
+    // No autofocus: Space still mashed from the match must not ready up (and start a rematch).
     show(
       h(
         'div',
@@ -1467,7 +1470,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     )
       // After this redraw: starting changes the phase, which redraws again.
       queueMicrotask(() => {
-        if (session === s && s.phase === 'finished' && resultsClosed !== s.lobby.round) s.start()
+        if (session === s && s.phase === 'finished' && !closedResults(resultsClosed, s, s.lobby.round)) s.start()
       })
   }
 

@@ -4,7 +4,6 @@ import { countBadge } from '../ui/badge'
 import { icons } from '../ui/icons'
 import { isTyping } from '../ui/key-guard'
 import { optionPickers } from '../ui/options'
-import { popover } from '../ui/popover'
 import { slider } from '../ui/slider'
 import { avatarEl } from './avatar-ui'
 import { t } from './i18n'
@@ -22,8 +21,6 @@ export interface VoicePlayer {
 export interface VoiceControls {
   /** Join / mute / hold-to-talk: an everyday control. */
   mic: HTMLElement
-  /** Voice settings popover: belongs with the other settings menus. */
-  settings: HTMLElement
   /**
    * The voice settings panel (label + live body), drawn fresh, for the settings sheet. It is the same
    * node the popover shows, so whichever container mounts it last owns it.
@@ -89,32 +86,32 @@ export function voiceControls(chat: VoiceChat, players: () => VoicePlayer[]): Vo
   window.addEventListener('keyup', onKeyUp)
   window.addEventListener('blur', release)
 
+  // The mic button doubles as the "who's in voice" counter.
+  const micIcon = h('span', { class: 'pf-voice-mic-icon' })
+  mic.append(micIcon)
+  const badge = countBadge(mic)
+  let inVoice = 0
   const renderMic = () => {
     const off = chat.joined && chat.isMuted
-    mic.replaceChildren(icon(off ? icons.micOff : icons.mic))
+    micIcon.replaceChildren(icon(off ? icons.micOff : icons.mic))
     mic.classList.toggle('live', chat.live)
     mic.classList.toggle('muted', off)
     mic.classList.toggle('joined', chat.joined)
-    setLabel(
-      mic,
-      !chat.joined
-        ? t('Join voice chat')
-        : chat.mode === 'ptt'
-          ? t('Hold to talk (V)')
-          : t(chat.isMuted ? 'Unmute microphone' : 'Mute microphone'),
-    )
+    const action = !chat.joined
+      ? t('Join voice chat')
+      : chat.mode === 'ptt'
+        ? t('Hold to talk (V)')
+        : t(chat.isMuted ? 'Unmute microphone' : 'Mute microphone')
+    setLabel(mic, inVoice ? `${action} (${t('{n} in voice', { n: inVoice })})` : action)
     mic.setAttribute('aria-pressed', String(chat.joined && chat.live))
   }
 
-  // ---------- Settings panel ----------
-  // The headset button doubles as the "who's in voice" counter.
-  const headset = iconButton(icons.headset, t('Voice settings'))
-  const badge = countBadge(headset)
   const renderCount = () => {
-    const n = inVoiceCount(chat, players())
-    badge.set(n) // pops when someone joins, so it's noticed mid-game
-    setLabel(headset, n ? t('Voice settings ({n} in voice)', { n }) : t('Voice settings'))
+    inVoice = inVoiceCount(chat, players())
+    badge.set(inVoice) // pops when someone joins, so it's noticed mid-game
   }
+
+  // ---------- Settings panel (the settings sheet's Voice tab) ----------
   const body = h('div', { class: 'pf-voice-body' })
   const panel = h(
     'div',
@@ -122,7 +119,6 @@ export function voiceControls(chat: VoiceChat, players: () => VoicePlayer[]): Vo
     h('span', { class: 'pf-option-label', textContent: t('Voice chat') }),
     body,
   )
-  const menu = popover({ button: headset, label: t('Voice chat'), class: 'pf-voice-pop' }, panel)
 
   let bodyKey = ''
   const renderBody = () => {
@@ -238,22 +234,16 @@ export function voiceControls(chat: VoiceChat, players: () => VoicePlayer[]): Vo
   }
 
   const refresh = () => {
-    renderMic()
     renderCount()
-    if (menu.isOpen || panel.isConnected) renderBody()
+    renderMic()
+    if (panel.isConnected) renderBody()
   }
   const offs = [chat.on('change', refresh)]
-  // Opening always shows fresh state.
-  menu.root.querySelector('button')!.addEventListener('click', () => {
-    bodyKey = ''
-    renderBody()
-  })
-  renderMic()
   renderCount()
+  renderMic()
 
   return {
     mic,
-    settings: menu.root,
     panel() {
       bodyKey = ''
       renderBody()
@@ -264,7 +254,6 @@ export function voiceControls(chat: VoiceChat, players: () => VoicePlayer[]): Vo
     destroy() {
       destroyed = true
       offs.forEach((off) => off())
-      menu.destroy()
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
       window.removeEventListener('blur', release)

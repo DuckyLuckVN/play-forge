@@ -46,3 +46,15 @@ describe('voice panel', () => {
     v.destroy()
   })
 })
+
+describe('who is in voice', () => {
+  it('the mic button counts the others in voice (the fan button lights up with it)', () => {
+    const chat = fakeChat()
+    ;(chat as unknown as { peerState: () => unknown }).peerState = () => ({ mic: true, muted: false })
+    const v = voiceControls(chat, players)
+    const count = v.mic.querySelector<HTMLElement>('.pf-count')!
+    expect(count.hidden).toBe(false)
+    expect(count.textContent).toBe('1')
+    v.destroy()
+  })
+})

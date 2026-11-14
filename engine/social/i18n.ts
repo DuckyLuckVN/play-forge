@@ -75,8 +75,7 @@ export const VI: Dictionary = {
 
   // Voice chat
   'Voice chat': 'Trò chuyện thoại',
-  'Voice settings': 'Cài đặt thoại',
-  'Voice settings ({n} in voice)': 'Cài đặt thoại ({n} người trong kênh)',
+  '{n} in voice': '{n} người trong kênh',
   'Join voice chat': 'Vào kênh thoại',
   'Leave voice chat': 'Rời kênh thoại',
   'Mute microphone': 'Tắt mic',

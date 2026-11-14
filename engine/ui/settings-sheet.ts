@@ -55,6 +55,8 @@ export function settingsSheet(initial: SettingsTab[]): SettingsSheet {
 
   const onKey = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return
+    // An open list inside (e.g. Graphics) closes first, on its own Esc.
+    if (root?.querySelector('[aria-expanded="true"]')) return
     e.preventDefault()
     e.stopPropagation()
     close()

@@ -76,6 +76,18 @@ describe('settingsSheet', () => {
     window.removeEventListener('keydown', game)
   })
 
+  it('Esc in an open dropdown inside closes the dropdown only, not the sheet', () => {
+    const body = () => {
+      const b = document.createElement('button')
+      b.setAttribute('aria-expanded', 'true')
+      return b
+    }
+    sheet = settingsSheet([{ id: 'game', label: 'View', body }])
+    sheet.open()
+    key('Escape')
+    expect(sheet.isOpen).toBe(true)
+  })
+
   it('blocks game keys while open and releases them on close; push-to-talk still passes', () => {
     const game = vi.fn()
     window.addEventListener('keydown', game)

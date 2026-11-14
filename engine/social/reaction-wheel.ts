@@ -23,10 +23,10 @@ export interface ReactionWheel {
 /** Another in-game panel (native popover or `.pf-popover`) is showing: T must not stack the wheel on it. */
 function panelOpen(): boolean {
   try {
-    return !!document.querySelector('[popover]:popover-open, .pf-popover:not([hidden])')
+    return !!document.querySelector('[popover]:popover-open, .pf-popover:not([hidden]), .pf-sheet-backdrop')
   } catch {
     // Engines without :popover-open throw on the selector; fall back to the class only.
-    return !!document.querySelector('.pf-popover:not([hidden])')
+    return !!document.querySelector('.pf-popover:not([hidden]), .pf-sheet-backdrop')
   }
 }
 

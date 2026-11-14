@@ -1,6 +1,7 @@
-import { getLang, LANGS, setLang } from '../core/i18n'
+import { getLang, LANGS, setLang, type Lang } from '../core/i18n'
 import { t } from './i18n'
 import { h, setLabel } from './dom'
+import { optionPickers } from './options'
 import { popover } from './popover'
 
 const currentLang = () => LANGS.find((l) => l.id === getLang()) ?? LANGS[0]
@@ -22,9 +23,23 @@ function langOptions(): HTMLButtonElement[] {
   })
 }
 
-/** The language list as one block (the settings sheet's Language tab). */
+/** The language as one segmented choice, like the other settings (the settings sheet's Language tab). */
 export function langPanel(): HTMLElement {
-  return h('div', { class: 'pf-sheet-section' }, ...langOptions())
+  const pickers = optionPickers(
+    [
+      {
+        id: 'lang',
+        label: t('Language'),
+        default: LANGS[0].id,
+        choices: LANGS.map((l) => ({ value: l.id, label: l.label })),
+      },
+    ],
+    { lang: currentLang().id },
+    (_, value) => setLang(value as Lang),
+  )!
+  // Each name in its own language, for screen readers too.
+  pickers.querySelectorAll<HTMLElement>('[role=radio]').forEach((b, i) => (b.lang = LANGS[i].id))
+  return h('div', { class: 'pf-sheet-section' }, pickers)
 }
 
 /**

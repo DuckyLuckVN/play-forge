@@ -5,6 +5,12 @@
   *::after {
     box-sizing: border-box;
   }
+  /* Thin scrollbars in the theme (rooms, sheets, lists), not the browser's grey bar. Components that
+     hide theirs (tab strips, the bar) still win: this is the reset layer. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--pf-rim) transparent;
+  }
 
   html,
   body {

@@ -16,4 +16,10 @@ describe('reset.css', () => {
   it('keyboard focus still shows a ring', () => {
     expect(css).toMatch(/:focus-visible\s*\{[^}]*outline:\s*3px solid/)
   })
+
+  it('thin scrollbars in the theme colours everywhere (no grey browser bar)', () => {
+    expect(css).toMatch(
+      /\*\s*\{[^}]*scrollbar-width:\s*thin[^}]*scrollbar-color:\s*var\(--pf-rim\) transparent/,
+    )
+  })
 })

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest'
-import { codeInput, newRoomCode, parseRoomCode, ROOM_ALPHABET } from './room-code'
+import { describe, expect, it } from 'vitest'
+import { codeField, newRoomCode, parseRoomCode, ROOM_ALPHABET } from './room-code'
 
 describe('parseRoomCode', () => {
   it('takes a typed code, upper-cased', () => {
@@ -22,37 +22,25 @@ describe('parseRoomCode', () => {
   })
 })
 
-describe('codeInput', () => {
+describe('codeField', () => {
   const type = (input: HTMLInputElement, value: string) => {
     input.value = value
     input.dispatchEvent(new Event('input', { bubbles: true }))
   }
 
-  it('shows 5 boxes that fill as you type, the next one marked', () => {
-    const c = codeInput({ label: 'Room code', onComplete: () => {} })
-    document.body.append(c.root)
-    type(c.input, 'k7')
-    const boxes = [...c.root.querySelectorAll<HTMLElement>('.pf-code-box')]
-    expect(boxes.map((b) => b.textContent)).toEqual(['K', '7', '', '', ''])
-    expect(boxes.map((b) => b.classList.contains('next'))).toEqual([false, false, true, false, false])
-    expect(c.input.value).toBe('K7')
-    expect(c.input.getAttribute('aria-label')).toBe('Room code')
+  it('a plain text field (the CODE box) that keeps only the code: upper-cased, from a pasted link too', () => {
+    const f = codeField({ label: 'Room code', placeholder: 'CODE' })
+    expect(f.classList.contains('pf-input')).toBe(true)
+    expect(f.classList.contains('code')).toBe(true)
+    expect(f.placeholder).toBe('CODE')
+    expect(f.getAttribute('aria-label')).toBe('Room code')
+    type(f, 'k7q')
+    expect(f.value).toBe('K7Q')
+    type(f, 'https://x.io/#room=ab2cd')
+    expect(f.value).toBe('AB2CD')
   })
 
-  it('calls onComplete once the 5th letter is in (typed or a pasted link)', () => {
-    const done = vi.fn()
-    const c = codeInput({ label: 'Room code', onComplete: done })
-    type(c.input, 'K7QX')
-    expect(done).not.toHaveBeenCalled()
-    type(c.input, 'https://x.io/#room=ab2cd')
-    expect(c.input.value).toBe('AB2CD')
-    expect(done).toHaveBeenCalledWith('AB2CD')
-  })
-
-  it('starts from a given code without joining by itself', () => {
-    const done = vi.fn()
-    const c = codeInput({ label: 'Room code', value: 'K7QXP', onComplete: done })
-    expect(c.value()).toBe('K7QXP')
-    expect(done).not.toHaveBeenCalled()
+  it('starts from a given code', () => {
+    expect(codeField({ label: 'Room code', placeholder: 'CODE', value: 'k7qxp' }).value).toBe('K7QXP')
   })
 })

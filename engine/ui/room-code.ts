@@ -1,5 +1,5 @@
 // Room codes: making them, reading one out of whatever a player types or pastes (a code, a whole
-// invite link), and the 5-box code field on the start screen.
+// invite link), and the code field on the start screen.
 import { h } from './dom'
 
 /** No O/0 or I/1: codes are read aloud and typed from a friend's screen. */
@@ -20,24 +20,14 @@ export function parseRoomCode(text: string): string {
     .slice(0, ROOM_CODE_LENGTH)
 }
 
-export interface CodeInput {
-  root: HTMLElement
-  /** The real field (focus, keys, screen readers); the boxes only draw it. */
-  input: HTMLInputElement
-  value(): string
-}
-
 /**
- * One letter per box. A single real input sits over the boxes, so typing, pasting a link and phone
- * keyboards all just work. `onComplete` runs when the 5th letter goes in.
+ * The room code field: a plain text box that keeps only the code as you type, upper-cased, and takes
+ * the code out of a pasted invite link. No maxLength: it would cut a pasted link before we read it.
  */
-export function codeInput(opts: {
-  label: string
-  value?: string
-  onComplete(code: string): void
-}): CodeInput {
+export function codeField(opts: { label: string; placeholder: string; value?: string }): HTMLInputElement {
   const input = h('input', {
-    class: 'pf-code-input',
+    class: 'pf-input code',
+    placeholder: opts.placeholder,
     value: parseRoomCode(opts.value ?? ''),
     spellcheck: false,
     autocomplete: 'off',
@@ -45,25 +35,9 @@ export function codeInput(opts: {
   input.setAttribute('aria-label', opts.label)
   input.setAttribute('autocapitalize', 'characters')
   input.setAttribute('enterkeyhint', 'go')
-  const boxes = Array.from({ length: ROOM_CODE_LENGTH }, () => h('span', { class: 'pf-code-box' }))
-  const root = h('div', { class: 'pf-code' }, ...boxes, input)
-  root.onclick = () => input.focus()
-
-  const draw = () => {
-    const v = input.value
-    boxes.forEach((b, i) => {
-      b.textContent = v[i] ?? ''
-      b.classList.toggle('filled', i < v.length)
-      b.classList.toggle('next', i === v.length)
-    })
-  }
   input.addEventListener('input', () => {
-    const before = input.value
-    const v = parseRoomCode(before)
-    input.value = v
-    draw()
-    if (v.length === ROOM_CODE_LENGTH && before !== '') opts.onComplete(v)
+    const v = parseRoomCode(input.value)
+    if (v !== input.value) input.value = v
   })
-  draw()
-  return { root, input, value: () => input.value }
+  return input
 }

@@ -46,7 +46,7 @@ import { clearVoiceRejoin } from './social/voice-state'
 import { audioPanel } from './ui/audio-menu'
 import { actionButton, button } from './ui/components'
 import { langPanel } from './ui/lang-menu'
-import { codeInput, newRoomCode, parseRoomCode, ROOM_CODE_LENGTH } from './ui/room-code'
+import { codeField, newRoomCode, parseRoomCode, ROOM_CODE_LENGTH } from './ui/room-code'
 import { settingsSheet, shellTabs } from './ui/settings-sheet'
 import { installTooltips, setShortcut } from './ui/tooltip'
 import { netStatusButton } from './ui/net-panel'
@@ -896,10 +896,9 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       history.replaceState(null, '', `#room=${room}`)
       begin(createTransport(appId, room), false)
     }
-    // Five boxes; the 5th letter (typed, or a pasted invite link) joins at once.
-    const code = codeInput({ label: t('Room code'), value: fromLink, onComplete: joinRoom })
-    code.input.onkeydown = (e) => {
-      if (e.key === 'Enter') joinRoom(code.value())
+    const code = codeField({ label: t('Room code'), placeholder: t('CODE'), value: fromLink })
+    code.onkeydown = (e) => {
+      if (e.key === 'Enter') joinRoom(code.value)
     }
 
     // Single-player games have no rooms: just a big Play card.
@@ -937,7 +936,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         primary: true,
         onclick: () => joinRoom(fromLink),
       })
-    const joinBtn = button(t('Join'), () => joinRoom(code.value()))
+    const joinBtn = button(t('Join'), () => joinRoom(code.value))
     if (invite) invite.autofocus = true
     gate(...[solo, create, joinBtn, invite].filter((b): b is HTMLButtonElement => !!b))
 
@@ -961,7 +960,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
             'div',
             { class: 'pf-join' },
             h('span', { class: 'pf-join-label', textContent: t('Have a code? Join a friend') }),
-            h('div', { class: 'pf-join-row' }, code.root, joinBtn),
+            h('div', { class: 'pf-row' }, code, joinBtn),
           ),
         error && h('p', { class: 'pf-note error', textContent: error }),
         howToPlay(),

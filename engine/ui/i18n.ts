@@ -52,6 +52,7 @@ export const VI: Dictionary = {
   // Start screen
   Player: 'Người chơi',
   'Your name': 'Tên của bạn',
+  CODE: 'MÃ',
   'Room code': 'Mã phòng',
   'Room codes are 5 characters, like K7QXP.': 'Mã phòng gồm 5 ký tự, ví dụ K7QXP.',
   Play: 'Chơi',

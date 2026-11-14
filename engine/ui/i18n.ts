@@ -156,8 +156,8 @@ export const VI: Dictionary = {
     'Chuyển dữ liệu trò chơi khi kết nối trực tiếp giữa người chơi bị chặn.',
   'Playing on the same Wi-Fi? Your browser is blocking a direct link. Allow it for a much lower ping.':
     'Đang chơi chung Wi-Fi? Trình duyệt đang chặn kết nối trực tiếp. Cho phép để ping thấp hơn nhiều.',
-  'Your browser blocks links to devices on your Wi-Fi. To link directly, allow "Local network access" in this site\'s settings.':
-    'Trình duyệt đang chặn kết nối tới các thiết bị trong Wi-Fi của bạn. Để kết nối trực tiếp, hãy cho phép "Truy cập mạng cục bộ" (Local network access) trong cài đặt trang này.',
+  'Playing on the same Wi-Fi? Your browser blocks links to devices on it. Tap Allow, or allow "Local network access" in this site\'s settings (on Android, also Chrome\'s "Nearby devices" permission).':
+    'Đang chơi chung Wi-Fi? Trình duyệt đang chặn kết nối tới các thiết bị trong đó. Bấm Cho phép, hoặc bật "Truy cập mạng cục bộ" (Local network access) trong cài đặt trang này (trên Android, bật thêm quyền "Thiết bị ở gần" (Nearby devices) của Chrome).',
   'Same Wi-Fi as your friends? Open Network to allow a direct link.':
     'Chơi chung Wi-Fi với bạn bè? Mở mục Mạng để cho phép kết nối trực tiếp.',
   'Allowed: the direct link opens on the next try.':

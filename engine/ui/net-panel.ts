@@ -53,7 +53,7 @@ const HINT_TEXT: Record<NetHint, () => string> = {
     t('Playing on the same Wi-Fi? Your browser is blocking a direct link. Allow it for a much lower ping.'),
   'local-denied': () =>
     t(
-      'Your browser blocks links to devices on your Wi-Fi. To link directly, allow "Local network access" in this site\'s settings.',
+      'Playing on the same Wi-Fi? Your browser blocks links to devices on it. Tap Allow, or allow "Local network access" in this site\'s settings (on Android, also Chrome\'s "Nearby devices" permission).',
     ),
 }
 
@@ -120,7 +120,8 @@ export function netStatusButton() {
     const view = viewNow()
     if (!view) return
     setHealth(view)
-    if (view.hints.includes('allow-local') && !askedToast && !pop.isOpen) {
+    const ask = view.hints.includes('allow-local') || view.hints.includes('local-denied')
+    if (ask && !askedToast && !pop.isOpen) {
       askedToast = true
       toast(t('Same Wi-Fi as your friends? Open Network to allow a direct link.'))
     }
@@ -130,7 +131,8 @@ export function netStatusButton() {
     const was = access
     access = state
     netLog('local network access:', state)
-    if (was === 'prompt' && state === 'granted') toast(t('Allowed: the direct link opens on the next try.'))
+    if (was !== 'granted' && was !== 'unsupported' && state === 'granted')
+      toast(t('Allowed: the direct link opens on the next try.'))
     refreshHealth()
     if (pop.isOpen) {
       const view = viewNow()
@@ -248,7 +250,8 @@ function drawBody(body: HTMLElement, view: NetPanelView, onAllow: () => void) {
       : h('p', { class: 'pf-net-empty', textContent: t('No one else is here yet.') }),
     ...view.hints.map((hint) => {
       const p = h('p', { class: `pf-net-hint ${hint}`, textContent: HINT_TEXT[hint]() })
-      if (hint === 'allow-local')
+      // A refused permission may still prompt again (Android starts at "denied"): offer it both ways.
+      if (hint === 'allow-local' || hint === 'local-denied')
         p.append(h('button', { class: 'pf-btn pf-net-allow', textContent: t('Allow'), onclick: onAllow }))
       return p
     }),

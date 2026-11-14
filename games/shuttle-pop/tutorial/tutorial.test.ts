@@ -201,6 +201,11 @@ describe('settings card', () => {
     for (const n of names.slice(0, 3)) expect(menu).toContain(n)
   })
 
+  it('points every setting at the ⚙ Settings sheet (no corner button, no More menu any more)', () => {
+    const places = [...body().querySelectorAll('.sp-tut-place')].map((p) => p.textContent)
+    expect(places).toEqual(['Settings › View', 'Settings › View', 'Settings › View', 'Settings'])
+  })
+
   it('lists match options and how to replay', () => {
     const text = body().textContent!
     for (const s of ['1 vs 1', '2 vs 2', 'Computer level', 'Court size', 'How to play', 'Sound', 'Language'])

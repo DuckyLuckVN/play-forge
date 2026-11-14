@@ -46,14 +46,14 @@ describe('reactionWheel', () => {
     expect(w.isOpen).toBe(false)
     expect(w.button.hidden).toBe(true)
   })
-  it('hold T, move up, release sends slot 0 (gg)', () => {
+  it('hold T, move up, release sends slot 0 (like)', () => {
     w.setEnabled(true)
     key('keydown', 'KeyT')
     expect(w.isOpen).toBe(true)
     move(400, 200 - 60)
-    expect(q('[data-rx="gg"]').classList.contains('on')).toBe(true)
+    expect(q('[data-rx="like"]').classList.contains('on')).toBe(true)
     key('keyup', 'KeyT')
-    expect(send).toHaveBeenCalledWith('gg')
+    expect(send).toHaveBeenCalledWith('like')
     expect(w.isOpen).toBe(false)
   })
   it('release in the dead zone cancels', () => {
@@ -191,5 +191,24 @@ describe('reactionWheel', () => {
     w.destroy()
     key('keydown', 'KeyT')
     expect(host.querySelector('.pf-rxw, .pf-rxw-btn')).toBeNull()
+  })
+})
+
+describe('reactionWheel under the settings sheet', () => {
+  it('T does not open the wheel while the settings sheet is open', () => {
+    const host2 = document.createElement('div')
+    document.body.append(host2)
+    const w2 = reactionWheel({ host: host2, send: () => true })
+    w2.setEnabled(true)
+    const sheet = document.createElement('div')
+    sheet.className = 'pf-sheet-backdrop'
+    document.body.append(sheet)
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', { code: 'KeyT', key: 't', bubbles: true, cancelable: true }),
+    )
+    expect(w2.isOpen).toBe(false)
+    sheet.remove()
+    w2.destroy?.()
+    host2.remove()
   })
 })

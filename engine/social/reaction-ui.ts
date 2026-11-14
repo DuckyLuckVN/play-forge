@@ -2,11 +2,13 @@ import './social.css'
 import { playSound } from '../audio/sound'
 import { h, iconButton } from '../ui/dom'
 import { icons } from '../ui/icons'
+import { isTyping } from '../ui/key-guard'
 import { popover } from '../ui/popover'
+import { setShortcut } from '../ui/tooltip'
 import { avatarEl } from './avatar-ui'
 import { t } from './i18n'
 import { reactionSvg } from './reaction-art'
-import { REACTIONS, reactionDef } from './reactions'
+import { TRAY_REACTIONS, reactionDef } from './reactions'
 
 /** The drawing for one reaction, as an element. */
 export function reactionEl(id: string, cls = 'pf-rx-art'): HTMLSpanElement {
@@ -15,13 +17,20 @@ export function reactionEl(id: string, cls = 'pf-rx-art'): HTMLSpanElement {
   return el
 }
 
+/** Hidden by something other than a folded menu (the fan unfolds when the tray opens): not in a room. */
+function offScreen(el: HTMLElement): boolean {
+  for (let n = el.parentElement; n; n = n.parentElement)
+    if (n.hidden && !n.classList.contains('pf-popover')) return true
+  return false
+}
+
 /**
  * Top-bar button plus a tray of reactions. The tray stays open so players
  * can fire a few in a row; the button, Esc or a click elsewhere closes it.
  * `onPick` returns false when the reaction was rate-limited.
  */
 export function reactionPicker(onPick: (id: string) => boolean): HTMLElement {
-  const options = REACTIONS.map((r) => {
+  const options = TRAY_REACTIONS.map((id) => reactionDef(id)!).map((r) => {
     const b = h('button', { class: 'pf-rx-opt', type: 'button', title: t(r.name) }, reactionEl(r.id))
     b.setAttribute('aria-label', t(r.name))
     b.onclick = () => {
@@ -44,6 +53,15 @@ export function reactionPicker(onPick: (id: string) => boolean): HTMLElement {
     },
     ...options,
   )
+  const button = menu.root.querySelector('button')!
+  setShortcut(button, '`')
+  // ` opens the tray (or closes it), wherever the game is, as long as the tray is on screen (in a room).
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'Backquote' || e.repeat || isTyping(e.target) || offScreen(menu.root)) return
+    e.preventDefault()
+    if (menu.isOpen) menu.close()
+    else menu.open()
+  })
   menu.panel.addEventListener('animationend', (e) => {
     if (e.target !== menu.panel) return
     menu.panel.classList.remove('nope')

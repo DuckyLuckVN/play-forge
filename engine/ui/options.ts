@@ -1,5 +1,7 @@
 import type { GameOptions, OptionDef } from '../net/session'
-import { h } from './dom'
+import { h, icon } from './dom'
+import { t } from './i18n'
+import { icons } from './icons'
 
 /**
  * Segmented controls for a game's options (one row per option). Disabled
@@ -48,4 +50,66 @@ export function optionPickers(
       )
     }),
   )
+}
+
+/**
+ * Each option's name, small, with its current choice under it: what a player needs to know before
+ * playing, at a glance. An "off" choice is faded so what is on stands out.
+ */
+export function optionSpecs(defs: OptionDef[], values: GameOptions): HTMLElement {
+  return h(
+    'span',
+    { class: 'pf-specs' },
+    ...defs.map((def) => {
+      const choice = def.choices.find((c) => c.value === values[def.id])
+      return h(
+        'span',
+        { class: 'pf-spec' },
+        h('span', { class: 'pf-spec-k', textContent: def.label }),
+        h('span', {
+          class: choice?.value === 'off' ? 'pf-spec-v off' : 'pf-spec-v',
+          textContent: choice?.label ?? '',
+        }),
+      )
+    }),
+  )
+}
+
+/**
+ * A game's options folded into a small summary (each name with its choice), so the room stays short. The host presses it to show
+ * the pickers (`open` is kept by the caller across redraws); guests just read it. A single option is
+ * short enough already: its pickers come back as they are.
+ */
+export function optionsFold(o: {
+  defs: OptionDef[]
+  values: GameOptions
+  pickers: HTMLElement
+  editable: boolean
+  open: boolean
+  onToggle(open: boolean): void
+}): HTMLElement {
+  if (o.defs.length <= 1) return o.pickers
+  const summary = optionSpecs(o.defs, o.values)
+  if (!o.editable) return h('div', { class: 'pf-options-fold' }, summary)
+  const action = o.open ? t('Done') : t('Change')
+  const toggle = h(
+    'button',
+    {
+      class: `pf-options-toggle${o.open ? ' open' : ''}`,
+      type: 'button',
+      onclick: () => o.onToggle(!o.open),
+    },
+    summary,
+    // A small chevron in the corner, so the summary gets the width; the word is its tooltip / name.
+    h(
+      'span',
+      { class: 'pf-options-edit' },
+      icon(icons.chevronDown),
+      h('span', { class: 'pf-sr', textContent: action }),
+    ),
+  )
+  toggle.title = action
+  toggle.setAttribute('aria-expanded', String(o.open))
+  o.pickers.hidden = !o.open
+  return h('div', { class: 'pf-options-fold card' }, toggle, o.pickers)
 }

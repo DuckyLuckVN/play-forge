@@ -5,6 +5,12 @@
   *::after {
     box-sizing: border-box;
   }
+  /* Thin scrollbars in the theme (rooms, sheets, lists), not the browser's grey bar. Components that
+     hide theirs (tab strips, the bar) still win: this is the reset layer. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--pf-rim) transparent;
+  }
 
   html,
   body {
@@ -14,6 +20,8 @@
     color: var(--pf-chalk);
     font: 400 16px/1.45 var(--pf-font);
     -webkit-font-smoothing: antialiased;
+    /* Phones flash a grey square on every tapped button, even round ones; buttons have their own press look. */
+    -webkit-tap-highlight-color: transparent;
   }
 
   :focus-visible {

@@ -1,23 +1,15 @@
-import { getLang, LANGS, setLang } from '../core/i18n'
+import { getLang, LANGS, setLang, type Lang } from '../core/i18n'
 import { t } from './i18n'
 import { h, setLabel } from './dom'
+import { optionPickers } from './options'
 import { popover } from './popover'
 
-/**
- * Header button showing the current language ("EN"), with a popover to pick
- * another. Picking reloads the page in it; the choice is shared by every game.
- */
-export function langMenu(): HTMLElement {
-  const current = LANGS.find((l) => l.id === getLang()) ?? LANGS[0]
-  const label = t('Language: {name}', { name: current.label })
-  const button = h('button', {
-    class: 'pf-btn icon pf-lang-btn',
-    type: 'button',
-    textContent: current.id.toUpperCase(),
-  })
-  setLabel(button, label)
+const currentLang = () => LANGS.find((l) => l.id === getLang()) ?? LANGS[0]
 
-  const options = LANGS.map((l) => {
+/** One button per language, the current one highlighted. Picking reloads the page in it. */
+function langOptions(): HTMLButtonElement[] {
+  const current = currentLang()
+  return LANGS.map((l) => {
     const on = l.id === current.id
     const b = h('button', {
       class: `pf-btn wide${on ? ' primary' : ''}`,
@@ -29,6 +21,41 @@ export function langMenu(): HTMLElement {
     if (on) b.setAttribute('aria-current', 'true')
     return b
   })
+}
+
+/** The language as one segmented choice, like the other settings (the settings sheet's Language tab). */
+export function langPanel(): HTMLElement {
+  const pickers = optionPickers(
+    [
+      {
+        id: 'lang',
+        label: t('Language'),
+        default: LANGS[0].id,
+        choices: LANGS.map((l) => ({ value: l.id, label: l.label })),
+      },
+    ],
+    { lang: currentLang().id },
+    (_, value) => setLang(value as Lang),
+  )!
+  // Each name in its own language, for screen readers too.
+  pickers.querySelectorAll<HTMLElement>('[role=radio]').forEach((b, i) => (b.lang = LANGS[i].id))
+  return h('div', { class: 'pf-sheet-section' }, pickers)
+}
+
+/**
+ * Header button showing the current language ("EN"), with a popover to pick
+ * another. Picking reloads the page in it; the choice is shared by every game.
+ */
+export function langMenu(): HTMLElement {
+  const current = currentLang()
+  const label = t('Language: {name}', { name: current.label })
+  const button = h('button', {
+    class: 'pf-btn icon pf-lang-btn',
+    type: 'button',
+    textContent: current.id.toUpperCase(),
+  })
+  setLabel(button, label)
+  const options = langOptions()
   return popover(
     {
       button,

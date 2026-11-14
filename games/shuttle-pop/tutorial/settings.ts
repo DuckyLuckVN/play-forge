@@ -1,10 +1,9 @@
 // Tutorial card "Make it yours": the few settings most worth knowing, each with where to find it
-// (the view-settings button over the court, or the top bar's More menu), plus the match options.
+// (the top bar's ⚙ Settings sheet: its View tab, or Sound / Language), plus the match options.
 // Shell words are taken from the shell's own dictionaries so they read exactly as on screen.
 import { h, icon } from '@forge/ui/dom'
 import { t as shellT } from '@forge/ui/i18n'
 import { icons } from '@forge/ui/icons'
-import { t as barT } from '@forge/social/i18n'
 import type { TutorialCard } from '@forge/ui/tutorial'
 import { SETTING_LABELS } from '../camera-menu'
 import { t } from '../i18n'
@@ -16,7 +15,7 @@ const name = (text: string) => h('b', { class: 'sp-tut-name', textContent: text 
 const chip = (text: string) => h('span', { class: 'sp-tut-chip', textContent: text })
 
 function settingsBody(): HTMLElement {
-  const view = () => place(icons.settings, t('View'))
+  const view = () => place(icons.gear, `${shellT('Settings')} › ${t('View')}`)
   const row = (where: HTMLElement, ...what: (Node | string)[]) => [where, h('span', {}, ...what)]
   const list = h(
     'div',
@@ -24,7 +23,7 @@ function settingsBody(): HTMLElement {
     ...row(view(), name(t(SETTING_LABELS.ring)), ` — ${t('where the shuttle drops')}`),
     ...row(view(), name(t(SETTING_LABELS.autoSwing)), ` — ${t('jump & dive swing for you, great to start')}`),
     ...row(view(), name(t(SETTING_LABELS.graphics)), ` — ${t('Low if your device lags')}`),
-    ...row(place(icons.more, barT('More')), name(t('Sound')), ' & ', name(shellT('Language'))),
+    ...row(place(icons.gear, shellT('Settings')), name(t('Sound')), ' & ', name(shellT('Language'))),
   )
   const match = h(
     'p',

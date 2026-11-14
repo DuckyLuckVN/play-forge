@@ -22,7 +22,7 @@ export function mountEmotes(
 ): () => void {
   const wheel = reactionWheel({ host: view, send: (id) => bridge.send(id) })
   wheel.button.classList.add('sp-rx-btn')
-  // Like .sp-cam: the court view takes every pointer as a swing / stick.
+  // The court view takes every pointer as a swing / stick.
   for (const type of ['pointerdown', 'pointerup', 'pointercancel']) {
     wheel.button.addEventListener(type, (e) => e.stopPropagation())
   }

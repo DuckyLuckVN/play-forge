@@ -101,7 +101,7 @@ export function guideRows(steps: readonly GuideStep[], touch: boolean): GuideRow
 export const PAUSE_KEYS: readonly string[] = ['Escape', 'KeyP']
 
 /** A key code's keycap label: Escape → Esc, KeyP → P. */
-const keyLabel = (code: string): string => (code === 'Escape' ? 'Esc' : code.replace(/^Key/, ''))
+export const keyLabel = (code: string): string => (code === 'Escape' ? 'Esc' : code.replace(/^Key/, ''))
 
 /** The game's steps plus the shell's own Pause row (its pause keys, default Esc / P; keyboards only). */
 export function withPauseRow(steps: readonly GuideStep[], keys: readonly string[] = PAUSE_KEYS): GuideStep[] {

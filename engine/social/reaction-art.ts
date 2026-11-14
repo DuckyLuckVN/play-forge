@@ -28,7 +28,25 @@ function starburst(points: number, outer: number, inner: number): string {
   return pts.join(' ')
 }
 
+/** A thumbs-up hand (blue cuff + fist); flipped for thumbs down. */
+const thumb = () =>
+  `<rect x="5" y="28" width="12" height="28" rx="3" fill="#5ab8ff" stroke="#2f8fe0" stroke-width="2.5"/>` +
+  `<path d="M19 30L29 9q7-3 8 5l-2 12h15a6 6 0 0 1 5.5 7.5l-4.5 19a6 6 0 0 1-6 4.5H19Z" fill="#ffc98b" stroke="#e8964a" stroke-width="2.5" stroke-linejoin="round"/>` +
+  `<path d="M37 34h14M36 42h12M35 50h10" stroke="#e8964a" stroke-width="2" stroke-linecap="round"/>`
+
 const ART: Record<string, string> = {
+  like: thumb(),
+  dislike: `<g transform="rotate(180 32 32)">${thumb()}</g>`,
+  haha:
+    face() +
+    pair(`<path d="M17 30q5-7 10 0" ${stroke()}/>`) +
+    `<path d="M15 36h34q-2 19-17 19t-17-19Z" fill="${INK}"/><path d="M19 37h26q-1 4-3 5H22q-2-1-3-5Z" fill="#fff"/><ellipse cx="32" cy="50" rx="8" ry="3.5" fill="#ff6f91"/>`,
+  thinking:
+    face() +
+    `<path d="M17 22l9-2M38 19l9 3" ${stroke(2.5)}/>` +
+    `<circle cx="23" cy="30" r="3.2" fill="${INK}"/><circle cx="41" cy="29" r="3.2" fill="${INK}"/>` +
+    `<path d="M25 42q6-3 13 0" ${stroke()}/>` +
+    `<path d="M14 58q-2-8 6-10l10-1q4 0 4 3t-4 3h-5l6 2q3 2 1 5t-6 2Z" fill="#ffc98b" stroke="#e8964a" stroke-width="2.2" stroke-linejoin="round"/>`,
   laugh:
     face() +
     pair(`<path d="M18 28q5-6 10 0" ${stroke()}/>`) +

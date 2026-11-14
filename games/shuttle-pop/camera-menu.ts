@@ -1,8 +1,5 @@
-import { h, icon, setLabel } from '@forge/ui/dom'
+import { h } from '@forge/ui/dom'
 import { dropdown } from '@forge/ui/dropdown'
-import { icons } from '@forge/ui/icons'
-import { guardGameKeys } from '@forge/ui/key-guard'
-import { popover } from '@forge/ui/popover'
 import { slider } from '@forge/ui/slider'
 import { t } from './i18n'
 import { RING_MODES, type RingMode } from './landing'
@@ -192,78 +189,13 @@ export function viewPanel(): { nodes: HTMLElement[] } {
   }
 }
 
-/**
- * A small settings (sliders) button in the top-right corner of `view` (the game's stage: main.ts
- * stageExtras, so it is there on the menu, in a match and over the pause screen) that opens the
- * view-settings panel below it. The view takes every pointer as a swing / stick, so the overlay keeps its own pointer
- * events to itself, and while the panel is open a press outside only closes it (never swings).
- * While open, a capture guard keeps key press (except Esc/Tab, never a release) away from the game's window listeners.
- * Focus never stays on the button after closing, so Space keeps swinging.
- */
-export function mountCameraButton(view: HTMLElement): { root: HTMLElement; destroy(): void } {
-  const button = h('button', { class: 'pf-btn icon', type: 'button' })
-  setLabel(button, t('View settings'))
-  button.append(icon(icons.settings))
-  const panel = viewPanel()
-  const root = h('div', { class: 'sp-cam' })
+let panelEl: HTMLElement | null = null
 
-  const blurIfHere = () => {
-    if (root.contains(document.activeElement)) (document.activeElement as HTMLElement).blur()
-  }
-  // Capture, on the document: runs before the view's own pointer handlers.
-  const swallowOutside = (e: PointerEvent) => {
-    if (root.contains(e.target as Node)) return
-    e.stopPropagation()
-    menu.close()
-  }
-  let unguard = () => {}
-  // Tabbing out of the panel (e.g. to chat) closes it so the guard never blocks keys elsewhere.
-  const onFocusOut = (e: FocusEvent) => {
-    const to = e.relatedTarget as Node | null
-    if (to && !root.contains(to)) menu.close()
-  }
-  const menu = popover(
-    {
-      button,
-      label: t('View settings'),
-      class: 'sp-cam-pop',
-      // The panel itself, not a control: Space must not press Reset.
-      onOpen: () => menu.panel.focus({ preventScroll: true }),
-      onToggle: (open) => {
-        if (open) {
-          document.addEventListener('pointerdown', swallowOutside, true)
-          unguard = guardGameKeys()
-          menu.root.addEventListener('focusout', onFocusOut)
-        } else {
-          document.removeEventListener('pointerdown', swallowOutside, true)
-          unguard()
-          menu.root.removeEventListener('focusout', onFocusOut)
-          blurIfHere()
-        }
-      },
-    },
-    ...panel.nodes,
-  )
-  menu.panel.tabIndex = -1
-  menu.panel.classList.add('sp-cam-panel')
-  // After the popover's own Esc handler (which refocuses the button): let go of focus.
-  const onEsc = (e: KeyboardEvent) => {
-    if (e.key === 'Escape' && !menu.isOpen) blurIfHere()
-  }
-  document.addEventListener('keydown', onEsc)
-  for (const type of ['pointerdown', 'pointerup', 'pointercancel']) {
-    root.addEventListener(type, (e) => e.stopPropagation())
-  }
-  root.append(menu.root)
-  view.append(root)
-  return {
-    root,
-    destroy() {
-      document.removeEventListener('pointerdown', swallowOutside, true)
-      unguard()
-      document.removeEventListener('keydown', onEsc)
-      menu.destroy()
-      root.remove()
-    },
-  }
+/**
+ * The view settings as one block for the shell's settings sheet (main.ts settingsSections). Built once and
+ * reused: its controls follow prefs live, so a new copy per open would only stack listeners. The sheet keeps
+ * game keys away while it is open, and lives outside the 3D view, so no press on it swings.
+ */
+export function viewSettings(): HTMLElement {
+  return (panelEl ??= h('div', { class: 'sp-cam-panel pf-sheet-section' }, ...viewPanel().nodes))
 }

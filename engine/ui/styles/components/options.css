@@ -55,4 +55,126 @@
     font-size: 14px;
     color: var(--pf-haze);
   }
+
+  /* ---------- Folded options (a room's game settings as one line) ---------- */
+
+  .pf-options-fold {
+    display: grid;
+    gap: var(--pf-space-4);
+  }
+  .pf-options-toggle,
+  .pf-options-fold > .pf-specs {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    padding: 12px 14px;
+    border: 2px solid var(--pf-rim);
+    border-radius: var(--pf-radius-md);
+    background: rgb(0 0 0 / 0.18);
+    color: inherit;
+    font: 600 15px/1.3 var(--pf-font);
+    text-align: left;
+  }
+  .pf-options-toggle {
+    cursor: pointer;
+  }
+  /* The host's card: the summary on top and, opened, the pickers inside it under a thin line. */
+  .pf-options-fold.card {
+    gap: 0;
+    border: 2px solid var(--pf-rim);
+    border-radius: var(--pf-radius-md);
+    background: rgb(0 0 0 / 0.18);
+    overflow: hidden;
+  }
+  .pf-options-fold.card > .pf-options-toggle {
+    border: 0;
+    border-radius: 0;
+    background: none;
+  }
+  /* Only the summary row answers the pointer (the chevron turns yellow too); the pickers stay calm. */
+  .pf-options-fold.card > .pf-options-toggle:hover {
+    background: rgb(255 255 255 / 0.03);
+  }
+  .pf-options-fold.card > .pf-options {
+    padding: var(--pf-space-4) 14px 14px;
+    border-top: 1px solid var(--pf-rim);
+  }
+  /* "Change": a small round chevron in the box's corner, so the summary keeps the width. */
+  .pf-options-edit {
+    display: grid;
+    place-items: center;
+    flex: none;
+    align-self: flex-start;
+    width: 26px;
+    height: 26px;
+    margin: -2px -4px 0 0;
+    border-radius: 50%;
+    background: var(--pf-rim);
+    color: var(--pf-chalk);
+  }
+  .pf-options-edit .pf-icon svg {
+    width: 12px;
+    height: 12px;
+  }
+  .pf-options-toggle:hover .pf-options-edit {
+    background: var(--pf-yolk);
+    color: var(--pf-ink);
+  }
+  .pf-options-edit .pf-icon {
+    transition: transform 160ms ease;
+  }
+  .pf-options-toggle.open .pf-options-edit .pf-icon {
+    transform: rotate(180deg);
+  }
+
+  /* The summary: names small and grey, choices under them; 3 across, 2 on phones. */
+  .pf-specs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px 14px;
+    min-width: 0;
+  }
+  .pf-options-toggle > .pf-specs {
+    flex: 1;
+  }
+  /* Guests: the summary is the box itself, still a grid. */
+  .pf-options-fold > .pf-specs {
+    display: grid;
+  }
+  /* Each setting spans a name row and a choice row shared across its grid row (subgrid): names sit
+     just above their choices and line up at the bottom, so a wrapped name grows upward, never
+     leaving a gap between a short name and its choice. */
+  .pf-spec {
+    display: grid;
+    grid-row: span 2;
+    grid-template-rows: subgrid;
+    row-gap: 3px;
+    min-width: 0;
+  }
+  .pf-spec-k {
+    align-self: end;
+  }
+  .pf-spec-v {
+    align-self: start;
+  }
+  .pf-spec-k {
+    font: var(--pf-fw-bold) 10px/1.1 var(--pf-font);
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--pf-haze);
+  }
+  .pf-spec-v {
+    font: var(--pf-fw-semi) 14px/1.2 var(--pf-font);
+    color: var(--pf-chalk);
+  }
+  .pf-spec-v.off {
+    color: var(--pf-haze);
+  }
+  @media (max-width: 520px) {
+    .pf-specs {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
 }

@@ -43,15 +43,19 @@ import { ReactionLayer, reactionPicker } from './social/reaction-ui'
 import { t as ts } from './social/i18n'
 import { RoomSocial } from './social/room-social'
 import { clearVoiceRejoin } from './social/voice-state'
-import { audioMenu } from './ui/audio-menu'
-import { button } from './ui/components'
-import { langMenu } from './ui/lang-menu'
+import { audioPanel } from './ui/audio-menu'
+import { actionButton, button } from './ui/components'
+import { langPanel } from './ui/lang-menu'
+import { codeField, newRoomCode, parseRoomCode, ROOM_CODE_LENGTH } from './ui/room-code'
+import { settingsSheet, shellTabs } from './ui/settings-sheet'
+import { installTooltips, setShortcut } from './ui/tooltip'
 import { netStatusButton } from './ui/net-panel'
 import { h, icon, iconButton, toast } from './ui/dom'
 import { leaderboardTable, type Leaderboard } from './ui/leaderboard'
 import { fullscreenButton } from './ui/fullscreen'
 import {
   guideButton,
+  keyLabel,
   howToPlayMode,
   markGuideSeen,
   openGuide,
@@ -72,7 +76,8 @@ import {
 } from './ui/tutorial'
 import { chipLook, scoreLabel } from './ui/scoreline'
 import { icons } from './ui/icons'
-import { optionPickers } from './ui/options'
+import { optionPickers, optionsFold } from './ui/options'
+import { closedResults, shouldAutoRematch, type ClosedResults } from './rematch'
 import { popover } from './ui/popover'
 import { applyTheme, playerColor } from './ui/theme'
 
@@ -185,19 +190,19 @@ export interface GameAppOptions<S, I> {
    * sit above the menu / pause overlay, so they stay usable there.
    */
   stageExtras?(stage: HTMLElement): void
+  /**
+   * The game's own settings (e.g. camera and graphics), shown as the last tab of the shell's ⚙ settings
+   * sheet, after Sound, Language and Voice. Called once at start; `label` is already translated and
+   * `body` is called each time the tab opens.
+   */
+  settingsSections?(): { label: string; body: () => HTMLElement } | null
 }
 
-const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 const NAME_KEY = 'play-forge:name'
 /** How often the joining screen re-checks the connection. */
 const JOIN_POLL_MS = 500
 /** Relative link from games/<id>/index.html back to the launcher. */
 const LAUNCHER_URL = '../../index.html'
-
-function newRoomCode(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(5))
-  return Array.from(bytes, (b) => ROOM_ALPHABET[b % ROOM_ALPHABET.length]).join('')
-}
 
 function createTransport(appId: string, room: string): Transport {
   // `?net=local` connects tabs of this browser only (for development).
@@ -285,6 +290,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   const appId = `play-forge/${def.id}`
   const store = roomStore(def.id)
   applyTheme()
+  // Styled tooltips with shortcut key caps for mouse users (engine/ui/tooltip.ts).
+  installTooltips()
   document.title = `${opts.title} · Play Forge`
   // A TURN login for online rooms, fetched in the background so joining never waits (net/turn.ts).
   if (def.maxPlayers > 1) void prefetchTurnFor()
@@ -303,11 +310,21 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   const reactBtn = reactionPicker((id) => social?.reactions.send(id) ?? false)
   const reactionLayer = new ReactionLayer()
   const reactionBridge = new ReactionBridge()
-  // Everyday room controls (mic, chat, reactions) and settings (voice, language,
-  // sound, leave). Desktop shows them all in the bar; phones put the everyday
-  // ones behind a floating button and the settings behind ⋯ (CSS decides).
+  // Everyday room controls (mic, chat, reactions) in the bar (phones: behind a floating button, CSS
+  // decides). Every setting (sound, language, voice, the game's own) lives in one ⚙ sheet; ⋯ holds Leave.
   const quickSlot = h('div', { class: 'pf-slot' })
-  const settingsSlot = h('div', { class: 'pf-slot' })
+  // Built once: their controls follow the saved settings live, a copy per open would stack listeners.
+  let soundEl: HTMLElement | null = null
+  let langEl: HTMLElement | null = null
+  const gameSettings = opts.settingsSections?.() ?? null
+  const tabsFor = (voice: (() => HTMLElement) | null) =>
+    shellTabs({
+      sound: () => (soundEl ??= audioPanel()),
+      lang: () => (langEl ??= langPanel()),
+      voice,
+      game: gameSettings,
+    })
+  const sheet = settingsSheet(tabsFor(null))
   const fan = popover(
     {
       button: iconButton(icons.chat, ts('Voice, chat and reactions')),
@@ -319,12 +336,10 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     reactBtn,
   )
   fan.root.classList.add('pf-fan-anchor')
+  fan.root.dataset.tipSide = 'left' // tips beside the column, not over the next button
   fan.root.querySelector('button')!.classList.add('pf-fab')
   const more = popover(
     { button: iconButton(icons.more, ts('More')), label: ts('More'), class: 'pf-overflow' },
-    settingsSlot,
-    langMenu(),
-    audioMenu(),
     leaveBtn,
   )
   more.root.classList.add('pf-more-anchor')
@@ -340,7 +355,16 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     home,
     h('h1', { class: 'pf-bar-title', textContent: opts.title }),
     scoresEl,
-    h('div', { class: 'pf-bar-actions' }, fan.root, pauseBtn, netBtn.root, fullscreenButton(), more.root),
+    h(
+      'div',
+      { class: 'pf-bar-actions' },
+      fan.root,
+      pauseBtn,
+      netBtn.root,
+      fullscreenButton(),
+      sheet.button,
+      more.root,
+    ),
   )
   const stage = h('main', { class: 'pf-stage' })
   const overlay = h('div', { class: 'pf-overlay' })
@@ -359,6 +383,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   // ---------- Control guide ----------
   const mode = howToPlayMode(opts.guide, opts.controls)
   const pauseKeys = opts.pauseKeys ?? PAUSE_KEYS
+  setShortcut(pauseBtn, pauseKeys[0] ? keyLabel(pauseKeys[0]) : null)
   const guide = mode === 'guide' ? withPauseRow(opts.guide!, pauseKeys) : null
   const tutorial = opts.tutorial?.length ? opts.tutorial : null
   /** Closes the first-play help (deck or guide) while it holds back a solo match or sits over a room. */
@@ -404,6 +429,12 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   let cleanup: (() => void) | null = null
   /** The room's "you" controls (name, avatar, game extras): built once per session, kept across redraws. */
   let roomSelf: { session: Session<S, I>; el: HTMLElement } | null = null
+  /** The room whose folded game settings the host has opened (kept across redraws). */
+  let optionsOpen: Session<S, I> | null = null
+  /** The start screen's folded game options, opened (kept while the menu redraws). */
+  let menuOptionsOpen = false
+  /** The results the local player closed: back to the normal room view until the next match ends. */
+  let resultsClosed: ClosedResults | null = null
   let room = ''
   /** Guest: progress of joining the room, until the host's lobby arrives. */
   let joinTrack: JoinTrack | null = null
@@ -477,7 +508,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     social = roomSocial
     reactionBridge.attach(roomSocial?.reactions ?? null)
     quickSlot.replaceChildren(...(roomSocial?.quick ?? []))
-    settingsSlot.replaceChildren(...(roomSocial?.settings ?? []))
+    sheet.setTabs(tabsFor(roomSocial?.voicePanel ?? null))
     const offs = [
       s.on('lobby', (lobby) => {
         react(s, lobby)
@@ -541,7 +572,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       roomSocial?.dispose()
       social = null
       quickSlot.replaceChildren()
-      settingsSlot.replaceChildren()
+      sheet.setTabs(tabsFor(null))
       unmount()
     }
     if (extra.offline) {
@@ -714,6 +745,9 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     if (!s || s.offline || s.phase !== 'playing') onlineMenu = false
     pauseBtn.hidden = !(s?.phase === 'playing' && (s.offline ? !s.lobby.paused : !onlineMenu))
     leaveBtn.hidden = !s
+    // ⋯ holds only Leave now: no session, nothing to show (phones would open an empty menu).
+    more.root.hidden = !s
+    if (!s) more.close()
     // Reactions need someone to see them: online rooms we're seated or watching in.
     fan.root.hidden = !s || s.offline || (!s.isHost && !s.lobby.hostId)
     if (fan.root.hidden) fan.close()
@@ -735,7 +769,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         if (!onlineMenu) closeHelpOnline()
         return onlineMenu ? showPaused(s) : show(null)
       case 'finished':
-        return s.offline ? showSoloResult(s) : showRoom(s)
+        if (s.offline) return showSoloResult(s)
+        return closedResults(resultsClosed, s, s.lobby.round) ? showRoom(s) : showResults(s)
       case 'lobby':
         // Solo waits in 'lobby' only while the first-play guide is open (over the stage).
         return s.offline ? show(null) : showRoom(s)
@@ -820,21 +855,21 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
 
   // Start buttons wait for the game's preload (see GameAppOptions.preload).
   const preload = preloadGate(opts.preload ? () => opts.preload!() : undefined)
-  const gated = new Map<HTMLButtonElement, string>()
+  const gated = new Map<HTMLButtonElement, Node[]>()
   function gate(...buttons: HTMLButtonElement[]) {
     if (!preload.pending) return
     for (const b of buttons) {
-      gated.set(b, b.textContent ?? '')
+      gated.set(b, [...b.childNodes])
       b.disabled = true
       b.classList.add('loading')
-      b.textContent = t('Loading…')
+      b.replaceChildren(t('Loading…'))
     }
   }
   void preload.whenReady().then(() => {
-    for (const [b, label] of gated) {
+    for (const [b, content] of gated) {
       b.disabled = false
       b.classList.remove('loading')
-      b.textContent = label
+      b.replaceChildren(...content)
     }
     gated.clear()
   })
@@ -842,7 +877,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   function showMenu(error = '') {
     render()
     gated.clear()
-    const fromLink = /room=([A-Z0-9]+)/i.exec(location.hash)?.[1]?.toUpperCase() ?? ''
+    const fromLink = parseRoomCode(/room=([A-Z0-9]+)/i.exec(location.hash)?.[0] ?? '')
     const name = h('input', {
       class: 'pf-input',
       value: storedName() || t('Player'),
@@ -850,18 +885,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       id: 'pf-name',
     })
     const saveName = () => storedName(name.value.trim() || t('Player'))
-    const code = h('input', {
-      class: 'pf-input code',
-      placeholder: t('CODE'),
-      maxLength: 5,
-      value: fromLink,
-      spellcheck: false,
-    })
-    code.setAttribute('aria-label', t('Room code'))
-    code.setAttribute('autocapitalize', 'characters')
-    const join = () => {
-      const c = code.value.trim().toUpperCase()
-      if (c.length !== 5) {
+    const joinRoom = (c: string) => {
+      if (c.length !== ROOM_CODE_LENGTH) {
         playSound(UI_SOUNDS.error)
         return showMenu(t('Room codes are 5 characters, like K7QXP.'))
       }
@@ -871,39 +896,54 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       history.replaceState(null, '', `#room=${room}`)
       begin(createTransport(appId, room), false)
     }
+    const code = codeField({ label: t('Room code'), placeholder: t('CODE'), value: fromLink })
     code.onkeydown = (e) => {
-      if (e.key === 'Enter') join()
+      if (e.key === 'Enter') joinRoom(code.value)
     }
 
-    // Single-player games have no rooms: just a big Play button.
+    // Single-player games have no rooms: just a big Play card.
     const online = def.maxPlayers > 1
-    const solo = button(
-      online ? t('Play solo') : t('Play'),
-      () => {
+    const solo = actionButton({
+      title: online ? t('Play solo') : t('Play'),
+      sub: online ? t('Jump in on your own') : undefined,
+      icon: icons.play,
+      primary: !fromLink,
+      onclick: () => {
         saveName()
         begin(createOfflineTransport(), true, { offline: true })
       },
-      online ? '' : 'primary',
-    )
-    const create = button(
-      t('Create room'),
-      () => {
+    })
+    const create = actionButton({
+      title: t('Create room'),
+      sub: t('Get a code to share with friends'),
+      icon: icons.users,
+      onclick: () => {
         saveName()
         room = newRoomCode()
         newPlayer()
         history.replaceState(null, '', `#room=${room}`)
         begin(createTransport(appId, room), true)
       },
-      'primary',
-    )
-    const joinBtn = button(t('Join'), join, fromLink ? 'primary' : '')
-    if (fromLink) joinBtn.autofocus = true
-    gate(solo, create, joinBtn)
+    })
+    // Came from an invite link: joining that room is the first choice.
+    const invite =
+      online &&
+      fromLink.length === ROOM_CODE_LENGTH &&
+      actionButton({
+        title: t('Join room {code}', { code: fromLink }),
+        sub: t('From your invite link'),
+        icon: icons.users,
+        primary: true,
+        onclick: () => joinRoom(fromLink),
+      })
+    const joinBtn = button(t('Join'), () => joinRoom(code.value))
+    if (invite) invite.autofocus = true
+    gate(...[solo, create, joinBtn, invite].filter((b): b is HTMLButtonElement => !!b))
 
     show(
       h(
         'div',
-        { class: 'pf-panel' },
+        { class: 'pf-panel pf-start' },
         h('h2', { class: 'pf-heading', textContent: opts.title }),
         opts.tagline && h('p', { class: 'pf-lede', textContent: opts.tagline }),
         h(
@@ -914,9 +954,14 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         ),
         menuOptions(),
         opts.menuExtras?.() ?? null,
-        h('div', { class: 'pf-row' }, def.minPlayers <= 1 && solo, online && create),
-        online && h('div', { class: 'pf-or', textContent: t("or join a friend's room") }),
-        online && h('div', { class: 'pf-row' }, code, joinBtn),
+        h('div', { class: 'pf-actions' }, invite, def.minPlayers <= 1 && solo, online && create),
+        online &&
+          h(
+            'div',
+            { class: 'pf-join' },
+            h('span', { class: 'pf-join-label', textContent: t('Have a code? Join a friend') }),
+            h('div', { class: 'pf-row' }, code, joinBtn),
+          ),
         error && h('p', { class: 'pf-note error', textContent: error }),
         howToPlay(),
         controlsText('pf-note'),
@@ -928,13 +973,28 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   /** Option pickers on the start screen; redraws in place to keep typed text. */
   function menuOptions() {
     const slot = h('div')
-    const draw = () =>
+    const draw = () => {
+      const defs = def.options ?? []
+      const pickers = optionPickers(defs, chosenOptions(), (id, value) => {
+        saveOptions({ ...chosenOptions(), [id]: value })
+        draw()
+      })
       slot.replaceChildren(
-        optionPickers(def.options ?? [], chosenOptions(), (id, value) => {
-          saveOptions({ ...chosenOptions(), [id]: value })
-          draw()
-        }) ?? '',
+        pickers
+          ? optionsFold({
+              defs,
+              values: chosenOptions(),
+              pickers,
+              editable: true,
+              open: menuOptionsOpen,
+              onToggle: (open) => {
+                menuOptionsOpen = open
+                draw()
+              },
+            })
+          : '',
       )
+    }
     draw()
     return def.options?.length ? slot : null
   }
@@ -1113,17 +1173,19 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       token.dataset.player = p.id
       if (social?.isSpeaking(p.id)) token.classList.add('speaking')
       token.style.setProperty('--c', playerColor(p.slot))
-      if (isHost || p.ready) {
+      // After a match the host readies up for the rematch like everyone (results screen).
+      const hostMark = isHost && phase !== 'finished'
+      if (hostMark || p.ready) {
         const badge = h('span', {
-          class: `pf-badge${isHost ? ' host' : ''}${seenReady.has(p.id) ? '' : ' pop'}`,
+          class: `pf-badge${hostMark ? ' host' : ''}${seenReady.has(p.id) ? '' : ' pop'}`,
         })
-        badge.append(icon(isHost ? icons.crown : icons.check))
+        badge.append(icon(hostMark ? icons.crown : icons.check))
         token.append(badge)
         seenReady.add(p.id)
       } else seenReady.delete(p.id)
       const status = !p.connected
         ? t('Reconnecting…')
-        : isHost
+        : hostMark
           ? t('Host')
           : p.ready
             ? t('Ready')
@@ -1143,7 +1205,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
           }),
         h('div', { class: 'pf-seat-name', textContent: p.name }),
         h('div', {
-          class: `pf-seat-status${p.connected && (isHost || p.ready) ? ' ok' : ''}`,
+          class: `pf-seat-status${p.connected && (hostMark || p.ready) ? ' ok' : ''}`,
           textContent: status,
         }),
       )
@@ -1168,15 +1230,19 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     )
   }
 
-  /** The game's end-of-match leaderboard, if it has one. */
-  function boardOf(state: S, selfId: string): HTMLElement | null {
+  /** The game's end-of-match leaderboard, if it has one; `readyOf` ticks players ready for a rematch. */
+  function boardOf(state: S, selfId: string, readyOf?: (id: string) => boolean): HTMLElement | null {
     const lb = opts.leaderboard?.(state, selfId)
     if (!lb) return null
     const players = session?.lobby.players ?? []
-    return leaderboardTable(lb, (id) => {
-      const p = players.find((q) => q.id === id)
-      return p ? avatarFor(p) : undefined
-    })
+    return leaderboardTable(
+      lb,
+      (id) => {
+        const p = players.find((q) => q.id === id)
+        return p ? avatarFor(p) : undefined
+      },
+      readyOf,
+    )
   }
 
   /** Results ranking: #1 first, each in their seat colour, you highlighted. */
@@ -1260,7 +1326,6 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       ? (document.activeElement as HTMLElement)
       : null
     const finished = s.phase === 'finished'
-    const outcome = finished && s.state && opts.outcome?.(s.state, s.selfId)
     const self = s.self
     const waiting = s.waitingFor
     const away = s.reconnecting
@@ -1322,35 +1387,47 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       h(
         'div',
         { class: 'pf-panel wide' },
-        outcome
-          ? h('p', { class: 'pf-headline', textContent: outcome.headline })
-          : h('h2', { class: 'pf-heading', textContent: t('{game} room', { game: opts.title }) }),
-        finished && opts.ranking && rankList(s),
-        finished && s.state && boardOf(s.state, s.selfId),
-        finished && s.state && opts.summary && summaryGrid(opts.summary(s.state, s.selfId)),
+        // After a match this is where Close on the results leads: the normal room, results stay behind.
+        h('h2', { class: 'pf-heading', textContent: t('{game} room', { game: opts.title }) }),
         roomCodeBox(),
         roomSection(
           t('Players {n}/{max}', { n: s.lobby.players.length, max: seatingOf(def, s.lobby.options).seats }),
           seats(s),
           kickConfirm(s),
         ),
-        self && !s.offline && roomSection(t('You'), roomSelfControls(s)),
-        settings && roomSection(t('Game settings'), settings, !s.isHost && hint(t('Set by the host'))),
+        // Ready / Start right under the players, so it never needs a scroll.
         h(
           'div',
           { class: 'pf-room-actions' },
           h('p', { class: 'pf-note', textContent: note }),
           offlineNote(),
           action,
-          h(
-            'div',
-            { class: 'pf-row' },
-            (tutorial || guide) && howToPlay(),
-            button(t('Leave room'), leave, 'quiet'),
+        ),
+        self && !s.offline && roomSection(t('You'), roomSelfControls(s)),
+        settings &&
+          roomSection(
+            t('Game settings'),
+            optionsFold({
+              defs: shownOptions,
+              values: s.lobby.options,
+              pickers: settings,
+              editable: s.isHost,
+              open: optionsOpen === s,
+              onToggle: (open) => {
+                optionsOpen = open ? s : null
+                render()
+              },
+            }),
+            !s.isHost && hint(t('Set by the host')),
           ),
+        h(
+          'div',
+          { class: 'pf-row' },
+          (tutorial || guide) && howToPlay(),
+          button(t('Leave room'), leave, 'quiet'),
         ),
       ),
-      finished ? `results-${s.lobby.round}` : 'room',
+      'room',
     )
     if (focused?.isConnected) focused.focus({ preventScroll: true })
     // First time in this game: the deck / guide pops up once over the room (like solo's first play).
@@ -1360,6 +1437,79 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         if (shouldMarkSeen(end)) markGuideSeen(def.id)
       })
     }
+  }
+
+  /**
+   * A room's results: who won, the leaderboard (a tick on everyone ready), and two choices. Ready = in
+   * for a rematch: it starts by itself once everyone is (the host's client starts it, rematch.ts).
+   * Close = back to the normal room (settings, invite, the host's Start button), not ready.
+   */
+  function showResults(s: Session<S, I>) {
+    const outcome = s.state && opts.outcome?.(s.state, s.selfId)
+    const self = s.self
+    const players = s.lobby.players
+    const readyOf = (id: string) => !!players.find((p) => p.id === id)?.ready
+    const board = s.state && boardOf(s.state, s.selfId, readyOf)
+    const others = players.filter((p) => p.connected && !p.ready && p.id !== s.selfId)
+    const note = !self
+      ? t('The room is full, so you are watching. You get a seat when one opens.')
+      : !self.ready
+        ? t('Rematch? It starts when everyone is ready.')
+        : others.length
+          ? t('Waiting for {names} to get ready.', { names: listNames(others) })
+          : t('Everyone is ready.')
+    const close = button(
+      t('Close'),
+      () => {
+        resultsClosed = { session: s, round: s.lobby.round }
+        if (self?.ready) s.setReady(false)
+        render()
+      },
+      'wide quiet',
+    )
+    const ready =
+      self &&
+      button(
+        self.ready ? t('Not ready') : t("I'm ready"),
+        () => {
+          playSound(self.ready ? UI_SOUNDS.unready : UI_SOUNDS.ready)
+          s.setReady(!self.ready)
+        },
+        self.ready ? 'wide' : 'go wide',
+      )
+    // No autofocus: Space still mashed from the match must not ready up (and start a rematch).
+    show(
+      h(
+        'div',
+        { class: 'pf-panel wide' },
+        h('p', { class: 'pf-headline', textContent: outcome ? outcome.headline : t('Game over') }),
+        opts.ranking && rankList(s),
+        // Games without a leaderboard: the seats show scores and who is ready.
+        board ?? seats(s),
+        s.state && opts.summary && summaryGrid(opts.summary(s.state, s.selfId)),
+        h(
+          'div',
+          { class: 'pf-room-actions' },
+          h('p', { class: 'pf-note', textContent: note }),
+          h('div', { class: 'pf-row' }, close, ready),
+        ),
+      ),
+      `results-${s.lobby.round}`,
+    )
+    if (
+      shouldAutoRematch({
+        isHost: s.isHost,
+        phase: s.phase,
+        onResults: true,
+        selfReady: !!self?.ready,
+        canStart: s.canStart,
+      })
+    )
+      // After this redraw: starting changes the phase, which redraws again.
+      queueMicrotask(() => {
+        if (session === s && s.phase === 'finished' && !closedResults(resultsClosed, s, s.lobby.round))
+          s.start()
+      })
   }
 
   function showSoloResult(s: Session<S, I>) {
@@ -1396,6 +1546,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         }),
         controlsText('pf-lede'),
         resume,
+        button(t('Settings'), () => sheet.open(), 'wide'),
         howToPlay(),
         button(s.offline ? t('Quit to menu') : t('Leave room'), leave, 'quiet'),
       ),

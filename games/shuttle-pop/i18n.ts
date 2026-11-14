@@ -104,9 +104,8 @@ export const VI: Dictionary = {
   '{n} shot': '{n} cú đánh',
   '{n} shots': '{n} cú đánh',
 
-  // View settings button and panel (camera-menu.ts, prefs.ts)
+  // View settings: the settings sheet's View tab (camera-menu.ts, prefs.ts)
   Default: 'Mặc định',
-  'View settings': 'Cài đặt hiển thị',
   Height: 'Độ cao',
   'Camera height': 'Độ cao camera',
   Tilt: 'Độ nghiêng',

@@ -12,6 +12,10 @@
     z-index: var(--pf-z-toast);
     pointer-events: none;
   }
+  /* A toast raised from the settings sheet (e.g. "Microphone blocked") shows over it. */
+  body:has(.pf-sheet-backdrop) .pf-toasts {
+    z-index: calc(var(--pf-z-settings) + 1);
+  }
   .pf-toast {
     display: flex;
     align-items: center;

@@ -1,0 +1,59 @@
+@layer pf.components {
+  /* ---------- Start screen (engine/app.ts showMenu): big choices, then a code to join ---------- */
+
+  /* The play choices start their own section: a dashed line from the settings above. */
+  .pf-actions {
+    display: grid;
+    gap: var(--pf-space-4);
+    padding-top: var(--pf-space-5);
+    border-top: 1px dashed var(--pf-rim);
+  }
+  /* A big choice: icon on the left, title with a line under it. */
+  .pf-btn.pf-action {
+    justify-content: flex-start;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 14px 9px;
+    text-align: left;
+    white-space: normal;
+  }
+  .pf-action-icon {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: rgb(0 0 0 / 0.18);
+  }
+  .pf-action-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+  .pf-action-text {
+    display: grid;
+    gap: 2px;
+  }
+  .pf-action-title {
+    font: var(--pf-fw-bold) 16px/1.15 var(--pf-font);
+  }
+  .pf-action-sub {
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.25;
+    opacity: 0.75;
+  }
+
+  /* Join with a code: the CODE field and Join, under a dashed rule. */
+  .pf-join {
+    display: grid;
+    gap: var(--pf-space-3);
+    padding-top: var(--pf-space-5);
+    border-top: 1px dashed var(--pf-rim);
+  }
+  .pf-join-label {
+    color: var(--pf-haze);
+    font-size: 14px;
+    font-weight: 600;
+  }
+}

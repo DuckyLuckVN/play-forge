@@ -11,7 +11,7 @@ export interface PlayerInfo {
   name: string
   /** Stable 0-based seat number, used for colours and spawn points. */
   slot: number
-  /** Ready for the next match. The host is always ready. */
+  /** Ready for the next match. The host never gates Start; after a match it readies up for the rematch too. */
   ready: boolean
   /** False while the player is dropped and may still come back. */
   connected: boolean
@@ -574,10 +574,20 @@ export class Session<S, I> {
     this.removePlayer(playerId)
   }
 
-  /** Mark the local player ready (or not) for the next match. */
+  /**
+   * Mark the local player ready (or not) for the next match. The host's own flag never gates Start
+   * (waitingFor skips the host); it shows the others the host is in for a rematch (results screen).
+   */
   setReady(ready: boolean): void {
     const self = this.self
-    if (this.isHost || !self || !this.hostPeer) return
+    if (!self) return
+    if (this.isHost) {
+      if (self.ready === ready) return
+      self.ready = ready
+      this.broadcastLobby()
+      return
+    }
+    if (!this.hostPeer) return
     self.ready = ready // optimistic; the host's lobby update confirms it
     this.transport.send(CH.ready, ready, this.hostPeer)
     this.events.emit('lobby', this.lobby)
@@ -816,8 +826,8 @@ export class Session<S, I> {
     this.broadcastState()
     if (this.def.isFinished(state)) {
       this.stopSimulation()
-      // Everyone readies up again for the rematch.
-      for (const p of this.lobby.players) p.ready = p.id === this.lobby.hostId
+      // Everyone, host included, readies up again for the rematch.
+      for (const p of this.lobby.players) p.ready = false
       this.setPhase('finished')
     }
   }

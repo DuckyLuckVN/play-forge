@@ -41,6 +41,13 @@ export const VI: Dictionary = {
   'Turn sound on': 'Bật âm thanh',
   'Mute everything': 'Tắt hết âm thanh',
   'Sound settings': 'Cài đặt âm thanh',
+  Settings: 'Cài đặt',
+  Sound: 'Âm thanh',
+  Voice: 'Giọng nói',
+  Close: 'Đóng',
+  'Rematch? It starts when everyone is ready.': 'Đấu lại? Trận bắt đầu khi mọi người sẵn sàng.',
+  Change: 'Đổi',
+  Done: 'Xong',
 
   // Start screen
   Player: 'Người chơi',
@@ -51,8 +58,12 @@ export const VI: Dictionary = {
   Play: 'Chơi',
   'Play solo': 'Chơi một mình',
   'Create room': 'Tạo phòng',
+  'Jump in on your own': 'Vào chơi ngay một mình',
+  'Get a code to share with friends': 'Lấy mã để mời bạn bè',
+  'Join room {code}': 'Vào phòng {code}',
+  'From your invite link': 'Từ link mời của bạn',
+  'Have a code? Join a friend': 'Có mã? Vào phòng bạn bè',
   Join: 'Vào',
-  "or join a friend's room": 'hoặc vào phòng của bạn bè',
   'Loading…': 'Đang tải…',
 
   // Joining and connection

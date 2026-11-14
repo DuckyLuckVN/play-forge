@@ -1,10 +1,10 @@
 import './social.css'
 import { h, icon, iconButton, setLabel, toast, type Child } from '../ui/dom'
 import { countBadge } from '../ui/badge'
+import { setShortcut } from '../ui/tooltip'
 import { icons } from '../ui/icons'
 import { isTyping } from '../ui/key-guard'
 import { optionPickers } from '../ui/options'
-import { popover } from '../ui/popover'
 import { slider } from '../ui/slider'
 import { avatarEl } from './avatar-ui'
 import { t } from './i18n'
@@ -22,8 +22,11 @@ export interface VoicePlayer {
 export interface VoiceControls {
   /** Join / mute / hold-to-talk: an everyday control. */
   mic: HTMLElement
-  /** Voice settings popover: belongs with the other settings menus. */
-  settings: HTMLElement
+  /**
+   * The voice settings panel (label + live body), drawn fresh, for the settings sheet. It is the same
+   * node the popover shows, so whichever container mounts it last owns it.
+   */
+  panel(): HTMLElement
   /** Join voice like the mic button does (error toasts included). */
   join(opts?: { muted?: boolean }): Promise<void>
   /** Call when the room's players change. */
@@ -32,6 +35,8 @@ export interface VoiceControls {
 }
 
 const PTT_KEY = 'KeyV'
+/** Mute / unmute an open mic. Only once in voice: a key never triggers the browser's mic prompt. */
+const MUTE_KEY = 'KeyM'
 
 const JOIN_ERRORS: Record<Exclude<JoinResult, 'ok'>, string> = {
   denied: 'Microphone blocked. Allow it in your browser settings to talk.',
@@ -74,8 +79,9 @@ export function voiceControls(chat: VoiceChat, players: () => VoicePlayer[]): Vo
   mic.oncontextmenu = (e) => e.preventDefault() // long-press menu on phones
 
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.code !== PTT_KEY || e.repeat || isTyping(e.target) || !chat.joined || chat.mode !== 'ptt') return
-    chat.setHolding(true)
+    if (e.repeat || isTyping(e.target) || !chat.joined) return
+    if (e.code === PTT_KEY && chat.mode === 'ptt') chat.setHolding(true)
+    else if (e.code === MUTE_KEY && chat.mode === 'open') chat.setMuted(!chat.isMuted)
   }
   const onKeyUp = (e: KeyboardEvent) => {
     if (e.code === PTT_KEY) chat.setHolding(false)
@@ -84,35 +90,37 @@ export function voiceControls(chat: VoiceChat, players: () => VoicePlayer[]): Vo
   window.addEventListener('keyup', onKeyUp)
   window.addEventListener('blur', release)
 
+  // The mic button doubles as the "who's in voice" counter.
+  const micIcon = h('span', { class: 'pf-voice-mic-icon' })
+  mic.append(micIcon)
+  const badge = countBadge(mic)
+  let inVoice = 0
   const renderMic = () => {
     const off = chat.joined && chat.isMuted
-    mic.replaceChildren(icon(off ? icons.micOff : icons.mic))
+    micIcon.replaceChildren(icon(off ? icons.micOff : icons.mic))
     mic.classList.toggle('live', chat.live)
     mic.classList.toggle('muted', off)
     mic.classList.toggle('joined', chat.joined)
-    setLabel(
-      mic,
-      !chat.joined
-        ? t('Join voice chat')
-        : chat.mode === 'ptt'
-          ? t('Hold to talk (V)')
-          : t(chat.isMuted ? 'Unmute microphone' : 'Mute microphone'),
-    )
+    const action = !chat.joined
+      ? t('Join voice chat')
+      : chat.mode === 'ptt'
+        ? t('Hold to talk')
+        : t(chat.isMuted ? 'Unmute microphone' : 'Mute microphone')
+    setShortcut(mic, !chat.joined ? null : chat.mode === 'ptt' ? 'V' : 'M', { hold: chat.mode === 'ptt' })
+    setLabel(mic, inVoice ? `${action} (${t('{n} in voice', { n: inVoice })})` : action)
     mic.setAttribute('aria-pressed', String(chat.joined && chat.live))
   }
 
-  // ---------- Settings panel ----------
-  // The headset button doubles as the "who's in voice" counter.
-  const headset = iconButton(icons.headset, t('Voice settings'))
-  const badge = countBadge(headset)
   const renderCount = () => {
-    const n = inVoiceCount(chat, players())
-    badge.set(n) // pops when someone joins, so it's noticed mid-game
-    setLabel(headset, n ? t('Voice settings ({n} in voice)', { n }) : t('Voice settings'))
+    inVoice = inVoiceCount(chat, players())
+    badge.set(inVoice) // pops when someone joins, so it's noticed mid-game
   }
+
+  // ---------- Settings panel (the settings sheet's Voice tab) ----------
   const body = h('div', { class: 'pf-voice-body' })
-  const menu = popover(
-    { button: headset, label: t('Voice chat'), class: 'pf-voice-pop' },
+  const panel = h(
+    'div',
+    { class: 'pf-voice-panel' },
     h('span', { class: 'pf-option-label', textContent: t('Voice chat') }),
     body,
   )
@@ -163,18 +171,19 @@ export function voiceControls(chat: VoiceChat, players: () => VoicePlayer[]): Vo
       onInput: (v) => chat.setVolume(v / 100),
     })
 
+    // Who's here first, the settings next, joining or leaving last.
     const parts: Child[] = [
-      joinBtn,
-      !chat.joined &&
-        h('p', { class: 'pf-note', textContent: t('You can hear others without joining. Join to talk.') }),
-      mode,
-      chat.mode === 'ptt' &&
-        h('p', { class: 'pf-note', textContent: t('Hold V, or hold the mic button, to talk.') }),
-      volume.row,
       h('span', { class: 'pf-option-label', textContent: t('Players') }),
       others.length
         ? h('div', { class: 'pf-voice-list' }, ...others.map(playerRow))
         : h('p', { class: 'pf-note', textContent: t('No one else is here yet.') }),
+      mode,
+      chat.mode === 'ptt' &&
+        h('p', { class: 'pf-note', textContent: t('Hold V, or hold the mic button, to talk.') }),
+      volume.row,
+      !chat.joined &&
+        h('p', { class: 'pf-note', textContent: t('You can hear others without joining. Join to talk.') }),
+      joinBtn,
     ]
     body.replaceChildren(...parts.filter((c): c is Node | string => !!c))
     if (focused) body.querySelector<HTMLElement>(`[data-k="${CSS.escape(focused)}"]`)?.focus()
@@ -230,28 +239,26 @@ export function voiceControls(chat: VoiceChat, players: () => VoicePlayer[]): Vo
   }
 
   const refresh = () => {
-    renderMic()
     renderCount()
-    if (menu.isOpen) renderBody()
+    renderMic()
+    if (panel.isConnected) renderBody()
   }
   const offs = [chat.on('change', refresh)]
-  // Opening always shows fresh state.
-  menu.root.querySelector('button')!.addEventListener('click', () => {
-    bodyKey = ''
-    renderBody()
-  })
-  renderMic()
   renderCount()
+  renderMic()
 
   return {
     mic,
-    settings: menu.root,
+    panel() {
+      bodyKey = ''
+      renderBody()
+      return panel
+    },
     join,
     refresh,
     destroy() {
       destroyed = true
       offs.forEach((off) => off())
-      menu.destroy()
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
       window.removeEventListener('blur', release)

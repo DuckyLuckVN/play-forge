@@ -921,38 +921,7 @@
   }
 }
 
-/* ---------- Camera button (camera-menu.ts): top-right of the game view, panel drops below ---------- */
-/* On the stage (main.ts stageExtras): the 3D view's top-right corner (its frame is inset 16px, scene.ts),
-   on every screen; above the menu / pause overlay so it works there too. */
-.sp-cam {
-  position: absolute;
-  top: calc(8px + env(safe-area-inset-top, 0px));
-  right: calc(24px + env(safe-area-inset-right, 0px));
-  z-index: calc(var(--pf-z-overlay) + 1);
-}
-/* Phones in fullscreen: the view goes edge to edge (shell.css), so does its corner. */
-@media (pointer: coarse) {
-  .pf-fullscreen .sp-cam {
-    right: calc(8px + env(safe-area-inset-right, 0px));
-  }
-}
-/* Phones turn popovers into bottom sheets (mobile.css); this one stays a small dropdown over the view. */
-.sp-cam .pf-popover.sp-cam-pop {
-  position: absolute;
-  left: auto;
-  right: 0;
-  top: calc(100% + 8px);
-  bottom: auto;
-  width: min(260px, calc(100vw - 48px));
-  max-height: calc(var(--pf-vh, 100dvh) - 96px);
-  overflow-y: auto;
-  padding: 16px;
-  border-radius: var(--pf-radius-md);
-  border-bottom: 2px solid var(--pf-rim);
-  box-shadow: var(--pf-lift-lg), var(--pf-drop);
-  animation: pf-rise 220ms cubic-bezier(0.2, 1.3, 0.4, 1);
-  z-index: var(--pf-z-popover);
-}
+/* ---------- View settings (camera-menu.ts): the settings sheet's View tab ---------- */
 /* Ring row: set apart from the camera controls; narrow segments so "Near drop" / "Luôn hiện" never wrap at 320 px. */
 .sp-cam-panel .sp-path-row {
   margin-top: 10px;
@@ -974,7 +943,7 @@
   outline: none;
 }
 
-/* ---------- Emoji wheel button (emotes.ts): top-left of the game view, mirrors .sp-cam ---------- */
+/* ---------- Emoji wheel button (emotes.ts): top-left of the game view ---------- */
 .sp-rx-btn {
   position: absolute;
   top: calc(8px + env(safe-area-inset-top, 0px));
@@ -990,7 +959,7 @@
   inset: 0;
   overflow: hidden;
   pointer-events: none;
-  z-index: 2; /* with the bubbles, below .sp-cam (3) */
+  z-index: 2; /* with the bubbles */
 }
 .sp-tag {
   --sp-tag: var(--sp-white);
@@ -1046,7 +1015,7 @@
   inset: 0;
   overflow: hidden;
   pointer-events: none;
-  z-index: 2; /* below .sp-cam (3) */
+  z-index: 2;
 }
 .sp-bubble {
   position: absolute;

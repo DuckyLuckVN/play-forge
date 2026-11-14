@@ -35,8 +35,8 @@ export class RoomSocial {
   readonly voice: VoiceChat | null = null
   /** Everyday controls (mic, chat): the fan on phones, the bar on desktop. */
   readonly quick: HTMLElement[]
-  /** Settings (voice): the ⋯ menu on phones, the bar on desktop. */
-  readonly settings: HTMLElement[]
+  /** The voice settings panel for the ⚙ settings sheet's Voice tab; null when voice is unsupported. */
+  readonly voicePanel: (() => HTMLElement) | null
   private voiceUi: VoiceControls | null = null
   private chatUi: ChatControls
   private offs: (() => void)[] = []
@@ -84,7 +84,8 @@ export class RoomSocial {
       if (roomKey) this.rememberVoice(s, voice, this.voiceUi, roomKey)
     }
     this.quick = [this.voiceUi?.mic, this.chatUi.root].filter((el): el is HTMLElement => !!el)
-    this.settings = this.voiceUi ? [this.voiceUi.settings] : []
+    const voiceUi = this.voiceUi
+    this.voicePanel = voiceUi ? () => voiceUi.panel() : null
   }
 
   /**

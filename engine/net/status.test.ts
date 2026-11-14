@@ -353,7 +353,7 @@ describe('with the game relay (backup server)', () => {
       [host],
     )
     expect(v.rows).toEqual([{ name: 'Ann', state: 'connected', rttMs: 80, route: 'relay' }])
-    expect(v.gameRelay).toEqual({ ok: true, rttMs: 30 })
+    expect(v.gameRelay).toEqual({ ok: true, rttMs: 30, inUse: true })
     expect(v).toMatchObject({ health: 'good', hints: ['relayed'] })
   })
 
@@ -401,6 +401,7 @@ describe('with the game relay (backup server)', () => {
     expect(netPanelView(net({ gameRelay: { state: 'closed' } }), []).gameRelay).toEqual({
       ok: false,
       rttMs: null,
+      inUse: false,
     })
   })
 })
@@ -441,5 +442,17 @@ describe('local network access (same-Wi-Fi direct links)', () => {
     const direct = net({ peers: [{ id: 'p1', state: 'connected', rttMs: 8, route: 'direct' }] })
     expect(view(direct, 'prompt').hints).toEqual([])
     expect(view(net({ kind: 'local' }), 'prompt').hints).not.toContain('allow-local')
+  })
+})
+
+describe('backup server: available vs in use', () => {
+  const relayUp = { state: 'open' as const, rttMs: 30 }
+  it('is "in use" only while some player is reached through it', () => {
+    const direct = netPanelView(
+      net({ peers: [{ id: 'p1', state: 'connected', rttMs: 8, route: 'direct' }], gameRelay: relayUp }),
+      [{ name: 'Ann', peer: 'p1', connected: true }],
+    )
+    expect(direct.gameRelay).toEqual({ ok: true, rttMs: 30, inUse: false })
+    expect(netPanelView(net({ gameRelay: relayUp }), []).gameRelay?.inUse).toBe(false)
   })
 })

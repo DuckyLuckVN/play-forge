@@ -202,8 +202,8 @@ export interface NetPanelView {
   local: boolean
   relays: { host: string; ok: boolean }[]
   relaysOk: number
-  /** Our backup (relay) server; null when not used. */
-  gameRelay: { ok: boolean; rttMs: number | null } | null
+  /** Our backup (relay) server; null when off. `inUse`: some player is reached through it now. */
+  gameRelay: { ok: boolean; rttMs: number | null; inUse: boolean } | null
   rows: PanelRow[]
   hints: NetHint[]
 }
@@ -281,7 +281,11 @@ export function netPanelView(
     relaysOk,
     gameRelay:
       status.gameRelay && status.gameRelay.state !== 'off'
-        ? { ok: relayUp, rttMs: status.gameRelay.rttMs ?? null }
+        ? {
+            ok: relayUp,
+            rttMs: status.gameRelay.rttMs ?? null,
+            inUse: rows.some((r) => r.route === 'relay'),
+          }
         : null,
     rows,
     hints,

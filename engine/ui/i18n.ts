@@ -151,7 +151,14 @@ export const VI: Dictionary = {
   'Via TURN': 'Qua TURN',
   'Connected through our TURN server: voice works': 'Kết nối qua máy chủ TURN: có giọng nói',
   'Backup server': 'Máy chủ dự phòng',
-  'Connected · {ms} ms': 'Đã kết nối · {ms} ms',
+  'In use · {ms} ms': 'Đang dùng · {ms} ms',
+  'In use': 'Đang dùng',
+  'Available · {ms} ms': 'Sẵn sàng · {ms} ms',
+  Available: 'Sẵn sàng',
+  'Connection details': 'Chi tiết kết nối',
+  Smooth: 'Mượt',
+  Playable: 'Chơi được',
+  Laggy: 'Giật lag',
   'Carries the game when a direct link between players is blocked.':
     'Chuyển dữ liệu trò chơi khi kết nối trực tiếp giữa người chơi bị chặn.',
   'Playing on the same Wi-Fi? Your browser is blocking a direct link. Allow it for a much lower ping.':

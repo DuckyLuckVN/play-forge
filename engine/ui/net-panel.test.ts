@@ -169,3 +169,71 @@ describe('Network panel: route names', () => {
     net.attach(null)
   })
 })
+
+describe('Network panel layout', () => {
+  const open = async (src: NetPanelSource = source) => {
+    vi.stubGlobal('navigator', { ...navigator, permissions: undefined })
+    const net = netStatusButton()
+    document.body.append(net.root)
+    net.attach(src)
+    await new Promise((r) => setTimeout(r, 0))
+    net.root.querySelector<HTMLButtonElement>('.pf-net-btn')!.click()
+    return net
+  }
+
+  it('players come first, then their hints, then the connection details', async () => {
+    const net = await open()
+    const body = net.root.querySelector('.pf-net-body')!
+    const order = [...body.children].map((el) => el.className.split(' ')[0])
+    const at = (c: string) => order.indexOf(c)
+    expect(at('pf-net-players')).toBeGreaterThanOrEqual(0)
+    expect(at('pf-net-players')).toBeLessThan(at('pf-net-hint'))
+    expect(at('pf-net-hint')).toBeLessThan(at('pf-net-details'))
+    net.attach(null)
+  })
+
+  it('the backup server says "In use" while a player goes through it, "Available" otherwise', async () => {
+    let net = await open()
+    expect(net.root.querySelector('.pf-net-backup strong')?.textContent).toBe('In use · 110 ms')
+    net.attach(null)
+    document.body.replaceChildren()
+    const direct: NetStatus = {
+      ...relayed,
+      peers: [{ id: 'p1', state: 'connected', rttMs: 9, route: 'direct' }],
+    }
+    net = await open({ ...source, status: () => direct })
+    expect(net.root.querySelector('.pf-net-backup strong')?.textContent).toBe('Available · 110 ms')
+    net.attach(null)
+  })
+
+  it('colours each ping by how it plays (good / ok / high)', async () => {
+    const pings = (ms: number) => ({
+      ...relayed,
+      peers: [{ id: 'p1', state: 'connected' as const, rttMs: ms, route: 'direct' as const }],
+    })
+    for (const [ms, cls] of [
+      [30, 'good'],
+      [150, 'ok'],
+      [320, 'bad'],
+    ] as const) {
+      const net = await open({ ...source, status: () => pings(ms) })
+      expect(net.root.querySelector('.pf-net-ping')?.classList.contains(cls)).toBe(true)
+      net.attach(null)
+      document.body.replaceChildren()
+    }
+  })
+
+  it('folds the matchmaking server list, and keeps it open across refreshes', async () => {
+    const net = await open()
+    const details = () => net.root.querySelector<HTMLDetailsElement>('details.pf-net-servers')!
+    const first = details()
+    expect(first.open).toBe(false)
+    first.open = true
+    first.dispatchEvent(new Event('toggle'))
+    // The panel redraws every second: a new element, still open.
+    await new Promise((r) => setTimeout(r, 1300))
+    expect(details()).not.toBe(first)
+    expect(details().open).toBe(true)
+    net.attach(null)
+  })
+})

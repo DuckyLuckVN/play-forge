@@ -145,7 +145,7 @@ export const VI: Dictionary = {
   "Some players can't link directly, so the game goes through our backup server. It works the same, ping may be a bit higher.":
     'Một số người chơi không kết nối trực tiếp được, nên trò chơi đi qua máy chủ dự phòng. Vẫn chơi bình thường, ping có thể cao hơn một chút.',
   Direct: 'Trực tiếp',
-  'Via server': 'Qua máy chủ',
+  'Via relay': 'Qua relay',
   'Connected browser to browser': 'Kết nối trực tiếp giữa hai trình duyệt',
   'Connected through our backup server (no voice)': 'Kết nối qua máy chủ dự phòng (không có giọng nói)',
   'Via TURN': 'Qua TURN',

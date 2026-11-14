@@ -63,7 +63,7 @@ const HINT_TEXT: Record<NetHint, () => string> = {
 const ROUTE_TEXT: Record<PanelRoute, () => string> = {
   direct: () => t('Direct'),
   turn: () => t('Via TURN'),
-  relay: () => t('Via server'),
+  relay: () => t('Via relay'),
 }
 const ROUTE_TITLE: Record<PanelRoute, () => string> = {
   direct: () => t('Connected browser to browser'),

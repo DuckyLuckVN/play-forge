@@ -156,3 +156,16 @@ describe('Network panel: after the player allows local network access', () => {
     net.attach(null)
   })
 })
+
+describe('Network panel: route names', () => {
+  it('a player on the WebSocket relay shows "Via relay"', async () => {
+    vi.stubGlobal('navigator', { ...navigator, permissions: undefined })
+    const net = netStatusButton()
+    document.body.append(net.root)
+    net.attach(source)
+    await new Promise((r) => setTimeout(r, 0))
+    net.root.querySelector<HTMLButtonElement>('.pf-net-btn')!.click()
+    expect(net.root.querySelector('.pf-net-state.relay')?.textContent).toBe('Via relay')
+    net.attach(null)
+  })
+})

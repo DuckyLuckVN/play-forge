@@ -80,45 +80,6 @@ export function optionSpecs(defs: OptionDef[], values: GameOptions): HTMLElement
  * the pickers (`open` is kept by the caller across redraws); guests just read it. A single option is
  * short enough already: its pickers come back as they are.
  */
-/** One line per setting: its name on the left, the choice on the right (the "list" summary look). */
-export function optionRows(defs: OptionDef[], values: GameOptions): HTMLElement {
-  return h(
-    'span',
-    { class: 'pf-optrows' },
-    ...defs.map((def) => {
-      const choice = def.choices.find((c) => c.value === values[def.id])
-      return h(
-        'span',
-        { class: 'pf-optrow' },
-        h('span', { class: 'pf-optrow-k', textContent: def.label }),
-        h('span', {
-          class: choice?.value === 'off' ? 'pf-optrow-v off' : 'pf-optrow-v',
-          textContent: choice?.label ?? '',
-        }),
-      )
-    }),
-  )
-}
-
-/**
- * How the folded summary is drawn: 'grid' (names over choices) or 'list' (one line each). Both are
- * live for now so they can be compared in the real app; the loser goes once one is picked.
- */
-export type FoldLook = 'grid' | 'list'
-
-const LOOK_KEY = 'play-forge:settings-look'
-
-/** The look to draw: `?settings=list|grid` in the address picks one and is remembered (compare switch). */
-export function foldLook(): FoldLook {
-  const asked = new URLSearchParams(location.search).get('settings')
-  try {
-    if (asked === 'list' || asked === 'grid') localStorage.setItem(LOOK_KEY, asked)
-    return localStorage.getItem(LOOK_KEY) === 'list' ? 'list' : 'grid'
-  } catch {
-    return asked === 'list' ? 'list' : 'grid'
-  }
-}
-
 export function optionsFold(o: {
   defs: OptionDef[]
   values: GameOptions
@@ -126,22 +87,28 @@ export function optionsFold(o: {
   editable: boolean
   open: boolean
   onToggle(open: boolean): void
-  look?: FoldLook
 }): HTMLElement {
   if (o.defs.length <= 1) return o.pickers
-  const list = o.look === 'list'
-  const summary = list ? optionRows(o.defs, o.values) : optionSpecs(o.defs, o.values)
+  const summary = optionSpecs(o.defs, o.values)
   if (!o.editable) return h('div', { class: 'pf-options-fold' }, summary)
+  const action = o.open ? t('Done') : t('Change')
   const toggle = h(
     'button',
     {
-      class: `pf-options-toggle${list ? ' list' : ''}${o.open ? ' open' : ''}`,
+      class: `pf-options-toggle${o.open ? ' open' : ''}`,
       type: 'button',
       onclick: () => o.onToggle(!o.open),
     },
     summary,
-    h('span', { class: 'pf-options-edit' }, icon(icons.chevronDown), o.open ? t('Done') : t('Change')),
+    // A small chevron in the corner, so the summary gets the width; the word is its tooltip / name.
+    h(
+      'span',
+      { class: 'pf-options-edit' },
+      icon(icons.chevronDown),
+      h('span', { class: 'pf-sr', textContent: action }),
+    ),
   )
+  toggle.title = action
   toggle.setAttribute('aria-expanded', String(o.open))
   o.pickers.hidden = !o.open
   return h('div', { class: 'pf-options-fold' }, toggle, o.pickers)

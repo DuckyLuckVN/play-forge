@@ -76,7 +76,7 @@ import {
 } from './ui/tutorial'
 import { chipLook, scoreLabel } from './ui/scoreline'
 import { icons } from './ui/icons'
-import { foldLook, optionPickers, optionsFold } from './ui/options'
+import { optionPickers, optionsFold } from './ui/options'
 import { closedResults, shouldAutoRematch, type ClosedResults } from './rematch'
 import { popover } from './ui/popover'
 import { applyTheme, playerColor } from './ui/theme'
@@ -987,7 +987,6 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
               pickers,
               editable: true,
               open: menuOptionsOpen,
-              look: foldLook(),
               onToggle: (open) => {
                 menuOptionsOpen = open
                 draw()
@@ -1414,7 +1413,6 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
               pickers: settings,
               editable: s.isHost,
               open: optionsOpen === s,
-              look: foldLook(),
               onToggle: (open) => {
                 optionsOpen = open ? s : null
                 render()

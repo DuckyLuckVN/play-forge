@@ -83,13 +83,26 @@
   .pf-options-toggle:hover {
     border-color: currentColor;
   }
+  /* "Change": a small round chevron in the box's corner, so the summary keeps the width. */
   .pf-options-edit {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
+    display: grid;
+    place-items: center;
     flex: none;
-    font-size: 13px;
-    opacity: 0.8;
+    align-self: flex-start;
+    width: 26px;
+    height: 26px;
+    margin: -2px -4px 0 0;
+    border-radius: 50%;
+    background: var(--pf-rim);
+    color: var(--pf-chalk);
+  }
+  .pf-options-edit .pf-icon svg {
+    width: 12px;
+    height: 12px;
+  }
+  .pf-options-toggle:hover .pf-options-edit {
+    background: var(--pf-yolk);
+    color: var(--pf-ink);
   }
   .pf-options-edit .pf-icon {
     transition: transform 160ms ease;
@@ -145,55 +158,5 @@
     .pf-specs {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-  }
-
-  /* ---------- The "list" summary look (one line per setting; compare switch, foldLook) ---------- */
-
-  .pf-options-toggle.list {
-    display: grid;
-    justify-content: stretch;
-    gap: 0;
-    padding: 4px 14px 10px;
-  }
-  .pf-options-fold > .pf-optrows {
-    display: grid;
-    padding: 4px 14px;
-    border: 2px solid var(--pf-rim);
-    border-radius: var(--pf-radius-md);
-    background: rgb(0 0 0 / 0.18);
-  }
-  .pf-optrows {
-    display: grid;
-  }
-  .pf-optrow {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 12px;
-    padding: 8px 0;
-    font: 500 14px/1.25 var(--pf-font);
-  }
-  .pf-optrow + .pf-optrow {
-    border-top: 1px solid rgb(255 255 255 / 0.06);
-  }
-  .pf-optrow-k {
-    color: var(--pf-haze);
-  }
-  .pf-optrow-v {
-    font-weight: var(--pf-fw-semi);
-    text-align: right;
-  }
-  .pf-optrow-v.off {
-    color: var(--pf-haze);
-    font-weight: 500;
-  }
-  .pf-options-toggle.list > .pf-options-edit {
-    justify-self: end;
-    padding-top: 8px;
-    border-top: 1px solid rgb(255 255 255 / 0.06);
-    width: 100%;
-    justify-content: flex-end;
-    color: var(--pf-yolk);
-    opacity: 1;
   }
 }

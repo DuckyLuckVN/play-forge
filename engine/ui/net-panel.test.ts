@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { LOCAL_PROBE_URL } from '../net/local-access'
+import { LOCAL_PROBE_URLS } from '../net/local-access'
 import type { NetStatus } from '../net/status'
 import { netStatusButton, type NetPanelSource } from './net-panel'
 
@@ -48,7 +48,7 @@ describe('Network panel: same-Wi-Fi local network access', () => {
     expect(net.root.querySelector('.pf-net-hint.allow-local')).not.toBeNull()
     allow!.click()
     expect(fetch).toHaveBeenCalledWith(
-      LOCAL_PROBE_URL,
+      LOCAL_PROBE_URLS[0],
       expect.objectContaining({ targetAddressSpace: 'local' }),
     )
     net.attach(null)
@@ -111,7 +111,7 @@ describe('Network panel: a denied permission (Android Chrome starts there)', () 
     net.root.querySelector<HTMLButtonElement>('.pf-net-btn')!.click()
     expect(net.root.querySelector('.pf-net-hint.local-denied')).not.toBeNull()
     net.root.querySelector<HTMLButtonElement>('.pf-net-allow')!.click()
-    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch).toHaveBeenCalled()
     net.attach(null)
   })
 })

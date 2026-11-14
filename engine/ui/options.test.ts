@@ -120,6 +120,11 @@ describe('optionsFold', () => {
     expect(fold(true, true).querySelector<HTMLButtonElement>('.pf-options-toggle')!.title).toBe('Done')
   })
 
+  it('host: the summary and the opened pickers share one card', () => {
+    expect(fold(true, true).classList.contains('card')).toBe(true)
+    expect(fold(false, true).classList.contains('card')).toBe(false)
+  })
+
   it('host, open: pickers shown, pressing again closes', () => {
     const seen: boolean[] = []
     const el = fold(true, true, (o) => seen.push(o))

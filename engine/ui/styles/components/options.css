@@ -80,8 +80,25 @@
   .pf-options-toggle {
     cursor: pointer;
   }
-  .pf-options-toggle:hover {
-    border-color: currentColor;
+  /* The host's card: the summary on top and, opened, the pickers inside it under a thin line. */
+  .pf-options-fold.card {
+    gap: 0;
+    border: 2px solid var(--pf-rim);
+    border-radius: var(--pf-radius-md);
+    background: rgb(0 0 0 / 0.18);
+    overflow: hidden;
+  }
+  .pf-options-fold.card:hover {
+    border-color: var(--pf-haze);
+  }
+  .pf-options-fold.card > .pf-options-toggle {
+    border: 0;
+    border-radius: 0;
+    background: none;
+  }
+  .pf-options-fold.card > .pf-options {
+    padding: var(--pf-space-4) 14px 14px;
+    border-top: 1px solid var(--pf-rim);
   }
   /* "Change": a small round chevron in the box's corner, so the summary keeps the width. */
   .pf-options-edit {

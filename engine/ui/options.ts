@@ -111,5 +111,5 @@ export function optionsFold(o: {
   toggle.title = action
   toggle.setAttribute('aria-expanded', String(o.open))
   o.pickers.hidden = !o.open
-  return h('div', { class: 'pf-options-fold' }, toggle, o.pickers)
+  return h('div', { class: 'pf-options-fold card' }, toggle, o.pickers)
 }

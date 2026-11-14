@@ -1,9 +1,12 @@
 @layer pf.components {
   /* ---------- Start screen (engine/app.ts showMenu): big choices, then a code to join ---------- */
 
+  /* The play choices start their own section: a dashed line from the settings above. */
   .pf-actions {
     display: grid;
     gap: var(--pf-space-4);
+    padding-top: var(--pf-space-5);
+    border-top: 1px dashed var(--pf-rim);
   }
   /* A big choice: icon on the left, title with a line under it. */
   .pf-btn.pf-action {

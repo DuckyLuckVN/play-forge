@@ -15,8 +15,8 @@ interface Sample {
   vz: number
 }
 
-/** Samples kept per player (≈ 0.13 s: more than the clock's lead plus jitter). */
-const RING = 8
+/** Samples kept per player (≈ 0.2 s: more than the clock's delay, up to CLOCK.maxDelay, plus jitter). */
+const RING = 12
 
 export class RemoteTracks {
   private readonly rings = new Map<string, Sample[]>()

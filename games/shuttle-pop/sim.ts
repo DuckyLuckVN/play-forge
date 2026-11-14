@@ -62,10 +62,20 @@ export const SERVE_TIMEOUT = 3600
 /** A scheduled hit whiffs if the swinger is further than its reach radius (REACH / ability.ts reachOf) + this from the shuttle. */
 const PENDING_SLACK = 0.3
 const EVENT_TICKS = 60
-/** Lag fairness: a guest's swing is judged up to this many ticks back (~117 ms). */
-export const MAX_REWIND = 7
+/**
+ * Lag fairness: a guest's swing is judged up to this many ticks back (200 ms): the round trip + the
+ * guest's render delay (renderclock.ts, up to 4 on a jittery link) + the host's input playout hold
+ * (engine/net/playout.ts), so ~100 ms ping with jitter is still judged at what the guest saw.
+ */
+export const MAX_REWIND = 12
+/**
+ * A tap (charge 0) is graded at its press when the swinger let go at most this many ticks after it (on
+ * their own screen): a tap is one quick motion. Longer = graded at the release, so pressing early out of
+ * reach and running in never earns the press's timing. Separate from MAX_REWIND (that one is lag).
+ */
+export const TAP_ANCHOR = 7
 /** Covers MAX_REWIND + WINDOW.pastGrace (12) + margin. */
-const HISTORY_TICKS = 24
+const HISTORY_TICKS = 30
 /** Character looks (presets.ts rows); `pick` inputs are clamped to 0..PRESETS−1. */
 export const PRESETS = PRESET_TABLE.length
 /** chargeAt of a press that already swung as a tap (tapOnPress): its release only ends it. */
@@ -83,7 +93,7 @@ const HAND_Y = 1.0
 
 export type Level = 'easy' | 'normal' | 'hard'
 
-export type SpInput =
+export type SpInput = (
   | { t: 'move'; x: number; z: number }
   /** `tick` = the history tick on the swinger's screen (world.ts swingTick); none = judged now (no rewind). */
   | { t: 'swing'; x: number; z: number; tick?: number }
@@ -101,6 +111,14 @@ export type SpInput =
    * presser's screen tick (rewind-clamped like a swing's). Older hosts ignore `k` (auto pick).
    */
   | { t: 'ability'; x: number; z: number; tick?: number; k?: Want; auto?: boolean }
+) & {
+  /**
+   * An online guest's predictor step at the send (predict.ts GuestPredictor.stamp): the host's session
+   * applies it at that step + a jitter offset (engine/net/playout.ts), not on arrival. Older guests
+   * send none (applied on arrival); older hosts ignore it.
+   */
+  at?: number
+}
 
 export interface SpPlayer {
   id: string
@@ -137,6 +155,12 @@ export interface SpPlayer {
    * lock (no move / swing / ability) and the immunity after it derive from it and the tick.
    */
   stunAt: number
+  /**
+   * Online guests: host tick − predictor step the session applies their stamped inputs at (the playout
+   * offset, SpInput.at), so the guest lines this state's tick up with its own step exactly
+   * (GuestPredictor). Absent until a stamped input arrives (and from older hosts).
+   */
+  inOff?: number
   preset: number
   level?: Level
   /** AI seats: the bot's cached plan (see ai.ts). */
@@ -576,9 +600,9 @@ export function rewindTicks(hostTick: number, inputTick: number): number {
   return Math.min(MAX_REWIND, Math.max(0, Math.round(hostTick - inputTick)))
 }
 
-/** A press `sincePress` ticks old is graded at its press: a tap (charge 0) within MAX_REWIND of now. */
-export function gradesAtPress(sincePress: number, charge: number): boolean {
-  return charge === 0 && sincePress >= 0 && sincePress <= MAX_REWIND
+/** A tap (charge 0) held `hold` ticks (press to release, on the swinger's screen) is graded at its press. */
+export function gradesAtPress(hold: number, charge: number): boolean {
+  return charge === 0 && hold >= 0 && hold <= TAP_ANCHOR
 }
 
 /** A press at `pressTick` swings at once as a tap when the contact comes within CHARGE.start ticks of it. */
@@ -592,9 +616,10 @@ export function launchTick(contactTick: number, screenTick: number): number {
 }
 
 /**
- * Ticks back a release is graded: a tap (charge 0) at its press, if that is within MAX_REWIND of now
- * (else, and for a charged swing, at the release, `releaseRewind` ticks back). Never more than
- * MAX_REWIND. `pressAt` −1 = no press.
+ * Ticks back a release is graded: a tap (charge 0) at its press, if the release came at most TAP_ANCHOR
+ * ticks after it on the swinger's screen and the press is within MAX_REWIND of now (else, and for a
+ * charged swing, at the release, `releaseRewind` ticks back). Never more than MAX_REWIND. `pressAt` −1 =
+ * no press.
  */
 export function gradeRewind(
   hostTick: number,
@@ -603,7 +628,9 @@ export function gradeRewind(
   charge: number,
 ): number {
   const sincePress = hostTick - pressAt
-  if (pressAt >= 0 && gradesAtPress(sincePress, charge)) return sincePress
+  // Both stamped on the swinger's screen: their difference is the hold there (a guest's lag cancels).
+  const hold = sincePress - releaseRewind
+  if (pressAt >= 0 && sincePress <= MAX_REWIND && gradesAtPress(hold, charge)) return sincePress
   return Math.min(MAX_REWIND, releaseRewind)
 }
 
@@ -1064,9 +1091,11 @@ export function step(state: SpState, inputs: InputEvent<SpInput>[]): SpState {
   const presses: SpPlayer[] = []
   const acts: { p: SpPlayer; held: { x: number; z: number }; rewind: number; want?: Want; auto: boolean }[] =
     []
-  for (const { player, input } of [...inputs, ...botInputs(state)]) {
+  for (const { player, input, stamp, late } of [...inputs, ...botInputs(state)]) {
     const p = state.players.find((q) => q.id === player)
     if (!p || !input) continue
+    // The scheduled offset (a late input's own lag doesn't move the line-up).
+    if (stamp !== undefined && p.kind === 'human') p.inOff = state.tick - stamp - (late ?? 0)
     if (input.t === 'move') p.move = clampDir(input.x, input.z)
     // seedPreset checks the (untrusted) preset itself.
     else if (input.t === 'pick') seedPreset(state, p.id, input.preset)
@@ -1261,6 +1290,8 @@ export const shuttlePopGame: GameDefinition<SpState, SpInput> = {
   countdown: 3,
   setup: createState,
   tick: step,
+  // Untrusted: the session takes only a finite number.
+  inputStamp: (input) => (input && typeof input === 'object' ? input.at : undefined),
   isFinished: (state) => state.phase === 'over',
   netView(state) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars

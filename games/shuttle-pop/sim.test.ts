@@ -29,6 +29,7 @@ import {
   gradesAtPress,
   launchTick,
   MAX_REWIND,
+  TAP_ANCHOR,
   MOVE_SPEED,
   tapContact,
   NET_MARGIN,
@@ -591,13 +592,13 @@ describe('swing timing', () => {
 
 describe('lag fairness (swing rewind)', () => {
   it('rewindTicks clamps host − input to [0, MAX_REWIND]', () => {
-    expect(MAX_REWIND).toBe(7)
-    expect(rewindTicks(100, 50)).toBe(7)
+    expect(MAX_REWIND).toBe(12)
+    expect(rewindTicks(100, 50)).toBe(12)
     expect(rewindTicks(100, 120)).toBe(0)
     expect(rewindTicks(100, 95)).toBe(5)
     expect(rewindTicks(100, 100)).toBe(0)
     expect(rewindTicks(100, NaN)).toBe(0)
-    expect(rewindTicks(100, -1e9)).toBe(7)
+    expect(rewindTicks(100, -1e9)).toBe(12)
   })
 
   /** The shuttle crosses p1 sideways at 6 m/s: in reach for ~±11 ticks around the closest approach. */
@@ -869,12 +870,12 @@ describe('bookkeeping', () => {
     const ids = s.events.map((e) => e.id)
     expect(new Set(ids).size).toBe(ids.length)
   })
-  it('history keeps the last 24 ticks (with where each side stood)', () => {
+  it('history keeps the last 30 ticks (with where each side stood)', () => {
     const s = duel()
     run(s, 40)
-    expect(s.history).toHaveLength(24)
-    expect(s.history[23].tick).toBe(s.tick)
-    expect(s.history[23].who[1]).toEqual({ x: s.players[1].x, z: s.players[1].z })
+    expect(s.history).toHaveLength(30)
+    expect(s.history[29].tick).toBe(s.tick)
+    expect(s.history[29].who[1]).toEqual({ x: s.players[1].x, z: s.players[1].z })
   })
   it('netView strips history and rng', () => {
     const s = duel()
@@ -1050,9 +1051,9 @@ describe('hold-to-charge', () => {
     it('a short hold released before a later contact is a tap graded at the press; a longer one at the release', () => {
       // Pressed while the shuttle is still far (no contact soon), the passing shuttle placed at the release.
       expect(chargedHit(5).hit).toMatchObject({ grade: 'perfect', charge: 0 }) // dt 5 from the press
-      expect(chargedHit(MAX_REWIND).hit).toMatchObject({ grade: 'good', charge: 0 }) // dt 7 from the press
-      // A press older than MAX_REWIND is no anchor: graded at the release.
-      expect(chargedHit(MAX_REWIND + 1).hit).toMatchObject({ grade: 'perfect', charge: 0 })
+      expect(chargedHit(TAP_ANCHOR).hit).toMatchObject({ grade: 'good', charge: 0 }) // dt 7 from the press
+      // A hold longer than TAP_ANCHOR is no anchor: graded at the release.
+      expect(chargedHit(TAP_ANCHOR + 1).hit).toMatchObject({ grade: 'perfect', charge: 0 })
       expect(chargedHit(12).hit).toMatchObject({ grade: 'perfect' }) // charged: graded at the release
       expect((chargedHit(12).hit as { charge: number }).charge).toBeGreaterThan(0)
     })
@@ -1078,10 +1079,13 @@ describe('hold-to-charge', () => {
   })
 
   describe('rewind limits of press-graded taps', () => {
-    it('gradeRewind: a tap anchors on its press only within MAX_REWIND of now; never more', () => {
+    it('gradeRewind: a tap anchors on its press only for a short hold within MAX_REWIND of now; never more', () => {
       expect(gradeRewind(100, 95, 0, 0)).toBe(5) // press 5 ticks ago: graded there
-      expect(gradeRewind(100, 93, 0, 0)).toBe(MAX_REWIND)
-      expect(gradeRewind(100, 92, 2, 0)).toBe(2) // too old: graded at the (stamped) release
+      expect(gradeRewind(100, 93, 0, 0)).toBe(TAP_ANCHOR)
+      expect(gradeRewind(100, 92, 0, 0)).toBe(0) // held 8: graded at the release
+      // A lagged guest: pressed 10 back, released 4 back on its screen = a 6-tick hold: at the press.
+      expect(gradeRewind(100, 90, 4, 0)).toBe(10)
+      expect(gradeRewind(100, 85, 4, 0)).toBe(4) // the press is past MAX_REWIND: at the release
       expect(gradeRewind(100, 95, 3, 0.4)).toBe(3) // charged: always the release
       expect(gradeRewind(100, -1, 4, 0)).toBe(4) // no press
       for (let press = 60; press <= 100; press++)
@@ -1320,10 +1324,10 @@ describe('hold-to-charge', () => {
 })
 
 describe('shared lag predicates', () => {
-  it('gradesAtPress: charge 0 and 0..MAX_REWIND ticks since the press', () => {
+  it('gradesAtPress: charge 0 and a 0..TAP_ANCHOR tick hold', () => {
     expect(gradesAtPress(0, 0)).toBe(true)
-    expect(gradesAtPress(MAX_REWIND, 0)).toBe(true)
-    expect(gradesAtPress(MAX_REWIND + 1, 0)).toBe(false)
+    expect(gradesAtPress(TAP_ANCHOR, 0)).toBe(true)
+    expect(gradesAtPress(TAP_ANCHOR + 1, 0)).toBe(false)
     expect(gradesAtPress(-1, 0)).toBe(false)
     expect(gradesAtPress(3, 1)).toBe(false)
   })

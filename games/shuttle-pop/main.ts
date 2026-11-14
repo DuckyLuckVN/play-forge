@@ -65,6 +65,16 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement, ctx: Moun
           const clock = new RenderClock(session.tickRate)
           return { clock, shuttle: new GuestShuttle(clock), remotes: new RemoteTracks(clock) }
         })()
+  // Every host state reaches the guest's clock, shuttle and remotes, also when several land in one frame
+  // (smoothState keeps only the last two: a burst after a stall would skip the ones between). Court3D
+  // still feeds prev / curr each frame (repeats are ignored) and resets them on a rematch.
+  const offStates = guest
+    ? session.on('state', (s) => {
+        guest.clock.onState(s.tick)
+        guest.shuttle.push(s)
+        guest.remotes.push(s.tick, s.players)
+      })
+    : null
   const detach = court.attach(stage, smooth, session.selfId, (cb) => (onSwing = cb), predictor, live, guest)
   court.surface.setAttribute('role', 'img')
   court.surface.setAttribute('aria-label', t('Badminton court'))
@@ -176,7 +186,9 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement, ctx: Moun
       moved.z = input.z
       predictor?.setMove(input.x, input.z)
     }
-    session.sendInput(input)
+    // Stamped with the prediction's step: the host applies it that many steps after the last one, not
+    // whenever the network delivers it (sim.ts SpInput.at), so jitter doesn't pull the prediction back.
+    session.sendInput(predictor ? { ...input, at: predictor.stamp } : input)
   }
   // Touch: floating stick (left) + swing button (bottom-right), over the court.
   const pad = new TouchPad()
@@ -267,6 +279,7 @@ function mount(session: Session<SpState, SpInput>, stage: HTMLElement, ctx: Moun
     pad.root.remove()
     offEmotes()
     detach()
+    offStates?.()
     smooth.dispose()
   }
 }

@@ -69,6 +69,58 @@ describe('Session', () => {
     expect((guest.state as Secret).hostOnly).toBeUndefined()
   })
 
+  it('inputStamp: a guest burst applies at its stamps’ spacing, with stamp / late on the event; unstamped at once', async () => {
+    type In = { n: number; at?: number }
+    type St = { tick: number; log: { n: number; tick: number; stamp?: number; late?: number }[] }
+    const def: GameDefinition<St, In> = {
+      id: 'stamped',
+      tickRate: 100,
+      minPlayers: 2,
+      maxPlayers: 2,
+      countdown: 0,
+      setup: () => ({ tick: 0, log: [] }),
+      tick(state, inputs) {
+        state.tick++
+        for (const { input, stamp, late } of inputs)
+          state.log.push({ n: input.n, tick: state.tick, stamp, late })
+        return state
+      },
+      isFinished: (state) => state.log.length >= 4,
+      inputStamp: (i) => i.at,
+    }
+    const r = room()
+    const host = new Session(def, createBroadcastTransport('test', r), {
+      host: true,
+      name: 'h',
+      playerId: 'host',
+    })
+    const guest = new Session(def, createBroadcastTransport('test', r), {
+      host: false,
+      name: 'g',
+      playerId: 'guest',
+    })
+    sessions.push(host, guest)
+    await until(() => guest.lobby.players.length === 2)
+    guest.setReady(true)
+    await until(() => host.canStart)
+    host.start()
+    await until(() => guest.phase === 'playing' && host.phase === 'playing')
+    // One burst (as after a stall): sent 5 steps apart, arriving together.
+    guest.sendInput({ n: 1, at: 1000 })
+    guest.sendInput({ n: 2, at: 1005 })
+    guest.sendInput({ n: 3, at: 1010 })
+    guest.sendInput({ n: 4 }) // unstamped: applied on arrival
+    await until(() => host.phase === 'finished')
+    const log = (host.state as St).log
+    const at = (n: number) => log.find((e) => e.n === n)!
+    expect(at(4).stamp).toBeUndefined()
+    expect(at(4).tick).toBeLessThan(at(2).tick)
+    expect(at(2).tick - at(1).tick).toBe(5)
+    expect(at(3).tick - at(2).tick).toBe(5)
+    expect(at(1)).toMatchObject({ stamp: 1000, late: 0 })
+    expect(at(3)).toMatchObject({ stamp: 1010, late: 0 })
+  })
+
   it('maps players to transport peers: every guest for the host, the host for a guest', async () => {
     const r = room()
     const host = join(r, { host: true, playerId: 'host' })

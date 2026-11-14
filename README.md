@@ -104,7 +104,7 @@ Heavy setup (building a 3D scene, compiling shaders) goes in `createGameApp({ pr
 
 ## Deploy
 
-Every push to `main` is tested, built and published to GitHub Pages (`.github/workflows/pages.yml`).
+Every push to `main` is tested, built and published to GitHub Pages (`.github/workflows/pages.yml`): typecheck, lint, format and unit tests run as parallel jobs beside the build, and the site deploys once they pass. The long simulation tests run alongside and turn the run red when balance breaks, but the deploy doesn't wait for them.
 
 The game relay (`server/relay`) is deployed separately, as a Docker container behind a Cloudflare Tunnel (no open ports):
 

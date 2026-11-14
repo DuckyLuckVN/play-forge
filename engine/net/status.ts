@@ -1,3 +1,4 @@
+import type { LocalAccess } from './local-access'
 import type { Transport } from './transport'
 
 // Network status: what the transport sees (relays, peer links), the joining
@@ -161,7 +162,20 @@ export const joinStep = (phase: JoinPhase): 0 | 1 | 2 =>
 export const LAG_MS = 200
 
 export type Health = 'good' | 'warn' | 'bad' | 'local'
-export type NetHint = 'no-servers' | 'blocked' | 'relayed' | 'connecting' | 'lag' | 'local'
+export type NetHint =
+  | 'no-servers'
+  | 'blocked'
+  | 'relayed'
+  | 'connecting'
+  | 'lag'
+  | 'local'
+  /** The browser hasn't been allowed to reach the local network (local-access.ts): offer to ask. */
+  | 'allow-local'
+  /** The player refused it: the browser won't ask again, say where to change it. */
+  | 'local-denied'
+
+/** Ms in a room before offering local network access (a direct link usually opens by then). */
+export const LOCAL_ASK_AFTER_MS = 5000
 
 /** Someone we have a direct link with: for the host every guest, for a guest the host. */
 export interface LinkedPlayer {
@@ -207,12 +221,14 @@ export const relayHost = (url: string): string => url.replace(/^wss?:\/\//, '').
 /**
  * What the Network panel shows. `onlineForMs`: time since the room opened; the
  * servers get JOIN_TIMEOUTS.servers to answer before "none reachable" counts
- * as broken (until then it is just starting up).
+ * as broken (until then it is just starting up). `localAccess`: the browser's
+ * Local Network Access permission (local-access.ts; omitted = not blocking).
  */
 export function netPanelView(
   status: NetStatus,
   players: LinkedPlayer[],
   onlineForMs = Infinity,
+  localAccess: LocalAccess = 'unsupported',
 ): NetPanelView {
   const local = status.kind === 'local'
   const rows: PanelRow[] = players.map((p) => {
@@ -244,6 +260,12 @@ export function netPanelView(
   if (rows.some((r) => r.route === 'relay')) hints.push('relayed')
   if (connecting) hints.push('connecting')
   if (lag) hints.push('lag')
+  // Not linked directly (yet) while the browser may be the one blocking it: same-Wi-Fi players need it.
+  const notDirect = rows.some((r) => r.route === 'relay') || connecting
+  if (!local && notDirect && onlineForMs >= LOCAL_ASK_AFTER_MS) {
+    if (localAccess === 'prompt') hints.push('allow-local')
+    else if (localAccess === 'denied') hints.push('local-denied')
+  }
 
   const health: Health = local
     ? 'local'

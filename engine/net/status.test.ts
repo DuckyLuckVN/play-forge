@@ -4,6 +4,7 @@ import {
   FAILURE_TTL_MS,
   FailureLog,
   JOIN_TIMEOUTS,
+  LOCAL_ASK_AFTER_MS,
   joinFailed,
   joinStep,
   netPanelView,
@@ -401,5 +402,44 @@ describe('with the game relay (backup server)', () => {
       ok: false,
       rttMs: null,
     })
+  })
+})
+
+describe('local network access (same-Wi-Fi direct links)', () => {
+  const host = { name: 'Ann', peer: 'p1', connected: true }
+  const relayed = net({
+    peers: [{ id: 'p1', state: 'connected', rttMs: 230, route: 'relay' }],
+    gameRelay: { state: 'open', rttMs: 110 },
+  })
+  const view = (status: NetStatus, access: Parameters<typeof netPanelView>[3], forMs = LOCAL_ASK_AFTER_MS) =>
+    netPanelView(status, [host], forMs, access)
+
+  it('asks to allow it while a player is on the backup server and the browser has not decided', () => {
+    expect(view(relayed, 'prompt').hints).toContain('allow-local')
+  })
+
+  it('asks while a direct link is still being tried, too', () => {
+    const trying = net({ peers: [{ id: 'p1', state: 'connecting' }], negotiating: 1 })
+    expect(view(trying, 'prompt').hints).toContain('allow-local')
+  })
+
+  it('waits a few seconds first (a direct link usually opens by then)', () => {
+    expect(view(relayed, 'prompt', LOCAL_ASK_AFTER_MS - 1).hints).not.toContain('allow-local')
+  })
+
+  it('says where to allow it once the player refused (the browser will not ask again)', () => {
+    const v = view(relayed, 'denied')
+    expect(v.hints).toContain('local-denied')
+    expect(v.hints).not.toContain('allow-local')
+  })
+
+  it('stays quiet when allowed, unsupported (other browsers), all direct, or a same-browser test room', () => {
+    for (const access of ['granted', 'unsupported', undefined] as const) {
+      expect(view(relayed, access).hints).not.toContain('allow-local')
+      expect(view(relayed, access).hints).not.toContain('local-denied')
+    }
+    const direct = net({ peers: [{ id: 'p1', state: 'connected', rttMs: 8, route: 'direct' }] })
+    expect(view(direct, 'prompt').hints).toEqual([])
+    expect(view(net({ kind: 'local' }), 'prompt').hints).not.toContain('allow-local')
   })
 })

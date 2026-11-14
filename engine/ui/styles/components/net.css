@@ -249,10 +249,15 @@
     font-size: var(--pf-fs-sm);
     line-height: 1.35;
   }
-  .pf-net-hint:is(.no-servers, .blocked) {
+  .pf-net-hint:is(.no-servers, .blocked, .local-denied) {
     border-left-color: var(--pf-coral);
   }
   .pf-net-hint:is(.local, .relayed) {
     border-left-color: var(--pf-sky);
+  }
+  /* Same-Wi-Fi players: the browser's local network prompt is one tap away. */
+  .pf-net-allow {
+    display: block;
+    margin-top: var(--pf-space-3);
   }
 }

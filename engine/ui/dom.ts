@@ -39,15 +39,30 @@ export function setLabel(el: HTMLElement, label: string): void {
 
 let toastHost: HTMLElement | null = null
 
-/** Brief notification in the corner, e.g. "Bob joined". */
-export function toast(text: string, color?: string): void {
+export interface ToastOptions {
+  /** Who it's from (a chat line): shown first, as a pill in `color`, instead of the dot. */
+  name?: string
+  /** How long it stays, ms (default 3000). */
+  ms?: number
+}
+
+/** Brief notification in the corner, e.g. "Bob joined", or a chat line from `name`. */
+export function toast(text: string, color?: string, opts: ToastOptions = {}): void {
   if (!toastHost) {
     toastHost = h('div', { class: 'pf-toasts', role: 'status' } as never)
     document.body.append(toastHost)
   }
-  const el = h('div', { class: 'pf-toast', textContent: text })
+  const el = opts.name
+    ? h(
+        'div',
+        { class: 'pf-toast named' },
+        h('span', { class: 'pf-toast-name', textContent: opts.name }),
+        h('span', { class: 'pf-toast-text', textContent: text }),
+      )
+    : h('div', { class: 'pf-toast', textContent: text })
   if (color) el.style.setProperty('--pf-toast-dot', color)
   toastHost.append(el)
-  setTimeout(() => el.classList.add('out'), 2600)
-  setTimeout(() => el.remove(), 3000)
+  const ms = opts.ms ?? 3000
+  setTimeout(() => el.classList.add('out'), ms - 400)
+  setTimeout(() => el.remove(), ms)
 }

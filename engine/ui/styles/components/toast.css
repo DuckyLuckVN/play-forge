@@ -32,6 +32,31 @@
     border-radius: 50%;
     background: var(--pf-toast-dot, var(--pf-yolk));
   }
+  /* A chat line: the sender's name as a pill in their colour, then the message. */
+  .pf-toast.named {
+    max-width: min(560px, calc(100vw - 32px));
+    padding-left: 8px;
+  }
+  .pf-toast.named::before {
+    display: none;
+  }
+  .pf-toast-name {
+    flex: none;
+    max-width: 40%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--pf-toast-dot, var(--pf-yolk));
+    color: var(--pf-night);
+    font-weight: 800;
+  }
+  .pf-toast-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-weight: 600;
+  }
   .pf-toast.out {
     opacity: 0;
   }

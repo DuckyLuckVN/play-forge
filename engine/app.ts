@@ -43,9 +43,10 @@ import { ReactionLayer, reactionPicker } from './social/reaction-ui'
 import { t as ts } from './social/i18n'
 import { RoomSocial } from './social/room-social'
 import { clearVoiceRejoin } from './social/voice-state'
-import { audioMenu } from './ui/audio-menu'
+import { audioPanel } from './ui/audio-menu'
 import { button } from './ui/components'
-import { langMenu } from './ui/lang-menu'
+import { langPanel } from './ui/lang-menu'
+import { settingsSheet, shellTabs } from './ui/settings-sheet'
 import { netStatusButton } from './ui/net-panel'
 import { h, icon, iconButton, toast } from './ui/dom'
 import { leaderboardTable, type Leaderboard } from './ui/leaderboard'
@@ -185,6 +186,12 @@ export interface GameAppOptions<S, I> {
    * sit above the menu / pause overlay, so they stay usable there.
    */
   stageExtras?(stage: HTMLElement): void
+  /**
+   * The game's own settings (e.g. camera and graphics), shown as the last tab of the shell's ⚙ settings
+   * sheet, after Sound, Language and Voice. Called once at start; `label` is already translated and
+   * `body` is called each time the tab opens.
+   */
+  settingsSections?(): { label: string; body: () => HTMLElement } | null
 }
 
 const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -303,11 +310,21 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   const reactBtn = reactionPicker((id) => social?.reactions.send(id) ?? false)
   const reactionLayer = new ReactionLayer()
   const reactionBridge = new ReactionBridge()
-  // Everyday room controls (mic, chat, reactions) and settings (voice, language,
-  // sound, leave). Desktop shows them all in the bar; phones put the everyday
-  // ones behind a floating button and the settings behind ⋯ (CSS decides).
+  // Everyday room controls (mic, chat, reactions) in the bar (phones: behind a floating button, CSS
+  // decides). Every setting (sound, language, voice, the game's own) lives in one ⚙ sheet; ⋯ holds Leave.
   const quickSlot = h('div', { class: 'pf-slot' })
-  const settingsSlot = h('div', { class: 'pf-slot' })
+  // Built once: their controls follow the saved settings live, a copy per open would stack listeners.
+  let soundEl: HTMLElement | null = null
+  let langEl: HTMLElement | null = null
+  const gameSettings = opts.settingsSections?.() ?? null
+  const tabsFor = (voice: (() => HTMLElement) | null) =>
+    shellTabs({
+      sound: () => (soundEl ??= audioPanel()),
+      lang: () => (langEl ??= langPanel()),
+      voice,
+      game: gameSettings,
+    })
+  const sheet = settingsSheet(tabsFor(null))
   const fan = popover(
     {
       button: iconButton(icons.chat, ts('Voice, chat and reactions')),
@@ -322,9 +339,6 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   fan.root.querySelector('button')!.classList.add('pf-fab')
   const more = popover(
     { button: iconButton(icons.more, ts('More')), label: ts('More'), class: 'pf-overflow' },
-    settingsSlot,
-    langMenu(),
-    audioMenu(),
     leaveBtn,
   )
   more.root.classList.add('pf-more-anchor')
@@ -340,7 +354,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     home,
     h('h1', { class: 'pf-bar-title', textContent: opts.title }),
     scoresEl,
-    h('div', { class: 'pf-bar-actions' }, fan.root, pauseBtn, netBtn.root, fullscreenButton(), more.root),
+    h('div', { class: 'pf-bar-actions' }, fan.root, pauseBtn, netBtn.root, fullscreenButton(), sheet.button, more.root),
   )
   const stage = h('main', { class: 'pf-stage' })
   const overlay = h('div', { class: 'pf-overlay' })
@@ -477,7 +491,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     social = roomSocial
     reactionBridge.attach(roomSocial?.reactions ?? null)
     quickSlot.replaceChildren(...(roomSocial?.quick ?? []))
-    settingsSlot.replaceChildren(...(roomSocial?.settings ?? []))
+    sheet.setTabs(tabsFor(roomSocial?.voicePanel ?? null))
     const offs = [
       s.on('lobby', (lobby) => {
         react(s, lobby)
@@ -541,7 +555,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       roomSocial?.dispose()
       social = null
       quickSlot.replaceChildren()
-      settingsSlot.replaceChildren()
+      sheet.setTabs(tabsFor(null))
       unmount()
     }
     if (extra.offline) {
@@ -1396,6 +1410,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         }),
         controlsText('pf-lede'),
         resume,
+        button(t('Settings'), () => sheet.open(), 'wide'),
         howToPlay(),
         button(s.offline ? t('Quit to menu') : t('Leave room'), leave, 'quiet'),
       ),

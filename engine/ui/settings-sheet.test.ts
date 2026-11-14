@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { settingsSheet, type SettingsSheet, type SettingsTab } from './settings-sheet'
+import { settingsSheet, shellTabs, type SettingsSheet, type SettingsTab } from './settings-sheet'
 
 const tab = (id: string): SettingsTab => ({
   id,
@@ -117,5 +117,20 @@ describe('settingsSheet', () => {
     sheet.open()
     tabs()[1].click()
     expect(shown()).toBe('lang body')
+  })
+})
+
+describe('shellTabs', () => {
+  const el = () => document.createElement('div')
+  it('Sound and Language always; Voice only in a room with voice; the game tab last when the game has one', () => {
+    expect(shellTabs({ sound: el, lang: el }).map((x) => x.id)).toEqual(['sound', 'lang'])
+    expect(
+      shellTabs({ sound: el, lang: el, voice: el, game: { label: 'View', body: el } }).map((x) => [x.id, x.label]),
+    ).toEqual([
+      ['sound', 'Sound'],
+      ['lang', 'Language'],
+      ['voice', 'Voice'],
+      ['game', 'View'],
+    ])
   })
 })

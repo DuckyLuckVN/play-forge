@@ -140,3 +140,19 @@ export function settingsSheet(initial: SettingsTab[]): SettingsSheet {
     },
   }
 }
+
+/** The shell's tabs, in order. `voice` only while in a room with voice chat; `game` = the game's own section. */
+export function shellTabs(parts: {
+  sound: () => HTMLElement
+  lang: () => HTMLElement
+  voice?: (() => HTMLElement) | null
+  game?: { label: string; body: () => HTMLElement } | null
+}): SettingsTab[] {
+  const tabs: SettingsTab[] = [
+    { id: 'sound', label: t('Sound'), body: parts.sound },
+    { id: 'lang', label: t('Language'), body: parts.lang },
+  ]
+  if (parts.voice) tabs.push({ id: 'voice', label: t('Voice'), body: parts.voice })
+  if (parts.game) tabs.push({ id: 'game', label: parts.game.label, body: parts.game.body })
+  return tabs
+}

@@ -101,8 +101,12 @@
   }
   .pf-sheet-body {
     min-height: 0;
+    overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
+    /* Room for slider thumbs and focus rings at the edges. */
+    padding: 4px 8px;
+    margin-inline: -8px;
   }
   .pf-sheet-section,
   .pf-sheet-body .pf-voice-panel,

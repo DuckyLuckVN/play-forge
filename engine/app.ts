@@ -74,6 +74,7 @@ import {
 import { chipLook, scoreLabel } from './ui/scoreline'
 import { icons } from './ui/icons'
 import { optionPickers, optionsFold } from './ui/options'
+import { shouldAutoRematch } from './rematch'
 import { popover } from './ui/popover'
 import { applyTheme, playerColor } from './ui/theme'
 
@@ -420,6 +421,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   let roomSelf: { session: Session<S, I>; el: HTMLElement } | null = null
   /** The room whose folded game settings the host has opened (kept across redraws). */
   let optionsOpen: Session<S, I> | null = null
+  /** The round whose results the local player closed: back to the normal room view until the next one. */
+  let resultsClosed = -1
   let room = ''
   /** Guest: progress of joining the room, until the host's lobby arrives. */
   let joinTrack: JoinTrack | null = null
@@ -751,7 +754,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         if (!onlineMenu) closeHelpOnline()
         return onlineMenu ? showPaused(s) : show(null)
       case 'finished':
-        return s.offline ? showSoloResult(s) : showRoom(s)
+        if (s.offline) return showSoloResult(s)
+        return resultsClosed === s.lobby.round ? showRoom(s) : showResults(s)
       case 'lobby':
         // Solo waits in 'lobby' only while the first-play guide is open (over the stage).
         return s.offline ? show(null) : showRoom(s)
@@ -1129,17 +1133,19 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       token.dataset.player = p.id
       if (social?.isSpeaking(p.id)) token.classList.add('speaking')
       token.style.setProperty('--c', playerColor(p.slot))
-      if (isHost || p.ready) {
+      // After a match the host readies up for the rematch like everyone (results screen).
+      const hostMark = isHost && phase !== 'finished'
+      if (hostMark || p.ready) {
         const badge = h('span', {
-          class: `pf-badge${isHost ? ' host' : ''}${seenReady.has(p.id) ? '' : ' pop'}`,
+          class: `pf-badge${hostMark ? ' host' : ''}${seenReady.has(p.id) ? '' : ' pop'}`,
         })
-        badge.append(icon(isHost ? icons.crown : icons.check))
+        badge.append(icon(hostMark ? icons.crown : icons.check))
         token.append(badge)
         seenReady.add(p.id)
       } else seenReady.delete(p.id)
       const status = !p.connected
         ? t('Reconnecting…')
-        : isHost
+        : hostMark
           ? t('Host')
           : p.ready
             ? t('Ready')
@@ -1159,7 +1165,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
           }),
         h('div', { class: 'pf-seat-name', textContent: p.name }),
         h('div', {
-          class: `pf-seat-status${p.connected && (isHost || p.ready) ? ' ok' : ''}`,
+          class: `pf-seat-status${p.connected && (hostMark || p.ready) ? ' ok' : ''}`,
           textContent: status,
         }),
       )
@@ -1184,15 +1190,19 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
     )
   }
 
-  /** The game's end-of-match leaderboard, if it has one. */
-  function boardOf(state: S, selfId: string): HTMLElement | null {
+  /** The game's end-of-match leaderboard, if it has one; `readyOf` ticks players ready for a rematch. */
+  function boardOf(state: S, selfId: string, readyOf?: (id: string) => boolean): HTMLElement | null {
     const lb = opts.leaderboard?.(state, selfId)
     if (!lb) return null
     const players = session?.lobby.players ?? []
-    return leaderboardTable(lb, (id) => {
-      const p = players.find((q) => q.id === id)
-      return p ? avatarFor(p) : undefined
-    })
+    return leaderboardTable(
+      lb,
+      (id) => {
+        const p = players.find((q) => q.id === id)
+        return p ? avatarFor(p) : undefined
+      },
+      readyOf,
+    )
   }
 
   /** Results ranking: #1 first, each in their seat colour, you highlighted. */
@@ -1276,7 +1286,6 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       ? (document.activeElement as HTMLElement)
       : null
     const finished = s.phase === 'finished'
-    const outcome = finished && s.state && opts.outcome?.(s.state, s.selfId)
     const self = s.self
     const waiting = s.waitingFor
     const away = s.reconnecting
@@ -1338,12 +1347,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       h(
         'div',
         { class: 'pf-panel wide' },
-        outcome
-          ? h('p', { class: 'pf-headline', textContent: outcome.headline })
-          : h('h2', { class: 'pf-heading', textContent: t('{game} room', { game: opts.title }) }),
-        finished && opts.ranking && rankList(s),
-        finished && s.state && boardOf(s.state, s.selfId),
-        finished && s.state && opts.summary && summaryGrid(opts.summary(s.state, s.selfId)),
+        // After a match this is where Close on the results leads: the normal room, results stay behind.
+        h('h2', { class: 'pf-heading', textContent: t('{game} room', { game: opts.title }) }),
         roomCodeBox(),
         roomSection(
           t('Players {n}/{max}', { n: s.lobby.players.length, max: seatingOf(def, s.lobby.options).seats }),
@@ -1382,7 +1387,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
           button(t('Leave room'), leave, 'quiet'),
         ),
       ),
-      finished ? `results-${s.lobby.round}` : 'room',
+      'room',
     )
     if (focused?.isConnected) focused.focus({ preventScroll: true })
     // First time in this game: the deck / guide pops up once over the room (like solo's first play).
@@ -1392,6 +1397,78 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         if (shouldMarkSeen(end)) markGuideSeen(def.id)
       })
     }
+  }
+
+  /**
+   * A room's results: who won, the leaderboard (a tick on everyone ready), and two choices. Ready = in
+   * for a rematch: it starts by itself once everyone is (the host's client starts it, rematch.ts).
+   * Close = back to the normal room (settings, invite, the host's Start button), not ready.
+   */
+  function showResults(s: Session<S, I>) {
+    const outcome = s.state && opts.outcome?.(s.state, s.selfId)
+    const self = s.self
+    const players = s.lobby.players
+    const readyOf = (id: string) => !!players.find((p) => p.id === id)?.ready
+    const board = s.state && boardOf(s.state, s.selfId, readyOf)
+    const others = players.filter((p) => p.connected && !p.ready && p.id !== s.selfId)
+    const note = !self
+      ? t('The room is full, so you are watching. You get a seat when one opens.')
+      : !self.ready
+        ? t('Rematch? It starts when everyone is ready.')
+        : others.length
+          ? t('Waiting for {names} to get ready.', { names: listNames(others) })
+          : t('Everyone is ready.')
+    const close = button(
+      t('Close'),
+      () => {
+        resultsClosed = s.lobby.round
+        if (self?.ready) s.setReady(false)
+        render()
+      },
+      'wide quiet',
+    )
+    const ready =
+      self &&
+      button(
+        self.ready ? t('Not ready') : t("I'm ready"),
+        () => {
+          playSound(self.ready ? UI_SOUNDS.unready : UI_SOUNDS.ready)
+          s.setReady(!self.ready)
+        },
+        self.ready ? 'wide' : 'go wide',
+      )
+    if (ready) ready.autofocus = true
+    show(
+      h(
+        'div',
+        { class: 'pf-panel wide' },
+        h('p', { class: 'pf-headline', textContent: outcome ? outcome.headline : t('Game over') }),
+        opts.ranking && rankList(s),
+        // Games without a leaderboard: the seats show scores and who is ready.
+        board ?? seats(s),
+        s.state && opts.summary && summaryGrid(opts.summary(s.state, s.selfId)),
+        h(
+          'div',
+          { class: 'pf-room-actions' },
+          h('p', { class: 'pf-note', textContent: note }),
+          h('div', { class: 'pf-row' }, close, ready),
+        ),
+      ),
+      `results-${s.lobby.round}`,
+    )
+    if (
+      shouldAutoRematch({
+        isHost: s.isHost,
+        phase: s.phase,
+        onResults: true,
+        selfReady: !!self?.ready,
+        canStart: s.canStart,
+      })
+    )
+      // After this redraw: starting changes the phase, which redraws again.
+      queueMicrotask(() => {
+        if (session === s && s.phase === 'finished' && resultsClosed !== s.lobby.round) s.start()
+      })
   }
 
   function showSoloResult(s: Session<S, I>) {

@@ -47,3 +47,24 @@ describe('leaderboardTable', () => {
     expect(leaderboardTable({ columns: [], rows: [] })).toBeNull()
   })
 })
+
+describe('leaderboardTable ready marks', () => {
+  it('ticks the rows of players who are ready for a rematch', () => {
+    const el = leaderboardTable(
+      {
+        columns: ['Points'],
+        rows: [
+          { id: 'a', name: 'Ann', values: ['5'] },
+          { id: 'b', name: 'Bo', values: ['2'] },
+        ],
+      },
+      undefined,
+      (id) => id === 'b',
+    )!
+    const rows = [...el.querySelectorAll('tbody tr')]
+    expect(rows[0].querySelector('.pf-lb-ready')).toBeNull()
+    const tick = rows[1].querySelector('.pf-lb-ready')!
+    expect(tick.getAttribute('aria-label')).toBe('Ready')
+    expect(rows[1].classList.contains('ready')).toBe(true)
+  })
+})

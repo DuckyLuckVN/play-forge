@@ -160,6 +160,33 @@ describe('Session', () => {
     expect(host.canStart).toBe(false)
   })
 
+  it('rematch: the host readies up too after a match (others see it); Start still only waits for guests', async () => {
+    const r = room()
+    const host = join(r, { host: true, playerId: 'host' })
+    const guest = join(r, { playerId: 'guest' })
+    await until(() => guest.lobby.players.length === 2)
+    guest.setReady(true)
+    await until(() => host.canStart)
+    host.start()
+    await until(() => guest.phase === 'playing')
+    guest.sendInput(3)
+    await until(() => host.phase === 'finished' && guest.phase === 'finished')
+
+    // Everyone, host included, starts the results screen not ready.
+    expect(host.self!.ready).toBe(false)
+    await until(() => guest.lobby.players.every((p) => !p.ready))
+
+    host.setReady(true)
+    expect(host.self!.ready).toBe(true)
+    await until(() => guest.lobby.players.find((p) => p.id === 'host')!.ready)
+
+    // The host's own flag never blocks the lobby's Start button.
+    host.setReady(false)
+    guest.setReady(true)
+    await until(() => host.canStart)
+    expect(host.waitingFor).toEqual([])
+  })
+
   it('shares each player’s avatar, and accepts players without one', async () => {
     const r = room()
     join(r, { host: true, playerId: 'host', avatar: 'cat' })

@@ -1,7 +1,8 @@
 // End-of-match leaderboard: players ranked (#1 first) with a few stat columns, a badge (e.g. MVP) and
 // the local player highlighted. Games build the data (GameAppOptions.leaderboard); this only draws it.
 import { avatarEl } from '../social/avatar-ui'
-import { h } from './dom'
+import { h, icon } from './dom'
+import { icons } from './icons'
 import { t } from './i18n'
 
 export interface LeaderboardRow {
@@ -28,10 +29,14 @@ export interface Leaderboard {
   note?: string
 }
 
-/** `avatarOf` = the avatar for a row without its own (the shell looks the player up in the lobby). */
+/**
+ * `avatarOf` = the avatar for a row without its own (the shell looks the player up in the lobby).
+ * `readyOf` = players ready for a rematch get a tick after their name (rooms' results screen).
+ */
 export function leaderboardTable(
   lb: Leaderboard,
   avatarOf: (id: string) => string | undefined = () => undefined,
+  readyOf?: (id: string) => boolean,
 ): HTMLElement | null {
   if (!lb.rows.length) return null
   const head = h(
@@ -50,10 +55,18 @@ export function leaderboardTable(
       h('span', { class: 'pf-lb-player', textContent: r.name }),
     )
     if (r.badge) who.append(h('span', { class: 'pf-lb-badge', textContent: r.badge }))
+    const ready = !!readyOf?.(r.id)
+    if (ready) {
+      const tick = h('span', { class: 'pf-lb-ready' }, icon(icons.check))
+      tick.setAttribute('role', 'img')
+      tick.setAttribute('aria-label', t('Ready'))
+      tick.title = t('Ready')
+      who.append(tick)
+    }
     const name = h('td', { class: 'pf-lb-name' }, who)
     const tr = h(
       'tr',
-      { class: r.self ? 'self' : '' },
+      { class: [r.self && 'self', ready && 'ready'].filter(Boolean).join(' ') },
       h('td', { class: 'pf-rank', textContent: String(i + 1) }),
       name,
       ...r.values.map((v) => h('td', { textContent: v })),

@@ -45,6 +45,7 @@ export const VI: Dictionary = {
   Sound: 'Âm thanh',
   Voice: 'Giọng nói',
   Close: 'Đóng',
+  'Rematch? It starts when everyone is ready.': 'Đấu lại? Trận bắt đầu khi mọi người sẵn sàng.',
   Change: 'Đổi',
   Done: 'Xong',
 

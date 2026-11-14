@@ -1,8 +1,9 @@
 import { Emitter } from '../core/emitter'
 import { startTicker } from '../core/loop'
 import { randomSeed } from '../core/rng'
+import { createHostIdentity, proofMessage, verifyHost, type HostIdentity } from './host-identity'
 import { PlayoutBuffer } from './playout'
-import type { Transport } from './transport'
+import { randomId, type Transport } from './transport'
 
 export interface PlayerInfo {
   /** Stable player id: survives reloads and reconnects (not the peer id). */
@@ -158,6 +159,8 @@ export interface LobbyState {
   round: number
   /** Settings for the next match; only the host changes them. */
   options: GameOptions
+  /** The host's public key (see host-identity). Absent until ready, or without WebCrypto. */
+  hostKey?: string
 }
 
 /** What a host persists so a reload can reopen the same room. */
@@ -165,6 +168,10 @@ export interface RoomSnapshot {
   players: PlayerInfo[]
   round: number
   options?: GameOptions
+  /** The host's private key, so guests can still verify it after the reload. */
+  identity?: JsonWebKey
+  /** Player id → seat key, so a reload doesn't reopen seats to anyone. */
+  keys?: Record<string, string>
 }
 
 export interface SessionOptions {
@@ -174,6 +181,13 @@ export interface SessionOptions {
   avatar?: string
   /** Stable id for the local player; keep it across reloads to reclaim a seat. */
   playerId: string
+  /**
+   * Guest: private key that proves `playerId` is ours. Keep it with the id;
+   * the host never shares it. Default: a fresh random one.
+   */
+  playerKey?: string
+  /** Guest: the host key pinned before a reload; a new host peer must prove it. */
+  hostKey?: string
   /** Single-player session on the offline transport. */
   offline?: boolean
   /** Host only: reopen a room after a reload. */
@@ -209,13 +223,23 @@ const CH = {
   state: 'st',
   kick: 'kick',
   seat: 'seat',
+  /** Guest → would-be host: a nonce to sign. */
+  prove: 'prove',
+  /** Host → guest: { n: nonce, s: signature }. */
+  proof: 'proof',
 } as const
 
 interface Hello {
   id: string
   name: string
   avatar?: string
+  /** Seat key. Optional: older clients don't send one. */
+  key?: string
 }
+
+/** Seat keys and nonces: short random tokens. */
+const cleanToken = (raw: unknown): string | undefined =>
+  typeof raw === 'string' && /^[a-z0-9]{8,64}$/.test(raw) ? raw : undefined
 
 /** Keep only short slug-like avatar ids; anything else is dropped. */
 export function cleanAvatar(raw: unknown): string | undefined {
@@ -274,6 +298,15 @@ export class Session<S, I> {
   // Client: which peer is the host, and the give-up timer while it's gone.
   private hostPeer: string | null = null
   private hostGoneTimer: ReturnType<typeof setTimeout> | null = null
+  /** Host: player id → seat key. Private; never in the lobby. */
+  private seatKeys = new Map<string, string>()
+  /** Host: our key pair, once ready. */
+  private identity: HostIdentity | null = null
+  /** Client: the host key we trust (pinned from the first host). */
+  private pinnedKey: string | null = null
+  /** Client: would-be hosts we challenged, by peer. */
+  private challenges = new Map<string, { nonce: string; lobby: LobbyState }>()
+  private disposed = false
 
   constructor(
     readonly def: GameDefinition<S, I>,
@@ -300,7 +333,25 @@ export class Session<S, I> {
 
     if (opts.host) {
       if (opts.restore) this.restore(opts.restore, self)
+      for (const [id, key] of Object.entries(opts.restore?.keys ?? {})) this.seatKeys.set(id, key)
+      const identity = this.offline ? Promise.resolve(null) : createHostIdentity(opts.restore?.identity)
+      void identity.then((id) => {
+        if (!id || this.disposed) return
+        this.identity = id
+        this.lobby.hostKey = id.pub
+        this.broadcastLobby()
+      })
       this.unsubs.push(
+        // A guest checks we are the host it knew: sign its nonce with our peer id.
+        t.on(CH.prove, (raw: unknown, peer) => {
+          const nonce = cleanToken(raw)
+          if (!nonce) return
+          void identity.then(async (id) => {
+            if (!id || this.disposed) return
+            const s = await id.sign(proofMessage(nonce, t.selfId))
+            if (!this.disposed) t.send(CH.proof, { n: nonce, s }, peer)
+          })
+        }),
         t.onPeerJoin((peer) => t.send(CH.lobby, this.lobby, peer)),
         t.on(CH.hello, (msg: Hello, peer) => this.onHello(peer, msg)),
         t.on(CH.ready, (ready: boolean, peer) => this.markReady(peer, ready === true)),
@@ -326,23 +377,45 @@ export class Session<S, I> {
       )
     } else {
       const hostWaitMs = opts.hostWaitMs ?? 30000
-      this.hello = { id: this.selfId, name: opts.name, avatar: cleanAvatar(opts.avatar) }
+      this.pinnedKey = opts.hostKey ?? null
+      this.hello = {
+        id: this.selfId,
+        name: opts.name,
+        avatar: cleanAvatar(opts.avatar),
+        key: cleanToken(opts.playerKey) ?? randomId(16),
+      }
       this.unsubs.push(
-        // We don't know which peer is the host, so greet everyone; only the
-        // host answers. Re-greeting on reconnect reclaims our seat.
-        t.onPeerJoin((peer) => t.send(CH.hello, this.hello, peer)),
+        // The host sends its lobby to every peer that joins; we greet the host
+        // only once we accept that lobby (acceptLobby), so our seat key never
+        // reaches other guests. Re-greeting on reconnect reclaims our seat.
         t.on(CH.lobby, (lobby: LobbyState, peer) => {
-          // One host at a time, but accept a new one while ours is gone
-          // (the host reloaded and came back with a new peer id).
-          if (this.hostConnected && peer !== this.hostPeer) return
-          const wasLost = this.hostPeer !== null && !this.hostConnected
-          this.hostPeer = peer
-          this.hostConnected = true
-          if (this.hostGoneTimer) clearTimeout(this.hostGoneTimer)
-          this.hostGoneTimer = null
-          this.lobby = lobby
-          if (wasLost) this.events.emit('hostBack')
-          this.events.emit('lobby', lobby)
+          if (!lobby || typeof lobby !== 'object') return
+          if (this.hostConnected) {
+            // One host at a time.
+            if (peer === this.hostPeer) this.acceptLobby(peer, lobby)
+            return
+          }
+          // No live host. Without a pinned key (first contact, or a host
+          // without WebCrypto) trust whoever answers, as before. Otherwise
+          // the newcomer must prove it holds the key (the host reloaded and
+          // came back with a new peer id).
+          if (!this.pinnedKey) return this.acceptLobby(peer, lobby)
+          if (lobby.hostKey !== this.pinnedKey) return
+          const pending = this.challenges.get(peer)
+          if (pending) return void (pending.lobby = lobby)
+          const nonce = randomId(16)
+          this.challenges.set(peer, { nonce, lobby })
+          t.send(CH.prove, nonce, peer)
+        }),
+        t.on(CH.proof, (msg: { n?: unknown; s?: unknown }, peer) => {
+          const pending = this.challenges.get(peer)
+          if (!pending || msg?.n !== pending.nonce || !this.pinnedKey) return
+          void verifyHost(this.pinnedKey, proofMessage(pending.nonce, peer), msg.s).then((ok) => {
+            if (this.challenges.get(peer) !== pending) return
+            this.challenges.delete(peer)
+            // ok === null: this browser can't check (no WebCrypto); don't lock it out.
+            if (ok !== false && !this.disposed && !this.hostConnected) this.acceptLobby(peer, pending.lobby)
+          })
         }),
         t.on(CH.state, (state: S, peer) => {
           if (peer === this.hostPeer) this.setState(state)
@@ -351,6 +424,7 @@ export class Session<S, I> {
           if (peer === this.hostPeer && this.hostConnected) this.events.emit('kicked')
         }),
         t.onPeerLeave((peer) => {
+          this.challenges.delete(peer)
           if (peer !== this.hostPeer || !this.hostConnected) return
           this.hostConnected = false
           this.events.emit('hostLost')
@@ -373,6 +447,11 @@ export class Session<S, I> {
     handler: (...args: SessionEvents<S>[K]) => void,
   ): () => void {
     return this.events.on(event, handler)
+  }
+
+  /** Client: the host key we trust; save it to keep trusting only that host after a reload. */
+  get hostKey(): string | undefined {
+    return this.pinnedKey ?? undefined
   }
 
   get phase(): Phase {
@@ -421,6 +500,8 @@ export class Session<S, I> {
       players: this.lobby.players.map((p) => ({ ...p })),
       round: this.lobby.round,
       options: { ...this.lobby.options },
+      ...(this.identity && { identity: this.identity.secret }),
+      ...(this.seatKeys.size > 0 && { keys: Object.fromEntries(this.seatKeys) }),
     }
   }
 
@@ -471,7 +552,7 @@ export class Session<S, I> {
       this.broadcastLobby()
       return
     }
-    this.hello = { id: this.selfId, ...clean }
+    this.hello = { ...this.hello!, ...clean }
     if (this.hostPeer) this.transport.send(CH.hello, this.hello, this.hostPeer)
   }
 
@@ -557,6 +638,7 @@ export class Session<S, I> {
   }
 
   private teardown() {
+    this.disposed = true
     this.stopSimulation()
     if (this.countdownTimer) clearTimeout(this.countdownTimer)
     if (this.hostGoneTimer) clearTimeout(this.hostGoneTimer)
@@ -576,13 +658,36 @@ export class Session<S, I> {
     for (const p of others) this.scheduleDrop(p.id)
   }
 
+  /** Client: follow `peer` as the host and show its lobby. */
+  private acceptLobby(peer: string, lobby: LobbyState) {
+    const wasLost = this.hostPeer !== null && !this.hostConnected
+    const newLink = peer !== this.hostPeer || !this.hostConnected
+    this.hostPeer = peer
+    this.hostConnected = true
+    if (this.hostGoneTimer) clearTimeout(this.hostGoneTimer)
+    this.hostGoneTimer = null
+    this.challenges.clear()
+    // Pin the host key once (it may arrive a moment after the first lobby); it never changes.
+    if (!this.pinnedKey && typeof lobby.hostKey === 'string') this.pinnedKey = lobby.hostKey
+    this.lobby = lobby
+    if (newLink) this.transport.send(CH.hello, this.hello, peer)
+    if (wasLost) this.events.emit('hostBack')
+    this.events.emit('lobby', lobby)
+  }
+
   private onHello(peer: string, msg: Hello) {
     const id = String(msg?.id ?? '').slice(0, 40)
     const name = cleanName(msg?.name)
     if (!id || id === this.selfId) return
     const avatar = cleanAvatar(msg?.avatar)
+    const key = cleanToken(msg?.key)
     const { players } = this.lobby
     const existing = players.find((p) => p.id === id)
+    // A known id needs its key. Ids without one (older clients, or restored
+    // from an older snapshot) take the first key offered.
+    const known = this.seatKeys.get(id)
+    if (known && known !== key) return
+    if (!known && key) this.seatKeys.set(id, key)
 
     if (existing) {
       // A returning player (reload / reconnect) reclaims their seat. Refuse a

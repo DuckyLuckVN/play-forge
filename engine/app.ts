@@ -234,9 +234,13 @@ function storedName(value?: string): string {
 
 interface SavedRoom {
   playerId: string
+  /** Proves playerId is ours to the host (see SessionOptions.playerKey). Absent in older saves. */
+  playerKey?: string
   room: string
   host: boolean
   snapshot?: RoomSnapshot
+  /** Guest: the host key it trusts, so only that host can take over after a reload. */
+  hostKey?: string
 }
 
 const isReload = (() => {
@@ -403,6 +407,12 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   /** Guest: progress of joining the room, until the host's lobby arrives. */
   let joinTrack: JoinTrack | null = null
   let playerId = (isReload && store.load()?.playerId) || randomId()
+  let playerKey = (isReload && store.load()?.playerKey) || randomId(16)
+  /** A new room: a new player id and seat key. */
+  const newPlayer = () => {
+    playerId = randomId()
+    playerKey = randomId(16)
+  }
   let lastLobby: LobbyState | null = null
   const snapshot = (l: LobbyState): LobbyState => ({
     ...l,
@@ -430,7 +440,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   function begin(
     transport: Transport,
     host: boolean,
-    extra: { offline?: boolean; restore?: RoomSnapshot } = {},
+    extra: { offline?: boolean; restore?: RoomSnapshot; hostKey?: string } = {},
   ) {
     const name = storedName() || t('Player')
     const s = (session = new Session(def, transport, {
@@ -438,13 +448,23 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       name,
       avatar: storedAvatar(),
       playerId,
+      playerKey,
       options: chosenOptions(),
       ...extra,
     }))
     lastLobby = snapshot(s.lobby)
     seenTokens.clear()
     seenReady.clear()
-    if (!extra.offline) store.save({ playerId, room, host, snapshot: host ? s.snapshot() : undefined })
+    const saveRoom = () =>
+      store.save({
+        playerId,
+        playerKey,
+        room,
+        host,
+        snapshot: host ? s.snapshot() : undefined,
+        hostKey: host ? undefined : s.hostKey,
+      })
+    if (!extra.offline) saveRoom()
     const unmount = opts.mount(s, stage, { reactions: reactionBridge })
     // After mount, so the game's key handlers run before chat's Enter shortcut.
     const roomSocial = extra.offline
@@ -461,7 +481,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       s.on('lobby', (lobby) => {
         react(s, lobby)
         roomSocial?.refresh()
-        if (s.isHost && !s.offline) store.save({ playerId, room, host: true, snapshot: s.snapshot() })
+        if (!s.offline) saveRoom()
         render()
       }),
       s.on('state', () => {
@@ -841,7 +861,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       }
       saveName()
       room = c
-      playerId = randomId()
+      newPlayer()
       history.replaceState(null, '', `#room=${room}`)
       begin(createTransport(appId, room), false)
     }
@@ -864,7 +884,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       () => {
         saveName()
         room = newRoomCode()
-        playerId = randomId()
+        newPlayer()
         history.replaceState(null, '', `#room=${room}`)
         begin(createTransport(appId, room), true)
       },
@@ -1411,7 +1431,10 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       )
     } else toast(label)
     void preload.whenReady().then(() => {
-      begin(createTransport(appId, room), saved.host, { restore: saved.host ? saved.snapshot : undefined })
+      begin(createTransport(appId, room), saved.host, {
+        restore: saved.host ? saved.snapshot : undefined,
+        hostKey: saved.host ? undefined : saved.hostKey,
+      })
     })
   } else if (hashRoom?.length === 5 && def.maxPlayers > 1) {
     store.save(null)
@@ -1424,7 +1447,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   /** Opened from an invite link: straight into the room (name, avatar and extras can change there). */
   function joinFromLink(code: string) {
     room = code
-    playerId = randomId()
+    newPlayer()
     showJoining()
     void preload.whenReady().then(() => {
       if (room === code && !session) begin(createTransport(appId, room), false)

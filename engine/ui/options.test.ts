@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import type { OptionDef } from '../net/session'
-import { optionPickers, optionsFold, optionSpecs } from './options'
+import { foldLook, optionPickers, optionRows, optionsFold, optionSpecs } from './options'
 
 const mode: OptionDef = {
   id: 'mode',
@@ -141,5 +141,64 @@ describe('optionsFold', () => {
         onToggle: () => {},
       }),
     ).toBe(one)
+  })
+})
+
+describe('optionRows (settings list)', () => {
+  it('one line per setting: name left, choice right; an off choice faded', () => {
+    const timer: OptionDef = {
+      id: 'timer',
+      label: 'Turn timer',
+      default: 'off',
+      choices: [
+        { value: 'off', label: 'Off' },
+        { value: 'on', label: 'On' },
+      ],
+    }
+    const el = optionRows([mode, timer], { mode: 'b', timer: 'off' })
+    const rows = [...el.querySelectorAll('.pf-optrow')].map((r) => [
+      r.querySelector('.pf-optrow-k')!.textContent,
+      r.querySelector('.pf-optrow-v')!.textContent,
+      r.querySelector('.pf-optrow-v')!.classList.contains('off'),
+    ])
+    expect(rows).toEqual([
+      ['Match', 'Two', false],
+      ['Turn timer', 'Off', true],
+    ])
+  })
+
+  it('the fold can draw the list instead of the grid, with Change as its last line', () => {
+    const el = optionsFold({
+      defs: [mode, court],
+      values: { mode: 'a', court: 'l' },
+      pickers: optionPickers([mode, court], { mode: 'a', court: 'l' }, () => {})!,
+      editable: true,
+      open: false,
+      onToggle: () => {},
+      look: 'list',
+    })
+    const toggle = el.querySelector('.pf-options-toggle')!
+    expect(toggle.classList.contains('list')).toBe(true)
+    expect(toggle.querySelectorAll('.pf-optrow')).toHaveLength(2)
+    expect(toggle.querySelector('.pf-specs')).toBeNull()
+    expect(toggle.lastElementChild!.classList.contains('pf-options-edit')).toBe(true)
+  })
+})
+
+describe('foldLook (compare switch)', () => {
+  afterEach(() => {
+    localStorage.clear()
+    history.replaceState(null, '', '/')
+  })
+  it('grid by default; ?settings=list switches and is remembered; ?settings=grid switches back', () => {
+    expect(foldLook()).toBe('grid')
+    history.replaceState(null, '', '/?settings=list')
+    expect(foldLook()).toBe('list')
+    history.replaceState(null, '', '/')
+    expect(foldLook()).toBe('list')
+    history.replaceState(null, '', '/?settings=grid')
+    expect(foldLook()).toBe('grid')
+    history.replaceState(null, '', '/')
+    expect(foldLook()).toBe('grid')
   })
 })

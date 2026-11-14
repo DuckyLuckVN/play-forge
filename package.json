@@ -18,7 +18,8 @@
     "test:e2e": "playwright test",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm test",
     "balance": "BALANCE=1 vitest run --project simulation games/brickstorm/sim/balance.simulation.test.ts",
-    "relay": "ALLOW_LOCALHOST=1 node server/relay/main.ts"
+    "relay": "ALLOW_LOCALHOST=1 node server/relay/main.ts",
+    "probe-relays": "node scripts/probe-relays.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

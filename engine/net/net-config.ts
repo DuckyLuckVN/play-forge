@@ -3,24 +3,25 @@ import type { TurnServer } from './turn'
 
 /**
  * Nostr relays used for matchmaking (peers find each other here; game traffic
- * then goes browser to browser). Pinned instead of Trystero's 29 defaults,
- * where several are down or accept events without delivering them, and every
- * peer connects to all of these so host and guests always share relays.
+ * then goes browser to browser). Every peer connects to all of these, so host
+ * and guests always share relays. Picked from Trystero's own defaults
+ * (`defaultRelayUrls`), which include dead and rate-limiting relays.
  *
- * To refresh: run a publish/subscribe probe against candidate relays (one
- * socket subscribes to a random topic, another publishes a Trystero-style
- * event to it; keep relays that deliver within a few seconds on repeated
- * runs), then keep 6–8 working ones here. Last checked 2026-11-10.
+ * To refresh: `npm run probe-relays` tests Trystero's defaults plus this list
+ * (two sockets per relay find each other with a real Trystero event, several
+ * rounds) and prints the best that delivered every time, ready to paste.
+ * Changing the list splits players across versions until both reload; they
+ * still meet through our game relay meanwhile. Last checked 2026-11-14.
  */
 export const RELAY_URLS: readonly string[] = [
-  'wss://nostr.chaima.info',
-  'wss://relay.layer.systems',
-  'wss://relay.degmods.com',
-  'wss://relay.routstr.com',
-  'wss://nostr.rblb.it',
-  'wss://relay.nostrmap.net',
-  'wss://relay.agentry.com',
-  'wss://nostr.stakey.net',
+  'wss://relay.notoshi.win',
+  'wss://nostr-01.yakihonne.com',
+  'wss://relay.guggero.org',
+  'wss://relay.snort.social',
+  'wss://bucket.coracle.social',
+  'wss://nostr.overmind.lol',
+  'wss://relay.minibolt.info',
+  'wss://relay.ditto.pub',
 ]
 
 /**

@@ -72,6 +72,8 @@ Test multiplayer without internet: open a game in two tabs with `?net=local` (vo
 
 Run the game relay locally: `npm run relay` (ws://localhost:8080, allows localhost pages), then build or run the dev server with `VITE_GAME_RELAY_URL=ws://localhost:8080`.
 
+Check the matchmaking (Nostr) relays: `npm run probe-relays` tests Trystero's default relays and ours, and prints the best ones for `RELAY_URLS` in `engine/net/net-config.ts`.
+
 ## Project layout
 
 ```

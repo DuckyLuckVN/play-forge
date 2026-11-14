@@ -21,6 +21,11 @@ export interface Transport {
   readonly media?: MediaChannel
   /** Live connection details for the Network panel. Optional: only the internet transport has it. */
   readonly diagnostics?: NetDiagnostics
+  /**
+   * Try the direct (WebRTC) links again from scratch, e.g. once the browser allows local network
+   * access. Optional: only the internet transport has it. Peers stay reachable through the relay.
+   */
+  retryDirect?(): Promise<void>
 }
 
 /** Sends live media (e.g. voice) to peers. Used by voice chat. */

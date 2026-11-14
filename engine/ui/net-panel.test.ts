@@ -115,3 +115,44 @@ describe('Network panel: a denied permission (Android Chrome starts there)', () 
     net.attach(null)
   })
 })
+
+describe('Network panel: after the player allows local network access', () => {
+  it('retries the direct link at once (no reload), and says so', async () => {
+    let status: { state: string; onchange: (() => void) | null } = { state: 'prompt', onchange: null }
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      permissions: { query: async () => status },
+    })
+    const retryDirect = vi.fn()
+    const net = netStatusButton()
+    document.body.append(net.root)
+    net.attach({ ...source, retryDirect })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(retryDirect).not.toHaveBeenCalled()
+    status.state = 'granted'
+    status.onchange?.()
+    expect(retryDirect).toHaveBeenCalledTimes(1)
+    // Already allowed when the room opens: nothing to retry.
+    net.attach(null)
+    status = { state: 'granted', onchange: null }
+    const again = vi.fn()
+    net.attach({ ...source, retryDirect: again })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(again).not.toHaveBeenCalled()
+    net.attach(null)
+  })
+
+  it("shows this device's local network setting, so each player can check it", async () => {
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      permissions: { query: async () => ({ state: 'granted', onchange: null }) },
+    })
+    const net = netStatusButton()
+    document.body.append(net.root)
+    net.attach(source)
+    await new Promise((r) => setTimeout(r, 0))
+    net.root.querySelector<HTMLButtonElement>('.pf-net-btn')!.click()
+    expect(net.root.querySelector('.pf-net-lna')?.textContent).toContain('Allowed')
+    net.attach(null)
+  })
+})

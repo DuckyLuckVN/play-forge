@@ -14,6 +14,7 @@ import {
   faEllipsis,
   faExpand,
   faFaceSmile,
+  faGear,
   faHeadset,
   faHouse,
   faMicrophone,
@@ -50,6 +51,8 @@ export const icons = {
   camera: faSvg(faCamera),
   /** Sliders: a settings panel (e.g. a game's view settings). */
   settings: faSvg(faSliders),
+  /** A gear: the shell's settings sheet (engine/ui/settings-sheet.ts). */
+  gear: faSvg(faGear),
   pause: faSvg(faPause),
   leave: faSvg(faRightFromBracket),
   copy: faSvg(faCopy),

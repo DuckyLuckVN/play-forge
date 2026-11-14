@@ -12,13 +12,10 @@ import { popover } from './popover'
 import { slider } from './slider'
 
 /**
- * Sound button with a popover: music volume, effects volume, mute.
- * Settings are shared by every game and saved in localStorage.
+ * Music volume, effects volume and mute, kept in sync with the saved settings (shared by every game,
+ * saved in localStorage). `onSync` hears the new state (e.g. a button's icon).
  */
-export function audioMenu(): HTMLElement {
-  const button = h('button', { class: 'pf-btn icon', type: 'button' })
-  setLabel(button, t('Sound settings'))
-
+function audioControls(onSync?: (silent: boolean) => void) {
   const volume = (label: string, key: 'music' | 'sfx') =>
     slider({
       label,
@@ -33,17 +30,9 @@ export function audioMenu(): HTMLElement {
   const mute = h('button', { class: 'pf-btn wide', type: 'button' })
   mute.onclick = () => setAudioSettings({ muted: !getAudioSettings().muted })
 
-  const menu = popover(
-    { button, label: t('Sound settings'), onOpen: () => music.input.focus() },
-    music.row,
-    sfx.row,
-    mute,
-  )
-
   const sync = () => {
     const s = getAudioSettings()
-    const silent = s.muted || (s.music === 0 && s.sfx === 0)
-    button.replaceChildren(icon(silent ? icons.soundOff : icons.soundOn))
+    onSync?.(s.muted || (s.music === 0 && s.sfx === 0))
     for (const [ui, v] of [
       [music, s.music],
       [sfx, s.sfx],
@@ -55,5 +44,21 @@ export function audioMenu(): HTMLElement {
   }
   sync()
   onAudioSettingsChange(sync)
-  return menu.root
+  return { music, nodes: [music.row, sfx.row, mute] }
+}
+
+/** The sound settings as one block (the settings sheet's Sound tab). */
+export function audioPanel(): HTMLElement {
+  return h('div', { class: 'pf-sheet-section' }, ...audioControls().nodes)
+}
+
+/** Sound button with a popover: music volume, effects volume, mute. */
+export function audioMenu(): HTMLElement {
+  const button = h('button', { class: 'pf-btn icon', type: 'button' })
+  setLabel(button, t('Sound settings'))
+  const c = audioControls((silent) => button.replaceChildren(icon(silent ? icons.soundOff : icons.soundOn)))
+  return popover(
+    { button, label: t('Sound settings'), onOpen: () => c.music.input.focus() },
+    ...c.nodes,
+  ).root
 }

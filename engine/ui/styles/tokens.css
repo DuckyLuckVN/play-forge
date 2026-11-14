@@ -75,6 +75,7 @@
     --pf-z-toast: 20;
     --pf-z-popover: 25;
     --pf-z-fab: 40; /* phones: floating controls button */
+    --pf-z-settings: 45; /* settings sheet (engine/ui/settings-sheet.ts): over the bar, popovers and fab */
     --pf-z-sheet: 50; /* phones: popovers as bottom sheets */
     --pf-z-fx: 60; /* floating reactions */
   }

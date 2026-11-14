@@ -41,6 +41,8 @@ export const VI: Dictionary = {
   'Turn sound on': 'Bật âm thanh',
   'Mute everything': 'Tắt hết âm thanh',
   'Sound settings': 'Cài đặt âm thanh',
+  Settings: 'Cài đặt',
+  Close: 'Đóng',
 
   // Start screen
   Player: 'Người chơi',

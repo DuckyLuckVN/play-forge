@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { topOf, type Prop } from './kit'
 import { FANS } from './crowd'
 import { COURT_SIZES, courtDims, courtScale, spreadXZ } from './courtsize'
-import { BENCHES, BLANKETS, LANTERN, parkLayout, surroundOf } from './props'
+import { BENCHES, BLANKETS, LANTERN, NEAR_KIT, parkLayout, surroundOf } from './props'
+import { OUT_MARGIN } from './sim'
 import { CAMERA, cameraPose, NO_TWEAK, type CameraPose } from './world'
 
 /** Half extents (x, y, z) of a prop's world box: exact for yaw, generous for tilted props. */
@@ -81,13 +82,50 @@ describe('park layout', () => {
       expect(hit).toEqual([])
     })
 
-    it(`${size}: puts only the net-side furniture (umpire chair, scoreboard) inside the surround`, () => {
+    /** Near courtside kit: on the near sand, wholly past the strip's start (props.ts NEAR_KIT). */
+    const nearKit = (p: Prop) => p.z + extents(p)[2] <= -(court.halfLen + NEAR_KIT.inFrom)
+
+    it(`${size}: puts only the net-side furniture and the near courtside kit inside the surround`, () => {
       const inside = layout.filter((p) => overlaps(p, court.halfWidth + S.x, court.halfLen + S.z))
-      expect(inside.length).toBeGreaterThan(0)
-      for (const p of inside) {
+      const net = inside.filter((p) => !nearKit(p))
+      expect(net.length).toBeGreaterThan(0)
+      expect(inside.length).toBeGreaterThan(net.length)
+      for (const p of net) {
         expect(Math.abs(p.z)).toBeLessThanOrEqual(1)
         expect(Math.abs(p.x)).toBeGreaterThanOrEqual(court.halfWidth + 0.5)
       }
+    })
+
+    it(`${size}: keeps the near courtside kit out of a player's reach and knee-low (ankle-low mid-lane)`, () => {
+      expect(NEAR_KIT.inFrom).toBeGreaterThan(OUT_MARGIN + 0.25)
+      const kit = layout.filter((p) => nearKit(p) && overlaps(p, court.halfWidth + S.x, court.halfLen + S.z))
+      const tall = kit.filter((p) => {
+        const [ex, ey] = extents(p)
+        const top = p.y + ey
+        const mid = Math.abs(p.x) - ex < court.halfWidth * NEAR_KIT.mid
+        return top > (mid ? NEAR_KIT.midCap : NEAR_KIT.cap) + 1e-6
+      })
+      expect(tall.map((p) => [p.shape, +p.x.toFixed(2), +topOf(p).toFixed(2)])).toEqual([])
+      // Everything past the strip's start (sand kit and the bench zone on the grass behind it).
+      const near = layout.filter(nearKit)
+      // From the default framing a player at the back of their reach keeps their feet in view; from the
+      // lowest camera tweak the near baseline stays in view.
+      const pose: CameraPose = { x: 0, y: 0, z: 0, lookX: 0, lookY: 0, lookZ: 0, fov: 0 }
+      const hidden = new Set<Prop>()
+      const views = [
+        { tweak: NO_TWEAK, z: -(court.halfLen + OUT_MARGIN), y: 0.15 },
+        { tweak: { height: -1, tilt: 0 }, z: -court.halfLen, y: 0.02 },
+      ]
+      for (const v of views)
+        for (const tight of [0, 1])
+          for (const camX of [-1, 0, 1]) {
+            cameraPose(camX, CAMERA.riseFrom, pose, tight, v.tweak, court)
+            for (let i = 0; i <= 8; i++) {
+              const pt = [-court.halfWidth + (i / 8) * court.halfWidth * 2, v.y, v.z]
+              for (const p of near) if (blocks(p, [pose.x, pose.y, pose.z], pt)) hidden.add(p)
+            }
+          }
+      expect([...hidden].map((p) => [p.shape, +p.x.toFixed(2)])).toEqual([])
     })
 
     it(`${size}: never stands between the camera and the court or the players on it`, () => {

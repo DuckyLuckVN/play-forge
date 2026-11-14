@@ -52,7 +52,7 @@ export const AI_ID = 'ai'
 const ACCEL_TICKS = 6
 const ACCEL = MOVE_SPEED / (ACCEL_TICKS * DT)
 /** How far past the side/back lines a player may run to chase a shuttle. */
-const OUT_MARGIN = 0.8
+export const OUT_MARGIN = 0.8
 /** Ticks between the rally's end and the next serve (or the results). */
 export const POINT_TICKS = 72
 /** Ticks before a player can swing again (stops swing-mashing). */

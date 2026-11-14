@@ -1,13 +1,15 @@
 // The park's mid layer as data: a mix of trees (round, blossom, autumn, pine, small; flora.ts) with a far
 // ring of hazy ones, bushes, flower beds, rocks and grass patches, a far tournament backstop, near-corner
-// kit, picket fence, a paved stepping-stone path, lamp posts, picnic blankets dressed per spot, lantern
+// kit, near courtside kit on the sand behind the local player, a team bench zone and low hedge past it,
+// picket fence, a paved stepping-stone path, lamp posts, picnic blankets dressed per spot, lantern
 // poles + lanterns, a refreshment stall, an ice-cream cart, a little garden, a park sign, a balloon bunch,
 // an umpire chair and a little scoreboard by the net. Everything is a `Prop` (kit.ts), so the whole
 // layout draws as one InstancedMesh per shape (~15 draw calls); ground cover and the far ring carry a
 // detail level (kit.ts showDetail), so Low draws only the core park.
 //
 // Readability rules (props.test.ts checks them): nothing on the court or its run-off, only the net-side
-// furniture inside the surround, nothing taller than a tuft between the camera and the near baseline,
+// furniture and the near courtside kit (knee-low, past a player's reach: NEAR_KIT) inside the surround,
+// nothing between the camera and the court or a player's feet,
 // and nothing pale above the net behind the far baseline (the white shuttle must read there).
 //
 // Render space: the local player is near (z < 0), the camera behind them looking toward +z.
@@ -81,6 +83,19 @@ const COLORS = {
   stallGoods: ['#7cc6e8', '#f4ece0', '#f0a35e', '#f4ece0', '#9bd17a'],
   signBoard: '#b48a62',
   water: '#8fd0e6',
+  /** Near courtside kit (behind the local player): warm mid tones, nothing white near the court. */
+  towels: ['#e98a6f', '#f2c35e'],
+  /** Team palette: coral (left) and blue (right) mats, bags and their edges. */
+  mats: ['#e0877a', '#6f9ccf'],
+  matEdge: ['#c96d61', '#5781b4'],
+  bags: ['#d0564f', '#3f6fae'],
+  bagTrim: '#3b3346',
+  tube: '#3f9a6a',
+  tubeCap: '#f2c35e',
+  racket: '#4a4058',
+  grip: '#f2c35e',
+  benchFrame: '#5e5160',
+  bottleCaps: ['#3d6fa8', '#e0574a', '#2f9e6a'],
 }
 
 /** Picnic blanket spots (x, z) beside the court; the crowd sits on them. */
@@ -299,11 +314,160 @@ function nearCorners(out: Prop[], court: CourtDims) {
   }
 }
 
-/** Picket fence along both sides, the far backstop and the near corners: built from the real court (they hug the surround). */
+/**
+ * The near apron's courtside kit (behind the local player): only on the sand's outer strip, past where a
+ * player can run (sim.ts OUT_MARGIN + a body), and knee-low, so it never hides the near court or a player's
+ * feet. `inFrom`: metres past the baseline the strip starts; `cap`: tallest top; `mid`: the centre lane
+ * (|x| < mid × half-width) holds only ankle-high bits (`midCap`).
+ */
+export const NEAR_KIT = { inFrom: 1.1, cap: 0.42, mid: 0.5, midCap: 0.2 } as const
+
+/** A racket lying flat at (x, z), head toward `yaw`: an oval frame of short sticks, strings, throat and grip. */
+function flatRacket(out: Prop[], x: number, z: number, yaw: number) {
+  const y = 0.02
+  const c = Math.cos(yaw)
+  const n = Math.sin(yaw)
+  // Local (u across, v along the racket, head at +v) → world (x, z).
+  const at = (u: number, v: number): [number, number] => [x + u * c + v * n, z - u * n + v * c]
+  const rim = (a: number) => at(Math.sin(a) * 0.12, 0.17 + Math.cos(a) * 0.15)
+  const SEG = 10
+  for (let i = 0; i < SEG; i++) {
+    const [x0, z0] = rim((i / SEG) * Math.PI * 2)
+    const [x1, z1] = rim(((i + 1) / SEG) * Math.PI * 2)
+    out.push(stick(COLORS.racket, x0, y, z0, x1, y, z1, 0.025))
+  }
+  const [sx, sz] = at(0, 0.17)
+  out.push(prop('box', COLORS.string, sx, y - 0.006, sz, 0.21, 0.006, 0.27, yaw))
+  const [tx, tz] = at(0, 0.02)
+  const [hx, hz] = at(0, -0.09)
+  const [gx, gz] = at(0, -0.24)
+  out.push(stick(COLORS.racket, tx, y, tz, hx, y, hz, 0.02))
+  out.push(stick(COLORS.grip, hx, y, hz, gx, y, gz, 0.035))
+}
+
+/** A kit bag lying at (x, z) turned `yaw`: body, a darker end band each side, a handle strap on top. */
+function kitBag(out: Prop[], color: string, x: number, z: number, yaw: number, len = 0.62) {
+  const c = Math.cos(yaw)
+  const n = Math.sin(yaw)
+  out.push(prop('box', color, x, 0.12, z, len, 0.24, 0.28, yaw))
+  for (const e of [-1, 1]) {
+    const d = e * (len / 2 - 0.04)
+    out.push(prop('box', COLORS.bagTrim, x + d * c, 0.12, z - d * n, 0.06, 0.25, 0.29, yaw))
+  }
+  out.push(prop('box', COLORS.bagTrim, x, 0.245, z, len * 0.5, 0.02, 0.06, yaw))
+}
+
+/**
+ * Courtside kit on the near sand: one mat per side (only on the sand's outer strip, NEAR_KIT), each with a
+ * few grounded, knee-low pieces: a kit bag, a folded towel and a racket on the left; a bag and a pair of
+ * shuttle tubes and a racket on the right. Colours from the team palette (COLORS.mats / bags). Built from
+ * the real court (it hugs the surround); own seed, so the rest of the park keeps its layout.
+ */
+function nearApron(out: Prop[], court: CourtDims) {
+  const sur = surroundOf(court)
+  const zIn = -(court.halfLen + NEAR_KIT.inFrom)
+  const zOut = -(court.halfLen + sur.z)
+  // Hug the sand's outer edge (bigger courts have a deeper surround: further from the player there).
+  const z = Math.min((zIn + zOut) / 2, zOut + 0.26)
+  const side = (court.halfWidth + sur.x) * 0.62
+  for (const s of [-1, 1]) {
+    const x = s * side
+    const k = s < 0 ? 0 : 1
+    out.push(prop('box', COLORS.mats[k], x, 0.01, z, 1.7, 0.02, 0.42))
+    out.push(prop('box', COLORS.matEdge[k], x, 0.008, z, 1.78, 0.012, 0.48))
+    kitBag(out, COLORS.bags[k], x - s * 0.45, z, s * 0.08)
+    flatRacket(out, x + s * 0.22, z - 0.02, Math.PI / 2 + s * 0.35)
+  }
+  // Left extra: a folded towel stack; right extra: two shuttle tubes lying side by side.
+  out.push(prop('box', COLORS.towels[0], -side + 0.62, 0.05, z, 0.32, 0.06, 0.26, 0.12))
+  out.push(prop('box', COLORS.towels[1], -side + 0.62, 0.105, z, 0.3, 0.05, 0.24, -0.08))
+  for (const dx of [-0.06, 0.06]) {
+    const tube = prop('post', COLORS.tube, side - 0.66 + dx, 0.05, z, 0.1, 0.4, 0.1, dx)
+    tube.tilt = Math.PI / 2
+    out.push(tube)
+    out.push(prop('box', COLORS.tubeCap, side - 0.66 + dx, 0.05, z + 0.2, 0.1, 0.1, 0.02))
+  }
+}
+
+/** The near grass: the team bench zone (`gap` m past the sand), the hedge `hedge` m past the sand. */
+export const NEAR_ZONE = { gap: 0.48, hedge: 1.28 } as const
+
+/**
+ * The near lawn past the sand: a team bench with a backrest each side (towel draped over one, a bag under
+ * the other), a drinks crate by the left one, a towel rack by the right one, then a low hedge row with
+ * gaps across the end, flower drifts in front of it (Medium+) and grass tufts (High). Built from the real
+ * court; own seed.
+ */
+function nearGrass(out: Prop[], court: CourtDims) {
+  const r = rng(13)
+  const sur = surroundOf(court)
+  const edge = -(court.halfLen + sur.z)
+  const zb = edge - NEAR_ZONE.gap
+  const side = (court.halfWidth + sur.x) * 0.62
+  for (const s of [-1, 1]) {
+    const x = s * side
+    // Legs, a two-slat seat, two back posts and a backrest rail (the back sits away from the court).
+    for (const dx of [-0.6, 0.6]) {
+      out.push(prop('box', COLORS.benchFrame, x + dx, 0.2, zb, 0.07, 0.4, 0.36))
+      out.push(prop('box', COLORS.benchFrame, x + dx, 0.55, zb - 0.16, 0.07, 0.3, 0.05))
+    }
+    for (const dz of [-0.08, 0.08]) out.push(prop('box', COLORS.wood, x, 0.42, zb + dz, 1.5, 0.05, 0.14))
+    out.push(prop('box', COLORS.wood, x, 0.6, zb - 0.17, 1.5, 0.14, 0.04))
+  }
+  // Left bench: a towel over the seat edge; a drinks crate with bottle tops beside it.
+  out.push(prop('box', COLORS.towels[0], -side - 0.2, 0.36, zb + 0.15, 0.3, 0.16, 0.03))
+  out.push(prop('box', COLORS.towels[0], -side - 0.2, 0.455, zb + 0.06, 0.3, 0.03, 0.2))
+  const cx = -side + 1.05
+  out.push(prop('box', COLORS.wood, cx, 0.13, zb, 0.4, 0.26, 0.3, 0.1))
+  for (let i = 0; i < 6; i++)
+    out.push(
+      prop(
+        'post',
+        COLORS.bottleCaps[i % 3],
+        cx - 0.12 + (i % 3) * 0.12,
+        0.29,
+        zb - 0.06 + Math.floor(i / 3) * 0.12,
+        0.07,
+        0.06,
+        0.07,
+      ),
+    )
+  // Right bench: a bag under the seat; a towel rack (two posts, a bar, two hung towels) beside it.
+  kitBag(out, COLORS.bags[1], side + 0.15, zb + 0.02, 0, 0.55)
+  const rx = side + 1.1
+  for (const dx of [-0.32, 0.32])
+    out.push(prop('post', COLORS.benchFrame, rx + dx, 0.32, zb - 0.1, 0.05, 0.64, 0.05))
+  out.push(prop('post', COLORS.benchFrame, rx, 0.62, zb - 0.1, 0.03, 0.7, 0.03, Math.PI / 2))
+  out[out.length - 1].tilt = Math.PI / 2
+  for (const [dx, k] of [
+    [-0.15, 0],
+    [0.15, 1],
+  ] as const)
+    out.push(prop('box', COLORS.towels[k], rx + dx, 0.46, zb - 0.1, 0.24, 0.32, 0.03))
+  // Hedge row with gaps; flowers in front of it (Medium+), tufts between (High).
+  const zh = edge - NEAR_ZONE.hedge
+  const half = court.halfWidth + sur.x + 1.2
+  const kinds: FlowerKind[][] = [
+    ['daisy', 'pink'],
+    ['yellow', 'coral'],
+    ['lilac', 'daisy'],
+  ]
+  let n = 0
+  for (let x = -half; x <= half; x += 0.85) {
+    if (r() > 0.15)
+      bush(out, r, n % 3 === 0 ? 'flowering' : 'round', x + (r() - 0.5) * 0.2, zh - r() * 0.15, 0.5)
+    if (n++ % 2 === 0) flowers(out, r, x + 0.4, zh + 0.35, 4, kinds[n % 3], 0.25, { detail: 1 })
+    else grass(out, r, x + 0.4, zh + 0.35, 3, 0.25, { detail: 2 })
+  }
+}
+
+/** Picket fence along both sides, the far backstop and the near end: built from the real court (they hug the surround). */
 function hedgeAndFence(out: Prop[], court: CourtDims) {
   const sur = surroundOf(court)
   farBackstop(out, court)
   nearCorners(out, court)
+  nearApron(out, court)
+  nearGrass(out, court)
   // Picket fence along both sides: pickets + two rails.
   const z0 = -(court.halfLen + sur.z)
   const z1 = court.halfLen + sur.z + 0.4

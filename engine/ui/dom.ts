@@ -40,9 +40,9 @@ export function setLabel(el: HTMLElement, label: string): void {
 let toastHost: HTMLElement | null = null
 
 export interface ToastOptions {
-  /** Who it's from (a chat line): shown first, as a pill in `color`, instead of the dot. */
+  /** Who it's from (a chat line): shown first, in `color`, instead of the dot. */
   name?: string
-  /** A player named inside `text` ("Bao joined"): that part shows as a pill in `color`, wherever it is. */
+  /** A player named inside `text` ("Bao joined"): that part shows in `color`, wherever it is. */
   highlight?: string
   /** How long it stays, ms (default 3000). */
   ms?: number
@@ -54,13 +54,13 @@ export function toast(text: string, color?: string, opts: ToastOptions = {}): vo
     toastHost = h('div', { class: 'pf-toasts', role: 'status' } as never)
     document.body.append(toastHost)
   }
-  const pill = (name: string) => h('span', { class: 'pf-toast-name', textContent: name })
+  const named = (name: string) => h('span', { class: 'pf-toast-name', textContent: name })
   const at = opts.highlight ? text.indexOf(opts.highlight) : -1
   const el = opts.name
     ? h(
         'div',
         { class: 'pf-toast named' },
-        pill(opts.name),
+        named(opts.name),
         h('span', { class: 'pf-toast-text', textContent: text }),
       )
     : at >= 0
@@ -71,7 +71,7 @@ export function toast(text: string, color?: string, opts: ToastOptions = {}): vo
             'span',
             { class: 'pf-toast-text' },
             text.slice(0, at),
-            pill(opts.highlight!),
+            named(opts.highlight!),
             text.slice(at + opts.highlight!.length),
           ),
         )

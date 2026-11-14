@@ -27,6 +27,24 @@ export class DirectWatchdog {
     return ms + this.random() * WATCHDOG.jitterMs
   }
 
+  /** All retries of this stuck spell are used up (the relay carries on). */
+  get exhausted(): boolean {
+    return this.retries >= WATCHDOG.maxRetries
+  }
+
+  /** Ms until the next automatic retry; null when not stuck or exhausted. */
+  nextInMs(now: number): number | null {
+    if (this.since < 0 || this.exhausted) return null
+    return Math.max(0, this.next - now)
+  }
+
+  /** A retry just happened by hand: the automatic ones start over from it. */
+  restart(now: number): void {
+    this.since = now
+    this.retries = 0
+    this.next = now + this.wait(WATCHDOG.firstMs)
+  }
+
   /** `relayOnly`: some peer is reached only through the relay now. True = retry now. */
   tick(now: number, relayOnly: boolean): boolean {
     if (!relayOnly) {

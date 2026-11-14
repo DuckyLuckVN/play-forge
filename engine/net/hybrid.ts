@@ -1,7 +1,7 @@
 import { netLog } from './debug'
 import { DirectWatchdog } from './direct-watchdog'
 import type { RelayTransport } from './relay'
-import type { NetStatus, PeerLink, Route } from './status'
+import type { LinkAttempt, NetStatus, PeerLink, Route } from './status'
 import type { MediaChannel, Transport } from './transport'
 
 /**
@@ -112,7 +112,9 @@ export function createHybridTransport(
   const watchTimer =
     !relayOnly && direct.retryDirect
       ? setInterval(() => {
-          const stuck = [...viaRelay].some((id) => !viaDirect.has(id))
+          // One side per pair retries (the lower id): a retry rejoins the room, so two at once
+          // would each tear down the attempt the other just started.
+          const stuck = [...viaRelay].some((id) => !viaDirect.has(id) && direct.selfId < id)
           if (watchdog.tick(performance.now(), stuck)) {
             netLog('direct: still on the relay, trying a fresh direct link')
             void direct.retryDirect!().catch(() => {})
@@ -170,12 +172,39 @@ export function createHybridTransport(
     },
     media: media?.channel,
     diagnostics: {
-      snapshot: () => ({ ...mergeStatus(direct, relay, routeOf), waiting: graceTimers.size }),
+      snapshot: () => {
+        const s = mergeStatus(direct, relay, routeOf)
+        const now = performance.now()
+        // Each player not linked by WebRTC: where getting a link stands.
+        const attemptOf = (id: string): LinkAttempt | undefined => {
+          if (relayOnly || viaDirect.has(id) || !viaRelay.has(id) || !direct.retryDirect) return undefined
+          if (s.negotiating > 0) return { phase: s.turnOffered ? 'turn' : 'direct' }
+          if (direct.selfId >= id) return { phase: 'their-retry' }
+          const next = watchdog.nextInMs(now)
+          return watchdog.exhausted || next === null
+            ? { phase: 'gave-up' }
+            : { phase: 'waiting', nextInMs: next }
+        }
+        return {
+          ...s,
+          peers: s.peers.map((p) => {
+            const attempt = attemptOf(p.id)
+            return attempt ? { ...p, attempt } : p
+          }),
+          waiting: graceTimers.size,
+        }
+      },
       async measure() {
         await Promise.all([direct.diagnostics?.measure(), relay.measure()])
       },
     },
-    retryDirect: direct.retryDirect && (() => direct.retryDirect!()),
+    // By hand (the Network panel's Retry, allowing local network access): the automatic ones start over.
+    retryDirect:
+      direct.retryDirect &&
+      (() => {
+        watchdog.restart(performance.now())
+        return direct.retryDirect!()
+      }),
     leave() {
       if (watchTimer) clearInterval(watchTimer)
       for (const id of [...graceTimers.keys()]) clearGrace(id)

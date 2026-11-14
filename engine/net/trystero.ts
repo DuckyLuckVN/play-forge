@@ -179,6 +179,7 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
         kind: 'internet',
         relays: RELAY_URLS.map((url) => ({ url, state: relayState(sockets[url]) })),
         negotiating: pcs.negotiating(),
+        turnOffered: withTurn,
         failures: failures.total,
         openFailures: open.count,
         peers,

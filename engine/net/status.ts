@@ -21,7 +21,16 @@ export interface PeerLink {
   route?: Route
   /** The WebRTC link goes through a TURN server (still WebRTC, so voice works), from the last measure. */
   turn?: boolean
+  /** Not linked by WebRTC (yet): where getting a link stands (hybrid.ts; the Network panel shows it). */
+  attempt?: LinkAttempt
 }
+
+/**
+ * Getting a WebRTC link to a player: trying direct routes, trying with TURN, waiting `nextInMs` for
+ * our next try, waiting for theirs (the lower peer id retries), or out of tries (the relay carries on).
+ */
+export type LinkAttempt =
+  { phase: 'direct' | 'turn' | 'their-retry' | 'gave-up' } | { phase: 'waiting'; nextInMs: number }
 
 export interface NetStatus {
   /** 'internet': WebRTC over public relays; 'local': same-browser tabs (`?net=local`). */
@@ -41,6 +50,8 @@ export interface NetStatus {
   peers: PeerLink[]
   /** Peers reached only through the relay, still giving WebRTC its head start (hybrid.ts RELAY_GRACE_MS). */
   waiting?: number
+  /** The current WebRTC attempt also offers TURN (trystero.ts: direct routes first, TURN from the first retry). */
+  turnOffered?: boolean
   /** Our game relay server (fallback path), when the transport uses one. */
   gameRelay?: { state: GameRelayState; rttMs?: number }
 }
@@ -200,6 +211,8 @@ export interface PanelRow {
   rttMs: number | null
   /** Set once connected, when the transport reports it. */
   route: PanelRoute | null
+  /** Not linked by WebRTC (yet): where getting a link stands. */
+  attempt?: LinkAttempt
 }
 
 export interface NetPanelView {
@@ -244,6 +257,7 @@ export function netPanelView(
       state,
       rttMs: link?.rttMs ?? null,
       route: state === 'connected' ? panelRoute(link) : null,
+      ...(link?.attempt ? { attempt: link.attempt } : {}),
     }
   })
   const relaysOk = relaysOpen(status)

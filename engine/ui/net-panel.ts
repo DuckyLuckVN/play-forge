@@ -3,6 +3,7 @@ import { requestLocalAccess, watchLocalAccess, type LocalAccess } from '../net/l
 import {
   LAG_MS,
   netPanelView,
+  type LinkAttempt,
   type LinkState,
   type LinkedPlayer,
   type NetHint,
@@ -140,6 +141,10 @@ export function netStatusButton() {
   })
   const actions: LocalActions = {
     allow: () => requestLocalAccess(),
+    retry: () => {
+      netLog('direct: retry by hand')
+      source?.retryDirect?.()
+    },
     howTo: () => {
       // Ask anyway (a browser that can still prompt will), and show the steps.
       requestLocalAccess()
@@ -251,10 +256,38 @@ function drawHead(head: HTMLElement, src: NetPanelSource) {
   )
 }
 
-/** The local network access buttons: ask the browser, or (denied) show how to allow it. */
+/** The panel's buttons: local network access (ask, or how to allow it), and a fresh link attempt. */
 interface LocalActions {
   allow(): void
   howTo(): void
+  retry(): void
+}
+
+const ATTEMPT_TEXT: Record<LinkAttempt['phase'], (a: LinkAttempt) => string> = {
+  direct: () => t('Trying direct…'),
+  turn: () => t('Trying TURN…'),
+  waiting: (a) => t('Next try in {s} s', { s: a.phase === 'waiting' ? Math.ceil(a.nextInMs / 1000) : 0 }),
+  'their-retry': () => t('Waiting for their next try'),
+  'gave-up': () => t('No direct link: staying on the relay'),
+}
+
+/**
+ * A player not linked by WebRTC: a line under the row on where getting a link stands, and Retry
+ * (a fresh direct + TURN attempt now; it waits while one is under way).
+ */
+function attemptCells(r: PanelRow, retry: () => void) {
+  const a = r.attempt
+  if (!a) return []
+  const busy = a.phase === 'direct' || a.phase === 'turn'
+  const button = h('button', {
+    class: 'pf-btn pf-net-retry',
+    type: 'button',
+    textContent: t('Retry'),
+    disabled: busy,
+    onclick: retry,
+  })
+  button.title = busy ? t('Already trying') : t('Try a direct link again now')
+  return [h('span', { class: `pf-net-attempt ${a.phase}`, textContent: ATTEMPT_TEXT[a.phase](a) }), button]
 }
 
 /** Where to turn local network access on: Chrome won't ask again once it says "denied". */
@@ -338,6 +371,7 @@ function drawBody(
               h('span', { class: 'pf-net-name', textContent: r.name }),
               stateCell(r),
               pingCell(r.rttMs),
+              ...attemptCells(r, local.retry),
             ),
           ),
         )

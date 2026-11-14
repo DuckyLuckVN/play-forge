@@ -404,47 +404,34 @@ describe("hybrid transport: each player's link attempt, for the Network panel", 
     return { direct, retryDirect, t, attempt }
   }
 
-  it('trying direct, then TURN, while a connection is being set up', () => {
-    vi.useFakeTimers()
+  it('a player on the relay: trying while an attempt is under way, idle otherwise', () => {
     const { direct, t, attempt } = make('zed')
-    direct.status.negotiating = 1
-    expect(attempt()).toEqual({ phase: 'direct' })
-    direct.status.turnOffered = true
-    expect(attempt()).toEqual({ phase: 'turn' })
+    direct.status.trying = true
+    expect(attempt()).toBe('trying')
+    direct.status.trying = false
+    expect(attempt()).toBe('idle')
     t.leave()
-    vi.useRealTimers()
   })
 
-  it('between tries: when ours is next, or that the other side retries, or that we gave up', () => {
-    vi.useFakeTimers()
+  it('a player on TURN can retry too; a direct link has nothing to retry', () => {
     const { direct, t, attempt } = make('zed')
-    direct.status.negotiating = 0
-    vi.advanceTimersByTime(1000)
-    expect(attempt()?.phase).toBe('waiting')
-    const a = attempt()
-    expect(a?.phase === 'waiting' && a.nextInMs).toBeGreaterThan(0)
-    vi.advanceTimersByTime(400_000)
-    expect(attempt()).toEqual({ phase: 'gave-up' })
-    t.leave()
-    const other = make('abe') // a lower id than ours: they retry
-    other.direct.status.negotiating = 0
-    vi.advanceTimersByTime(1000)
-    expect(other.attempt()).toEqual({ phase: 'their-retry' })
-    other.t.leave()
-    vi.useRealTimers()
-  })
-
-  it('a linked player has no attempt; Retry starts a fresh one and restarts the automatic ones', async () => {
-    vi.useFakeTimers()
-    const { direct, retryDirect, t, attempt } = make('zed')
-    vi.advanceTimersByTime(400_000)
-    expect(attempt()).toEqual({ phase: 'gave-up' })
-    await t.retryDirect!()
-    expect(retryDirect).toHaveBeenCalled()
-    vi.advanceTimersByTime(1000)
-    expect(attempt()?.phase).toBe('waiting')
     direct.up('zed')
+    direct.status.peers = [{ id: 'zed', state: 'connected', turn: true }]
+    expect(attempt()).toBe('idle')
+    direct.status.peers = [{ id: 'zed', state: 'connected' }]
     expect(attempt()).toBeUndefined()
+    t.leave()
+  })
+
+  it('Retry by hand starts a fresh attempt and restarts the automatic ones', async () => {
+    vi.useFakeTimers()
+    const { retryDirect, t } = make('zed')
+    vi.advanceTimersByTime(400_000) // automatic retries used up
+    retryDirect.mockClear()
+    await t.retryDirect!()
+    expect(retryDirect).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(WATCHDOG.firstMs + WATCHDOG.jitterMs + 1000)
+    expect(retryDirect).toHaveBeenCalledTimes(2)
     t.leave()
     vi.useRealTimers()
   })

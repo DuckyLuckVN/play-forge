@@ -309,7 +309,7 @@
     font-size: var(--pf-fs-xs);
     color: var(--pf-haze);
   }
-  .pf-net-attempt:is(.direct, .turn)::after {
+  .pf-net-attempt.trying::after {
     content: '';
     display: inline-block;
     width: 8px;

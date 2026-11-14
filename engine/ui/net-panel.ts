@@ -3,7 +3,6 @@ import { requestLocalAccess, watchLocalAccess, type LocalAccess } from '../net/l
 import {
   LAG_MS,
   netPanelView,
-  type LinkAttempt,
   type LinkState,
   type LinkedPlayer,
   type NetHint,
@@ -144,6 +143,9 @@ export function netStatusButton() {
     retry: () => {
       netLog('direct: retry by hand')
       source?.retryDirect?.()
+      // Show the new attempt now, not at the next 1 s refresh.
+      const view = viewNow()
+      if (view && pop.isOpen) drawBody(body, view, actions, ui(), access)
     },
     howTo: () => {
       // Ask anyway (a browser that can still prompt will), and show the steps.
@@ -260,34 +262,30 @@ function drawHead(head: HTMLElement, src: NetPanelSource) {
 interface LocalActions {
   allow(): void
   howTo(): void
+  /** A fresh link attempt now. */
   retry(): void
 }
 
-const ATTEMPT_TEXT: Record<LinkAttempt['phase'], (a: LinkAttempt) => string> = {
-  direct: () => t('Trying direct…'),
-  turn: () => t('Trying TURN…'),
-  waiting: (a) => t('Next try in {s} s', { s: a.phase === 'waiting' ? Math.ceil(a.nextInMs / 1000) : 0 }),
-  'their-retry': () => t('Waiting for their next try'),
-  'gave-up': () => t('No direct link: staying on the relay'),
-}
-
 /**
- * A player not linked by WebRTC: a line under the row on where getting a link stands, and Retry
- * (a fresh direct + TURN attempt now; it waits while one is under way).
+ * A player not linked directly (on TURN or the relay): Retry starts a fresh attempt (direct first:
+ * WebRTC ranks direct routes above TURN). While one is under way the row says "Connecting…" and the
+ * button waits.
  */
 function attemptCells(r: PanelRow, retry: () => void) {
-  const a = r.attempt
-  if (!a) return []
-  const busy = a.phase === 'direct' || a.phase === 'turn'
+  if (!r.attempt) return []
+  const trying = r.attempt === 'trying'
   const button = h('button', {
     class: 'pf-btn pf-net-retry',
     type: 'button',
     textContent: t('Retry'),
-    disabled: busy,
+    disabled: trying,
     onclick: retry,
   })
-  button.title = busy ? t('Already trying') : t('Try a direct link again now')
-  return [h('span', { class: `pf-net-attempt ${a.phase}`, textContent: ATTEMPT_TEXT[a.phase](a) }), button]
+  button.title = trying ? t('Already trying') : t('Try a direct link again now')
+  return [
+    ...(trying ? [h('span', { class: 'pf-net-attempt trying', textContent: t('Connecting…') })] : []),
+    button,
+  ]
 }
 
 /** Where to turn local network access on: Chrome won't ask again once it says "denied". */

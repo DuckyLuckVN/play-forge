@@ -39,24 +39,11 @@ describe('DirectWatchdog', () => {
   })
 })
 
-describe('DirectWatchdog: what the Network panel shows', () => {
-  it('says when the next retry is, and when it gave up', () => {
-    const w = new DirectWatchdog(() => 0)
-    expect(w.nextInMs(0)).toBeNull() // not stuck
-    w.tick(0, true)
-    expect(w.nextInMs(1000)).toBe(WATCHDOG.firstMs - 1000)
-    run(w, 1000, 300_000, () => true)
-    expect(w.exhausted).toBe(true)
-    expect(w.nextInMs(300_000)).toBeNull()
-  })
-
+describe('DirectWatchdog: a retry by hand', () => {
   it('a manual retry starts the automatic ones over', () => {
     const w = new DirectWatchdog(() => 0)
-    run(w, 0, 300_000, () => true)
-    expect(w.exhausted).toBe(true)
+    expect(run(w, 0, 300_000, () => true)).toHaveLength(WATCHDOG.maxRetries)
     w.restart(300_000)
-    expect(w.exhausted).toBe(false)
-    expect(w.nextInMs(300_000)).toBe(WATCHDOG.firstMs)
     expect(run(w, 301_000, 700_000, () => true)).toHaveLength(WATCHDOG.maxRetries)
   })
 })

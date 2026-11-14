@@ -89,14 +89,37 @@ describe('trystero transport', () => {
     turnModeNow = 'auto'
   })
 
-  it('tries direct routes first: no TURN on the first attempt, TURN from the first retry on', async () => {
+  it('offers TURN from the first attempt on both sides (one-sided TURN failed on mobile data)', async () => {
     const t = createTrysteroTransport('app', 'room')
-    expect(rooms[0].config.turnConfig).toBeUndefined()
+    expect(rooms[0].config.turnConfig).toHaveLength(1)
     await t.retryDirect!()
     expect(rooms[1].config.turnConfig).toHaveLength(1)
-    await t.retryDirect!()
-    expect(rooms[2].config.turnConfig).toHaveLength(1)
     t.leave()
+  })
+
+  it('?turn=off never offers TURN', () => {
+    turnModeNow = 'off'
+    const t = createTrysteroTransport('app', 'room')
+    expect(rooms[0].config.turnConfig).toBeUndefined()
+    t.leave()
+  })
+
+  it('counts as trying from the moment a retry starts (the panel shows it at once)', async () => {
+    vi.useFakeTimers()
+    const t = createTrysteroTransport('app', 'room')
+    vi.advanceTimersByTime(60_000)
+    expect(t.diagnostics!.snapshot().trying).toBe(false)
+    holdLeave = true
+    const retry = t.retryDirect!()
+    expect(t.diagnostics!.snapshot().trying).toBe(true) // still leaving the old room
+    rooms[0].finishLeave!()
+    await retry
+    expect(t.diagnostics!.snapshot().trying).toBe(true) // the new room is setting up
+    vi.advanceTimersByTime(60_000)
+    expect(t.diagnostics!.snapshot().trying).toBe(false)
+    holdLeave = false
+    t.leave()
+    vi.useRealTimers()
   })
 
   it('?turn=only still goes through TURN from the start (testing TURN)', () => {

@@ -1,7 +1,7 @@
 import { netLog } from './debug'
 import { DirectWatchdog } from './direct-watchdog'
 import type { RelayTransport } from './relay'
-import type { LinkAttempt, NetStatus, PeerLink, Route } from './status'
+import type { NetStatus, PeerLink, Route } from './status'
 import type { MediaChannel, Transport } from './transport'
 
 /**
@@ -26,8 +26,8 @@ export interface HybridOptions {
 
 /**
  * Direct first, then TURN, then the relay: a new peer reached only through the relay waits this
- * long for WebRTC (the first attempt is direct only; the watchdog's retry after ~8–11 s adds TURN)
- * before the relay carries the game. Once a peer was linked, a dropped link falls back at once.
+ * long for WebRTC (direct and TURN, with retries) before the relay carries the game. Once a peer was
+ * linked, a dropped link falls back at once.
  */
 export const RELAY_GRACE_MS = 14_000
 
@@ -174,23 +174,16 @@ export function createHybridTransport(
     diagnostics: {
       snapshot: () => {
         const s = mergeStatus(direct, relay, routeOf)
-        const now = performance.now()
-        // Each player not linked by WebRTC: where getting a link stands.
-        const attemptOf = (id: string): LinkAttempt | undefined => {
-          if (relayOnly || viaDirect.has(id) || !viaRelay.has(id) || !direct.retryDirect) return undefined
-          if (s.negotiating > 0) return { phase: s.turnOffered ? 'turn' : 'direct' }
-          if (direct.selfId >= id) return { phase: 'their-retry' }
-          const next = watchdog.nextInMs(now)
-          return watchdog.exhausted || next === null
-            ? { phase: 'gave-up' }
-            : { phase: 'waiting', nextInMs: next }
-        }
+        // Each player not linked directly (on TURN or the relay): trying, or not (Retry may help).
+        const linkedDirectly = (p: PeerLink) => viaDirect.has(p.id) && !p.turn
+        const retryable = !relayOnly && !!direct.retryDirect
         return {
           ...s,
-          peers: s.peers.map((p) => {
-            const attempt = attemptOf(p.id)
-            return attempt ? { ...p, attempt } : p
-          }),
+          peers: s.peers.map((p) =>
+            retryable && !linkedDirectly(p) && (viaDirect.has(p.id) || viaRelay.has(p.id))
+              ? { ...p, attempt: s.trying ? ('trying' as const) : ('idle' as const) }
+              : p,
+          ),
           waiting: graceTimers.size,
         }
       },

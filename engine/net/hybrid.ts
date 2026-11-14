@@ -20,7 +20,16 @@ import type { MediaChannel, Transport } from './transport'
 export interface HybridOptions {
   /** Debug (`?relay=only`): send and accept game data through the relay only. */
   relayOnly?: boolean
+  /** Ms a new peer reached only by the relay waits for a direct / TURN link first (default RELAY_GRACE_MS). */
+  relayGraceMs?: number
 }
+
+/**
+ * Direct first, then TURN, then the relay: a new peer reached only through the relay waits this
+ * long for WebRTC (the first attempt is direct only; the watchdog's retry after ~8–11 s adds TURN)
+ * before the relay carries the game. Once a peer was linked, a dropped link falls back at once.
+ */
+export const RELAY_GRACE_MS = 14_000
 
 export function createHybridTransport(
   direct: Transport,
@@ -29,29 +38,73 @@ export function createHybridTransport(
 ): Transport {
   if (direct.selfId !== relay.selfId) throw new Error('hybrid transport: peer ids differ')
   const relayOnly = !!opts.relayOnly
+  const graceMs = relayOnly ? 0 : (opts.relayGraceMs ?? RELAY_GRACE_MS)
   const viaDirect = new Set<string>()
   const viaRelay = new Set<string>()
+  /** Relay peers the relay may carry: grace over, linked before, or they already use it. */
+  const relayReady = new Set<string>()
+  /** Peers seen on a direct link this session: a later drop falls back to the relay at once. */
+  const linked = new Set<string>()
+  const graceTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const joinHandlers = new Set<(id: string) => void>()
   const leaveHandlers = new Set<(id: string) => void>()
-  const known = (id: string) => viaDirect.has(id) || viaRelay.has(id)
+  const usable = (id: string) => relayReady.has(id) && viaRelay.has(id)
+  const known = (id: string) => viaDirect.has(id) || usable(id)
   const routeOf = (id: string): Route | null =>
-    !relayOnly && viaDirect.has(id) ? 'direct' : viaRelay.has(id) ? 'relay' : null
+    !relayOnly && viaDirect.has(id) ? 'direct' : usable(id) ? 'relay' : null
+  const clearGrace = (id: string) => {
+    clearTimeout(graceTimers.get(id))
+    graceTimers.delete(id)
+  }
+  /** Let the relay carry `id` (joining them if no direct link did). */
+  const readyRelay = (id: string, why: string) => {
+    clearGrace(id)
+    if (relayReady.has(id) || !viaRelay.has(id)) return
+    const isNew = !known(id)
+    relayReady.add(id)
+    netLog('route:', id, 'relay ready', `(${why})`, isNew ? '(joined)' : '')
+    if (isNew) joinHandlers.forEach((h) => h(id))
+  }
 
   const media = direct.media && createMediaFollower(direct.media)
 
   const arrive = (set: Set<string>, id: string, path: Route) => {
+    if (path === 'relay') {
+      viaRelay.add(id)
+      // Linked before (or no grace): the relay may carry them now; else WebRTC gets its head start.
+      if (linked.has(id) || graceMs <= 0) readyRelay(id, linked.has(id) ? 'linked before' : 'no grace')
+      else if (!graceTimers.has(id))
+        graceTimers.set(
+          id,
+          setTimeout(() => readyRelay(id, 'no direct link in time'), graceMs),
+        )
+      return
+    }
     const isNew = !known(id)
     set.add(id)
+    linked.add(id)
+    clearGrace(id)
     netLog('route:', id, path, 'up', isNew ? '(joined)' : '')
     if (isNew) joinHandlers.forEach((h) => h(id))
     // After the join handlers: voice may have just sent its stream to this peer itself.
-    if (path === 'direct') media?.linked(id)
+    media?.linked(id)
   }
   const depart = (set: Set<string>, id: string, path: Route) => {
+    const wasKnown = known(id)
     if (!set.delete(id)) return
-    if (path === 'direct') media?.unlinked(id)
+    if (path === 'direct') {
+      media?.unlinked(id)
+      // Mid-game (or mid-retry): the relay takes over at once (they stay joined, no new join).
+      if (viaRelay.has(id)) {
+        clearGrace(id)
+        relayReady.add(id)
+      }
+    } else {
+      clearGrace(id)
+      relayReady.delete(id)
+    }
     netLog('route:', id, path, 'down', known(id) ? '(still reachable)' : '(left)')
-    if (!known(id)) leaveHandlers.forEach((h) => h(id))
+    if (wasKnown && !known(id)) leaveHandlers.forEach((h) => h(id))
   }
 
   // A peer left on the relay: try the direct links again now and then (direct-watchdog.ts).
@@ -96,7 +149,12 @@ export function createHybridTransport(
       const a = direct.on(channel, (data, from) => {
         if (!relayOnly) handler(data, from)
       })
-      const b = relay.on(channel, handler)
+      // A message through the relay: that peer already uses it (its grace ran out, or an older
+      // page), so follow it now instead of waiting out our own grace.
+      const b = relay.on(channel, (data, from) => {
+        if (!relayReady.has(from)) readyRelay(from, 'peer already uses it')
+        handler(data, from)
+      })
       return () => {
         a()
         b()
@@ -112,7 +170,7 @@ export function createHybridTransport(
     },
     media: media?.channel,
     diagnostics: {
-      snapshot: () => mergeStatus(direct, relay, routeOf),
+      snapshot: () => ({ ...mergeStatus(direct, relay, routeOf), waiting: graceTimers.size }),
       async measure() {
         await Promise.all([direct.diagnostics?.measure(), relay.measure()])
       },
@@ -120,6 +178,7 @@ export function createHybridTransport(
     retryDirect: direct.retryDirect && (() => direct.retryDirect!()),
     leave() {
       if (watchTimer) clearInterval(watchTimer)
+      for (const id of [...graceTimers.keys()]) clearGrace(id)
       offs.forEach((off) => off())
       joinHandlers.clear()
       leaveHandlers.clear()

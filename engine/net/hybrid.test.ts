@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Emitter } from '../core/emitter'
 import { WATCHDOG } from './direct-watchdog'
-import { createHybridTransport } from './hybrid'
+import { createHybridTransport, RELAY_GRACE_MS } from './hybrid'
 import type { RelayTransport } from './relay'
 import type { NetStatus } from './status'
 import type { MediaChannel, Transport } from './transport'
@@ -65,7 +65,11 @@ function fakeRelay() {
 function setup(opts = {}) {
   const direct = fakeDirect()
   const relay = fakeRelay()
-  const t = createHybridTransport(direct as unknown as Transport, relay as unknown as RelayTransport, opts)
+  // These tests predate the relay grace: the relay counts at once unless a test says otherwise.
+  const t = createHybridTransport(direct as unknown as Transport, relay as unknown as RelayTransport, {
+    relayGraceMs: 0,
+    ...opts,
+  })
   const joins: string[] = []
   t.onPeerJoin((id) => joins.push(`+${id}`))
   t.onPeerLeave((id) => joins.push(`-${id}`))
@@ -278,6 +282,86 @@ describe('hybrid transport: stuck direct links', () => {
     relayT.up('bob')
     vi.advanceTimersByTime(120_000)
     expect(retryDirect).not.toHaveBeenCalled()
+    t.leave()
+    vi.useRealTimers()
+  })
+})
+
+describe('hybrid transport: direct first, then TURN, then the relay', () => {
+  const make = () => {
+    const direct = fakeDirect()
+    const relay = fakeRelay()
+    const t = createHybridTransport(direct as unknown as Transport, relay as unknown as RelayTransport)
+    const events: string[] = []
+    t.onPeerJoin((id) => events.push(`+${id}`))
+    t.onPeerLeave((id) => events.push(`-${id}`))
+    return { direct, relay, t, events }
+  }
+
+  it('a new peer reached only by the relay joins through it after RELAY_GRACE_MS, not before', () => {
+    vi.useFakeTimers()
+    const { relay, t, events } = make()
+    relay.up('bob')
+    vi.advanceTimersByTime(RELAY_GRACE_MS - 100)
+    expect(events).toEqual([])
+    t.send('state', 1, 'bob')
+    expect(relay.sent).toEqual([]) // not through the relay yet
+    vi.advanceTimersByTime(200)
+    expect(events).toEqual(['+bob'])
+    t.send('state', 2, 'bob')
+    expect(relay.sent.at(-1)).toEqual(['state', 2, 'bob'])
+    t.leave()
+    vi.useRealTimers()
+  })
+
+  it('a direct link (or TURN) within the grace wins: the relay is never used', () => {
+    vi.useFakeTimers()
+    const { direct, relay, t, events } = make()
+    relay.up('bob')
+    vi.advanceTimersByTime(3000)
+    direct.up('bob')
+    vi.advanceTimersByTime(RELAY_GRACE_MS * 2)
+    expect(events).toEqual(['+bob'])
+    t.send('state', 1, 'bob')
+    expect(direct.sent.at(-1)).toEqual(['state', 1, 'bob'])
+    expect(relay.sent).toEqual([])
+    t.leave()
+    vi.useRealTimers()
+  })
+
+  it('the other side already on the relay (its grace ran out, an older page): follow it at once', () => {
+    vi.useFakeTimers()
+    const { relay, t, events } = make()
+    const got: unknown[] = []
+    t.on('lobby', (d) => got.push(d))
+    relay.up('bob')
+    relay.deliver('lobby', { hi: 1 }, 'bob')
+    expect(events).toEqual(['+bob'])
+    expect(got).toEqual([{ hi: 1 }])
+    t.leave()
+    vi.useRealTimers()
+  })
+
+  it('once linked, a direct link dropping falls back to the relay at once (no grace mid-game)', () => {
+    vi.useFakeTimers()
+    const { direct, relay, t, events } = make()
+    relay.up('bob')
+    direct.up('bob')
+    direct.down('bob')
+    expect(events).toEqual(['+bob'])
+    t.send('state', 1, 'bob')
+    expect(relay.sent.at(-1)).toEqual(['state', 1, 'bob'])
+    t.leave()
+    vi.useRealTimers()
+  })
+
+  it('while a relay fallback is pending, the status says so (the join screen waits, not "blocked")', () => {
+    vi.useFakeTimers()
+    const { relay, t } = make()
+    relay.up('bob')
+    expect(t.diagnostics!.snapshot().waiting).toBe(1)
+    vi.advanceTimersByTime(RELAY_GRACE_MS + 100)
+    expect(t.diagnostics!.snapshot().waiting).toBe(0)
     t.leave()
     vi.useRealTimers()
   })

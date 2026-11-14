@@ -457,3 +457,13 @@ describe('backup server: available vs in use', () => {
     expect(netPanelView(net({ gameRelay: relayUp }), []).gameRelay?.inUse).toBe(false)
   })
 })
+
+describe('joining while a relay fallback is pending', () => {
+  it('a failed direct attempt is not "blocked" while the relay may still take over', () => {
+    let track = startJoin(0)
+    const failedDirect = net({ failures: 1, negotiating: 0, peers: [{ id: 'h', state: 'connecting' }] })
+    track = stepJoin(track, { ...failedDirect, waiting: 1 }, 1000)
+    expect(track.phase).toBe('connecting')
+    expect(stepJoin(track, failedDirect, 2000).phase).toBe('blocked')
+  })
+})

@@ -88,13 +88,14 @@
     background: rgb(0 0 0 / 0.18);
     overflow: hidden;
   }
-  .pf-options-fold.card:hover {
-    border-color: var(--pf-haze);
-  }
   .pf-options-fold.card > .pf-options-toggle {
     border: 0;
     border-radius: 0;
     background: none;
+  }
+  /* Only the summary row answers the pointer (the chevron turns yellow too); the pickers stay calm. */
+  .pf-options-fold.card > .pf-options-toggle:hover {
+    background: rgb(255 255 255 / 0.03);
   }
   .pf-options-fold.card > .pf-options {
     padding: var(--pf-space-4) 14px 14px;

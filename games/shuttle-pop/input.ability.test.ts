@@ -171,3 +171,72 @@ describe('ability bindings', () => {
     expect(s.kinds()).not.toContain('charge')
   })
 })
+
+describe('keys after a click on the top bar (a focused button outside the game)', () => {
+  const stops: (() => void)[] = []
+  afterEach(() => {
+    stops.splice(0).forEach((s) => s())
+    document.body.replaceChildren()
+  })
+  const on = (el: Element, type: 'keydown' | 'keyup', code: string) => {
+    const e = new KeyboardEvent(type, { code, bubbles: true, cancelable: true })
+    el.dispatchEvent(e)
+    return e
+  }
+
+  it('WASD and Space still play while a top-bar button has focus (Space does not click it)', () => {
+    const s = setup()
+    stops.push(() => s.b.stop())
+    const btn = document.createElement('button')
+    document.body.append(btn)
+    btn.focus()
+    on(btn, 'keydown', 'KeyW')
+    expect(s.got.some((i) => i.t === 'move')).toBe(true)
+    const down = on(btn, 'keydown', 'Space')
+    expect(s.kinds()).toContain('ability')
+    expect(down.defaultPrevented).toBe(true)
+    // Firefox clicks a focused button on Space's keyup: that is held back too.
+    expect(on(btn, 'keyup', 'Space').defaultPrevented).toBe(true)
+  })
+
+  it('a field or the menu overlay still keeps its keys', () => {
+    const s = setup()
+    stops.push(() => s.b.stop())
+    const field = document.createElement('input')
+    const overlay = document.createElement('div')
+    overlay.className = 'pf-overlay'
+    const menuBtn = document.createElement('button')
+    overlay.append(menuBtn)
+    document.body.append(field, overlay)
+    for (const el of [field, menuBtn]) {
+      expect(on(el, 'keydown', 'KeyW').defaultPrevented).toBe(false)
+      expect(on(el, 'keydown', 'Space').defaultPrevented).toBe(false)
+      expect(on(el, 'keyup', 'Space').defaultPrevented).toBe(false)
+    }
+    expect(s.got).toEqual([])
+  })
+
+  it('a mouse press on the court takes focus back from the top-bar button', () => {
+    const s = setup()
+    stops.push(() => s.b.stop())
+    const btn = document.createElement('button')
+    document.body.append(btn)
+    btn.focus()
+    expect(document.activeElement).toBe(btn)
+    s.target.dispatchEvent(
+      new PointerEvent('pointerdown', { pointerType: 'mouse', button: 0, bubbles: true, cancelable: true }),
+    )
+    expect(document.activeElement).not.toBe(btn)
+  })
+
+  it('a mouse press on a button inside the game view (e.g. its settings) is not a swing', () => {
+    const s = setup()
+    stops.push(() => s.b.stop())
+    const gear = document.createElement('button')
+    s.target.append(gear)
+    gear.dispatchEvent(
+      new PointerEvent('pointerdown', { pointerType: 'mouse', button: 0, bubbles: true, cancelable: true }),
+    )
+    expect(s.kinds()).toEqual([])
+  })
+})

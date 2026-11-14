@@ -59,9 +59,16 @@ export function heldDir(held: ReadonlySet<string>): { x: number; z: number } {
   return { x: x * k, z: z * k }
 }
 
-/** Typing in chat / a field, or pressing a button, isn't play. */
+/** Clicking a button or link (the game view's own settings, the top bar), or a field, isn't a swing. */
 const isUi = (t: EventTarget | null) =>
   t instanceof Element && !!t.closest('input, textarea, select, button, a, .pf-overlay')
+
+/**
+ * Keys typed into a field, or on a menu overlay (its focused buttons), aren't play. A top-bar button
+ * keeps focus after a click (Network, …): keys there still play (like engine/core/input.ts).
+ */
+const isField = (t: EventTarget | null) =>
+  t instanceof Element && !!t.closest('input, textarea, select, .pf-overlay')
 
 /**
  * Held keys + the touch stick → inputs, DOM-free (one held direction for both: held keys win, else
@@ -263,7 +270,7 @@ export function bindInput(
   let actPointer: number | null = null
   let divePointer: number | null = null
   const onDown = (e: KeyboardEvent) => {
-    if (isUi(e.target)) return
+    if (isField(e.target)) return
     if (ABILITY_KEYS.has(e.code)) {
       // Space would scroll the page.
       e.preventDefault()
@@ -271,6 +278,8 @@ export function bindInput(
     } else if (keys.press(e.code)) e.preventDefault()
   }
   const onUp = (e: KeyboardEvent) => {
+    // Firefox clicks a focused button on Space's keyup: a jump must not also open the top-bar panel.
+    if (ABILITY_KEYS.has(e.code) && !isField(e.target)) e.preventDefault()
     keys.release(e.code)
   }
   const letGo = () => {
@@ -287,6 +296,9 @@ export function bindInput(
   const onPointer = (e: PointerEvent) => {
     if (e.pointerType === 'mouse') {
       if (isUi(e.target)) return
+      // The press's preventDefault keeps focus where it was: take it back from a top-bar button.
+      const focused = document.activeElement
+      if (focused instanceof HTMLElement && !target.contains(focused)) focused.blur()
       if (e.button === 2) {
         e.preventDefault()
         keys.ability('lunge')

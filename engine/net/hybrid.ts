@@ -1,4 +1,5 @@
 import { netLog } from './debug'
+import { DirectWatchdog } from './direct-watchdog'
 import type { RelayTransport } from './relay'
 import type { NetStatus, PeerLink, Route } from './status'
 import type { MediaChannel, Transport } from './transport'
@@ -53,6 +54,19 @@ export function createHybridTransport(
     if (!known(id)) leaveHandlers.forEach((h) => h(id))
   }
 
+  // A peer left on the relay: try the direct links again now and then (direct-watchdog.ts).
+  const watchdog = new DirectWatchdog()
+  const watchTimer =
+    !relayOnly && direct.retryDirect
+      ? setInterval(() => {
+          const stuck = [...viaRelay].some((id) => !viaDirect.has(id))
+          if (watchdog.tick(performance.now(), stuck)) {
+            netLog('direct: still on the relay, trying a fresh direct link')
+            void direct.retryDirect!().catch(() => {})
+          }
+        }, 1000)
+      : null
+
   const offs = [
     direct.onPeerJoin((id) => arrive(viaDirect, id, 'direct')),
     direct.onPeerLeave((id) => depart(viaDirect, id, 'direct')),
@@ -105,6 +119,7 @@ export function createHybridTransport(
     },
     retryDirect: direct.retryDirect && (() => direct.retryDirect!()),
     leave() {
+      if (watchTimer) clearInterval(watchTimer)
       offs.forEach((off) => off())
       joinHandlers.clear()
       leaveHandlers.clear()

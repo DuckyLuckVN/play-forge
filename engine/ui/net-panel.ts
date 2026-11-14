@@ -24,6 +24,8 @@ export interface NetPanelSource {
   measure(): Promise<void>
   /** People we have a direct link with (see LinkedPlayer). */
   linked(): LinkedPlayer[]
+  /** Try the direct links again (once the browser allows local network access). */
+  retryDirect?(): void
 }
 
 /** While the panel is open it refreshes this often; the button's colour, less often. */
@@ -135,19 +137,22 @@ export function netStatusButton() {
       requestLocalAccess()
       showSteps = !showSteps
       const view = viewNow()
-      if (view && pop.isOpen) drawBody(body, view, actions, showSteps)
+      if (view && pop.isOpen) drawBody(body, view, actions, showSteps, access)
     },
   }
   const onAccess = (state: LocalAccess) => {
     const was = access
     access = state
     netLog('local network access:', state)
-    if (was !== 'granted' && was !== 'unsupported' && state === 'granted')
-      toast(t('Allowed: the direct link opens on the next try.'))
+    // Just allowed (not already allowed when the room opened): link again now, no reload needed.
+    if (was !== 'granted' && was !== 'unsupported' && state === 'granted') {
+      toast(t('Allowed: linking directly…'))
+      source?.retryDirect?.()
+    }
     refreshHealth()
     if (pop.isOpen) {
       const view = viewNow()
-      if (view) drawBody(body, view, actions, showSteps)
+      if (view) drawBody(body, view, actions, showSteps, access)
     }
   }
 
@@ -162,14 +167,14 @@ export function netStatusButton() {
     if (gen !== generation || src !== source || !pop.isOpen) return
     const view = viewNow()!
     setHealth(view)
-    drawBody(body, view, actions, showSteps)
+    drawBody(body, view, actions, showSteps, access)
     liveTimer = setTimeout(() => void tick(gen), OPEN_REFRESH_MS)
   }
   function startLive() {
     if (!source) return
     stopLive()
     const view = viewNow()!
-    drawBody(body, view, actions, showSteps)
+    drawBody(body, view, actions, showSteps, access)
     setHealth(view)
     void tick(generation)
   }
@@ -251,10 +256,35 @@ const STEPS = () => [
   t('Reload the game.'),
 ]
 
-function drawBody(body: HTMLElement, view: NetPanelView, local: LocalActions, showSteps = false) {
+const ACCESS_TEXT: Record<Exclude<LocalAccess, 'unsupported'>, () => string> = {
+  granted: () => t('Allowed'),
+  prompt: () => t('Not asked yet'),
+  denied: () => t('Blocked'),
+}
+
+/** This browser's local network access: what links players on the same Wi-Fi directly. */
+function accessLine(access: LocalAccess) {
+  if (access === 'unsupported') return []
+  const row = h(
+    'div',
+    { class: `pf-net-servers-head pf-net-lna ${access}` },
+    h('span', { class: 'pf-net-label', textContent: t('Same Wi-Fi link (this device)') }),
+    h('strong', { class: access === 'granted' ? 'ok' : 'bad', textContent: ACCESS_TEXT[access]() }),
+  )
+  return [h('div', { class: 'pf-net-servers pf-net-backup' }, row)]
+}
+
+function drawBody(
+  body: HTMLElement,
+  view: NetPanelView,
+  local: LocalActions,
+  showSteps = false,
+  access: LocalAccess = 'unsupported',
+) {
   body.replaceChildren(
     ...(view.local ? [] : [servers(view)]),
     ...(view.gameRelay ? [backupServer(view.gameRelay)] : []),
+    ...(view.local ? [] : accessLine(access)),
     h('div', { class: 'pf-net-label', textContent: t('Players') }),
     view.rows.length
       ? h(

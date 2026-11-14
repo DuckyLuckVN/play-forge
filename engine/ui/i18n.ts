@@ -160,8 +160,11 @@ export const VI: Dictionary = {
     'Đang chơi chung Wi-Fi? Trình duyệt đang chặn kết nối tới các thiết bị trong đó. Bấm Cách cho phép để bật lại.',
   'Same Wi-Fi as your friends? Open Network to allow a direct link.':
     'Chơi chung Wi-Fi với bạn bè? Mở mục Mạng để cho phép kết nối trực tiếp.',
-  'Allowed: the direct link opens on the next try.':
-    'Đã cho phép: kết nối trực tiếp sẽ mở ở lần thử tiếp theo.',
+  'Allowed: linking directly…': 'Đã cho phép: đang kết nối trực tiếp…',
+  'Same Wi-Fi link (this device)': 'Kết nối chung Wi-Fi (thiết bị này)',
+  Allowed: 'Đã cho phép',
+  'Not asked yet': 'Chưa hỏi',
+  Blocked: 'Bị chặn',
   Allow: 'Cho phép',
   'How to allow': 'Cách cho phép',
   'Tap the icon left of the address, then Permissions (Site settings).':

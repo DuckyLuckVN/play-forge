@@ -103,6 +103,7 @@ export function createHybridTransport(
         await Promise.all([direct.diagnostics?.measure(), relay.measure()])
       },
     },
+    retryDirect: direct.retryDirect && (() => direct.retryDirect!()),
     leave() {
       offs.forEach((off) => off())
       joinHandlers.clear()

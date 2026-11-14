@@ -32,7 +32,7 @@
     border-radius: 50%;
     background: var(--pf-toast-dot, var(--pf-yolk));
   }
-  /* A chat line: the sender's name as a pill in their colour, then the message. */
+  /* A named toast (chat line, join / leave): the name in colour instead of the dot. */
   .pf-toast.named {
     max-width: min(560px, calc(100vw - 32px));
     padding-left: 8px;
@@ -40,25 +40,22 @@
   .pf-toast.named::before {
     display: none;
   }
-  .pf-toast-text .pf-toast-name {
-    display: inline-block;
-    vertical-align: middle;
-    margin: -2px 3px 0;
-    padding: 2px 9px;
-    line-height: 1.25;
-  }
+  /* The player's name in their colour (darkened: their colours are bright, the toast is light). */
   .pf-toast-name {
-    flex: none;
+    display: inline-block;
+    vertical-align: bottom;
     /* In em: a % of a short sentence is tiny ("Hèo haha" showed as "Hè…"). */
     max-width: 14em;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    padding: 3px 10px;
-    border-radius: 999px;
-    background: var(--pf-toast-dot, var(--pf-yolk));
-    color: var(--pf-night);
+    color: color-mix(in srgb, var(--pf-toast-dot, var(--pf-yolk)) 62%, var(--pf-night));
     font-weight: 800;
+  }
+  /* A chat line: "Name: message", the name first. */
+  .pf-toast.named > .pf-toast-name::after {
+    content: ':';
+    color: var(--pf-night);
   }
   .pf-toast-text {
     min-width: 0;

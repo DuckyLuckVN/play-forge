@@ -49,6 +49,9 @@ Fun mini-games to play with friends: solo, on one device, or online. No accounts
   - A player who reloads or drops keeps their seat for 20 seconds and rejoins automatically.
   - Shuttle Pop 2v2: a leaver who rejoins within the grace window gets their seat back (the computer plays it meanwhile); after it the computer keeps the seat.
   - If the host reloads, the room reopens with the same code and seats. Guests wait up to 30 seconds.
+- **Who is who** (`engine/net/session.ts`, `engine/net/host-identity.ts`):
+  - Each guest has a private seat key (kept with its player id in `sessionStorage`) and sends it only to the host, after accepting the host's lobby. The host never shares it; only that key reclaims a dropped seat, so nobody can take a seat by copying a player id from the lobby (older clients without a key still join).
+  - The host has an ECDSA key pair (in its reload snapshot) and shares the public key in the lobby; guests pin it. A host that comes back on a new connection must sign a guest's random challenge (bound to its peer id) before the guest follows it, so nobody can pose as a dropped host. First contact is still trust-on-first-use, and without WebCrypto (plain-http LAN dev) both sides fall back to the old behaviour.
 - **Limits:**
   - A host reload ends the current match (the room survives).
   - Keep the host's tab visible, because browsers slow down background tabs.

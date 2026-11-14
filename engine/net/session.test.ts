@@ -278,11 +278,11 @@ describe('Session', () => {
   it('lets a kicked player join again', async () => {
     const r = room()
     const host = join(r, { host: true, playerId: 'host' })
-    const guest = join(r, { playerId: 'guest' })
+    const guest = join(r, { playerId: 'guest', playerKey: 'bobsecret1' })
     await until(() => host.lobby.players.length === 2)
     host.kick('guest')
     guest.dispose()
-    join(r, { playerId: 'guest' })
+    join(r, { playerId: 'guest', playerKey: 'bobsecret1' })
     await until(() => host.lobby.players.length === 2)
   })
 
@@ -300,7 +300,7 @@ describe('Session', () => {
   it('keeps a dropped player’s seat during the grace period and restores it', async () => {
     const r = room()
     const host = join(r, { host: true, playerId: 'host', graceMs: 2000 })
-    const guest = join(r, { playerId: 'guest', name: 'Bob' })
+    const guest = join(r, { playerId: 'guest', name: 'Bob', playerKey: 'bobsecret1' })
     await until(() => host.lobby.players.length === 2)
     const slot = host.lobby.players.find((p) => p.id === 'guest')!.slot
 
@@ -309,7 +309,7 @@ describe('Session', () => {
     expect(host.lobby.players).toHaveLength(2)
     expect(host.canStart).toBe(false) // waits for Bob to come back
 
-    const back = join(r, { playerId: 'guest', name: 'Bob' })
+    const back = join(r, { playerId: 'guest', name: 'Bob', playerKey: 'bobsecret1' })
     await until(() => host.reconnecting.length === 0)
     expect(host.lobby.players.find((p) => p.id === 'guest')!.slot).toBe(slot)
     await until(() => back.self?.connected === true)
@@ -328,7 +328,7 @@ describe('Session', () => {
     const r = room()
     const def = { ...counter, isFinished: (s: Counter) => s.totals.guest >= 5 }
     const host = join(r, { host: true, playerId: 'host', graceMs: 2000 }, def)
-    const guest = join(r, { playerId: 'guest' }, def)
+    const guest = join(r, { playerId: 'guest', playerKey: 'bobsecret1' }, def)
     await until(() => host.lobby.players.length === 2)
     guest.setReady(true)
     await until(() => host.canStart)
@@ -339,7 +339,7 @@ describe('Session', () => {
 
     guest.dispose()
     await until(() => host.reconnecting.length === 1)
-    const back = join(r, { playerId: 'guest' }, def)
+    const back = join(r, { playerId: 'guest', playerKey: 'bobsecret1' }, def)
     await until(() => back.phase === 'playing' && back.state !== null)
     back.sendInput(3)
     await until(() => back.phase === 'finished')
@@ -364,6 +364,107 @@ describe('Session', () => {
     await until(() => events.includes('back'))
     await until(() => reopened.lobby.players.find((p) => p.id === 'guest')?.connected === true)
     expect(reopened.lobby.players.map((p) => p.id).sort()).toEqual(['guest', 'host'])
+  })
+
+  it('refuses a seat claim without the player’s key (no hijacking a dropped seat)', async () => {
+    const r = room()
+    const host = join(r, { host: true, playerId: 'host', graceMs: 2000 })
+    const guest = join(r, { playerId: 'guest', name: 'Bob', playerKey: 'bobsecret1' })
+    await until(() => host.lobby.players.length === 2)
+    guest.dispose()
+    await until(() => host.reconnecting.length === 1)
+
+    // Someone who read 'guest' from the lobby tries to take the seat.
+    join(r, { playerId: 'guest', name: 'Eve', playerKey: 'evesecret1' })
+    join(r, { playerId: 'guest', name: 'Eve' })
+    await new Promise((res) => setTimeout(res, 100))
+    expect(host.reconnecting.map((p) => p.name)).toEqual(['Bob'])
+    expect(host.peerOf('guest')).toBeUndefined()
+
+    // Bob, with his key, still gets it back.
+    join(r, { playerId: 'guest', name: 'Bob', playerKey: 'bobsecret1' })
+    await until(() => host.reconnecting.length === 0)
+  })
+
+  it('sends the seat key to the host only, not to other guests', async () => {
+    const r = room()
+    join(r, { host: true, playerId: 'host' })
+    const spy = createBroadcastTransport('test', r)
+    const heard: string[] = []
+    spy.on('hello', (msg) => heard.push(JSON.stringify(msg)))
+    const guest = join(r, { playerId: 'guest', playerKey: 'bobsecret1' })
+    await until(() => guest.lobby.players.length === 2)
+    guest.setProfile('Ana', undefined)
+    await new Promise((res) => setTimeout(res, 50))
+    spy.leave()
+    expect(heard.join()).not.toContain('bobsecret1')
+  })
+
+  it('never puts seat keys in the lobby', async () => {
+    const r = room()
+    const host = join(r, { host: true, playerId: 'host' })
+    const guest = join(r, { playerId: 'guest', playerKey: 'bobsecret1' })
+    await until(() => guest.lobby.players.length === 2)
+    expect(JSON.stringify(guest.lobby)).not.toContain('bobsecret1')
+    expect(JSON.stringify(host.lobby)).not.toContain('bobsecret1')
+  })
+
+  it('a reopened host keeps seat keys from its snapshot', async () => {
+    const r = room()
+    const host = join(r, { host: true, playerId: 'host', graceMs: 2000 })
+    join(r, { playerId: 'guest', playerKey: 'bobsecret1' })
+    await until(() => host.lobby.players.length === 2)
+    const snapshot = host.snapshot()
+    sessions.forEach((s) => s.dispose())
+    const reopened = join(r, { host: true, playerId: 'host', graceMs: 2000, restore: snapshot })
+    join(r, { playerId: 'guest', name: 'Eve', playerKey: 'evesecret1' })
+    await new Promise((res) => setTimeout(res, 100))
+    expect(reopened.reconnecting).toHaveLength(1)
+    join(r, { playerId: 'guest', playerKey: 'bobsecret1' })
+    await until(() => reopened.reconnecting.length === 0)
+  })
+
+  it('a guest ignores a stand-in host that cannot prove the host key', async () => {
+    const r = room()
+    const host = join(r, { host: true, playerId: 'host' })
+    const guest = join(r, { playerId: 'guest' })
+    await until(() => !!guest.lobby.hostKey)
+    const realKey = guest.lobby.hostKey
+    let back = false
+    guest.on('hostBack', () => (back = true))
+    host.dispose()
+    await until(() => !guest.hostConnected)
+
+    // An impostor copies the real lobby (hostKey included) but has another key pair.
+    const fake = createBroadcastTransport('test', r)
+    fake.onPeerJoin((peer) => fake.send('lobby', { ...guest.lobby, players: [] }, peer))
+    fake.on('prove', (nonce: string, peer) => fake.send('proof', { n: nonce, s: 'AAAA' }, peer))
+    fake.send('lobby', { ...guest.lobby, players: [] })
+    // And one with its own key.
+    const fake2 = createBroadcastTransport('test', r)
+    fake2.send('lobby', { ...guest.lobby, hostKey: 'other' })
+    await new Promise((res) => setTimeout(res, 150))
+    fake.leave()
+    fake2.leave()
+    expect(back).toBe(false)
+    expect(guest.hostConnected).toBe(false)
+    expect(guest.lobby.hostKey).toBe(realKey)
+  })
+
+  it('a guest that reloads with a pinned host key still needs proof', async () => {
+    const r = room()
+    const host = join(r, { host: true, playerId: 'host' })
+    const guest = join(r, { playerId: 'guest', playerKey: 'bobsecret1' })
+    await until(() => !!guest.lobby.hostKey)
+    const pinned = guest.hostKey
+    guest.dispose()
+    const fake = createBroadcastTransport('test', r)
+    fake.onPeerJoin((peer) => fake.send('lobby', { ...host.lobby, players: [] }, peer))
+    const back = join(r, { playerId: 'guest', playerKey: 'bobsecret1', hostKey: pinned })
+    // The real host proves itself; the impostor's lobby never shows.
+    await until(() => back.hostConnected && back.lobby.players.length === 2)
+    fake.leave()
+    expect(back.peerOf('host')).toBe(host.transport.selfId)
   })
 
   it('tells guests when the host never comes back', async () => {

@@ -42,3 +42,24 @@ describe('toast', () => {
     expect(el.isConnected).toBe(false)
   })
 })
+
+describe('toast: a player named inside the sentence (join / leave)', () => {
+  it('highlights the name where the language puts it, the rest stays text', () => {
+    toast('Bao đã vào phòng', '#4be3a0', { highlight: 'Bao' })
+    const el = document.querySelector<HTMLElement>('.pf-toast:last-child')!
+    expect(el.textContent).toBe('Bao đã vào phòng')
+    expect(el.querySelector('.pf-toast-name')!.textContent).toBe('Bao')
+    expect(el.classList.contains('named')).toBe(true)
+    toast('Mất kết nối với Bao', '#4be3a0', { highlight: 'Bao' })
+    const last = document.querySelector<HTMLElement>('.pf-toast:last-child')!
+    expect(last.textContent).toBe('Mất kết nối với Bao')
+    expect(last.querySelector('.pf-toast-name')!.textContent).toBe('Bao')
+  })
+
+  it('a name missing from the text falls back to the plain toast with its dot', () => {
+    toast('Someone joined', '#4be3a0', { highlight: 'Bao' })
+    const el = document.querySelector<HTMLElement>('.pf-toast:last-child')!
+    expect(el.textContent).toBe('Someone joined')
+    expect(el.querySelector('.pf-toast-name')).toBeNull()
+  })
+})

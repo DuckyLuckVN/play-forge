@@ -40,6 +40,12 @@
   .pf-toast.named::before {
     display: none;
   }
+  .pf-toast-text .pf-toast-name {
+    display: inline-block;
+    vertical-align: baseline;
+    margin: 0 2px;
+    padding: 1px 8px;
+  }
   .pf-toast-name {
     flex: none;
     max-width: 40%;

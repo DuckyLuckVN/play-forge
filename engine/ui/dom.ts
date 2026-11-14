@@ -42,6 +42,8 @@ let toastHost: HTMLElement | null = null
 export interface ToastOptions {
   /** Who it's from (a chat line): shown first, as a pill in `color`, instead of the dot. */
   name?: string
+  /** A player named inside `text` ("Bao joined"): that part shows as a pill in `color`, wherever it is. */
+  highlight?: string
   /** How long it stays, ms (default 3000). */
   ms?: number
 }
@@ -52,14 +54,28 @@ export function toast(text: string, color?: string, opts: ToastOptions = {}): vo
     toastHost = h('div', { class: 'pf-toasts', role: 'status' } as never)
     document.body.append(toastHost)
   }
+  const pill = (name: string) => h('span', { class: 'pf-toast-name', textContent: name })
+  const at = opts.highlight ? text.indexOf(opts.highlight) : -1
   const el = opts.name
     ? h(
         'div',
         { class: 'pf-toast named' },
-        h('span', { class: 'pf-toast-name', textContent: opts.name }),
+        pill(opts.name),
         h('span', { class: 'pf-toast-text', textContent: text }),
       )
-    : h('div', { class: 'pf-toast', textContent: text })
+    : at >= 0
+      ? h(
+          'div',
+          { class: 'pf-toast named' },
+          h(
+            'span',
+            { class: 'pf-toast-text' },
+            text.slice(0, at),
+            pill(opts.highlight!),
+            text.slice(at + opts.highlight!.length),
+          ),
+        )
+      : h('div', { class: 'pf-toast', textContent: text })
   if (color) el.style.setProperty('--pf-toast-dot', color)
   toastHost.append(el)
   const ms = opts.ms ?? 3000

@@ -112,12 +112,21 @@
   .pf-options-fold > .pf-specs {
     display: grid;
   }
-  /* A long name may wrap: the choice sits at the bottom, so the choices in a row line up. */
+  /* Each setting spans a name row and a choice row shared across its grid row (subgrid): names sit
+     just above their choices and line up at the bottom, so a wrapped name grows upward, never
+     leaving a gap between a short name and its choice. */
   .pf-spec {
     display: grid;
-    align-content: space-between;
-    gap: 3px;
+    grid-row: span 2;
+    grid-template-rows: subgrid;
+    row-gap: 3px;
     min-width: 0;
+  }
+  .pf-spec-k {
+    align-self: end;
+  }
+  .pf-spec-v {
+    align-self: start;
   }
   .pf-spec-k {
     font: var(--pf-fw-bold) 10px/1.1 var(--pf-font);

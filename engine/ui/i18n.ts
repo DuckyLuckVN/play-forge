@@ -45,6 +45,8 @@ export const VI: Dictionary = {
   Sound: 'Âm thanh',
   Voice: 'Giọng nói',
   Close: 'Đóng',
+  Change: 'Đổi',
+  Done: 'Xong',
 
   // Start screen
   Player: 'Người chơi',

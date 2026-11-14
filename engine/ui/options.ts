@@ -1,5 +1,7 @@
 import type { GameOptions, OptionDef } from '../net/session'
-import { h } from './dom'
+import { h, icon } from './dom'
+import { t } from './i18n'
+import { icons } from './icons'
 
 /**
  * Segmented controls for a game's options (one row per option). Disabled
@@ -48,4 +50,46 @@ export function optionPickers(
       )
     }),
   )
+}
+
+/** Choices that mean nothing without their option's name. */
+const BARE = new Set(['on', 'off'])
+
+/** "Duel · Small court · Turn timer: Off": each option's current choice, in order. */
+export function optionSummary(defs: OptionDef[], values: GameOptions): string {
+  return defs
+    .map((def) => {
+      const choice = def.choices.find((c) => c.value === values[def.id])
+      if (!choice) return null
+      return BARE.has(choice.value) ? `${def.label}: ${choice.label}` : choice.label
+    })
+    .filter((part): part is string => !!part)
+    .join(' · ')
+}
+
+/**
+ * A game's options folded into one summary line, so the room stays short. The host presses it to show
+ * the pickers (`open` is kept by the caller across redraws); guests just read it. A single option is
+ * short enough already: its pickers come back as they are.
+ */
+export function optionsFold(o: {
+  defs: OptionDef[]
+  values: GameOptions
+  pickers: HTMLElement
+  editable: boolean
+  open: boolean
+  onToggle(open: boolean): void
+}): HTMLElement {
+  if (o.defs.length <= 1) return o.pickers
+  const summary = h('span', { class: 'pf-options-summary', textContent: optionSummary(o.defs, o.values) })
+  if (!o.editable) return h('div', { class: 'pf-options-fold' }, summary)
+  const toggle = h(
+    'button',
+    { class: `pf-options-toggle${o.open ? ' open' : ''}`, type: 'button', onclick: () => o.onToggle(!o.open) },
+    summary,
+    h('span', { class: 'pf-options-edit' }, icon(icons.chevronDown), o.open ? t('Done') : t('Change')),
+  )
+  toggle.setAttribute('aria-expanded', String(o.open))
+  o.pickers.hidden = !o.open
+  return h('div', { class: 'pf-options-fold' }, toggle, o.pickers)
 }

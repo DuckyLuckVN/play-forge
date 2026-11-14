@@ -73,7 +73,7 @@ import {
 } from './ui/tutorial'
 import { chipLook, scoreLabel } from './ui/scoreline'
 import { icons } from './ui/icons'
-import { optionPickers } from './ui/options'
+import { optionPickers, optionsFold } from './ui/options'
 import { popover } from './ui/popover'
 import { applyTheme, playerColor } from './ui/theme'
 
@@ -418,6 +418,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   let cleanup: (() => void) | null = null
   /** The room's "you" controls (name, avatar, game extras): built once per session, kept across redraws. */
   let roomSelf: { session: Session<S, I>; el: HTMLElement } | null = null
+  /** The room whose folded game settings the host has opened (kept across redraws). */
+  let optionsOpen: Session<S, I> | null = null
   let room = ''
   /** Guest: progress of joining the room, until the host's lobby arrives. */
   let joinTrack: JoinTrack | null = null
@@ -1348,20 +1350,36 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
           seats(s),
           kickConfirm(s),
         ),
-        self && !s.offline && roomSection(t('You'), roomSelfControls(s)),
-        settings && roomSection(t('Game settings'), settings, !s.isHost && hint(t('Set by the host'))),
+        // Ready / Start right under the players, so it never needs a scroll.
         h(
           'div',
           { class: 'pf-room-actions' },
           h('p', { class: 'pf-note', textContent: note }),
           offlineNote(),
           action,
-          h(
-            'div',
-            { class: 'pf-row' },
-            (tutorial || guide) && howToPlay(),
-            button(t('Leave room'), leave, 'quiet'),
+        ),
+        self && !s.offline && roomSection(t('You'), roomSelfControls(s)),
+        settings &&
+          roomSection(
+            t('Game settings'),
+            optionsFold({
+              defs: shownOptions,
+              values: s.lobby.options,
+              pickers: settings,
+              editable: s.isHost,
+              open: optionsOpen === s,
+              onToggle: (open) => {
+                optionsOpen = open ? s : null
+                render()
+              },
+            }),
+            !s.isHost && hint(t('Set by the host')),
           ),
+        h(
+          'div',
+          { class: 'pf-row' },
+          (tutorial || guide) && howToPlay(),
+          button(t('Leave room'), leave, 'quiet'),
         ),
       ),
       finished ? `results-${s.lobby.round}` : 'room',

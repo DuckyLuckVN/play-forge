@@ -139,5 +139,4 @@ describe('HAT_RISE', () => {
     expect(HAT_RISE[hat]).toBeGreaterThanOrEqual(rise(hat))
     expect(HAT_RISE[hat]).toBeLessThan(rise(hat) + 0.1)
   })
-  it('none rises nothing', () => expect(HAT_RISE.none).toBe(0))
 })

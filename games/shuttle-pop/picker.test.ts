@@ -21,13 +21,9 @@ function memoryStorage(): Storage {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('preset storage', () => {
-  it('defaults to 0 with nothing stored', () => {
+  it('defaults to 0 with nothing stored; round-trips a saved preset', () => {
     vi.stubGlobal('localStorage', memoryStorage())
     expect(loadPreset()).toBe(0)
-  })
-
-  it('round-trips a saved preset', () => {
-    vi.stubGlobal('localStorage', memoryStorage())
     savePreset(2)
     expect(loadPreset()).toBe(2)
   })

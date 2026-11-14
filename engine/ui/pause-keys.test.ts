@@ -11,13 +11,10 @@ describe('pauseAction', () => {
   it('online: a pause key while playing toggles the local menu (the match keeps running)', () => {
     expect(pauseAction({ key: 'Escape', pauseKeys, offline: false, phase: 'playing' })).toBe('toggle-menu')
   })
-  it('online: nothing outside a match in progress', () => {
-    for (const phase of ['lobby', 'countdown', 'finished'])
-      expect(pauseAction({ key: 'Escape', pauseKeys, offline: false, phase })).toBeNull()
-  })
-  it('solo: nothing outside a match in progress', () => {
-    for (const phase of ['lobby', 'countdown', 'finished'])
-      expect(pauseAction({ key: 'Escape', pauseKeys, offline: true, phase })).toBeNull()
+  it('solo or online: nothing outside a match in progress', () => {
+    for (const offline of [true, false])
+      for (const phase of ['lobby', 'countdown', 'finished'])
+        expect(pauseAction({ key: 'Escape', pauseKeys, offline, phase })).toBeNull()
   })
   it('ignores keys that are not pause keys', () => {
     expect(pauseAction({ key: 'Space', pauseKeys, offline: true, phase: 'playing' })).toBeNull()

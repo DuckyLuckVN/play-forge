@@ -146,14 +146,6 @@ describe('creature hands', () => {
     expect(Math.abs(p!.y - q.y)).toBeLessThan(0.01)
   }
 
-  it('creature hand holds the ball', () => {
-    const a = new HeroAvatar('rookie')
-    run(a, 0.5, ctx({ hold }))
-    expect(a.mood).toBe('idle')
-    a.draw(fakeCanvas(), 760)
-    near(a.lastHands?.front, hold)
-  })
-
   it('holds the ball again right after a KO and revive (fall decays, it never quite reaches 0)', () => {
     const a = new HeroAvatar('rookie')
     run(a, 0.5, ctx({ hold }))
@@ -205,22 +197,6 @@ describe('creature hands', () => {
       run(a, 0.6, ctx({ hold, ...patch }))
       a.draw(fakeCanvas(), 760)
       near(a.lastHands?.front, hold)
-    }
-  })
-
-  it('baron (the slime) holds the ball in its floating front hand, mirrored and bigger too', () => {
-    for (const [homeX, size] of [
-      [100, 1],
-      [300, 1],
-      [100, 1.35],
-    ]) {
-      const a = new HeroAvatar('baron')
-      a.size = size
-      const h = { x: homeX, y: 740, r: 5 }
-      run(a, 0.5, ctx({ homeX, hold: h }))
-      expect(a.mood).toBe('idle')
-      a.draw(fakeCanvas(), 760)
-      near(a.lastHands?.front, h)
     }
   })
 

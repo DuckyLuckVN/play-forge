@@ -16,6 +16,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The checks run side by side (each needs only its own install), so the slowest one sets the pace.
+  checks:
+    strategy:
+      fail-fast: false
+      matrix:
+        task: [typecheck, lint, 'format:check', test]
+    name: ${{ matrix.task }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run ${{ matrix.task }}
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -28,17 +45,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm run format:check
-      - run: npm test
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
 
-  # The long simulation tests (balance gauges, whole bot matches, fairness runs) beside the build, so
-  # they don't add to it; the deploy still waits for both.
+  # The long simulation tests (balance gauges, whole bot matches, fairness runs; ~3.5 min) run beside
+  # everything else and turn the run red when balance breaks, but the deploy doesn't wait for them.
   simulation:
     runs-on: ubuntu-latest
     steps:
@@ -60,9 +73,9 @@ jobs:
         run: git diff --exit-code README.md || (echo "::error::Run 'npm run readme' and commit README.md" && exit 1)
 
   deploy:
-    # Only from main, and only when the build and the simulation tests pass.
+    # Only from main, once the build and the checks pass (the simulation tests report separately).
     if: github.event_name != 'pull_request'
-    needs: [build, simulation]
+    needs: [build, checks]
     runs-on: ubuntu-latest
     environment:
       name: github-pages

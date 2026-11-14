@@ -37,6 +37,7 @@ describe('finishClip', () => {
     expect(svg.classList.contains('pf-clip-still')).toBe(false)
     expect(svg.getAttribute('role')).toBe('img')
     expect(svg.getAttribute('aria-label')).toBe('demo')
+    noNaN(svg)
   })
   it('reduced motion adds still class', () => {
     expect(build(true).svg.classList.contains('pf-clip-still')).toBe(true)
@@ -48,7 +49,6 @@ describe('finishClip', () => {
     expect(names.length).toBeGreaterThanOrEqual(2)
     for (const n of names) expect(text).toContain(`@keyframes ${n}{`)
   })
-  it('no NaN', () => noNaN(build(false).svg))
   it('showDuring marks still frame element', () => {
     expect(build(false).g.hasAttribute('data-still')).toBe(true)
   })

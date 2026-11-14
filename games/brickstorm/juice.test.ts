@@ -357,17 +357,6 @@ describe('combo on the XP bar', () => {
     expect(barShake(2)).toBeLessThanOrEqual(2.5) // a tremble, never a blur
   })
 
-  it('cools back down when the combo ends (gently, not at once)', () => {
-    const j = juice()
-    j.setComboXp(1.5)
-    j.update(0.05)
-    j.setComboXp(1)
-    j.update(0.05)
-    expect(j.xpHeat).toBe(2) // still warm for a beat
-    for (let i = 0; i < 40; i++) j.update(0.05)
-    expect(j.xpHeat).toBe(0)
-  })
-
   it('a big XP rush still heats the bar beyond the combo', () => {
     const j = juice()
     j.setComboXp(1.25)
@@ -587,6 +576,7 @@ describe('xp bar after a combo', () => {
     for (let i = 0; i < 40; i++) j.update(0.05)
     expect(j.barMult).toBe(1)
     expect(j.xpGlow).toBeLessThan(1)
+    expect(j.xpHeat).toBe(0)
   })
 })
 

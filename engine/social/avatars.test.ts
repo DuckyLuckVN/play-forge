@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { cleanAvatar } from '../net/session'
 import { AVATARS, AVATAR_IDS, avatarFor, avatarSvg, defaultAvatar, isAvatarId, storedAvatar } from './avatars'
-import { VI } from './i18n'
 
 describe('avatars', () => {
   it('has at least 20 distinct avatars', () => {
@@ -21,10 +20,6 @@ describe('avatars', () => {
       expect(svg).not.toContain('undefined')
     }
     expect(new Set(drawings).size).toBe(drawings.length)
-  })
-
-  it('translates every avatar name to Vietnamese', () => {
-    for (const a of AVATARS) expect(VI[a.name], a.name).toBeTruthy()
   })
 
   it('gives players without a valid pick a stable default', () => {

@@ -18,20 +18,14 @@ describe('class builders', () => {
     expect(cx('a', '', false, null, undefined, ' b  c ')).toBe('a b c')
   })
 
-  it('buttonClass', () => {
+  it('buttonClass, cardClass, pillClass and noteClass prefix their base class', () => {
     expect(buttonClass()).toBe('pf-btn')
     expect(buttonClass('primary wide')).toBe('pf-btn primary wide')
     expect(buttonClass(' sm  danger ')).toBe('pf-btn sm danger')
-  })
-
-  it('cardClass and pillClass', () => {
     expect(cardClass()).toBe('pf-card')
     expect(cardClass('sunken')).toBe('pf-card sunken')
     expect(pillClass()).toBe('pf-pill')
     expect(pillClass('mint dot')).toBe('pf-pill mint dot')
-  })
-
-  it('noteClass', () => {
     expect(noteClass()).toBe('pf-note')
     expect(noteClass(true)).toBe('pf-note error')
   })

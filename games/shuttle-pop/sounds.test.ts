@@ -109,12 +109,9 @@ describe('power sounds (hold-to-charge)', () => {
     ...(power === undefined ? {} : { power }),
   })
 
-  it('an uncharged hit sounds exactly as before (old events without charge too)', () => {
+  it('power 0 / missing sounds exactly as before (same object; old events without power too)', () => {
     expect(eventSound(hit('good', 'drive'), 0)).toEqual(eventSound(hit('good', 'drive', 0), 0))
     expect(eventSound(hit('good', 'drive', 0), 0)?.sound).toBe(SHUTTLE_SOUNDS.good)
-  })
-
-  it('power 0 / missing sounds exactly as before (same object)', () => {
     expect(hitSound('drive', 'good', 0, true).sound).toBe(SHUTTLE_SOUNDS.good)
     expect(hitSound('smash', 'good', undefined, true).sound).toBe(SHUTTLE_SOUNDS.smash)
   })

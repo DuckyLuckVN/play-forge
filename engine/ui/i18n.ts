@@ -52,14 +52,17 @@ export const VI: Dictionary = {
   // Start screen
   Player: 'Người chơi',
   'Your name': 'Tên của bạn',
-  CODE: 'MÃ',
   'Room code': 'Mã phòng',
   'Room codes are 5 characters, like K7QXP.': 'Mã phòng gồm 5 ký tự, ví dụ K7QXP.',
   Play: 'Chơi',
   'Play solo': 'Chơi một mình',
   'Create room': 'Tạo phòng',
+  'Jump in on your own': 'Vào chơi ngay một mình',
+  'Get a code to share with friends': 'Lấy mã để mời bạn bè',
+  'Join room {code}': 'Vào phòng {code}',
+  'From your invite link': 'Từ link mời của bạn',
+  'Have a code? Join a friend': 'Có mã? Vào phòng bạn bè',
   Join: 'Vào',
-  "or join a friend's room": 'hoặc vào phòng của bạn bè',
   'Loading…': 'Đang tải…',
 
   // Joining and connection

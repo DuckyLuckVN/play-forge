@@ -22,6 +22,7 @@ import {
   faMountainSun,
   faPaperPlane,
   faPause,
+  faPlay,
   faRightFromBracket,
   faSliders,
   faSignal,
@@ -54,6 +55,7 @@ export const icons = {
   /** A gear: the shell's settings sheet (engine/ui/settings-sheet.ts). */
   gear: faSvg(faGear),
   pause: faSvg(faPause),
+  play: faSvg(faPlay),
   leave: faSvg(faRightFromBracket),
   copy: faSvg(faCopy),
   check: faSvg(faCheck),

@@ -28,6 +28,32 @@ export function button(text: string, onclick: () => void, variant = ''): HTMLBut
 }
 
 /**
+ * A big start-screen choice (Play solo / Create room / Join): an icon, a title and one line under it.
+ * `icon` is trusted inline SVG from icons.ts.
+ */
+export function actionButton(o: {
+  title: string
+  sub?: string
+  icon?: string
+  onclick: () => void
+  primary?: boolean
+}): HTMLButtonElement {
+  const art = h('span', { class: 'pf-action-icon' })
+  if (o.icon) art.innerHTML = o.icon // trusted: our own icon markup
+  return h(
+    'button',
+    { class: cx('pf-btn', 'pf-action', o.primary && 'primary'), type: 'button', onclick: o.onclick },
+    o.icon && art,
+    h(
+      'span',
+      { class: 'pf-action-text' },
+      h('span', { class: 'pf-action-title', textContent: o.title }),
+      o.sub && h('span', { class: 'pf-action-sub', textContent: o.sub }),
+    ),
+  )
+}
+
+/**
  * A small toolbar button (`.pf-btn.sm`): icon plus a `.pf-btn-label` text that
  * games may hide on phones. The label is also its tooltip and accessible name.
  */

@@ -44,8 +44,9 @@ import { t as ts } from './social/i18n'
 import { RoomSocial } from './social/room-social'
 import { clearVoiceRejoin } from './social/voice-state'
 import { audioPanel } from './ui/audio-menu'
-import { button } from './ui/components'
+import { actionButton, button } from './ui/components'
 import { langPanel } from './ui/lang-menu'
+import { codeInput, newRoomCode, parseRoomCode, ROOM_CODE_LENGTH } from './ui/room-code'
 import { settingsSheet, shellTabs } from './ui/settings-sheet'
 import { installTooltips, setShortcut } from './ui/tooltip'
 import { netStatusButton } from './ui/net-panel'
@@ -197,17 +198,11 @@ export interface GameAppOptions<S, I> {
   settingsSections?(): { label: string; body: () => HTMLElement } | null
 }
 
-const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 const NAME_KEY = 'play-forge:name'
 /** How often the joining screen re-checks the connection. */
 const JOIN_POLL_MS = 500
 /** Relative link from games/<id>/index.html back to the launcher. */
 const LAUNCHER_URL = '../../index.html'
-
-function newRoomCode(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(5))
-  return Array.from(bytes, (b) => ROOM_ALPHABET[b % ROOM_ALPHABET.length]).join('')
-}
 
 function createTransport(appId: string, room: string): Transport {
   // `?net=local` connects tabs of this browser only (for development).
@@ -436,6 +431,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   let roomSelf: { session: Session<S, I>; el: HTMLElement } | null = null
   /** The room whose folded game settings the host has opened (kept across redraws). */
   let optionsOpen: Session<S, I> | null = null
+  /** The start screen's folded game options, opened (kept while the menu redraws). */
+  let menuOptionsOpen = false
   /** The results the local player closed: back to the normal room view until the next match ends. */
   let resultsClosed: ClosedResults | null = null
   let room = ''
@@ -858,21 +855,21 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
 
   // Start buttons wait for the game's preload (see GameAppOptions.preload).
   const preload = preloadGate(opts.preload ? () => opts.preload!() : undefined)
-  const gated = new Map<HTMLButtonElement, string>()
+  const gated = new Map<HTMLButtonElement, Node[]>()
   function gate(...buttons: HTMLButtonElement[]) {
     if (!preload.pending) return
     for (const b of buttons) {
-      gated.set(b, b.textContent ?? '')
+      gated.set(b, [...b.childNodes])
       b.disabled = true
       b.classList.add('loading')
-      b.textContent = t('Loading…')
+      b.replaceChildren(t('Loading…'))
     }
   }
   void preload.whenReady().then(() => {
-    for (const [b, label] of gated) {
+    for (const [b, content] of gated) {
       b.disabled = false
       b.classList.remove('loading')
-      b.textContent = label
+      b.replaceChildren(...content)
     }
     gated.clear()
   })
@@ -880,7 +877,7 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   function showMenu(error = '') {
     render()
     gated.clear()
-    const fromLink = /room=([A-Z0-9]+)/i.exec(location.hash)?.[1]?.toUpperCase() ?? ''
+    const fromLink = parseRoomCode(/room=([A-Z0-9]+)/i.exec(location.hash)?.[0] ?? '')
     const name = h('input', {
       class: 'pf-input',
       value: storedName() || t('Player'),
@@ -888,18 +885,8 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       id: 'pf-name',
     })
     const saveName = () => storedName(name.value.trim() || t('Player'))
-    const code = h('input', {
-      class: 'pf-input code',
-      placeholder: t('CODE'),
-      maxLength: 5,
-      value: fromLink,
-      spellcheck: false,
-    })
-    code.setAttribute('aria-label', t('Room code'))
-    code.setAttribute('autocapitalize', 'characters')
-    const join = () => {
-      const c = code.value.trim().toUpperCase()
-      if (c.length !== 5) {
+    const joinRoom = (c: string) => {
+      if (c.length !== ROOM_CODE_LENGTH) {
         playSound(UI_SOUNDS.error)
         return showMenu(t('Room codes are 5 characters, like K7QXP.'))
       }
@@ -909,39 +896,55 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
       history.replaceState(null, '', `#room=${room}`)
       begin(createTransport(appId, room), false)
     }
-    code.onkeydown = (e) => {
-      if (e.key === 'Enter') join()
+    // Five boxes; the 5th letter (typed, or a pasted invite link) joins at once.
+    const code = codeInput({ label: t('Room code'), value: fromLink, onComplete: joinRoom })
+    code.input.onkeydown = (e) => {
+      if (e.key === 'Enter') joinRoom(code.value())
     }
 
-    // Single-player games have no rooms: just a big Play button.
+    // Single-player games have no rooms: just a big Play card.
     const online = def.maxPlayers > 1
-    const solo = button(
-      online ? t('Play solo') : t('Play'),
-      () => {
+    const solo = actionButton({
+      title: online ? t('Play solo') : t('Play'),
+      sub: online ? t('Jump in on your own') : undefined,
+      icon: icons.play,
+      primary: !fromLink,
+      onclick: () => {
         saveName()
         begin(createOfflineTransport(), true, { offline: true })
       },
-      online ? '' : 'primary',
-    )
-    const create = button(
-      t('Create room'),
-      () => {
+    })
+    const create = actionButton({
+      title: t('Create room'),
+      sub: t('Get a code to share with friends'),
+      icon: icons.users,
+      onclick: () => {
         saveName()
         room = newRoomCode()
         newPlayer()
         history.replaceState(null, '', `#room=${room}`)
         begin(createTransport(appId, room), true)
       },
-      'primary',
-    )
-    const joinBtn = button(t('Join'), join, fromLink ? 'primary' : '')
-    if (fromLink) joinBtn.autofocus = true
-    gate(solo, create, joinBtn)
+    })
+    // Came from an invite link: joining that room is the first choice.
+    const invite =
+      online &&
+      fromLink.length === ROOM_CODE_LENGTH &&
+      actionButton({
+        title: t('Join room {code}', { code: fromLink }),
+        sub: t('From your invite link'),
+        icon: icons.users,
+        primary: true,
+        onclick: () => joinRoom(fromLink),
+      })
+    const joinBtn = button(t('Join'), () => joinRoom(code.value()))
+    if (invite) invite.autofocus = true
+    gate(...[solo, create, joinBtn, invite].filter((b): b is HTMLButtonElement => !!b))
 
     show(
       h(
         'div',
-        { class: 'pf-panel' },
+        { class: 'pf-panel pf-start' },
         h('h2', { class: 'pf-heading', textContent: opts.title }),
         opts.tagline && h('p', { class: 'pf-lede', textContent: opts.tagline }),
         h(
@@ -952,9 +955,14 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
         ),
         menuOptions(),
         opts.menuExtras?.() ?? null,
-        h('div', { class: 'pf-row' }, def.minPlayers <= 1 && solo, online && create),
-        online && h('div', { class: 'pf-or', textContent: t("or join a friend's room") }),
-        online && h('div', { class: 'pf-row' }, code, joinBtn),
+        h('div', { class: 'pf-actions' }, invite, def.minPlayers <= 1 && solo, online && create),
+        online &&
+          h(
+            'div',
+            { class: 'pf-join' },
+            h('span', { class: 'pf-join-label', textContent: t('Have a code? Join a friend') }),
+            h('div', { class: 'pf-join-row' }, code.root, joinBtn),
+          ),
         error && h('p', { class: 'pf-note error', textContent: error }),
         howToPlay(),
         controlsText('pf-note'),
@@ -966,13 +974,28 @@ export function createGameApp<S, I>(opts: GameAppOptions<S, I>): void {
   /** Option pickers on the start screen; redraws in place to keep typed text. */
   function menuOptions() {
     const slot = h('div')
-    const draw = () =>
+    const draw = () => {
+      const defs = def.options ?? []
+      const pickers = optionPickers(defs, chosenOptions(), (id, value) => {
+        saveOptions({ ...chosenOptions(), [id]: value })
+        draw()
+      })
       slot.replaceChildren(
-        optionPickers(def.options ?? [], chosenOptions(), (id, value) => {
-          saveOptions({ ...chosenOptions(), [id]: value })
-          draw()
-        }) ?? '',
+        pickers
+          ? optionsFold({
+              defs,
+              values: chosenOptions(),
+              pickers,
+              editable: true,
+              open: menuOptionsOpen,
+              onToggle: (open) => {
+                menuOptionsOpen = open
+                draw()
+              },
+            })
+          : '',
       )
+    }
     draw()
     return def.options?.length ? slot : null
   }

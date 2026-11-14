@@ -1,0 +1,112 @@
+@layer pf.components {
+  /* ---------- Start screen (engine/app.ts showMenu): big choices, then a code to join ---------- */
+
+  .pf-actions {
+    display: grid;
+    gap: var(--pf-space-4);
+  }
+  /* A big choice: icon on the left, title with a line under it. */
+  .pf-btn.pf-action {
+    justify-content: flex-start;
+    gap: 14px;
+    width: 100%;
+    padding: 14px 18px 13px;
+    text-align: left;
+    white-space: normal;
+  }
+  .pf-action-icon {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgb(0 0 0 / 0.18);
+  }
+  .pf-action-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+  .pf-action-text {
+    display: grid;
+    gap: 4px;
+  }
+  .pf-action-title {
+    font: var(--pf-fw-bold) 18px/1.15 var(--pf-font);
+  }
+  .pf-action-sub {
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.25;
+    opacity: 0.75;
+  }
+
+  /* Join with a code: 5 letter boxes, one real input laid over them. */
+  .pf-join {
+    display: grid;
+    gap: var(--pf-space-3);
+    padding-top: var(--pf-space-5);
+    border-top: 1px dashed var(--pf-rim);
+  }
+  .pf-join-label {
+    color: var(--pf-haze);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .pf-join-row {
+    display: flex;
+    gap: var(--pf-space-4);
+    align-items: center;
+  }
+  .pf-join-row > .pf-btn {
+    flex: none;
+    margin-bottom: 0;
+  }
+  .pf-code {
+    position: relative;
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px;
+    min-width: 0;
+    cursor: text;
+  }
+  .pf-code-box {
+    display: grid;
+    place-items: center;
+    height: 50px;
+    border-radius: var(--pf-radius-sm);
+    background: var(--pf-pit);
+    border: 2px solid var(--pf-rim);
+    font: 800 22px/1 var(--pf-font);
+    letter-spacing: 0;
+    color: var(--pf-chalk);
+    transition:
+      border-color 120ms,
+      transform 120ms;
+  }
+  .pf-code-box.filled {
+    border-color: var(--pf-haze);
+    animation: pf-code-pop 160ms ease-out;
+  }
+  /* The box the next letter goes in, while the field has focus. */
+  .pf-code:focus-within .pf-code-box.next {
+    border-color: var(--pf-yolk);
+    box-shadow: 0 0 0 3px rgb(255 200 61 / 0.25);
+  }
+  /* The real field: invisible, over the boxes, so taps, paste and phone keyboards land on it. */
+  .pf-code-input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    opacity: 0;
+    border: 0;
+    font-size: 16px; /* no zoom-on-focus on iPhone */
+    cursor: text;
+  }
+  @keyframes pf-code-pop {
+    50% {
+      transform: scale(1.08);
+    }
+  }
+}

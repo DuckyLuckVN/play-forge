@@ -30,7 +30,9 @@ export const RELAY_URLS: readonly string[] = [
  */
 export function roomConfig(appId: string, turn: TurnServer[] = [], relayOnly = false): JoinRoomConfig {
   return {
-    appId,
+    // Trystero 0.27 speaks a new protocol: its own namespace, so pages still on 0.26 don't half-meet it
+    // (players on different versions still play through our relay, which keeps the plain appId).
+    appId: `${appId}/t27`,
     // With explicit urls Trystero connects to every one (redundancy only
     // applies when it picks from its defaults).
     relayConfig: { urls: [...RELAY_URLS] },

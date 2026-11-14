@@ -1,7 +1,15 @@
-import { getRelaySockets, joinRoom, selfId, type DataPayload, type MessageAction } from 'trystero'
+import {
+  createUserIdentity,
+  getRelaySockets,
+  joinRoom,
+  type DataPayload,
+  type MessageAction,
+  type Room,
+} from 'trystero'
 import { Emitter } from '../core/emitter'
 import { netLog } from './debug'
 import { RELAY_URLS, roomConfig } from './net-config'
+import { isPeerId } from './relay-protocol'
 import { turnMode, turnServers } from './turn'
 import {
   FailureLog,
@@ -11,15 +19,27 @@ import {
   type PeerLink,
   type RelayState,
 } from './status'
-import type { Transport } from './transport'
+import { randomId, type Transport } from './transport'
+
+/** Each side's own peer id, sent once over a new direct link (Trystero's own ids are async and change on a rejoin). */
+const HELLO = 'pf-id'
+
+/** Rooms still leaving, per app + room: Trystero 0.27 throws on joining a room it's still in. */
+const leaving = new Map<string, Promise<void>>()
 
 /**
  * Internet transport: WebRTC data channels between browsers. Peers find each
  * other through public Nostr relays (handled by Trystero), so no server of our
  * own is needed. Only connection setup goes through relays; game traffic is
  * direct peer to peer.
+ *
+ * Peers are known by our own random id (the same one the relay transport uses,
+ * see hybrid.ts): a peer counts as joined once its id arrives over the new
+ * link, and Trystero's ids stay inside this file.
  */
 export function createTrysteroTransport(appId: string, roomId: string): Transport {
+  const selfId = randomId()
+  const key = `${appId}\u0000${roomId}`
   const failures = new FailureLog()
   const pcs = createPcTracker(() => failures.add(performance.now()))
   const events = new Emitter<{ join: [string]; leave: [string]; stream: [MediaStream, string] }>()
@@ -27,45 +47,104 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
   const actions = new Map<string, MessageAction>()
   /** Channels someone listens on: a rejoined room opens them again. */
   const subscribed = new Set<string>()
-  // Round trip and TURN use per peer, refreshed by diagnostics.measure().
+  // Round trip and TURN use per peer (our ids), refreshed by diagnostics.measure().
   const measured = new Map<string, { rttMs?: number; turn?: boolean }>()
+  /** Trystero peer id ↔ our peer id, for the links of the current room. */
+  const idOf = new Map<string, string>()
+  const peerOf = new Map<string, string>()
+  /** Rooms being left (retryDirect, leave): their late events are ignored. */
+  const retired = new WeakSet<object>()
+  let room: Room | null = null
+  let retrying = false
+  let closed = false
 
-  const open = () => {
+  const live = (r: Room) => r === room && !retired.has(r)
+  const unlink = (peerId: string) => {
+    const id = idOf.get(peerId)
+    if (!id) return
+    idOf.delete(peerId)
+    peerOf.delete(id)
+    measured.delete(id)
+    events.emit('leave', id)
+  }
+
+  const open = (): Room => {
     const turn = turnServers()
     netLog('turn:', turn.length ? 'on' : 'off')
-    const r = joinRoom({ ...roomConfig(appId, turn, turnMode() === 'only'), rtcPolyfill: pcs.ctor }, roomId, {
-      // A peer we exchanged offers with but could not connect to.
-      onJoinError({ peerId, error }) {
-        failures.add(performance.now(), peerId || undefined)
-        netLog('join error', peerId, error)
+    const r = joinRoom(
+      {
+        ...roomConfig(appId, turn, turnMode() === 'only'),
+        // A fresh key per room (re)join: no storage, two tabs of one browser are two players, and
+        // after retryDirect the others see a new peer at once instead of waiting out the old one.
+        identity: () => createUserIdentity(),
+        rtcPolyfill: pcs.ctor,
       },
+      roomId,
+    )
+    r.onError((e) => {
+      if (!live(r)) return
+      // A peer we exchanged offers with but could not connect to.
+      if (e.code === 'peer-connect-failed') failures.add(performance.now(), e.peerId)
+      netLog('room error', e.code, e.message)
     })
-    // Events of a room we already left (retryDirect) are ignored.
-    r.onPeerJoin = (id) => {
-      if (r !== room || retired.has(r)) return
-      failures.resolve(id)
+    const hello = r.makeAction<string>(HELLO)
+    r.onPeerJoin(({ peerId }) => {
+      if (live(r)) void hello.send(selfId, { target: peerId }).catch(() => {})
+    })
+    hello.onMessage((id, { peerId }) => {
+      if (!live(r) || !isPeerId(id) || id === selfId || idOf.has(peerId)) return
+      // The same id on a new link: that peer rejoined (retryDirect); its old link is stale.
+      const old = peerOf.get(id)
+      if (old) {
+        netLog('direct: peer rejoined', id)
+        unlink(old)
+      }
+      idOf.set(peerId, id)
+      peerOf.set(id, peerId)
+      failures.resolve(peerId)
       events.emit('join', id)
-    }
-    r.onPeerLeave = (id) => {
-      if (r !== room || retired.has(r)) return
-      measured.delete(id)
-      events.emit('leave', id)
-    }
-    r.onPeerStream = (stream, id) => {
-      if (r === room && !retired.has(r)) events.emit('stream', stream, id)
-    }
+    })
+    r.onPeerLeave(({ peerId }) => {
+      if (live(r)) unlink(peerId)
+    })
+    r.onPeerStream((stream, { peerId }) => {
+      const id = live(r) ? idOf.get(peerId) : undefined
+      if (id) events.emit('stream', stream, id)
+    })
     return r
   }
-  let room = open()
-  /** Rooms being left by retryDirect: their late events are ignored. */
-  const retired = new WeakSet<object>()
-  let retrying = false
 
-  const action = (channel: string) => {
+  const start = () => {
+    room = open()
+    for (const channel of subscribed) action(channel)
+  }
+  // Rejoining a room this page is still leaving (e.g. "try again"): wait for that first.
+  const pending = leaving.get(key)
+  if (pending) void pending.then(() => !closed && start())
+  else start()
+
+  const leaveRoom = (r: Room) => {
+    retired.add(r)
+    const done = r
+      .leave()
+      .catch(() => {})
+      .finally(() => {
+        if (leaving.get(key) === done) leaving.delete(key)
+      })
+    leaving.set(key, done)
+    return done
+  }
+
+  function action(channel: string): MessageAction | null {
+    if (!room) return null
     let a = actions.get(channel)
     if (!a) {
-      a = room.makeAction(channel)
-      a.onMessage = (data, { peerId }) => channels.emit(channel, data, peerId)
+      const r = room
+      a = r.makeAction(channel)
+      a.onMessage((data, { peerId }) => {
+        const id = live(r) ? idOf.get(peerId) : undefined
+        if (id) channels.emit(channel, data, id)
+      })
       actions.set(channel, a)
     }
     return a
@@ -74,14 +153,21 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
   const diagnostics: NetDiagnostics = {
     snapshot(): NetStatus {
       const sockets = (getRelaySockets() ?? {}) as Record<string, WebSocket | undefined>
-      const links = room.getPeers()
-      const peers: PeerLink[] = Object.entries(links).map(([id, pc]) => ({
-        id,
-        state: linkState(pc),
-        ...measured.get(id),
-      }))
-      const open = failures.open(performance.now(), (id) => links[id]?.connectionState === 'connected')
-      for (const id of open.peers) if (!links[id]) peers.push({ id, state: 'failed' })
+      const links = room?.getPeers() ?? {}
+      const peers: PeerLink[] = []
+      for (const [peerId, info] of Object.entries(links)) {
+        const id = idOf.get(peerId)
+        if (!id) continue
+        peers.push({
+          id,
+          state: info.connection ? linkState(info.connection) : 'connecting',
+          ...measured.get(id),
+        })
+      }
+      const open = failures.open(
+        performance.now(),
+        (peerId) => links[peerId]?.connection?.connectionState === 'connected',
+      )
       return {
         kind: 'internet',
         relays: RELAY_URLS.map((url) => ({ url, state: relayState(sockets[url]) })),
@@ -92,12 +178,17 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
       }
     },
     async measure() {
+      const r = room
+      if (!r) return
       await Promise.all(
-        Object.entries(room.getPeers()).map(async ([id, pc]) => {
+        Object.entries(r.getPeers()).map(async ([peerId, info]) => {
+          const id = idOf.get(peerId)
+          const pc = info.connection
+          if (!id || !pc) return
           const pair = await selectedPair(pc).catch(() => ({}) as PairInfo)
           let rttMs = pair.rttMs
           if (rttMs === undefined && pc.connectionState === 'connected')
-            rttMs = await room.ping(id).catch(() => undefined)
+            rttMs = await r.ping(peerId).catch(() => undefined)
           measured.set(id, {
             ...(rttMs === undefined ? {} : { rttMs }),
             ...(pair.turn ? { turn: true } : {}),
@@ -107,15 +198,20 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
     },
   }
 
+  /** Trystero's target for one of our ids; null = not linked (nothing to send). */
+  const targetOf = (to: string | undefined) => (to === undefined ? undefined : (peerOf.get(to) ?? null))
+
   return {
     selfId,
-    peers: () => Object.keys(room.getPeers()),
+    peers: () => [...peerOf.keys()],
     send(channel, data, to) {
       // Mid-retry the old room is closing: the hybrid transport sends through the relay meanwhile.
       if (retrying) return
+      const target = targetOf(to)
+      if (target === null) return
       // A peer that just closed stays listed until ICE times out: its sends reject. Not fatal.
       action(channel)
-        .send(data as DataPayload, to ? { target: to } : undefined)
+        ?.send(data as DataPayload, target ? { target } : undefined)
         .catch((e) => netLog('send failed', channel, e))
     },
     on(channel, handler) {
@@ -127,35 +223,39 @@ export function createTrysteroTransport(appId: string, roomId: string): Transpor
     onPeerLeave: (h) => events.on('leave', h),
     media: {
       addStream(stream, to) {
+        const target = targetOf(to)
         // Delivery failures (peer gone mid-setup) only cost that peer's audio.
-        for (const p of room.addStream(stream, to ? { target: to } : undefined)) p.catch(() => {})
+        if (target !== null) void room?.addStream(stream, target ? { target } : undefined).catch(() => {})
       },
-      removeStream: (stream, to) => room.removeStream(stream, to ? { target: to } : undefined),
+      removeStream(stream, to) {
+        const target = targetOf(to)
+        if (target !== null) room?.removeStream(stream, target ? { target } : undefined)
+      },
       onPeerStream: (h) => events.on('stream', h),
     },
     diagnostics,
     async retryDirect() {
       // A fresh attempt (e.g. once the browser allows local network access): the old room's
       // links are gone (the relay carries those peers meanwhile), the new one negotiates again.
-      if (retrying) return
-      retrying = true
       const old = room
-      retired.add(old)
-      for (const id of Object.keys(old.getPeers())) events.emit('leave', id)
+      if (retrying || !old || closed) return
+      retrying = true
+      for (const peerId of [...idOf.keys()]) unlink(peerId)
       actions.clear()
       measured.clear()
-      // Trystero hands back the same room while it's still joined: leave fully, then join again.
-      await old.leave().catch(() => {})
-      room = open()
-      for (const channel of subscribed) action(channel)
+      // Trystero 0.27 won't join a room it's still in: leave fully, then join again.
+      await leaveRoom(old)
       retrying = false
+      if (closed) return
+      start()
       netLog('direct: retry, rejoined the room')
     },
     leave() {
+      closed = true
       events.clear()
       channels.clear()
       pcs.clear()
-      void room.leave()
+      if (room) void leaveRoom(room)
     },
   }
 }

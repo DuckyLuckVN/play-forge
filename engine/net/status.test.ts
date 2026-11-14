@@ -59,7 +59,8 @@ describe('relay config', () => {
   it('gives every game the same pinned relays', () => {
     const a = roomConfig('play-forge/caro')
     const b = roomConfig('play-forge/snake')
-    expect(a.appId).toBe('play-forge/caro')
+    // Trystero 0.27's own namespace (0.26 pages don't half-meet it on Nostr).
+    expect(a.appId).toBe('play-forge/caro/t27')
     expect(a.relayConfig?.urls).toEqual(b.relayConfig?.urls)
     expect(a.relayConfig?.urls).toEqual([...RELAY_URLS])
   })

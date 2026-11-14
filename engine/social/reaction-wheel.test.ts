@@ -46,14 +46,14 @@ describe('reactionWheel', () => {
     expect(w.isOpen).toBe(false)
     expect(w.button.hidden).toBe(true)
   })
-  it('hold T, move up, release sends slot 0 (gg)', () => {
+  it('hold T, move up, release sends slot 0 (like)', () => {
     w.setEnabled(true)
     key('keydown', 'KeyT')
     expect(w.isOpen).toBe(true)
     move(400, 200 - 60)
-    expect(q('[data-rx="gg"]').classList.contains('on')).toBe(true)
+    expect(q('[data-rx="like"]').classList.contains('on')).toBe(true)
     key('keyup', 'KeyT')
-    expect(send).toHaveBeenCalledWith('gg')
+    expect(send).toHaveBeenCalledWith('like')
     expect(w.isOpen).toBe(false)
   })
   it('release in the dead zone cancels', () => {

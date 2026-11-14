@@ -11,6 +11,11 @@ export interface ReactionDef {
   name: string
   motion: ReactionMotion
   sound: Sound
+  /**
+   * Retired from the tray and wheel. Kept so packets from older clients still
+   * show (ids are a wire format: never rename or remove one).
+   */
+  hidden?: boolean
 }
 
 export const REACTIONS: readonly ReactionDef[] = [
@@ -53,6 +58,7 @@ export const REACTIONS: readonly ReactionDef[] = [
   },
   {
     id: 'clap',
+    hidden: true,
     name: 'Clap',
     motion: 'beat',
     sound: [
@@ -83,12 +89,14 @@ export const REACTIONS: readonly ReactionDef[] = [
   },
   {
     id: 'boom',
+    hidden: true,
     name: 'Boom',
     motion: 'pop',
     sound: { freq: 900, to: 60, dur: 0.35, wave: 'noise', vol: 0.5 },
   },
   {
     id: 'crown',
+    hidden: true,
     name: 'King',
     motion: 'spin',
     sound: [
@@ -103,6 +111,44 @@ export const REACTIONS: readonly ReactionDef[] = [
     motion: 'wobble',
     sound: { freq: 700, to: 520, dur: 0.18, wave: 'sine', vol: 0.35 },
   },
+  {
+    id: 'like',
+    name: 'Like',
+    motion: 'pop',
+    sound: [
+      { freq: 660, dur: 0.06, wave: 'square', vol: 0.25 },
+      { freq: 990, dur: 0.1, wave: 'square', vol: 0.25, at: 0.07 },
+    ],
+  },
+  {
+    id: 'dislike',
+    name: 'Dislike',
+    motion: 'shake',
+    sound: [
+      { freq: 440, dur: 0.07, wave: 'square', vol: 0.22 },
+      { freq: 294, dur: 0.12, wave: 'square', vol: 0.22, at: 0.08 },
+    ],
+  },
+  {
+    id: 'haha',
+    name: 'Haha',
+    motion: 'shake',
+    sound: [
+      { freq: 880, dur: 0.05, wave: 'triangle', vol: 0.35 },
+      { freq: 1046, dur: 0.05, wave: 'triangle', vol: 0.35, at: 0.07 },
+      { freq: 880, dur: 0.05, wave: 'triangle', vol: 0.35, at: 0.14 },
+      { freq: 1175, dur: 0.08, wave: 'triangle', vol: 0.35, at: 0.21 },
+    ],
+  },
+  {
+    id: 'thinking',
+    name: 'Thinking',
+    motion: 'wobble',
+    sound: [
+      { freq: 392, dur: 0.12, wave: 'sine', vol: 0.35 },
+      { freq: 466, dur: 0.16, wave: 'sine', vol: 0.35, at: 0.16 },
+    ],
+  },
   // Voice chat helpers: quicker than typing "can't hear you" mid-game.
   {
     id: 'mic-on',
@@ -115,6 +161,7 @@ export const REACTIONS: readonly ReactionDef[] = [
   },
   {
     id: 'mic-off',
+    hidden: true,
     name: 'Mute your mic',
     motion: 'shake',
     sound: [
@@ -139,18 +186,29 @@ export const REACTIONS: readonly ReactionDef[] = [
   },
 ]
 
+/** Every id a client accepts, hidden ones included. */
 export const REACTION_IDS: readonly string[] = REACTIONS.map((r) => r.id)
-/** Reaction wheel slots, clockwise from the top. Mic helpers stay in the tray (they are about voice). */
-export const WHEEL_REACTIONS: readonly string[] = [
-  'gg',
+/** The tray, in order: thumbs and love first, then faces, then the voice helpers. */
+export const TRAY_REACTIONS: readonly string[] = [
+  'like',
+  'dislike',
+  'heart',
   'fire',
   'laugh',
-  'clap',
-  'heart',
-  'cry',
+  'haha',
+  'thinking',
+  'gg',
   'rage',
+  'cry',
   'skull',
+  'eyes',
+  'sweat',
+  'mic-on',
+  'hear-me',
+  'cant-hear',
 ]
+/** Reaction wheel slots, clockwise from the top: the tray's first 8 (no voice helpers). */
+export const WHEEL_REACTIONS: readonly string[] = TRAY_REACTIONS.slice(0, 8)
 export const reactionDef = (id: string) => REACTIONS.find((r) => r.id === id)
 
 /** Sliding-window limit: at most `max` hits per `windowMs`. */

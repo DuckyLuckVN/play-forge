@@ -10,7 +10,9 @@ import {
   ReactionHub,
   RECEIVE_LIMIT,
   SEND_LIMIT,
+  TRAY_REACTIONS,
   WHEEL_REACTIONS,
+  reactionDef,
 } from './reactions'
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -111,5 +113,27 @@ describe('WHEEL_REACTIONS', () => {
     expect(
       WHEEL_REACTIONS.some((id) => id.startsWith('mic') || id.includes('hear-') || id.includes('-hear')),
     ).toBe(false)
+  })
+})
+
+describe('TRAY_REACTIONS', () => {
+  it('lists the visible reactions: thumbs and love first, faces next, voice helpers last', () => {
+    expect(TRAY_REACTIONS).toEqual([
+      'like', 'dislike', 'heart', 'fire', 'laugh', 'haha', 'thinking', 'gg',
+      'rage', 'cry', 'skull', 'eyes', 'sweat', 'mic-on', 'hear-me', 'cant-hear',
+    ])
+  })
+
+  it('hides retired reactions from the tray but still accepts them from older clients', () => {
+    for (const id of ['boom', 'crown', 'clap', 'mic-off']) {
+      expect(REACTION_IDS).toContain(id)
+      expect(reactionDef(id)?.hidden, id).toBe(true)
+      expect(TRAY_REACTIONS).not.toContain(id)
+    }
+    for (const id of TRAY_REACTIONS) expect(reactionDef(id)?.hidden, id).toBeFalsy()
+  })
+
+  it('wheel = the first 8 tray reactions', () => {
+    expect(WHEEL_REACTIONS).toEqual(['like', 'dislike', 'heart', 'fire', 'laugh', 'haha', 'thinking', 'gg'])
   })
 })

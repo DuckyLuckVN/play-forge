@@ -6,7 +6,7 @@ import { popover } from '../ui/popover'
 import { avatarEl } from './avatar-ui'
 import { t } from './i18n'
 import { reactionSvg } from './reaction-art'
-import { REACTIONS, reactionDef } from './reactions'
+import { TRAY_REACTIONS, reactionDef } from './reactions'
 
 /** The drawing for one reaction, as an element. */
 export function reactionEl(id: string, cls = 'pf-rx-art'): HTMLSpanElement {
@@ -21,7 +21,7 @@ export function reactionEl(id: string, cls = 'pf-rx-art'): HTMLSpanElement {
  * `onPick` returns false when the reaction was rate-limited.
  */
 export function reactionPicker(onPick: (id: string) => boolean): HTMLElement {
-  const options = REACTIONS.map((r) => {
+  const options = TRAY_REACTIONS.map((id) => reactionDef(id)!).map((r) => {
     const b = h('button', { class: 'pf-rx-opt', type: 'button', title: t(r.name) }, reactionEl(r.id))
     b.setAttribute('aria-label', t(r.name))
     b.onclick = () => {

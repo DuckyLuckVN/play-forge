@@ -150,6 +150,16 @@ export const VI: Dictionary = {
   'Connected through our backup server (no voice)': 'Kết nối qua máy chủ dự phòng (không có giọng nói)',
   'Via TURN': 'Qua TURN',
   'Connected through our TURN server: voice works': 'Kết nối qua máy chủ TURN: có giọng nói',
+  'Same network, but the router blocks a direct link': 'Cùng mạng, nhưng router chặn kết nối trực tiếp',
+  'Your network blocks direct links (strict NAT)': 'Mạng của bạn chặn kết nối trực tiếp (NAT nghiêm ngặt)',
+  'Their network blocks direct links (strict NAT)':
+    'Mạng của người kia chặn kết nối trực tiếp (NAT nghiêm ngặt)',
+  'Your network blocks direct links (UDP blocked)': 'Mạng của bạn chặn kết nối trực tiếp (chặn UDP)',
+  "A direct link didn't get through. Retry may help": 'Kết nối trực tiếp chưa thông. Thử lại có thể được',
+  "You're on the same Wi-Fi as someone, but the router won't link you directly, so you play through TURN. Allow local network access, or turn on voice, then tap Retry.":
+    'Bạn đang chung Wi-Fi với một người, nhưng router không cho kết nối trực tiếp nên đang chơi qua TURN. Hãy cho phép truy cập mạng cục bộ, hoặc bật giọng nói, rồi bấm Thử lại.',
+  "Someone's network (often mobile data) blocks direct links, so you play through TURN. That's normal: ping may be a little higher.":
+    'Mạng của một người (thường là 4G) chặn kết nối trực tiếp nên đang chơi qua TURN. Chuyện bình thường: ping có thể cao hơn một chút.',
   'Backup server': 'Máy chủ dự phòng',
   'In use · {ms} ms': 'Đang dùng · {ms} ms',
   'In use': 'Đang dùng',

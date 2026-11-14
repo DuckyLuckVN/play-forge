@@ -1,3 +1,4 @@
+import type { WhyNotDirect } from './ice-diagnosis'
 import type { LocalAccess } from './local-access'
 import type { Transport } from './transport'
 
@@ -21,6 +22,8 @@ export interface PeerLink {
   route?: Route
   /** The WebRTC link goes through a TURN server (still WebRTC, so voice works), from the last measure. */
   turn?: boolean
+  /** On TURN: why a direct link didn't work out (ice-diagnosis.ts), from the last measure. */
+  why?: WhyNotDirect
   /**
    * Not linked directly (on TURN or the relay): a link attempt is under way ('trying') or not ('idle').
    * Absent for direct links and transports that can't retry. The Network panel offers Retry on it.
@@ -183,6 +186,10 @@ export type NetHint =
   | 'connecting'
   | 'lag'
   | 'local'
+  /** Someone on TURN is on our network: the router won't link us through its public address. */
+  | 'same-wifi'
+  /** Someone on TURN is behind a strict NAT (often mobile data): direct links rarely work. */
+  | 'strict-nat'
   /** The browser hasn't been allowed to reach the local network (local-access.ts): offer to ask. */
   | 'allow-local'
   /** Refused, or Android's default: say where to change it (and still offer to ask). */
@@ -211,6 +218,8 @@ export interface PanelRow {
   route: PanelRoute | null
   /** Not linked by WebRTC (yet): where getting a link stands. */
   attempt?: LinkAttempt
+  /** On TURN: why not direct, when known (the route's tooltip says it). */
+  why?: WhyNotDirect
 }
 
 export interface NetPanelView {
@@ -250,12 +259,14 @@ export function netPanelView(
   const rows: PanelRow[] = players.map((p) => {
     const link = p.peer ? status.peers.find((l) => l.id === p.peer) : undefined
     const state = link && p.connected ? link.state : 'connecting'
+    const route = state === 'connected' ? panelRoute(link) : null
     return {
       name: p.name,
       state,
       rttMs: link?.rttMs ?? null,
-      route: state === 'connected' ? panelRoute(link) : null,
+      route,
       ...(link?.attempt ? { attempt: link.attempt } : {}),
+      ...(route === 'turn' && link?.why ? { why: link.why } : {}),
     }
   })
   const relaysOk = relaysOpen(status)
@@ -277,8 +288,11 @@ export function netPanelView(
   if (rows.some((r) => r.route === 'relay')) hints.push('relayed')
   if (connecting) hints.push('connecting')
   if (lag) hints.push('lag')
+  const sameWifi = rows.some((r) => r.why === 'same-network')
+  if (sameWifi) hints.push('same-wifi')
+  if (rows.some((r) => r.why === 'strict-self' || r.why === 'strict-peer')) hints.push('strict-nat')
   // Not linked directly (yet) while the browser may be the one blocking it: same-Wi-Fi players need it.
-  const notDirect = rows.some((r) => r.route === 'relay') || connecting
+  const notDirect = rows.some((r) => r.route === 'relay') || connecting || sameWifi
   if (!local && notDirect && onlineForMs >= LOCAL_ASK_AFTER_MS) {
     if (localAccess === 'prompt') hints.push('allow-local')
     else if (localAccess === 'denied') hints.push('local-denied')

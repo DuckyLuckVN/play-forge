@@ -237,3 +237,58 @@ describe('Network panel layout', () => {
     net.attach(null)
   })
 })
+
+describe("Network panel: each player's link attempt and Retry", () => {
+  const withAttempt = (attempt: NonNullable<NetStatus['peers'][number]['attempt']>): NetStatus => ({
+    ...relayed,
+    peers: [{ id: 'p1', state: 'connected', rttMs: 230, route: 'relay', attempt }],
+  })
+  const open = async (status: NetStatus, retryDirect = vi.fn()) => {
+    vi.stubGlobal('navigator', { ...navigator, permissions: undefined })
+    const net = netStatusButton()
+    document.body.append(net.root)
+    net.attach({ ...source, status: () => status, retryDirect })
+    await new Promise((r) => setTimeout(r, 0))
+    net.root.querySelector<HTMLButtonElement>('.pf-net-btn')!.click()
+    return { net, retryDirect }
+  }
+
+  it('says where getting a link stands, under the player', async () => {
+    for (const [attempt, text] of [
+      [{ phase: 'direct' }, 'Trying direct…'],
+      [{ phase: 'turn' }, 'Trying TURN…'],
+      [{ phase: 'waiting', nextInMs: 11_200 }, 'Next try in 12 s'],
+      [{ phase: 'their-retry' }, 'Waiting for their next try'],
+      [{ phase: 'gave-up' }, 'No direct link: staying on the relay'],
+    ] as const) {
+      const { net } = await open(withAttempt(attempt))
+      expect(net.root.querySelector('.pf-net-attempt')?.textContent).toBe(text)
+      net.attach(null)
+      document.body.replaceChildren()
+    }
+  })
+
+  it('Retry starts a fresh attempt; it waits while one is under way', async () => {
+    const { net, retryDirect } = await open(withAttempt({ phase: 'gave-up' }))
+    const retry = net.root.querySelector<HTMLButtonElement>('.pf-net-retry')!
+    expect(retry.disabled).toBe(false)
+    retry.click()
+    expect(retryDirect).toHaveBeenCalledTimes(1)
+    net.attach(null)
+    document.body.replaceChildren()
+    const busy = await open(withAttempt({ phase: 'turn' }))
+    expect(busy.net.root.querySelector<HTMLButtonElement>('.pf-net-retry')!.disabled).toBe(true)
+    busy.net.attach(null)
+  })
+
+  it('a player linked by WebRTC has no status line and no Retry', async () => {
+    const direct: NetStatus = {
+      ...relayed,
+      peers: [{ id: 'p1', state: 'connected', rttMs: 9, route: 'direct' }],
+    }
+    const { net } = await open(direct)
+    expect(net.root.querySelector('.pf-net-attempt')).toBeNull()
+    expect(net.root.querySelector('.pf-net-retry')).toBeNull()
+    net.attach(null)
+  })
+})

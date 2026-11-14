@@ -388,3 +388,64 @@ describe('hybrid transport: one side retries', () => {
     vi.useRealTimers()
   })
 })
+
+describe("hybrid transport: each player's link attempt, for the Network panel", () => {
+  const make = (peer: string) => {
+    const direct = fakeDirect()
+    const relayT = fakeRelay()
+    const retryDirect = vi.fn(async () => {})
+    const t = createHybridTransport(
+      Object.assign(direct, { retryDirect }) as unknown as Transport,
+      relayT as unknown as RelayTransport,
+      { relayGraceMs: 0 },
+    )
+    relayT.up(peer)
+    const attempt = () => t.diagnostics!.snapshot().peers.find((p) => p.id === peer)?.attempt
+    return { direct, retryDirect, t, attempt }
+  }
+
+  it('trying direct, then TURN, while a connection is being set up', () => {
+    vi.useFakeTimers()
+    const { direct, t, attempt } = make('zed')
+    direct.status.negotiating = 1
+    expect(attempt()).toEqual({ phase: 'direct' })
+    direct.status.turnOffered = true
+    expect(attempt()).toEqual({ phase: 'turn' })
+    t.leave()
+    vi.useRealTimers()
+  })
+
+  it('between tries: when ours is next, or that the other side retries, or that we gave up', () => {
+    vi.useFakeTimers()
+    const { direct, t, attempt } = make('zed')
+    direct.status.negotiating = 0
+    vi.advanceTimersByTime(1000)
+    expect(attempt()?.phase).toBe('waiting')
+    const a = attempt()
+    expect(a?.phase === 'waiting' && a.nextInMs).toBeGreaterThan(0)
+    vi.advanceTimersByTime(400_000)
+    expect(attempt()).toEqual({ phase: 'gave-up' })
+    t.leave()
+    const other = make('abe') // a lower id than ours: they retry
+    other.direct.status.negotiating = 0
+    vi.advanceTimersByTime(1000)
+    expect(other.attempt()).toEqual({ phase: 'their-retry' })
+    other.t.leave()
+    vi.useRealTimers()
+  })
+
+  it('a linked player has no attempt; Retry starts a fresh one and restarts the automatic ones', async () => {
+    vi.useFakeTimers()
+    const { direct, retryDirect, t, attempt } = make('zed')
+    vi.advanceTimersByTime(400_000)
+    expect(attempt()).toEqual({ phase: 'gave-up' })
+    await t.retryDirect!()
+    expect(retryDirect).toHaveBeenCalled()
+    vi.advanceTimersByTime(1000)
+    expect(attempt()?.phase).toBe('waiting')
+    direct.up('zed')
+    expect(attempt()).toBeUndefined()
+    t.leave()
+    vi.useRealTimers()
+  })
+})

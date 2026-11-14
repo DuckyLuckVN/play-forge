@@ -50,4 +50,3 @@ describe('emoji tray shortcut', () => {
     expect(panel(root).hidden).toBe(false)
   })
 })
-

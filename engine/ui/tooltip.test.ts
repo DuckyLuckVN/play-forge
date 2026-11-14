@@ -5,7 +5,12 @@ import { installTooltips, setShortcut } from './tooltip'
 let off: () => void
 let btn: HTMLButtonElement
 
-const pointer = (type: string, target: EventTarget, pointerType = 'mouse', related: EventTarget | null = null) => {
+const pointer = (
+  type: string,
+  target: EventTarget,
+  pointerType = 'mouse',
+  related: EventTarget | null = null,
+) => {
   const e = new Event(type, { bubbles: true })
   Object.assign(e, { pointerType, relatedTarget: related })
   target.dispatchEvent(e)
@@ -114,11 +119,11 @@ describe('tooltips', () => {
     group.dataset.tipSide = 'left'
     group.append(btn)
     document.body.append(group)
-    btn.getBoundingClientRect = () => ({ top: 300, bottom: 348, left: 900, right: 948, width: 48, height: 48 }) as DOMRect
+    btn.getBoundingClientRect = () =>
+      ({ top: 300, bottom: 348, left: 900, right: 948, width: 48, height: 48 }) as DOMRect
     pointer('pointerover', btn)
     vi.advanceTimersByTime(400)
     expect(tip()!.dataset.side).toBe('left')
     expect(parseFloat(tip()!.style.left)).toBeLessThan(900)
   })
 })
-
